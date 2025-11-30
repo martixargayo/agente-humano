@@ -26,18 +26,28 @@ from prompts import (
 # Cargar variables de entorno (.env)
 load_dotenv()
 
-MODEL_NAME = os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini")
+# --- Modelos ---
 
-# Modelo principal del agente
+# Modelo principal (para responder al usuario)
+MAIN_MODEL = os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini")
+
+# Modelo de resumen (puede ser más pequeño/barato)
+SUMMARY_MODEL = os.getenv("SUMMARY_MODEL_NAME", "gpt-4o-mini")
+
+# Temperaturas con posibilidad de override por .env
+MAIN_TEMPERATURE = float(os.getenv("MAIN_TEMPERATURE", "0.7"))
+SUMMARY_TEMPERATURE = float(os.getenv("SUMMARY_TEMPERATURE", "0.2"))
+
+# Modelo principal del agente (Daniel)
 llm = ChatOpenAI(
-    model=MODEL_NAME,
-    temperature=0.7,
+    model=MAIN_MODEL,
+    temperature=MAIN_TEMPERATURE,
 )
 
-# Modelo para resumir (puede ser el mismo, pero con menos temperatura)
+# Modelo para resumir (memoria comprimida de sesión)
 summary_llm = ChatOpenAI(
-    model=MODEL_NAME,
-    temperature=0.2,
+    model=SUMMARY_MODEL,
+    temperature=SUMMARY_TEMPERATURE,
 )
 
 # Parámetros de memoria (inspirados en trimming + summarizing)
@@ -96,6 +106,7 @@ def _user_turn_indices(history: List[Message]) -> List[int]:
 def _should_summarize(history: List[Message]) -> bool:
     """
     Decide si hay que resumir en función del nº de turnos de usuario.
+    (Ahora mismo no se usa directamente, pero lo dejamos por claridad).
     """
     return len(_user_turn_indices(history)) > CONTEXT_LIMIT_TURNS
 
@@ -186,7 +197,7 @@ def run_agent(
     - Añade el mensaje del usuario a state.history.
     - Si se supera el límite de turnos, resume + recorta.
     - Construye el prompt de conversación.
-    - Llama al modelo.
+    - Llama al modelo principal (Daniel).
     - Añade la respuesta del agente a state.history.
     - Guarda el estado.
     """
@@ -200,15 +211,12 @@ def run_agent(
     # 3) Construir mensajes para el LLM
     messages = _build_conversation_messages(state, user_message)
 
-    # 4) Llamar al modelo
+    # 4) Llamar al modelo principal
     result = llm.invoke(messages)
     reply_text = result.content.strip()
 
     # 5) Añadir respuesta del agente al historial
     add_message(state, role="assistant", content=reply_text)
-
-    # (Opcional) Podríamos volver a llamar a _maybe_trim_and_summarize() aquí,
-    # pero como el criterio depende de turnos de usuario, no es necesario.
 
     # 6) Guardar estado
     save_session_state(state)
