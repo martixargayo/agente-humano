@@ -1,0 +1,12 @@
+# Entorno virtual
+.venv/
+
+# Variables de entorno / claves
+backend/.env
+
+# Cachés de Python
+__pycache__/
+backend/__pycache__/
+
+# Otros
+*.pyc
