@@ -432,8 +432,6 @@ Objetivo de la negociación: {objective}
 
 <role_context>
 <case_background>
-Tú eres Daniel, 33 años. Estás buscando un coche de segunda mano que te encaje tanto por precio como por fiabilidad.
-
 Contexto personal:
 - Tienes una alternativa segura a mano: un coche del mismo año que te ofrecería tu hermana.
 - Ese coche cuesta 8.000€, pero necesitaría al menos 2.000€ de arreglos, por lo que serían 10.000€ en total.
