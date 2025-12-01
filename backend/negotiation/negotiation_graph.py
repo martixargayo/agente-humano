@@ -14,7 +14,76 @@ from langgraph.graph import StateGraph, START, END
 from prompts import BASE_PERSONALITY_PROMPT
 from state import SessionState, Message, add_message, save_session_state
 
+from langchain_openai import OpenAIEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain_core.documents import Document
+
 load_dotenv()
+
+# ---- Configuración RAG para técnicas de negociación ----
+
+EMBEDDINGS_MODEL = os.getenv("EMBEDDINGS_MODEL_NAME", "text-embedding-3-small")
+
+# Directorio por defecto donde estarán los .md/.txt de técnicas
+DEFAULT_RAG_DIR = os.path.join(
+    os.path.dirname(__file__),
+    "phase_docs",
+)
+
+RAG_DIR = os.getenv("NEGOTIATION_RAG_DIR", DEFAULT_RAG_DIR)
+
+
+def _load_negotiation_rag_index():
+    """
+    Carga todos los .md/.txt de RAG_DIR en un vector store FAISS.
+    Cada documento es un Document(page_content=texto, metadata={"filename": ...}).
+    Si no hay carpeta o no hay docs, devuelve None.
+    """
+    if not os.path.isdir(RAG_DIR):
+        print(f"[RAG] Directorio no encontrado: {RAG_DIR}. Usaré fallback simple.")
+        return None
+
+    docs: List[Document] = []
+    for filename in os.listdir(RAG_DIR):
+        if not filename.lower().endswith((".md", ".txt")):
+            continue
+        path = os.path.join(RAG_DIR, filename)
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                text = f.read().strip()
+            if not text:
+                continue
+
+            # Inferimos la fase a partir del nombre de archivo (opcional)
+            phase_hint = filename.replace(".md", "").replace(".txt", "")
+            docs.append(
+                Document(
+                    page_content=text,
+                    metadata={
+                        "filename": filename,
+                        "phase_hint": phase_hint,
+                    },
+                )
+            )
+        except Exception as e:
+            print(f"[RAG] Error leyendo {path}: {e}")
+
+    if not docs:
+        print(f"[RAG] No se encontraron documentos de técnicas en {RAG_DIR}.")
+        return None
+
+    try:
+        embeddings = OpenAIEmbeddings(model=EMBEDDINGS_MODEL)
+        vs = FAISS.from_documents(docs, embeddings)
+        print(f"[RAG] Index de negociación cargado con {len(docs)} documentos.")
+        return vs
+    except Exception as e:
+        print(f"[RAG] Error creando el índice FAISS: {e}")
+        return None
+
+
+NEGOTIATION_RAG_INDEX = _load_negotiation_rag_index()
+
 
 # ---- Modelos para planner y ejecutor ----
 
@@ -128,17 +197,60 @@ def _format_messages_as_text(messages: List[Message]) -> str:
 
 def get_phase_techniques(phase_name: str, context: str) -> str:
     """
-    TODO: Conectar aquí tu RAG real (vector store con documentos por fase).
+    Recupera técnicas específicas de negociación para la fase actual
+    usando un vector store (RAG) sobre documentos locales.
 
-    De momento devuelve un texto de ejemplo para que el sistema funcione.
+    - phase_name: nombre de la fase actual (ej. "Fase 2 – Preguntar y descubrir...")
+    - context: resumen + historial reciente (por si queremos usarlo en la query)
     """
-    return (
-        f"Técnicas recomendadas para {phase_name}:\n"
-        "- Haz preguntas abiertas y escucha con atención.\n"
-        "- Mantén un tono calmado y colaborativo.\n"
-        "- Usa reformulaciones para demostrar que entiendes al vendedor.\n"
-        "- Evita precipitarte con el precio si la fase aún no va de eso."
-    )
+    # Si el índice no está disponible, usamos el fallback simple
+    if NEGOTIATION_RAG_INDEX is None:
+        return (
+            f"[RAG FALLBACK] Técnicas recomendadas para {phase_name}:\n"
+            "- Haz preguntas abiertas y escucha con atención.\n"
+            "- Mantén un tono calmado y colaborativo.\n"
+            "- Usa reformulaciones para demostrar que entiendes al vendedor.\n"
+            "- Evita precipitarte con el precio si la fase aún no va de eso."
+        )
+
+    # Construimos una query que combine fase + contexto
+    query = f"""
+Fase de negociación: {phase_name}
+
+Contexto reciente:
+{context}
+
+Objetivo: recuperar técnicas concretas para actuar en esta fase.
+"""
+
+    try:
+        # Buscamos los documentos más relevantes
+        docs = NEGOTIATION_RAG_INDEX.similarity_search(query, k=3)
+
+        if not docs:
+            return (
+                f"[RAG VACÍO] No se encontraron técnicas específicas para {phase_name}. "
+                "Usa tu criterio general de negociación."
+            )
+
+        # Concatenamos fragmentos relevantes
+        snippets: List[str] = []
+        for d in docs:
+            # Podemos incluir filename como referencia interna (no se mostrará al usuario directamente)
+            snippet = d.page_content.strip()
+            snippets.append(snippet)
+
+        joined = "\n\n---\n\n".join(snippets)
+        header = f"Técnicas de apoyo para {phase_name} (RAG):\n"
+        return header + joined
+
+    except Exception as e:
+        print(f"[RAG] Error durante la búsqueda de técnicas: {e}")
+        return (
+            f"[RAG ERROR] No se pudieron recuperar técnicas específicas para {phase_name}. "
+            "Actúa con prudencia: escucha, pregunta y avanza poco a poco."
+        )
+
 
 
 # ---- Nodo PLANNER (decide fase) ----
