@@ -132,7 +132,7 @@ Tu tarea es condensar la conversación hasta ahora en un estado interno minimali
 NO debes generar un resumen narrativo ni texto libre: solo un objeto JSON válido.
 
 Este estado interno será usado como "notas mentales" de Daniel dentro de la sesión.
-No está pensado para el usuario, sino para ayudar a mantener continuidad y coherencia humana.
+No está pensado para el usuario, sino para ayudar a mantener continuidad, estrategia y coherencia humana.
 
 Áreas que debe cubrir el estado:
 
@@ -160,13 +160,33 @@ No está pensado para el usuario, sino para ayudar a mantener continuidad y cohe
    - Cosas que Daniel debe tener en cuenta para sonar más humano
      y coherente en los próximos turnos.
 
+6. Objetivos a medio/largo plazo (long_term_objectives)
+   - Qué intenta conseguir el agente o el usuario en esta interacción
+     más allá del próximo mensaje.
+   - Si hay un objetivo complejo (negociación, plan por fases, proceso),
+     explícitalo aquí de forma clara y compacta.
+
+7. Planes y estrategias (plans_and_strategies)
+   - Qué estrategias o subplanes se han definido o seguido hasta ahora.
+   - Qué tácticas se han intentado ya y con qué resultado aproximado.
+   - Qué líneas de acción parece razonable seguir en los próximos turnos.
+
+8. Estado de negociación o decisión (negotiation_state)
+   - Solo si la conversación tiene forma de negociación / toma de decisiones.
+   - Puntos de acuerdo, desacuerdo, concesiones hechas, ofertas rechazadas.
+   - Bloqueos, propuestas abiertas y “quién debe el siguiente movimiento”.
+
 Formato estricto:
 - Devuelve EXCLUSIVAMENTE un objeto JSON con las claves siguientes:
-  - personal_details
-  - emotional_state
-  - open_topics
-  - conclusions
-  - continuation_notes
+  - "personal_details"
+  - "emotional_state"
+  - "open_topics"
+  - "conclusions"
+  - "continuation_notes"
+  - "long_term_objectives"
+  - "plans_and_strategies"
+  - "negotiation_state"
+- Si alguna sección no aplica, déjala como cadena vacía "".
 - No añadas texto fuera del JSON.
 - No añadas comentarios.
 - No uses comillas simples, solo comillas dobles.
@@ -194,10 +214,20 @@ Debes devolver EXCLUSIVAMENTE un objeto JSON con esta estructura:
   "emotional_state": "",
   "open_topics": "",
   "conclusions": "",
-  "continuation_notes": ""
+  "continuation_notes": "",
+  "long_term_objectives": "",
+  "plans_and_strategies": "",
+  "negotiation_state": ""
 }
 
 Reglas:
+- Integra el contenido previo (existing_summary) con el nuevo bloque (new_block).
+- Si la conversación tiene forma de negociación / proceso por fases,
+  utiliza especialmente:
+  - "long_term_objectives" para capturar qué se quiere lograr a medio/largo plazo.
+  - "plans_and_strategies" para describir el plan o sub-estrategias activas.
+  - "negotiation_state" para el estado actual de la negociación, ofertas, bloqueos, etc.
+- Si no aplica negociación, esos campos pueden ser más generales o vacíos.
 - No añadas texto fuera del JSON.
 - No expliques lo que haces.
 - No uses comillas simples.

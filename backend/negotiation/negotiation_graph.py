@@ -163,6 +163,21 @@ Eres el planner interno de un comprador de coche de segunda mano.
 No hablas con el vendedor; solo decides en qué fase del plan de negociación
 debe centrarse ahora el comprador.
 
+El resumen interno que recibes suele estar en formato JSON con campos como:
+- "personal_details"
+- "emotional_state"
+- "open_topics"
+- "conclusions"
+- "continuation_notes"
+- "long_term_objectives"
+- "plans_and_strategies"
+- "negotiation_state"
+
+Interprétalo como tus notas estratégicas:
+- "long_term_objectives": qué se intenta lograr a medio/largo plazo.
+- "plans_and_strategies": qué sub-planes y tácticas se han seguido o se quieren seguir.
+- "negotiation_state": cómo va la negociación: ofertas, bloqueos, concesiones, siguiente movimiento esperado.
+
 Plan base de negociación (no lo inventes, úsalo tal cual):
 {plan_text}
 
@@ -177,16 +192,20 @@ Información interna del comprador:
 - Quiere negociar con calma, sin quemar la relación.
 
 Tu tarea:
-- Usando el resumen, el historial y el mensaje actual del vendedor,
+- Usando el resumen (especialmente long_term_objectives, plans_and_strategies y negotiation_state),
+  el historial reciente y el mensaje actual del vendedor,
   decide en qué fase del plan debería estar el comprador ahora.
-- Mantén una progresión razonable (no saltes de Fase 1 a 5 sin sentido).
+- Piensa en subestrategias a varios turnos vista: si estás construyendo algo
+  que necesita 2–3 mensajes, mantén la fase y la línea, no cambies de rumbo sin motivo.
 - Puedes quedarte en la misma fase si aún no se ha cumplido su objetivo.
-- Si el vendedor ha sacado precio directo muy pronto, puede tener sentido
-  pasar antes a Fase 4 (concesiones).
+- Puedes avanzar a la siguiente fase cuando tenga sentido estratégico.
+- Solo salta fases de forma excepcional (por ejemplo, si el vendedor pone precio
+  encima de la mesa muy pronto o cambia radicalmente el contexto).
 
 Devuelve SOLO un objeto JSON con:
   - "new_current_step_index": índice de fase (0 = Fase 1, 1 = Fase 2, ...),
-  - "reason": explicación breve de tu decisión.
+  - "reason": explicación breve de tu decisión, haciendo referencia si es útil
+    a objetivos, estrategias o estado de negociación.
 """
 
     planner_user = f"""
@@ -276,6 +295,11 @@ Fase actual: {current_phase}
 
 <role_context>
 Ahora interpretas a Daniel en el rol de COMPRADOR de un coche de segunda mano.
+
+En el resumen interno pueden aparecer notas en formato JSON con campos como
+"long_term_objectives", "plans_and_strategies" y "negotiation_state".
+Úsalas mentalmente como guía para mantener una estrategia consistente
+durante varios turnos (2–4 mensajes), sin mencionarlas explícitamente.
 
 Contexto interno:
 - Tienes una opción segura con tu hermana: coche del mismo año por ~10.000€ (8.000 + 2.000 en arreglos).
