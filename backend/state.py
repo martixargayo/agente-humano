@@ -30,6 +30,24 @@ class SessionState:
     # Historial corto: últimos N turnos (ventana recortada)
     history: List[Message] = field(default_factory=list)
 
+    # ---- NUEVO: estado de negociación / planificación ----
+    # Objetivo interno del agente (comprador)
+    negotiation_objective: str = ""
+
+    # Lista de fases del plan de negociación
+    negotiation_plan: List[str] = field(default_factory=list)
+
+    # Índice de la fase actual dentro de negotiation_plan (0 = Fase 1)
+    current_step_index: int = 0
+
+    # Progreso por fase: lista de (nombre_fase, resumen_progreso)
+    step_results: List[Tuple[str, str]] = field(default_factory=list)
+
+    # Datos internos del comprador (escenario coche)
+    sister_option_price: float = 8000.0      # coche hermana
+    sister_option_repairs: float = 2000.0    # reparaciones esperadas
+    max_total_cost: float = 10000.0          # umbral mental (8k + 2k)
+
     # Info auxiliar
     turn_count: int = 0
     last_updated: datetime = field(
