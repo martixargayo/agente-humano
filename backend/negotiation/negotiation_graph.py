@@ -18,11 +18,26 @@ load_dotenv()
 
 # ---- Modelos para planner y ejecutor ----
 
-PLANNER_MODEL = os.getenv("PLANNER_MODEL_NAME", "gpt-4o-mini")
-EXECUTOR_MODEL = os.getenv("EXECUTOR_MODEL_NAME", "gpt-4o-mini")
+# --- Configuración de modelos DEL NEGOCIADOR (vía .env) ---
 
+# Si no se define PLANNER_MODEL_NAME, usamos el modelo de resumen
+# (SUMMARY_MODEL_NAME) como fallback razonable.
+PLANNER_MODEL = os.getenv(
+    "PLANNER_MODEL_NAME",
+    os.getenv("SUMMARY_MODEL_NAME", "gpt-4o-mini"),
+)
+
+# Si no se define EXECUTOR_MODEL_NAME, usamos el modelo principal
+# (OPENAI_MODEL_NAME) como fallback.
+EXECUTOR_MODEL = os.getenv(
+    "EXECUTOR_MODEL_NAME",
+    os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini"),
+)
+
+# Temperaturas con defaults seguros (pero siempre overrideables)
 PLANNER_TEMPERATURE = float(os.getenv("PLANNER_TEMPERATURE", "0.0"))
-EXECUTOR_TEMPERATURE = float(os.getenv("EXECUTOR_TEMPERATURE", "0.6"))
+EXECUTOR_TEMPERATURE = float(os.getenv("EXECUTOR_TEMPERATURE", "0.7"))
+
 
 planner_llm = ChatOpenAI(
     model=PLANNER_MODEL,
