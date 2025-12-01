@@ -294,14 +294,29 @@ Plan base de negociación (no lo inventes, úsalo tal cual):
 {plan_text}
 
 La Fase 1 es crear clima, la Fase 2 es descubrir información,
-la Fase 3 es construir soluciones creativas,
-la Fase 4 es negociar concesiones y precios,
-la Fase 5 es recapitular y cerrar.
+La Fase 3 es construir soluciones creativas,
+La Fase 4 es negociar concesiones y precios,
+La Fase 5 es recapitular y cerrar.
 
 Información interna del comprador:
 - Tiene una opción alternativa: coche de su hermana por ~10.000€ (8.000 + 2.000 en arreglos).
 - No quiere sobrepasar 10.000€ de coste total en este coche (precio + posibles gastos).
 - Quiere negociar con calma, sin quemar la relación.
+
+Modelo de fases:
+- Las fases NO son una escalera rígida.
+- Piensa en ellas como modos flexibles de comportamiento.
+
+Puedes:
+- Mantenerte en la misma fase si aún no se ha cumplido su propósito.
+- Avanzar a la siguiente fase cuando tenga sentido estratégico.
+- Volver a una fase anterior si el contexto lo requiere
+  (por ejemplo, si se enfría el clima, si aparecen dudas nuevas sobre el coche,
+   o si un acuerdo casi cerrado se complica).
+
+Solo tiene sentido saltar varias fases de golpe en situaciones claras,
+como cuando el vendedor pone precio encima de la mesa muy pronto
+o cambia radicalmente el contexto, pero incluso entonces deberías justificarlo.
 
 Tu tarea:
 - Usando el resumen (especialmente long_term_objectives, plans_and_strategies y negotiation_state),
@@ -309,10 +324,9 @@ Tu tarea:
   decide en qué fase del plan debería estar el comprador ahora.
 - Piensa en subestrategias a varios turnos vista: si estás construyendo algo
   que necesita 2–3 mensajes, mantén la fase y la línea, no cambies de rumbo sin motivo.
-- Puedes quedarte en la misma fase si aún no se ha cumplido su objetivo.
-- Puedes avanzar a la siguiente fase cuando tenga sentido estratégico.
-- Solo salta fases de forma excepcional (por ejemplo, si el vendedor pone precio
-  encima de la mesa muy pronto o cambia radicalmente el contexto).
+- No estás obligado a incrementar siempre el índice; tu decisión puede ser
+  quedarte en la misma fase o incluso bajar a una fase anterior si eso ayuda
+  a la negociación.
 
 Devuelve SOLO un objeto JSON con:
   - "new_current_step_index": índice de fase (0 = Fase 1, 1 = Fase 2, ...),
@@ -377,7 +391,15 @@ Responde SOLO con un JSON del tipo:
 
 def executor_node(state: PlanExecute) -> PlanExecute:
     """
-    Genera la respuesta del comprador al vendedor.
+    Genera la respuesta del comprador al vendedor para la fase actual.
+
+    - Usa el resumen estratégico + historial reciente + mensaje actual.
+    - Consulta el RAG (manual interno) para la fase actual.
+    - Devuelve la respuesta de Daniel-comprador.
+    - Extrae de PLAN_STATE:
+        - step_summary: qué se ha avanzado en esta fase en este turno.
+        - phase_done: si POR AHORA se considera que la fase ha cumplido su propósito.
+    - NO cambia el índice de fase aquí; el planner decide la fase en el siguiente turno.
     """
 
     _ensure_plan_initialized(state)
@@ -393,11 +415,14 @@ def executor_node(state: PlanExecute) -> PlanExecute:
 
     # Contexto simplificado para el RAG
     rag_context = f"""
-Resumen: {summary_text}
+Resumen estratégico:
+{summary_text}
+
 Historial reciente:
 {history_text}
 
 Fase actual: {current_phase}
+Objetivo de la negociación: {objective}
 """
 
     techniques_text = get_phase_techniques(current_phase, rag_context)
@@ -420,6 +445,19 @@ Contexto interno:
 - Tu objetivo es conseguir un acuerdo que esté por debajo de ese umbral,
   manteniendo una relación cordial con el vendedor.
 
+<phase_model>
+El plan de negociación está dividido en fases (crear clima, descubrir información,
+soluciones creativas, concesiones, recapitulación), pero NO son pasos rígidos.
+
+- Piensa en las fases como "modos mentales" o enfoques, no como niveles que se desbloquean.
+- Puedes permanecer varias interacciones en la misma fase si aún no se ha cumplido su propósito.
+- Más adelante, si cambia el contexto, puedes volver a comportarte como en una fase anterior
+  (por ejemplo, volver a crear clima si se enfría la relación, o volver a descubrir
+  si aparece información confusa).
+- Marcar una fase como "cumplida" significa que POR AHORA su objetivo está razonablemente
+  cubierto, no que nunca vayas a volver a ese tipo de comportamiento.
+</phase_model>
+
 Objetivo interno de esta negociación:
 {objective}
 
@@ -438,13 +476,24 @@ Reglas:
 - Hablas como Daniel-comprador, nunca como IA.
 - Cada mensaje debe suponer un pequeño avance en la fase actual,
   no resolver todo de golpe.
+- Piensa tus movimientos como pequeñas subestrategias de varios turnos:
+  lo que dices ahora debería tener sentido con lo que has hecho en los últimos
+  2–4 mensajes y con lo que quieres lograr en los próximos.
 - No menciones explícitamente el plan ni las fases.
 - No menciones a la hermana de forma explícita salvo que tenga mucho sentido.
 - Puedes hacer preguntas, proponer opciones o hacer pequeñas concesiones,
   siempre con estrategia.
+
 - Al final de tu mensaje, añade UNA línea con:
   PLAN_STATE: {{ "step_summary": "...", "phase_done": true/false }}
-  describiendo brevemente qué has avanzado en esta fase y si la das por cumplida.
+
+  Donde:
+  - "step_summary" resume brevemente qué has avanzado en esta fase en este turno.
+  - "phase_done": pon true SOLO si, según los criterios de esta fase
+    (tal y como aparecen en el manual interno y en el contexto), consideras que
+    POR AHORA el objetivo de la fase está razonablemente cumplido.
+    Esto NO impide que más adelante puedas volver a comportarte como en esta fase
+    si el contexto lo requiere.
 </role_context>
 """
 
@@ -483,38 +532,42 @@ Tarea:
     result = executor_llm.invoke(messages)
     full_text = (result.content or "").strip()
 
+    # --- Separar respuesta visible y PLAN_STATE de forma robusta ---
+    visible_text = full_text
     step_summary = ""
     phase_done = False
 
     if "PLAN_STATE:" in full_text:
-        visible_text, state_part = full_text.split("PLAN_STATE:", 1)
-        visible_text = visible_text.strip()
-        state_part = state_part.strip()
+        # Usamos la ÚLTIMA aparición por si el modelo lo repite
+        before, after = full_text.rsplit("PLAN_STATE:", 1)
+        visible_text = before.strip()
+        state_part = after.strip()
 
+        # Intentamos quedarnos solo con el JSON entre { ... }
         try:
-            data = json.loads(state_part)
-            step_summary = data.get("step_summary", "")
-            phase_done = bool(data.get("phase_done", False))
+            start = state_part.find("{")
+            end = state_part.rfind("}")
+            if start != -1 and end != -1 and end > start:
+                json_str = state_part[start : end + 1]
+                data = json.loads(json_str)
+                step_summary = str(data.get("step_summary", "")).strip()
+                phase_done = bool(data.get("phase_done", False))
         except Exception:
+            # Si falla el parseo, no rompemos nada: dejamos valores por defecto
             pass
-    else:
-        visible_text = full_text
 
-    # Actualizar progreso de fase
+    # Actualizar progreso de fase (solo notas internas, no cambiamos índice)
     current_phase_name = _get_current_phase(state)
     if step_summary:
         state.setdefault("step_results", [])
         state["step_results"].append((current_phase_name, step_summary))
 
-    # Si la fase se marca como completada, avanzamos a la siguiente
-    plan = state.get("plan") or []
-    if phase_done and plan:
-        idx = state.get("current_step_index", 0)
-        if idx < len(plan) - 1:
-            state["current_step_index"] = idx + 1
+    # IMPORTANTE: aquí NO tocamos current_step_index.
+    # El planner decide en el siguiente turno si mantiene, avanza o retrocede.
 
-    state["response"] = visible_text
+    state["response"] = visible_text or full_text
     return state
+
 
 
 # ---- Construcción del grafo LangGraph ----

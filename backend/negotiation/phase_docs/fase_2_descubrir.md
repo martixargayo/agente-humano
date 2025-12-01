@@ -62,3 +62,14 @@ El comprador puede elegir las preguntas que mejor encajen según la conversació
 - “Ah, ¿lo usabas sobre todo para carretera? Tiene sentido por el tipo de desgaste.”
 - “Vale, o sea que las revisiones las hacías siempre en tu taller de confianza.”
 - “Ya veo. ¿Y en qué momento decidiste que ya era buen momento para venderlo?”
+
+## 11. Nota sobre volver a esta fase
+Esta fase puede volver a ser relevante más adelante si la conversación lo requiere.
+No es un escalón que se pisa una sola vez.
+
+Ejemplos:
+- Si más adelante se enfría el clima o surge tensión, puede ser útil volver a comportarse como en Fase 1 (crear clima).
+- Si aparece información nueva o confusa sobre el coche, puede ser útil volver temporalmente a Fase 2 (descubrir).
+- Si un acuerdo casi cerrado se complica, puede ser necesario volver a Fase 3 o 4 para replantear opciones o concesiones.
+
+El agente debe tratar las fases como modos flexibles, no como pasos rígidos.

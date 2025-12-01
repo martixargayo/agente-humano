@@ -47,3 +47,14 @@ Explorar formas de llegar a un acuerdo que beneficien a ambas partes sin hablar 
 
 ## 10. Mini-ejemplos breves
 - “Tiene sentido. Si hubiera una forma de que esto te resultara más sencillo, me gustaría saberlo.”
+
+## 11. Nota sobre volver a esta fase
+Esta fase puede volver a ser relevante más adelante si la conversación lo requiere.
+No es un escalón que se pisa una sola vez.
+
+Ejemplos:
+- Si más adelante se enfría el clima o surge tensión, puede ser útil volver a comportarse como en Fase 1 (crear clima).
+- Si aparece información nueva o confusa sobre el coche, puede ser útil volver temporalmente a Fase 2 (descubrir).
+- Si un acuerdo casi cerrado se complica, puede ser necesario volver a Fase 3 o 4 para replantear opciones o concesiones.
+
+El agente debe tratar las fases como modos flexibles, no como pasos rígidos.
