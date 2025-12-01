@@ -10,6 +10,7 @@ from typing_extensions import TypedDict
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langgraph.graph import StateGraph, START, END
+from langchain_core.messages import SystemMessage, HumanMessage
 
 from prompts import BASE_PERSONALITY_PROMPT
 from state import SessionState, Message, add_message, save_session_state
@@ -17,6 +18,7 @@ from state import SessionState, Message, add_message, save_session_state
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
+
 
 load_dotenv()
 
@@ -415,9 +417,7 @@ def executor_node(state: PlanExecute) -> PlanExecute:
 
     # Contexto simplificado para el RAG
     rag_context = f"""
-Resumen estratégico:
-{summary_text}
-
+Resumen: {summary_text}
 Historial reciente:
 {history_text}
 
@@ -511,16 +511,8 @@ Reglas:
 - Puedes hacer preguntas, proponer opciones o hacer pequeñas concesiones,
   siempre con estrategia.
 
-- Al final de tu mensaje, añade UNA línea con:
+- Al final de tu mensaje, añade UNA línea con este formato literal:
   PLAN_STATE: {{ "step_summary": "...", "phase_done": true/false }}
-
-  Donde:
-  - "step_summary" resume brevemente qué has avanzado en esta fase en este turno.
-  - "phase_done": pon true SOLO si, según los criterios de esta fase
-    (tal y como aparecen en el manual interno y en el contexto), consideras que
-    POR AHORA el objetivo de la fase está razonablemente cumplido.
-    Esto NO impide que más adelante puedas volver a comportarte como en esta fase
-    si el contexto lo requiere.
 </role_context>
 """
 
@@ -548,14 +540,12 @@ Tarea:
    PLAN_STATE: {{ "step_summary": "...", "phase_done": true/false }}
 """
 
-    exec_prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", executor_system),
-            ("user", "{input}"),
-        ]
-    )
+    # Aquí NO usamos ChatPromptTemplate, construimos los mensajes directamente
+    messages = [
+        SystemMessage(content=executor_system),
+        HumanMessage(content=executor_user),
+    ]
 
-    messages = exec_prompt.format_messages(input=executor_user)
     result = executor_llm.invoke(messages)
     full_text = (result.content or "").strip()
 
@@ -564,14 +554,14 @@ Tarea:
     step_summary = ""
     phase_done = False
 
-    if "PLAN_STATE:" in full_text:
-        # Usamos la ÚLTIMA aparición por si el modelo lo repite
-        before, after = full_text.rsplit("PLAN_STATE:", 1)
-        visible_text = before.strip()
-        state_part = after.strip()
+    try:
+        if "PLAN_STATE:" in full_text:
+            # Usamos la ÚLTIMA aparición por si el modelo lo repite
+            before, after = full_text.rsplit("PLAN_STATE:", 1)
+            visible_text = before.strip()
+            state_part = after.strip()
 
-        # Intentamos quedarnos solo con el JSON entre { ... }
-        try:
+            # Intentamos quedarnos solo con el JSON entre { ... }
             start = state_part.find("{")
             end = state_part.rfind("}")
             if start != -1 and end != -1 and end > start:
@@ -579,18 +569,23 @@ Tarea:
                 data = json.loads(json_str)
                 step_summary = str(data.get("step_summary", "")).strip()
                 phase_done = bool(data.get("phase_done", False))
-        except Exception:
-            # Si falla el parseo, no rompemos nada: dejamos valores por defecto
-            pass
 
-    # Actualizar progreso de fase (solo notas internas, no cambiamos índice)
-    current_phase_name = _get_current_phase(state)
-    if step_summary:
-        state.setdefault("step_results", [])
-        state["step_results"].append((current_phase_name, step_summary))
+        # Actualizar progreso de fase (solo notas internas)
+        current_phase_name = _get_current_phase(state)
+        if step_summary:
+            state.setdefault("step_results", [])
+            state["step_results"].append((current_phase_name, step_summary))
 
-    # IMPORTANTE: aquí NO tocamos current_step_index.
-    # El planner decide en el siguiente turno si mantiene, avanza o retrocede.
+        # Si decides que el executor NO cambie la fase, comenta esto.
+        plan_local = state.get("plan") or []
+        if phase_done and plan_local:
+            idx = state.get("current_step_index", 0)
+            if idx < len(plan_local) - 1:
+                state["current_step_index"] = idx + 1
+
+    except Exception as e:
+        # Blindaje: nunca rompemos el servidor por un fallo al parsear PLAN_STATE
+        print(f"[NEGOTIATION][executor_node] Error manejando PLAN_STATE: {e!r}")
 
     state["response"] = visible_text or full_text
     return state
