@@ -26,8 +26,11 @@ app = FastAPI(title="Agente Humano - MVP")
 
 # --- Google Cloud Speech-to-Text (entrada de audio) ---
 
-# Ruta absoluta al JSON dentro del Codespace
-GOOGLE_CREDENTIALS_PATH = "/workspaces/agente-humano/backend/keys/google-stt.json"
+# Ruta al JSON desde .env
+GOOGLE_CREDENTIALS_PATH = os.getenv(
+    "GOOGLE_CREDENTIALS_PATH",
+    "/workspaces/agente-humano/backend/keys/google-stt.json",  # fallback seguro
+)
 
 credentials = service_account.Credentials.from_service_account_file(
     GOOGLE_CREDENTIALS_PATH
@@ -358,6 +361,29 @@ def demo_page():
 </body>
 </html>
     """
+
+@app.post("/stt_google")
+async def stt_google(file: UploadFile = File(...)):
+    try:
+        audio_bytes = await file.read()
+        audio = speech.RecognitionAudio(content=audio_bytes)
+
+        response = speech_client.recognize(
+            config=stt_config,
+            audio=audio
+        )
+
+        text = ""
+        for result in response.results:
+            text += result.alternatives[0].transcript + " "
+
+        return {"text": text.strip()}
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error en Google STT: {e}",
+        )
 
 @app.post("/tts_openai")
 async def tts_openai(payload: TTSRequest):
