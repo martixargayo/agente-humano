@@ -18,6 +18,10 @@ from agent import run_agent
 
 from negotiation.negotiation_graph import run_negotiation_agent
 
+from dotenv import load_dotenv
+load_dotenv()
+
+
 app = FastAPI(title="Agente Humano - MVP")
 
 # --- Google Cloud Speech-to-Text (entrada de audio) ---
@@ -31,20 +35,26 @@ credentials = service_account.Credentials.from_service_account_file(
 
 speech_client = speech.SpeechClient(credentials=credentials)
 
+# Google STT config desde .env
+GOOGLE_STT_MODEL = os.getenv("GOOGLE_STT_MODEL", "latest_long")
+GOOGLE_STT_LANGUAGE = os.getenv("GOOGLE_STT_LANGUAGE", "es-ES")
+GOOGLE_STT_PUNCT = os.getenv("GOOGLE_STT_PUNCTUATION", "true").lower() == "true"
+GOOGLE_STT_ENCODING = os.getenv("GOOGLE_STT_ENCODING", "WEBM_OPUS")
+
 stt_config = speech.RecognitionConfig(
-    language_code="es-ES",
-    enable_automatic_punctuation=True,
-    model="latest_long",
-    encoding=speech.RecognitionConfig.AudioEncoding.WEBM_OPUS,
+    language_code=GOOGLE_STT_LANGUAGE,
+    enable_automatic_punctuation=GOOGLE_STT_PUNCT,
+    model=GOOGLE_STT_MODEL,
+    encoding=getattr(speech.RecognitionConfig.AudioEncoding, GOOGLE_STT_ENCODING),
 )
 
 # --- OpenAI Text-to-Speech (salida de audio) ---
 
 openai_client = OpenAI()  # usa OPENAI_API_KEY del entorno
 
-TTS_MODEL = "gpt-4o-mini-tts"
-DEFAULT_VOICE = "alloy"
-DEFAULT_FORMAT = "mp3"  # también puedes usar "opus" o "wav"
+TTS_MODEL = os.getenv("OPENAI_TTS_MODEL", "gpt-4o-mini-tts")
+DEFAULT_VOICE = os.getenv("OPENAI_TTS_VOICE", "alloy")
+DEFAULT_FORMAT = os.getenv("OPENAI_TTS_FORMAT", "mp3")
 
 
 class ChatRequest(BaseModel):
