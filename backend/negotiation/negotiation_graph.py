@@ -236,7 +236,13 @@ Objetivo: recuperar técnicas concretas para actuar en esta fase.
                 f"[RAG VACÍO] No se encontraron técnicas específicas para {phase_name}. "
                 "Usa tu criterio general de negociación."
             )
-
+        
+        # DEBUG: ver qué docs se han usado
+        print("\n[RAG] Fase:", phase_name)
+        for d in docs:
+            print("  - Doc:", d.metadata.get("filename"), "| phase_hint:", d.metadata.get("phase_hint"))
+        print("----------\n", flush=True)
+        
         # Concatenamos fragmentos relevantes
         snippets: List[str] = []
         for d in docs:
@@ -376,9 +382,11 @@ Responde SOLO con un JSON del tipo:
     result = planner_llm.invoke(messages)
     raw = (result.content or "").strip()
 
+    reason = "(sin reason parseable)"
     try:
         data = json.loads(raw)
         new_idx = int(data.get("new_current_step_index", state["current_step_index"]))
+        reason = str(data.get("reason", reason))
     except Exception:
         new_idx = state["current_step_index"]
 
@@ -388,8 +396,15 @@ Responde SOLO con un JSON del tipo:
         new_idx = 0
 
     state["current_step_index"] = new_idx
-    return state
 
+    # DEBUG: ver fase elegida y motivo
+    phase_name = _get_current_phase(state)
+    print("\n[PLANNER] Fase elegida:", new_idx, "-", phase_name)
+    print("[PLANNER] Reason:", reason)
+    print("----------\n", flush=True)
+
+    return state
+    
 
 # ---- Nodo EXECUTOR (responde como Daniel-comprador) ----
 
