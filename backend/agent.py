@@ -217,8 +217,18 @@ def run_agent(
     result = llm.invoke(messages)
     raw_reply = result.content.strip()
 
+    # DEBUG: ver qué sale de Daniel antes del normalizador
+    print("\n===== RAW_DANIEL_OUTPUT =====")
+    print(raw_reply)
+    print("===== END_RAW_DANIEL_OUTPUT =====\n", flush=True)
+
     # 4.1) Normalizar estilo (máx. 1–2 frases, sin meta, etc.)
     reply_text = normalize_text(raw_reply)
+
+    # DEBUG: ver qué queda después de normalizar
+    print("\n===== NORMALIZED_OUTPUT =====")
+    print(reply_text)
+    print("===== END_NORMALIZED_OUTPUT =====\n", flush=True)
 
     # 5) Añadir respuesta del agente al historial (solo la versión normalizada)
     add_message(state, role="assistant", content=reply_text)
