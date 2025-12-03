@@ -537,6 +537,11 @@ Tarea:
     result = executor_llm.invoke(messages)
     full_text = (result.content or "").strip()
 
+    # DEBUG: ver qué genera el ejecutor ANTES de separar PLAN_STATE
+    print("\n===== RAW_EXECUTOR_OUTPUT =====")
+    print(full_text)
+    print("===== END_RAW_EXECUTOR_OUTPUT =====\n", flush=True)
+
     # --- Separar respuesta visible y PLAN_STATE de forma robusta ---
     visible_text = full_text
     step_summary = ""
@@ -575,6 +580,10 @@ Tarea:
     # ➊ Normalizamos SOLO la parte visible al vendedor,
     #    sin el bloque PLAN_STATE y sin tocar step_summary/phase_done.
     normalized_response = normalize_text(visible_text or full_text)
+
+    print("\n===== NORMALIZED_EXECUTOR_OUTPUT =====")
+    print(normalized_response)
+    print("===== END_NORMALIZED_EXECUTOR_OUTPUT =====\n", flush=True)
 
     state["response"] = normalized_response
     return state
