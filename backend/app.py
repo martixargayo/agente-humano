@@ -1,17 +1,39 @@
 # backend/app.py
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
+
+import os
+from google.cloud import speech
+from google.oauth2 import service_account
 
 from state import get_session_state
 from agent import run_agent
 
 from negotiation.negotiation_graph import run_negotiation_agent
 
-from fastapi.responses import HTMLResponse
-
 app = FastAPI(title="Agente Humano - MVP")
+
+# --- Google Cloud Speech-to-Text (entrada de audio) ---
+
+# Ruta absoluta al JSON dentro del Codespace
+GOOGLE_CREDENTIALS_PATH = "/workspaces/agente-humano/backend/keys/google-stt.json"
+
+credentials = service_account.Credentials.from_service_account_file(
+    GOOGLE_CREDENTIALS_PATH
+)
+
+speech_client = speech.SpeechClient(credentials=credentials)
+
+stt_config = speech.RecognitionConfig(
+    language_code="es-ES",
+    enable_automatic_punctuation=True,
+    model="latest_long",
+    encoding=speech.RecognitionConfig.AudioEncoding.WEBM_OPUS,
+)
+
 
 
 class ChatRequest(BaseModel):
@@ -310,3 +332,29 @@ def demo_page():
 </body>
 </html>
     """
+
+@app.post("/stt_google")
+async def stt_google(file: UploadFile = File(...)):
+    """
+    Recibe un audio (webm/opus) desde el navegador y devuelve el texto transcrito.
+    """
+    try:
+        audio_bytes = await file.read()
+        audio = speech.RecognitionAudio(content=audio_bytes)
+
+        response = speech_client.recognize(
+            config=stt_config,
+            audio=audio
+        )
+
+        text = ""
+        for result in response.results:
+            text += result.alternatives[0].transcript + " "
+
+        return {"text": text.strip()}
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error en Google STT: {e}"
+        )

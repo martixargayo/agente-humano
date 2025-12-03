@@ -3,6 +3,7 @@
 
 # Variables de entorno / claves
 backend/.env
+backend/keys/
 
 # Cachés de Python
 __pycache__/
