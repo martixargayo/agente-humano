@@ -9,6 +9,7 @@ import os
 from google.cloud import speech
 from google.oauth2 import service_account
 
+import io  # arriba del archivo
 from fastapi.responses import StreamingResponse
 from openai import OpenAI
 
@@ -348,32 +349,6 @@ def demo_page():
 </html>
     """
 
-@app.post("/stt_google")
-async def stt_google(file: UploadFile = File(...)):
-    """
-    Recibe un audio (webm/opus) desde el navegador y devuelve el texto transcrito.
-    """
-    try:
-        audio_bytes = await file.read()
-        audio = speech.RecognitionAudio(content=audio_bytes)
-
-        response = speech_client.recognize(
-            config=stt_config,
-            audio=audio
-        )
-
-        text = ""
-        for result in response.results:
-            text += result.alternatives[0].transcript + " "
-
-        return {"text": text.strip()}
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error en Google STT: {e}"
-        )
-
 @app.post("/tts_openai")
 async def tts_openai(payload: TTSRequest):
     try:
@@ -387,7 +362,7 @@ async def tts_openai(payload: TTSRequest):
             format=fmt,
         )
 
-        audio_bytes = audio
+        audio_bytes = audio  # el SDK ya devuelve bytes
 
         media_type = (
             "audio/mpeg" if fmt == "mp3"
@@ -396,7 +371,7 @@ async def tts_openai(payload: TTSRequest):
         )
 
         return StreamingResponse(
-            iter([audio_bytes]),
+            io.BytesIO(audio_bytes),
             media_type=media_type,
         )
 
