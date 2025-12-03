@@ -8,6 +8,8 @@ from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 
+from normalizer import normalize_text
+
 from state import (
     SessionState,
     Message,
@@ -213,12 +215,17 @@ def run_agent(
 
     # 4) Llamar al modelo principal
     result = llm.invoke(messages)
-    reply_text = result.content.strip()
+    raw_reply = result.content.strip()
 
-    # 5) Añadir respuesta del agente al historial
+    # 4.1) Normalizar estilo (máx. 1–2 frases, sin meta, etc.)
+    reply_text = normalize_text(raw_reply)
+
+    # 5) Añadir respuesta del agente al historial (solo la versión normalizada)
     add_message(state, role="assistant", content=reply_text)
 
     # 6) Guardar estado
     save_session_state(state)
 
+    # 7) Devolver al usuario la versión ya normalizada
     return reply_text, state
+

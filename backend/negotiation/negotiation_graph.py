@@ -15,6 +15,8 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from prompts import BASE_PERSONALITY_PROMPT
 from state import SessionState, Message, add_message, save_session_state
 
+from normalizer import normalize_text
+
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
@@ -562,19 +564,22 @@ Tarea:
             state.setdefault("step_results", [])
             state["step_results"].append((current_phase_name, step_summary))
 
-        # Si decides que el executor NO cambie la fase, comenta esto.
-        plan_local = state.get("plan") or []
-        if phase_done and plan_local:
-            idx = state.get("current_step_index", 0)
-            if idx < len(plan_local) - 1:
-                state["current_step_index"] = idx + 1
+        # IMPORTANTÍSIMO:
+        # Aquí NO cambiamos current_step_index.
+        # El planner decide en el siguiente turno si mantiene, sube o baja de fase.
 
     except Exception as e:
         # Blindaje: nunca rompemos el servidor por un fallo al parsear PLAN_STATE
         print(f"[NEGOTIATION][executor_node] Error manejando PLAN_STATE: {e!r}")
 
-    state["response"] = visible_text or full_text
+    # ➊ Normalizamos SOLO la parte visible al vendedor,
+    #    sin el bloque PLAN_STATE y sin tocar step_summary/phase_done.
+    normalized_response = normalize_text(visible_text or full_text)
+
+    state["response"] = normalized_response
     return state
+
+
 
 
 
