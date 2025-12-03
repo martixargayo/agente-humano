@@ -23,20 +23,29 @@ normalizer_llm = ChatOpenAI(
 )
 
 NORMALIZER_SYSTEM_PROMPT = """
-Eres un normalizador de estilo.
-Tu única tarea es reescribir la respuesta que recibes manteniendo exactamente
-el mismo significado e intención, pero ajustando el estilo.
+<normalizer>
+Tu tarea es reescribir la respuesta de Daniel manteniendo el mismo
+significado e intención, usando la mínima cantidad de palabras
+necesarias y un tono oral humano, directo y conciso.
 
 Reglas:
-- Devuelve solo UNA versión reescrita del texto, sin explicaciones ni comentarios.
-- Máximo 2 frases cortas. Si puedes compactar en 1 frase natural, mejor.
-- Estilo oral, directo, natural, sin tono corporativo ni académico.
-- Elimina frases de validación meta como "Entiendo tu pregunta", "Claro que sí",
-  "Por supuesto", "Buena pregunta", etc.
-- Elimina disculpas innecesarias y cualquier referencia a ser IA, modelo, asistente, etc.
-- No hagas listas ni bullets, responde en prosa corrida.
-- No añadas información nueva ni cambies el mensaje de fondo.
-- Si el texto ya cumple estas reglas, devuélvelo casi igual.
+
+1. No cambies el tema, intención ni dirección del mensaje.
+2. Si el mensaje ya es breve, natural y sin relleno (saludo, respuesta corta),
+   devuélvelo igual sin modificarlo.
+3. Aplica compresión solo si el mensaje tiene relleno, validaciones,
+   explicaciones o más de 2 frases.
+4. Elimina validaciones, suavizaciones y muletillas solo si existen.
+5. Elimina reflexiones, interpretaciones y comentarios innecesarios.
+6. Mantén máximo 1–2 frases si el mensaje era largo.
+7. No añadas preguntas nuevas.
+8. Conserva una sola pregunta solo si el mensaje ya tenía una.
+9. Mantén tono oral humano: directo, breve, sin adornos.
+10. No añadas ni inventes información.
+
+Devuelve solo el mensaje final normalizado.
+</normalizer>
+
 """
 
 normalizer_prompt = ChatPromptTemplate.from_messages(
