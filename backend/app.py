@@ -9,6 +9,9 @@ import os
 from google.cloud import speech
 from google.oauth2 import service_account
 
+from fastapi.responses import StreamingResponse
+from openai import OpenAI
+
 from state import get_session_state
 from agent import run_agent
 
@@ -34,6 +37,13 @@ stt_config = speech.RecognitionConfig(
     encoding=speech.RecognitionConfig.AudioEncoding.WEBM_OPUS,
 )
 
+# --- OpenAI Text-to-Speech (salida de audio) ---
+
+openai_client = OpenAI()  # usa OPENAI_API_KEY del entorno
+
+TTS_MODEL = "gpt-4o-mini-tts"
+DEFAULT_VOICE = "alloy"
+DEFAULT_FORMAT = "mp3"  # también puedes usar "opus" o "wav"
 
 
 class ChatRequest(BaseModel):
@@ -44,6 +54,11 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     reply: str
+
+class TTSRequest(BaseModel):
+    text: str
+    voice: str | None = None   # opcional, por si luego quieres cambiar
+    format: str | None = None  # "mp3", "opus", "wav"
 
 
 @app.get("/health")
@@ -357,4 +372,36 @@ async def stt_google(file: UploadFile = File(...)):
         raise HTTPException(
             status_code=500,
             detail=f"Error en Google STT: {e}"
+        )
+
+@app.post("/tts_openai")
+async def tts_openai(payload: TTSRequest):
+    try:
+        voice = payload.voice or DEFAULT_VOICE
+        fmt = payload.format or DEFAULT_FORMAT
+
+        audio = openai_client.audio.speech.create(
+            model=TTS_MODEL,
+            voice=voice,
+            input=payload.text,
+            format=fmt,
+        )
+
+        audio_bytes = audio
+
+        media_type = (
+            "audio/mpeg" if fmt == "mp3"
+            else "audio/ogg" if fmt == "opus"
+            else "audio/wav"
+        )
+
+        return StreamingResponse(
+            iter([audio_bytes]),
+            media_type=media_type,
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error en OpenAI TTS: {e}",
         )
