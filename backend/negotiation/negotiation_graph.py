@@ -597,7 +597,7 @@ Tarea:
 
     # ➊ Normalizamos SOLO la parte visible al vendedor,
     #    sin el bloque PLAN_STATE y sin tocar step_summary/phase_done.
-    normalized_response = normalize_text(visible_text or full_text)
+    normalized_response = normalize_text(visible_text or full_text, user_message)
 
     print("\n===== NORMALIZED_EXECUTOR_OUTPUT =====")
     print(normalized_response)

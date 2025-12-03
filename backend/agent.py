@@ -222,8 +222,8 @@ def run_agent(
     print(raw_reply)
     print("===== END_RAW_DANIEL_OUTPUT =====\n", flush=True)
 
-    # 4.1) Normalizar estilo (máx. 1–2 frases, sin meta, etc.)
-    reply_text = normalize_text(raw_reply)
+    # 4.1) Normalizar estilo (máx. 1–2 frases, sin meta, etc.) +  Pasamos también el mensaje del usuario al normalizador
+    reply_text = normalize_text(raw_reply, user_message)
 
     # DEBUG: ver qué queda después de normalizar
     print("\n===== NORMALIZED_OUTPUT =====")
