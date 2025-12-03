@@ -38,8 +38,9 @@ Reglas:
 4. Elimina validaciones, suavizaciones y muletillas solo si existen.
 5. Elimina reflexiones, interpretaciones y comentarios innecesarios.
 6. Mantén máximo 1–2 frases si el mensaje era largo.
-7. No añadas preguntas nuevas.
-8. Conserva una sola pregunta solo si el mensaje ya tenía una.
+7. Si el mensaje tiene más de una pregunta, fusiónalas en UNA sola
+   que recoja lo importante, en lugar de dejarlas separadas.
+8. No añadas preguntas nuevas.
 9. Mantén tono oral humano: directo, breve, sin adornos.
 10. No añadas ni inventes información.
 
