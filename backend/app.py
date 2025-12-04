@@ -30,6 +30,11 @@ load_dotenv()
 
 from fastapi.middleware.cors import CORSMiddleware
 
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("tts_visemes")
+
 app = FastAPI(title="Agente Humano - MVP")
 
 app.add_middleware(
@@ -449,7 +454,7 @@ async def tts_openai(payload: TTSRequest):
             format=fmt,
         )
 
-        audio_bytes = audio  # el SDK ya devuelve bytes
+        audio_bytes = audio.read()
 
         media_type = (
             "audio/mpeg" if fmt == "mp3"
@@ -478,11 +483,14 @@ async def tts_with_visemes(payload: TTSVisemeRequest):
        - mime type
        - timeline de visemas [{start, end, viseme}, ...]
     """
+    logger.info(">>> /tts_with_visemes llamado. Texto: %r", payload.text)
+
     try:
         voice = payload.voice or DEFAULT_VOICE
+        fmt = "wav"  # Forzamos WAV para el aligner
 
-        # Forzamos WAV para el aligner
-        fmt = "wav"
+        logger.info("Llamando a OpenAI TTS. model=%s voice=%s format=%s",
+                    TTS_MODEL, voice, fmt)
 
         audio = openai_client.audio.speech.create(
             model=TTS_MODEL,
@@ -491,18 +499,33 @@ async def tts_with_visemes(payload: TTSVisemeRequest):
             format=fmt,
         )
 
-        # El SDK devuelve bytes
-        audio_bytes = audio
+        # IMPORTANTE: leer los bytes del stream
+        try:
+            audio_bytes = audio.read()
+        except AttributeError:
+            # Por si el SDK que tienes sí devuelve bytes directos
+            audio_bytes = audio
+
+        logger.info("OpenAI TTS OK. Bytes recibidos: %d", len(audio_bytes))
 
         # Timeline de visemas con BFA
+        logger.info("Llamando a build_viseme_timeline_from_bfa...")
         timeline = build_viseme_timeline_from_bfa(
             text=payload.text,
             audio_bytes_wav=audio_bytes,
         )
 
-        media_type = "audio/wav"
+        logger.info(
+            "Timeline generado. Núm. entradas: %d. Primeros: %s",
+            len(timeline),
+            timeline[:3] if timeline else "[]",
+        )
 
+        media_type = "audio/wav"
         audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
+
+        logger.info("Devolviendo TTSVisemeResponse (audio_base64 len=%d)",
+                    len(audio_b64))
 
         return TTSVisemeResponse(
             audio_base64=audio_b64,
@@ -511,6 +534,7 @@ async def tts_with_visemes(payload: TTSVisemeRequest):
         )
 
     except Exception as e:
+        logger.exception("Error en /tts_with_visemes")
         raise HTTPException(
             status_code=500,
             detail=f"Error en TTS+visemas: {e}",
