@@ -138,16 +138,17 @@ def build_viseme_timeline_from_bfa(
         # 1) Cargar audio
         audio_wav = ALIGNER.load_audio(tmp_path)
 
-        # 2) Procesar frase completa
+        # 2) Procesar frase completa (BFA espera `text`, no `text_sentence`)
         ts = ALIGNER.process_sentence(
-            text_sentence=text,
-            audio_wav=audio_wav,
+            text,              # o text=text
+            audio_wav,         # audio cargado con ALIGNER.load_audio
             ts_out_path=None,
             extract_embeddings=False,
             vspt_path=None,
             do_groups=True,
             debug=False,
         )
+
 
         # 3) Traducir JSON de BFA a timeline de visemas
         viseme_timeline: List[Dict] = []
@@ -189,6 +190,8 @@ def build_viseme_timeline_from_bfa(
                 merged.append(seg)
 
         return merged
+    
+        print(f"[BFA] timeline visemas: {len(merged)} segmentos")
 
     finally:
         # Limpieza del temporal
