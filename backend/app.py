@@ -26,8 +26,20 @@ from negotiation.negotiation_graph import run_negotiation_agent
 from dotenv import load_dotenv
 load_dotenv()
 
+# --- PROVISIONALLLLLLLL ---
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="Agente Humano - MVP")
+
+# --- PROVISIONALLLLLLLL ---
+# CORS para que el frontend en localhost:3000 pueda llamar al backend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # en dev vale así, luego lo cierras
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # --- Google Cloud Speech-to-Text (entrada de audio) ---
 
@@ -433,29 +445,50 @@ async def tts_openai(payload: TTSRequest):
             detail=f"Error en OpenAI TTS: {e}",
         )
     
-@app.post("/negociar", response_model=ChatResponse)
-def negociar_endpoint(payload: ChatRequest):
+@app.post("/tts_with_visemes", response_model=TTSVisemeResponse)
+async def tts_with_visemes(payload: TTSVisemeRequest):
     """
-    Endpoint específico para el agente NEGOCIADOR (comprador de coche).
-    Usa el grafo de negotiation_graph.py y luego pasa por el normalizador.
+    1) Llama a OpenAI TTS para generar audio (siempre WAV, interno).
+    2) Pasa (texto, audio) a BFA para sacar fonemas y convertirlos a visemas.
+    3) Devuelve:
+       - audio en base64 (WAV)
+       - mime type
+       - timeline de visemas [{start, end, viseme}, ...]
     """
     try:
-      state = get_session_state(
-          user_id=payload.user_id,
-          session_id=payload.session_id,
-      )
+        voice = payload.voice or DEFAULT_VOICE
 
-      # 1) Respuesta “bruta” del grafo
-      raw_reply, _ = run_negotiation_agent(state, payload.message)
+        # Forzamos WAV para el aligner
+        fmt = "wav"
 
-      # 2) Normalizar usando el último mensaje del vendedor
-      normalized = normalize_text(raw_reply, last_user_message=payload.message)
+        audio = openai_client.audio.speech.create(
+            model=TTS_MODEL,
+            voice=voice,
+            input=payload.text,
+            format=fmt,
+        )
 
-      # 3) Devolver SOLO la versión normalizada
-      return ChatResponse(reply=normalized)
+        # El SDK devuelve bytes
+        audio_bytes = audio
+
+        # Timeline de visemas con BFA
+        timeline = build_viseme_timeline_from_bfa(
+            text=payload.text,
+            audio_bytes_wav=audio_bytes,
+        )
+
+        media_type = "audio/wav"
+
+        audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
+
+        return TTSVisemeResponse(
+            audio_base64=audio_b64,
+            audio_mime_type=media_type,
+            timeline=timeline,
+        )
 
     except Exception as e:
-      raise HTTPException(
-          status_code=500,
-          detail=f"Error interno en el agente de negociación: {e}",
-      )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error en TTS+visemas: {e}",
+        )
