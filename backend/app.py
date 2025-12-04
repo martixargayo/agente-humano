@@ -31,15 +31,17 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="Agente Humano - MVP")
 
-# --- PROVISIONALLLLLLLL ---
-# CORS para que el frontend en localhost:3000 pueda llamar al backend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # en dev vale así, luego lo cierras
+    allow_origins=[
+        "http://localhost:3000",
+        "https://fictional-space-trout-g4wx6x6jg6gfqx5-8000.app.github.dev",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # --- Google Cloud Speech-to-Text (entrada de audio) ---
 
