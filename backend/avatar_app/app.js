@@ -1,16 +1,9 @@
-// ============================
-// Avatar 3D – app.js (v4)
-// ============================
-console.log('Avatar app.js v4 cargado', import.meta.url);
+// app.js (avatar en Codespaces)
+alert('avatar app.js cargando (Codespaces)');
 
-// IMPORTS DESDE CDN (¡¡OJO, NADA DE "three" A SECAS!!)
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160/build/three.module.js';
 import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/controls/OrbitControls.js';
-
-// ============================
-// ESCENA THREE.JS
-// ============================
 
 const canvas = document.getElementById('c');
 const scene = new THREE.Scene();
@@ -22,11 +15,7 @@ const camera = new THREE.PerspectiveCamera(
   0.01,
   100
 );
-camera.position.set(
-  0.011607071591255534,
-  1.624524181119318,
-  0.8421152437144553
-);
+camera.position.set(0, 1.6, 2.8);
 
 const renderer = new THREE.WebGLRenderer({
   canvas,
@@ -38,9 +27,7 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 // Controles de cámara
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
-controls.target.set(0, 1.6, 0);   // punto que mira (cabeza/pecho)
-controls.minDistance = 0.5;
-controls.maxDistance = 4;
+controls.target.set(0, 1.6, 0);
 controls.update();
 
 // expos para consola
@@ -71,135 +58,23 @@ const skinnedMeshes = [];
 const morphNames = new Set();
 const visemeInfluences = {}; // {blendshapeName: currentValue}
 
-// --- Config ULTRA de visemas → conjunto de blendshapes ---
+// Mapa simple visema → blendshape
+const VISEME_TO_BLEND = {
+  REST: null,
 
-const VISEME_CONFIG = {
-  REST: {
-    type: 'rest',
-    shapes: {
-      Mouth_Close: 0.1,
-      Jaw_Open: 0.05
-    }
-  },
-  AA: {
-    type: 'vowel',
-    shapes: {
-      Jaw_Open: 0.65,
-      V_Open: 0.9,
-      Mouth_Shrug_Lower: 0.25
-    }
-  },
-  E: {
-    type: 'vowel',
-    shapes: {
-      V_Wide: 0.85,
-      Jaw_Open: 0.28,
-      Mouth_Stretch_L: 0.7,
-      Mouth_Stretch_R: 0.7,
-      Mouth_Smile_L: 0.15,
-      Mouth_Smile_R: 0.15
-    }
-  },
-  I: {
-    type: 'vowel',
-    shapes: {
-      V_Wide: 0.8,
-      Jaw_Open: 0.24,
-      Mouth_Stretch_L: 0.6,
-      Mouth_Stretch_R: 0.6,
-      Mouth_Smile_Sharp_L: 0.25,
-      Mouth_Smile_Sharp_R: 0.25
-    }
-  },
-  O: {
-    type: 'vowel',
-    shapes: {
-      V_Tight_O: 0.9,
-      Jaw_Open: 0.42,
-      Mouth_Pucker_Up_L: 0.65,
-      Mouth_Pucker_Up_R: 0.65,
-      Mouth_Pucker_Down_L: 0.55,
-      Mouth_Pucker_Down_R: 0.55
-    }
-  },
-  U: {
-    type: 'vowel',
-    shapes: {
-      V_Tight: 0.9,
-      Jaw_Open: 0.28,
-      Mouth_Pucker_Up_L: 0.55,
-      Mouth_Pucker_Up_R: 0.55,
-      Mouth_Pucker_Down_L: 0.45,
-      Mouth_Pucker_Down_R: 0.45
-    }
-  },
-  MBP: {
-    type: 'mbp',
-    shapes: {
-      Mouth_Close: 1.0,
-      V_Explosive: 0.6,
-      Jaw_Open: 0.05
-    }
-  },
-  MBP_PRE: {
-    type: 'mbp',
-    shapes: {
-      Mouth_Close: 0.6,
-      V_Explosive: 0.3,
-      Jaw_Open: 0.08
-    }
-  },
-  MBP_RELEASE: {
-    type: 'mbp',
-    shapes: {
-      Mouth_Close: 0.3,
-      V_Explosive: 0.2,
-      Jaw_Open: 0.12
-    }
-  },
-  FV: {
-    type: 'consonant',
-    shapes: {
-      V_Dental_Lip: 1.0,
-      Mouth_Close: 0.3,
-      Jaw_Open: 0.15
-    }
-  },
-  CH: {
-    type: 'consonant',
-    shapes: {
-      V_Affricate: 1.0,
-      Jaw_Open: 0.32,
-      Mouth_Tighten_L: 0.2,
-      Mouth_Tighten_R: 0.2
-    }
-  },
-  W: {
-    type: 'semiVowel',
-    shapes: {
-      V_Lip_Open: 0.7,
-      Mouth_Pucker_Up_L: 0.4,
-      Mouth_Pucker_Up_R: 0.4,
-      Mouth_Pucker_Down_L: 0.4,
-      Mouth_Pucker_Down_R: 0.4
-    }
-  },
-  EXP: {
-    type: 'consonant',
-    shapes: {
-      V_Explosive: 1.0,
-      Jaw_Open: 0.2
-    }
-  }
+  AA: 'V_Open',
+  E:  'V_Wide',
+  I:  'V_Wide',
+  O:  'V_Tight_O',
+  U:  'V_Tight',
+
+  MBP: 'Mouth_Close',
+  FV:  'V_Dental_Lip',
+  CH:  'V_Affricate',
+
+  W:   'V_Lip_Open',
+  EXP: 'V_Explosive'
 };
-
-// Lista de todos los blendshapes que usamos para visemas
-const ALL_VISEME_SHAPES = Array.from(
-  new Set(
-    Object.values(VISEME_CONFIG)
-      .flatMap(cfg => Object.keys(cfg.shapes || {}))
-  )
-);
 
 let visemeTimeline = [];
 
@@ -212,59 +87,15 @@ function setVisemeTimeline(timeline) {
   visemeTimeline = (timeline || []).slice().sort((a, b) => a.start - b.start);
 }
 
-// --- COARTICULACIÓN ---
-
-const COARTICULATION_WEIGHTS = {
-  prev: 0.2,
-  current: 0.6,
-  next: 0.2
-};
-
-function getVisemeBlendAtTime(t) {
-  if (!visemeTimeline || visemeTimeline.length === 0) {
-    return { REST: 1.0 };
-  }
-
-  let currentIndex = -1;
-
+function getActiveViseme(t) {
+  if (!visemeTimeline || visemeTimeline.length === 0) return 'REST';
   for (let i = 0; i < visemeTimeline.length; i++) {
     const seg = visemeTimeline[i];
     if (t >= seg.start && t < seg.end) {
-      currentIndex = i;
-      break;
+      return seg.viseme;
     }
   }
-
-  if (currentIndex === -1) {
-    return { REST: 1.0 };
-  }
-
-  const result = {};
-  const add = (viseme, w) => {
-    if (!viseme || w <= 0) return;
-    if (!VISEME_CONFIG[viseme]) return;
-    result[viseme] = (result[viseme] || 0) + w;
-  };
-
-  const segPrev = visemeTimeline[currentIndex - 1];
-  const segCurr = visemeTimeline[currentIndex];
-  const segNext = visemeTimeline[currentIndex + 1];
-
-  add(segPrev?.viseme, COARTICULATION_WEIGHTS.prev);
-  add(segCurr?.viseme, COARTICULATION_WEIGHTS.current);
-  add(segNext?.viseme, COARTICULATION_WEIGHTS.next);
-
-  const sum = Object.values(result).reduce((a, b) => a + b, 0);
-
-  if (!sum) {
-    return { REST: 1.0 };
-  }
-
-  for (const k of Object.keys(result)) {
-    result[k] /= sum;
-  }
-
-  return result;
+  return 'REST';
 }
 
 // Helpers generales lipsync
@@ -283,45 +114,6 @@ function applyBlendshape(blendName, value) {
   });
 }
 
-const MAX_INFLUENCE = 0.9;
-
-function computeTargetsFromVisemeWeights(visemeWeights) {
-  const targets = {};
-  ALL_VISEME_SHAPES.forEach(name => {
-    targets[name] = 0;
-  });
-
-  for (const [visemeName, weight] of Object.entries(visemeWeights)) {
-    const cfg = VISEME_CONFIG[visemeName] || VISEME_CONFIG.REST;
-    if (!cfg || !cfg.shapes) continue;
-
-    for (const [shapeName, value] of Object.entries(cfg.shapes)) {
-      targets[shapeName] += value * weight;
-    }
-  }
-
-  if (targets.Jaw_Open !== undefined) {
-    targets.Jaw_Open *= 0.95;
-  }
-
-  return targets;
-}
-
-function applyTargets(targets, smoothing) {
-  Object.keys(targets).forEach(blendName => {
-    let target = targets[blendName];
-    if (target > MAX_INFLUENCE) target = MAX_INFLUENCE;
-    if (target < 0) target = 0;
-
-    const current = visemeInfluences[blendName] ?? 0;
-    const next = lerp(current, target, smoothing);
-    visemeInfluences[blendName] = next;
-    applyBlendshape(blendName, next);
-  });
-}
-
-// --- LIPSYNC PRINCIPAL (audio real) ---
-
 function updateLipsync() {
   if (!avatar) return;
 
@@ -331,11 +123,27 @@ function updateLipsync() {
     if (audioTime < 0) audioTime = 0;
   }
 
-  const visemeWeights = getVisemeBlendAtTime(audioTime);
-  const targets = computeTargetsFromVisemeWeights(visemeWeights);
+  const activeViseme = getActiveViseme(audioTime);
 
-  const SMOOTHING = 0.22;
-  applyTargets(targets, SMOOTHING);
+  const targets = {};
+  Object.values(VISEME_TO_BLEND).forEach(blendName => {
+    if (!blendName) return;
+    targets[blendName] = 0;
+  });
+
+  const blendForActive = VISEME_TO_BLEND[activeViseme];
+  if (blendForActive) {
+    targets[blendForActive] = 1;
+  }
+
+  const smoothing = 0.25;
+  Object.keys(targets).forEach(blendName => {
+    const target = targets[blendName];
+    const current = visemeInfluences[blendName] ?? 0;
+    const next = lerp(current, target, smoothing);
+    visemeInfluences[blendName] = next;
+    applyBlendshape(blendName, next);
+  });
 }
 
 // Parpadeo
@@ -375,6 +183,7 @@ function updateBlink(delta) {
   }
 }
 
+// Carga GLB + encuadre automático con Box3
 const loader = new GLTFLoader();
 
 loader.load(
@@ -386,7 +195,18 @@ loader.load(
 
     const box = new THREE.Box3().setFromObject(avatar);
     const center = box.getCenter(new THREE.Vector3());
-    console.log('Centro del avatar:', center);
+    const size = box.getSize(new THREE.Vector3()).length();
+
+    // Encajar modelo en cámara
+    const fitDist = size / (2 * Math.tan((Math.PI * camera.fov) / 360));
+    const dir = new THREE.Vector3(0, 0, 1);
+    camera.position.copy(center).add(dir.multiplyScalar(fitDist));
+    camera.near = size / 100;
+    camera.far = size * 10;
+    camera.updateProjectionMatrix();
+
+    controls.target.copy(center);
+    controls.update();
 
     avatar.traverse(obj => {
       if (obj.isMesh && obj.morphTargetDictionary) {
@@ -435,40 +255,13 @@ export async function playAudioWithVisemes(audioUrl, timeline) {
 // Demo sin audio real
 function playFakeDemoTimeline() {
   const demoTimeline = [
-    { start: 0.00, end: 0.08, viseme: 'CH' },
-    { start: 0.08, end: 0.24, viseme: 'O' },
-    { start: 0.24, end: 0.36, viseme: 'E' },
-    { start: 0.36, end: 0.56, viseme: 'AA' },
-
-    { start: 0.56, end: 0.64, viseme: 'REST' },
-
-    { start: 0.64, end: 0.80, viseme: 'E' },
-    { start: 0.80, end: 1.00, viseme: 'O' },
-    { start: 1.00, end: 1.20, viseme: 'I' },
-
-    { start: 1.20, end: 1.28, viseme: 'REST' },
-
-    { start: 1.28, end: 1.44, viseme: 'MBP' },
-    { start: 1.44, end: 1.64, viseme: 'AA' },
-    { start: 1.64, end: 1.84, viseme: 'E' },
-    { start: 1.84, end: 2.04, viseme: 'E' },
-
-    { start: 2.04, end: 2.12, viseme: 'REST' },
-
-    { start: 2.12, end: 2.28, viseme: 'E' },
-    { start: 2.28, end: 2.44, viseme: 'AA' },
-    { start: 2.44, end: 2.64, viseme: 'E' },
-    { start: 2.64, end: 2.86, viseme: 'O' },
-
-    { start: 2.86, end: 2.94, viseme: 'REST' },
-
-    { start: 2.94, end: 3.08, viseme: 'E' },
-    { start: 3.08, end: 3.28, viseme: 'O' },
-    { start: 3.28, end: 3.44, viseme: 'E' },
-    { start: 3.44, end: 3.64, viseme: 'E' },
-    { start: 3.64, end: 3.88, viseme: 'E' },
-
-    { start: 3.88, end: 4.20, viseme: 'REST' }
+    { start: 0.00, end: 0.15, viseme: 'MBP' },
+    { start: 0.15, end: 0.35, viseme: 'AA' },
+    { start: 0.35, end: 0.55, viseme: 'E' },
+    { start: 0.55, end: 0.75, viseme: 'O' },
+    { start: 0.75, end: 0.95, viseme: 'U' },
+    { start: 0.95, end: 1.20, viseme: 'AA' },
+    { start: 1.20, end: 1.50, viseme: 'REST' }
   ];
 
   setVisemeTimeline(demoTimeline);
@@ -479,18 +272,27 @@ function playFakeDemoTimeline() {
   audioElement = null;
 
   let t = 0;
-  const duration = 4.2;
+  const duration = 1.5;
 
   const updateFake = () => {
     if (t > duration) return;
     const delta = 1 / 60;
     t += delta;
 
-    const visemeWeights = getVisemeBlendAtTime(t);
-    const targets = computeTargetsFromVisemeWeights(visemeWeights);
+    const activeViseme = getActiveViseme(t);
+    const targets = {};
+    Object.values(VISEME_TO_BLEND).forEach(b => b && (targets[b] = 0));
+    const blendForActive = VISEME_TO_BLEND[activeViseme];
+    if (blendForActive) targets[blendForActive] = 1;
 
-    const DEMO_SMOOTHING = 0.3;
-    applyTargets(targets, DEMO_SMOOTHING);
+    const smoothing = 0.3;
+    Object.keys(targets).forEach(blendName => {
+      const target = targets[blendName];
+      const current = visemeInfluences[blendName] ?? 0;
+      const next = lerp(current, target, smoothing);
+      visemeInfluences[blendName] = next;
+      applyBlendshape(blendName, next);
+    });
 
     requestAnimationFrame(updateFake);
   };
@@ -527,8 +329,8 @@ document.getElementById('demoBtn').addEventListener('click', () => {
 // INTEGRACIÓN CON EL BACKEND
 // ============================
 
-// Misma máquina / mismo origen en Codespaces → rutas relativas
-const BACKEND_URL = "";  // fetch('/negociar'), fetch('/tts_with_visemes')
+// Misma máquina / mismo origen
+const BACKEND_URL = ""; // → fetch('/chat'), '/negociar', '/tts_with_visemes'
 
 function base64ToAudioUrl(b64, mimeType = 'audio/wav') {
   const byteChars = atob(b64);
@@ -583,7 +385,7 @@ async function sendTextToAgent(message, { mode = 'negociar', withAudio = true } 
 
     if (!ttsRes.ok) {
       const errText = await ttsRes.text();
-      console.error('Error TTS+visemes:', errText);
+      console.error('Error TTS+visemas:', errText);
       return;
     }
 
