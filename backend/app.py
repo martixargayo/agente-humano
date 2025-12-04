@@ -445,19 +445,20 @@ async def stt_google(file: UploadFile = File(...)):
 async def tts_openai(payload: TTSRequest):
     try:
         voice = payload.voice or DEFAULT_VOICE
-        fmt = payload.format or DEFAULT_FORMAT   # "mp3", "opus", "wav"
+        fmt = payload.format or DEFAULT_FORMAT
 
-        app.logger.info(f"[TTS_OPENAI] Texto: {payload.text!r}")
-        app.logger.info(f"[TTS_OPENAI] model={TTS_MODEL}, voice={voice}, response_format={fmt}")
+        print(f"[TTS_OPENAI] Texto: {payload.text!r}")
+        print(f"[TTS_OPENAI] model={TTS_MODEL}, voice={voice}, response_format={fmt}")
 
-        audio = openai_client.audio.speech.create(
+        audio_resp = openai_client.audio.speech.create(
             model=TTS_MODEL,
             voice=voice,
             input=payload.text,
-            response_format=fmt,   # <-- antes poníamos format=fmt
+            response_format=fmt,
         )
 
-        audio_bytes = audio  # el SDK devuelve bytes
+        audio_bytes = audio_resp.read()  # <--- aquí también
+        print(f"[TTS_OPENAI] audio_bytes len={len(audio_bytes)}")
 
         media_type = (
             "audio/mpeg" if fmt == "mp3"
@@ -471,52 +472,45 @@ async def tts_openai(payload: TTSRequest):
         )
 
     except Exception as e:
-        app.logger.exception("Error en /tts_openai")
+        import traceback
+        print("ERROR en /tts_openai:")
+        traceback.print_exc()
         raise HTTPException(
             status_code=500,
             detail=f"Error en OpenAI TTS: {e}",
         )
 
+
     
 @app.post("/tts_with_visemes", response_model=TTSVisemeResponse)
 async def tts_with_visemes(payload: TTSVisemeRequest):
-    """
-    1) Llama a OpenAI TTS para generar audio (siempre WAV, interno).
-    2) Pasa (texto, audio) a BFA para sacar fonemas y convertirlos a visemas.
-    3) Devuelve:
-       - audio en base64 (WAV)
-       - mime type
-       - timeline de visemas [{start, end, viseme}, ...]
-    """
     try:
         voice = payload.voice or DEFAULT_VOICE
-
-        # Forzamos WAV para el aligner
-        fmt = "wav"
+        fmt = "wav"  # forzamos WAV para BFA
 
         print(f">>> /tts_with_visemes llamado. Texto: {payload.text!r}")
         print(f">>> model={TTS_MODEL}, voice={voice}, response_format={fmt}")
 
-        audio = openai_client.audio.speech.create(
+        # 1) Llamada a OpenAI TTS
+        audio_resp = openai_client.audio.speech.create(
             model=TTS_MODEL,
             voice=voice,
             input=payload.text,
-            response_format=fmt,  # <-- aquí también
+            response_format=fmt,
         )
 
-        # El SDK devuelve bytes
-        audio_bytes = audio
-
+        # 2) Convertir la respuesta a bytes reales
+        audio_bytes = audio_resp.read()      # <--- ESTO ES LA CLAVE
         print(f">>> /tts_with_visemes: audio_bytes len={len(audio_bytes)}")
 
-        # Timeline de visemas con BFA
+        # 3) Timeline de visemas con BFA
         timeline = build_viseme_timeline_from_bfa(
             text=payload.text,
             audio_bytes_wav=audio_bytes,
         )
+        print(f">>> /tts_with_visemes: timeline items={len(timeline)}")
 
         media_type = "audio/wav"
-
         audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
 
         return TTSVisemeResponse(
