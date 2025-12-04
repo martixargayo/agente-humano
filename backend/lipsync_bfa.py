@@ -189,9 +189,10 @@ def build_viseme_timeline_from_bfa(
             else:
                 merged.append(seg)
 
-        return merged
-    
+        # LOG para comprobar que hay timeline
         print(f"[BFA] timeline visemas: {len(merged)} segmentos")
+
+        return merged
 
     finally:
         # Limpieza del temporal
