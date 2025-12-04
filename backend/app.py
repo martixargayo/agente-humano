@@ -18,6 +18,9 @@ import base64
 from typing import List, Dict
 from normalizer import normalize_text
 
+import pathlib
+from fastapi.staticfiles import StaticFiles
+
 from state import get_session_state
 from agent import run_agent
 
@@ -26,7 +29,6 @@ from negotiation.negotiation_graph import run_negotiation_agent
 from dotenv import load_dotenv
 load_dotenv()
 
-# --- PROVISIONALLLLLLLL ---
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="Agente Humano - MVP")
@@ -38,6 +40,18 @@ app.add_middleware(
     allow_methods=["*"],          # GET, POST, OPTIONS, etc.
     allow_headers=["*"],          # Content-Type, Authorization, etc.
 )
+
+# --- Servir el avatar 3D como estático en /avatar ---
+
+BASE_DIR = pathlib.Path(__file__).resolve().parent
+AVATAR_DIR = BASE_DIR / "avatar_app"  # carpeta que has creado
+
+if AVATAR_DIR.exists():
+    app.mount(
+        "/avatar",
+        StaticFiles(directory=str(AVATAR_DIR), html=True),
+        name="avatar",
+    )
 
 
 # --- Google Cloud Speech-to-Text (entrada de audio) ---
@@ -284,18 +298,23 @@ def demo_page():
 <body>
   <div class="chat-container">
     <div class="chat-header">
-      <h1>Demo Agente Humano</h1>
-      <div class="mode-selector">
-        <label>
-          <input type="radio" name="mode" value="chat" checked />
-          Chat normal (/chat)
-        </label>
-        <label>
-          <input type="radio" name="mode" value="negociar" />
-          Negociador (/negociar)
-        </label>
-      </div>
+  <h1>Demo Agente Humano</h1>
+  <div style="display: flex; align-items: center; gap: 8px;">
+    <button id="openAvatarBtn" style="font-size: 12px; padding: 4px 8px;">
+      Ver en avatar
+    </button>
+    <div class="mode-selector">
+      <label>
+        <input type="radio" name="mode" value="chat" checked />
+        Chat normal (/chat)
+      </label>
+      <label>
+        <input type="radio" name="mode" value="negociar" />
+        Negociador (/negociar)
+      </label>
     </div>
+  </div>
+</div>
 
     <div class="session-info">
       <input id="userId" placeholder="user_id" value="test_user" />
@@ -384,6 +403,12 @@ def demo_page():
         sendMessage();
       }
     });
+    
+    const openAvatarBtn = document.getElementById("openAvatarBtn");
+    openAvatarBtn.addEventListener("click", () => {
+      window.location.href = "/avatar/";
+    });
+
   </script>
 </body>
 </html>
