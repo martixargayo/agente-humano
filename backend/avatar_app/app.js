@@ -1,10 +1,16 @@
-// Marca de versión para debug
-console.log('Avatar app.js v3 se ha cargado', import.meta.url);
+// ============================
+// Avatar 3D – app.js (v4)
+// ============================
+console.log('Avatar app.js v4 cargado', import.meta.url);
 
-// IMPORTS CORRECTOS DESDE CDN (sin "three" a secas)
+// IMPORTS DESDE CDN (¡¡OJO, NADA DE "three" A SECAS!!)
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160/build/three.module.js';
 import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/controls/OrbitControls.js';
+
+// ============================
+// ESCENA THREE.JS
+// ============================
 
 const canvas = document.getElementById('c');
 const scene = new THREE.Scene();
@@ -517,13 +523,12 @@ document.getElementById('demoBtn').addEventListener('click', () => {
   playFakeDemoTimeline();
 });
 
-
 // ============================
 // INTEGRACIÓN CON EL BACKEND
 // ============================
 
-// mismo origen que FastAPI
-const BACKEND_URL = ""; // rutas relativas
+// Misma máquina / mismo origen en Codespaces → rutas relativas
+const BACKEND_URL = "";  // fetch('/negociar'), fetch('/tts_with_visemes')
 
 function base64ToAudioUrl(b64, mimeType = 'audio/wav') {
   const byteChars = atob(b64);
@@ -566,7 +571,7 @@ async function sendTextToAgent(message, { mode = 'negociar', withAudio = true } 
     lastReplyEl.textContent = replyText;
 
     if (!withAudio || !replyText) {
-      return; // Solo texto, no TTS
+      return; // Solo texto
     }
 
     // 2) TTS + visemas
