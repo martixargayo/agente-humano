@@ -33,13 +33,10 @@ app = FastAPI(title="Agente Humano - MVP")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "https://fictional-space-trout-g4wx6x6jg6gfqx5-8000.app.github.dev",
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["*"],          # permitir todos los orígenes (incluye localhost:3000)
+    allow_credentials=False,      # importante: False si usas "*"
+    allow_methods=["*"],          # GET, POST, OPTIONS, etc.
+    allow_headers=["*"],          # Content-Type, Authorization, etc.
 )
 
 
