@@ -13,6 +13,11 @@ import io  # arriba del archivo
 from fastapi.responses import StreamingResponse
 from openai import OpenAI
 
+from lipsync_bfa import build_viseme_timeline_from_bfa
+import base64
+from typing import List, Dict
+
+
 from state import get_session_state
 from agent import run_agent
 
@@ -73,6 +78,17 @@ class TTSRequest(BaseModel):
     text: str
     voice: str | None = None   # opcional, por si luego quieres cambiar
     format: str | None = None  # "mp3", "opus", "wav"
+
+class TTSVisemeRequest(BaseModel):
+    text: str
+    voice: str | None = None   # igual que TTSRequest
+    format: str | None = None  # lo ignoraremos y forzaremos WAV por dentro
+
+
+class TTSVisemeResponse(BaseModel):
+    audio_base64: str
+    audio_mime_type: str
+    timeline: List[Dict]
 
 
 @app.get("/health")
@@ -415,4 +431,53 @@ async def tts_openai(payload: TTSRequest):
         raise HTTPException(
             status_code=500,
             detail=f"Error en OpenAI TTS: {e}",
+        )
+    
+@app.post("/tts_with_visemes", response_model=TTSVisemeResponse)
+async def tts_with_visemes(payload: TTSVisemeRequest):
+    """
+    1) Llama a OpenAI TTS para generar audio (siempre WAV, interno).
+    2) Pasa (texto, audio) a BFA para sacar fonemas y convertirlos a visemas.
+    3) Devuelve:
+       - audio en base64 (WAV)
+       - mime type
+       - timeline de visemas [{start, end, viseme}, ...]
+    """
+    try:
+        voice = payload.voice or DEFAULT_VOICE
+
+        # 1) Pedimos SIEMPRE WAV para facilitar el aligner
+        fmt = "wav"
+
+        audio = openai_client.audio.speech.create(
+            model=TTS_MODEL,
+            voice=voice,
+            input=payload.text,
+            format=fmt,
+        )
+
+        # El SDK actual devuelve bytes directamente
+        audio_bytes = audio
+
+        # 2) Generar timeline de visemas con BFA
+        timeline = build_viseme_timeline_from_bfa(
+            text=payload.text,
+            audio_bytes_wav=audio_bytes,
+        )
+
+        media_type = "audio/wav"
+
+        # 3) Devolver audio en base64 + timeline
+        audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
+
+        return TTSVisemeResponse(
+            audio_base64=audio_b64,
+            audio_mime_type=media_type,
+            timeline=timeline,
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error en TTS+visemas: {e}",
         )
