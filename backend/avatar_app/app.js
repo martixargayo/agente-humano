@@ -1,5 +1,7 @@
-alert('app.js está cargando');
+// Marca de versión para debug
+console.log('Avatar app.js v3 se ha cargado', import.meta.url);
 
+// IMPORTS CORRECTOS DESDE CDN (sin "three" a secas)
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160/build/three.module.js';
 import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/controls/OrbitControls.js';
