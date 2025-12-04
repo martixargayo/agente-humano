@@ -16,7 +16,6 @@ from openai import OpenAI
 from lipsync_bfa import build_viseme_timeline_from_bfa
 import base64
 from typing import List, Dict
-from normalizer import normalize_text
 
 import pathlib
 from fastapi.staticfiles import StaticFiles
