@@ -65,7 +65,18 @@
       </label>
     </div>
 
+    <!-- BOTÓN ENVIAR TEXTO -->
     <button id="sendToAgentBtn" style="margin-top: 6px;">Enviar al agente</button>
+
+    <!-- NUEVO: BOTÓN MIC + ONDAS -->
+    <div style="margin-top: 6px;">
+      <button id="micBtn">🎤 Hablar</button>
+    </div>
+    <canvas id="waveCanvas" width="320" height="40"
+            style="margin-top:4px;background:rgba(15,23,42,0.9);border-radius:4px;"></canvas>
+    <div id="micLabel" style="font-size:12px;margin-top:2px;color:#9ca3af;">
+      Pulsa el micro y habla
+    </div>
 
     <div style="margin-top: 6px; font-size: 12px;">
       Respuesta:
@@ -77,7 +88,6 @@
 
   <canvas id="c"></canvas>
 
-  <!-- IMPORTANTE: solo este script, sin código inline -->
   <script type="module" src="./app.js"></script>
 </body>
 </html>

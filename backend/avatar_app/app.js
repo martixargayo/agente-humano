@@ -622,3 +622,190 @@ userTextEl.addEventListener('keydown', (e) => {
     sendToAgentBtn.click();
   }
 });
+
+// ============================
+// GOOGLE STT (MICRÓFONO)
+// ============================
+
+const micBtn = document.getElementById('micBtn');
+const waveCanvas = document.getElementById('waveCanvas');
+const micLabel = document.getElementById('micLabel');
+
+let mediaRecorder = null;
+let audioChunks = [];
+let isRecording = false;
+let audioStream = null;
+
+// Para las ondas
+let waveAudioCtx = null;
+let waveAnalyser = null;
+let waveDataArray = null;
+let waveAnimationId = null;
+
+function drawWaveform() {
+  if (!waveCanvas || !waveAnalyser) return;
+  const ctx = waveCanvas.getContext('2d');
+  const width = waveCanvas.width;
+  const height = waveCanvas.height;
+
+  waveAnimationId = requestAnimationFrame(drawWaveform);
+
+  waveAnalyser.getByteTimeDomainData(waveDataArray);
+
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = 'rgba(15,23,42,1)';
+  ctx.fillRect(0, 0, width, height);
+
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#22c55e';
+  ctx.beginPath();
+
+  const sliceWidth = width / waveDataArray.length;
+  let x = 0;
+
+  for (let i = 0; i < waveDataArray.length; i++) {
+    const v = waveDataArray[i] / 128.0;
+    const y = (v * height) / 2;
+
+    if (i === 0) {
+      ctx.moveTo(x, y);
+    } else {
+      ctx.lineTo(x, y);
+    }
+    x += sliceWidth;
+  }
+
+  ctx.lineTo(width, height / 2);
+  ctx.stroke();
+}
+
+async function startRecording() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    alert('Tu navegador no permite usar el micrófono.');
+    return;
+  }
+
+  try {
+    audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+    // MediaRecorder para capturar audio en webm/opus
+    mediaRecorder = new MediaRecorder(audioStream, {
+      mimeType: 'audio/webm;codecs=opus'
+    });
+
+    audioChunks = [];
+
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) {
+        audioChunks.push(e.data);
+      }
+    };
+
+    mediaRecorder.onstop = async () => {
+  // Parar ondas
+  if (waveAnimationId) cancelAnimationFrame(waveAnimationId);
+  waveAnimationId = null;
+
+  if (waveAudioCtx) {
+    waveAudioCtx.close();
+    waveAudioCtx = null;
+  }
+
+  if (audioStream) {
+    audioStream.getTracks().forEach(t => t.stop());
+    audioStream = null;
+  }
+
+  micBtn.textContent = '🎤 Hablar';
+  micLabel.textContent = 'Procesando audio...';
+
+  const blob = new Blob(audioChunks, { type: 'audio/webm' });
+
+  try {
+    const text = await sendAudioToGoogleSTT(blob);
+    if (!text) {
+      micLabel.textContent = 'No se ha entendido el audio';
+      return;
+    }
+
+    // Volcamos el texto al textarea
+    userTextEl.value = text;
+    micLabel.textContent = 'Texto reconocido, enviando al agente...';
+
+    const modeRadio = document.querySelector('input[name="agentMode"]:checked');
+    const mode = modeRadio ? modeRadio.value : 'negociar';
+    const withAudio = !textOnlyCheckbox.checked;
+
+    sendToAgentBtn.disabled = true;
+    sendToAgentBtn.textContent = 'Hablando...';
+    try {
+      await sendTextToAgent(text, { mode, withAudio });
+    } finally {
+      sendToAgentBtn.disabled = false;
+      sendToAgentBtn.textContent = 'Enviar al agente';
+      micLabel.textContent = 'Pulsa el micro y habla';
+    }
+  } catch (err) {
+    console.error('Error en STT:', err);
+    micLabel.textContent = 'Error al reconocer el audio';
+  }
+};
+
+    mediaRecorder.start();
+
+    // Preparar ondas con Web Audio API
+    waveAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const source = waveAudioCtx.createMediaStreamSource(audioStream);
+    waveAnalyser = waveAudioCtx.createAnalyser();
+    waveAnalyser.fftSize = 2048;
+    const bufferLength = waveAnalyser.fftSize;
+    waveDataArray = new Uint8Array(bufferLength);
+    source.connect(waveAnalyser);
+
+    drawWaveform();
+
+    micBtn.textContent = '■ Detener';
+    micLabel.textContent = 'Grabando... habla ahora';
+    isRecording = true;
+  } catch (err) {
+    console.error('Error al iniciar grabación:', err);
+    micLabel.textContent = 'No se ha podido acceder al micrófono';
+  }
+}
+
+function stopRecording() {
+  if (!mediaRecorder) return;
+  mediaRecorder.stop();
+  isRecording = false;
+}
+
+// Llamada al backend /stt_google
+async function sendAudioToGoogleSTT(audioBlob) {
+  const formData = new FormData();
+  formData.append('file', audioBlob, 'speech.webm');
+
+  const res = await fetch(`${BACKEND_URL}/stt_google`, {
+    method: 'POST',
+    body: formData
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    console.error('Error STT backend:', errText);
+    throw new Error(`STT error ${res.status}`);
+  }
+
+  const data = await res.json();
+  return data.text || '';
+}
+
+// Click del botón de micro
+if (micBtn) {
+  micBtn.addEventListener('click', () => {
+    if (!isRecording) {
+      startRecording();
+    } else {
+      stopRecording();
+    }
+  });
+}
