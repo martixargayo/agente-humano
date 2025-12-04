@@ -486,29 +486,32 @@ async def tts_openai(payload: TTSRequest):
 async def tts_with_visemes(payload: TTSVisemeRequest):
     try:
         voice = payload.voice or DEFAULT_VOICE
-        fmt = "wav"  # forzamos WAV para BFA
+        fmt = "wav"
 
         print(f">>> /tts_with_visemes llamado. Texto: {payload.text!r}")
         print(f">>> model={TTS_MODEL}, voice={voice}, response_format={fmt}")
 
-        # 1) Llamada a OpenAI TTS
-        audio_resp = openai_client.audio.speech.create(
+        audio = openai_client.audio.speech.create(
             model=TTS_MODEL,
             voice=voice,
             input=payload.text,
             response_format=fmt,
         )
 
-        # 2) Convertir la respuesta a bytes reales
-        audio_bytes = audio_resp.read()      # <--- ESTO ES LA CLAVE
+        # OpenAI nuevo SDK: el contenido binario está en `audio.content`
+        audio_bytes = audio.content
         print(f">>> /tts_with_visemes: audio_bytes len={len(audio_bytes)}")
 
-        # 3) Timeline de visemas con BFA
-        timeline = build_viseme_timeline_from_bfa(
-            text=payload.text,
-            audio_bytes_wav=audio_bytes,
-        )
-        print(f">>> /tts_with_visemes: timeline items={len(timeline)}")
+        # --- Timeline de visemas con BFA (con fallback) ---
+        try:
+            timeline = build_viseme_timeline_from_bfa(
+                text=payload.text,
+                audio_bytes_wav=audio_bytes,
+            )
+        except Exception as e:
+            print("ERROR construyendo timeline BFA:", repr(e))
+            # Fallback: sin visemas, pero devolvemos audio.
+            timeline = []
 
         media_type = "audio/wav"
         audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
@@ -520,10 +523,9 @@ async def tts_with_visemes(payload: TTSVisemeRequest):
         )
 
     except Exception as e:
-        import traceback
-        print("ERROR en /tts_with_visemes:")
-        traceback.print_exc()
+        print("ERROR en /tts_with_visemes:", repr(e))
         raise HTTPException(
             status_code=500,
             detail=f"Error en TTS+visemas: {e}",
         )
+

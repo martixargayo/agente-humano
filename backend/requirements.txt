@@ -2,3 +2,6 @@ google-cloud-speech
 python-multipart
 openai
 bournemouth-forced-aligner
+torch
+torchaudio
+torchcodec
