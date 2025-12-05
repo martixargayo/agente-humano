@@ -384,11 +384,22 @@ function getVisemeBlendAtTime(t) {
   }
 
   const result = {};
+  const UNKNOWN_VISEMES = new Set();
+
   const add = (viseme, w) => {
     if (!viseme || w <= 0) return;
-    if (!VISEME_CONFIG[viseme]) return;
-    result[viseme] = (result[viseme] || 0) + w;
-  };
+
+    if (!VISEME_CONFIG[viseme]) {
+      if (!UNKNOWN_VISEMES.has(viseme)) {
+        UNKNOWN_VISEMES.add(viseme);
+        console.warn('[LIP] Visema SIN config:', viseme);
+      }
+      return;
+    }
+
+  result[viseme] = (result[viseme] || 0) + w;
+};
+
 
   const segPrev = visemeTimeline[currentIndex - 1];
   const segCurr = visemeTimeline[currentIndex];
@@ -414,9 +425,9 @@ function getVisemeBlendAtTime(t) {
 
   if (activeViseme && activeViseme !== lastDebugViseme) {
     console.log(
-      '[LIP] t=', t.toFixed(3),
-      'visemas=', result
-    );
+    '[LIP] t=', t.toFixed(3),
+    'visemas=', JSON.stringify(result)
+  );
     lastDebugViseme = activeViseme;
   }
 
