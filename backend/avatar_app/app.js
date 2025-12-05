@@ -606,18 +606,27 @@ function applyTargets(targets, smoothing) {
 function updateLipsync() {
   if (!avatar) return;
 
-  let audioTime = 0;
-  if (audioCtx && isPlaying) {
-    audioTime = audioCtx.currentTime - audioStartTime;
-    if (audioTime < 0) audioTime = 0;
+  const SMOOTHING = 0.22;
+
+  // 1) Si no hay audio o no está reproduciendo → relajar a neutro
+  if (!audioCtx || !isPlaying || !visemeTimeline.length) {
+    const targets = {};
+    ALL_VISEME_SHAPES.forEach(name => {
+      targets[name] = 0; // delta 0 → pose base del GLB
+    });
+    applyTargets(targets, SMOOTHING);
+    return;
   }
+
+  // 2) Si hay audio y timeline → lipsync normal
+  let audioTime = audioCtx.currentTime - audioStartTime;
+  if (audioTime < 0) audioTime = 0;
 
   const visemeWeights = getVisemeBlendAtTime(audioTime);
   const targets = computeTargetsFromVisemeWeights(visemeWeights);
-
-  const SMOOTHING = 0.22;
   applyTargets(targets, SMOOTHING);
 }
+
 
 // Parpadeo
 let blinkTimer = 0;
@@ -901,16 +910,18 @@ sendToAgentBtn.addEventListener('click', async () => {
   const mode = modeRadio ? modeRadio.value : 'negociar';
   const withAudio = !textOnlyCheckbox.checked;
 
-  sendTextToAgentBtn.disabled = true;
-  sendTextToAgentBtn.textContent = 'Hablando...';
+  // ❌ aquí tenías sendTextToAgentBtn
+  sendToAgentBtn.disabled = true;
+  sendToAgentBtn.textContent = 'Hablando...';
 
   try {
     await sendTextToAgent(text, { mode, withAudio });
   } finally {
-    sendTextToAgentBtn.disabled = false;
-    sendTextToAgentBtn.textContent = 'Enviar al agente';
+    sendToAgentBtn.disabled = false;
+    sendToAgentBtn.textContent = 'Enviar al agente';
   }
 });
+
 
 // Permitir Enter+Ctrl como atajo opcional
 userTextEl.addEventListener('keydown', (e) => {
