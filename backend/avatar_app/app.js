@@ -503,9 +503,8 @@ function getVisemeBlendAtTime(t) {
       return;
     }
 
-  result[viseme] = (result[viseme] || 0) + w;
-};
-
+    result[viseme] = (result[viseme] || 0) + w;
+  };
 
   const segPrev = visemeTimeline[currentIndex - 1];
   const segCurr = visemeTimeline[currentIndex];
@@ -531,9 +530,9 @@ function getVisemeBlendAtTime(t) {
 
   if (activeViseme && activeViseme !== lastDebugViseme) {
     console.log(
-    '[LIP] t=', t.toFixed(3),
-    'visemas=', JSON.stringify(result)
-  );
+      '[LIP] t=', t.toFixed(3),
+      'visemas=', JSON.stringify(result)
+    );
     lastDebugViseme = activeViseme;
   }
 
@@ -547,13 +546,21 @@ function lerp(a, b, t) {
   return a + (b - a) * t;
 }
 
+// 👇 AHORA usamos la base neutral del GLB y value es DELTA
 function applyBlendshape(blendName, value) {
   skinnedMeshes.forEach(mesh => {
     if (!mesh.morphTargetDictionary) return;
     const idx = mesh.morphTargetDictionary[blendName];
-    if (idx !== undefined) {
-      mesh.morphTargetInfluences[idx] = value;
-    }
+    if (idx === undefined) return;
+
+    const baseArr = mesh.userData.baseMorph;
+    const base = baseArr && baseArr[idx] != null ? baseArr[idx] : 0;
+
+    let v = base + value;   // delta sobre la pose neutral
+    if (v < 0) v = 0;
+    if (v > 1) v = 1;
+
+    mesh.morphTargetInfluences[idx] = v;
   });
 }
 
@@ -665,6 +672,14 @@ loader.load(
     avatar.traverse(obj => {
       if (obj.isMesh && obj.morphTargetDictionary) {
         skinnedMeshes.push(obj);
+
+        // 👇 Guardamos pose neutral de morph targets
+        if (obj.morphTargetInfluences) {
+          obj.userData.baseMorph = obj.morphTargetInfluences.slice();
+        } else {
+          obj.userData.baseMorph = null;
+        }
+
         const dict = obj.morphTargetDictionary;
         for (const name in dict) {
           morphNames.add(name);
@@ -886,14 +901,14 @@ sendToAgentBtn.addEventListener('click', async () => {
   const mode = modeRadio ? modeRadio.value : 'negociar';
   const withAudio = !textOnlyCheckbox.checked;
 
-  sendToAgentBtn.disabled = true;
-  sendToAgentBtn.textContent = 'Hablando...';
+  sendTextToAgentBtn.disabled = true;
+  sendTextToAgentBtn.textContent = 'Hablando...';
 
   try {
     await sendTextToAgent(text, { mode, withAudio });
   } finally {
-    sendToAgentBtn.disabled = false;
-    sendToAgentBtn.textContent = 'Enviar al agente';
+    sendTextToAgentBtn.disabled = false;
+    sendTextToAgentBtn.textContent = 'Enviar al agente';
   }
 });
 
