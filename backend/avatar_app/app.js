@@ -73,13 +73,15 @@ const VISEME_CONFIG = {
   // ========================
   SIL: {
     type: 'rest',
-    shapes: {
-      Mouth_Close: 0.80,
-      Jaw_Open: 0.03,
-      Mouth_Shrug_Lower: 0.05,
-      Mouth_Shrug_Upper: 0.02,
-      Tongue_In: 0.70
-    }
+    // Deja la boca totalmente neutra (sin cerrar el labio superior).
+    // El GLB ya trae la pose de reposo, así que no añadimos deltas.
+    shapes: {}
+  },
+
+  // Alias de seguridad (por si en algún sitio se usa REST)
+  REST: {
+    type: 'rest',
+    shapes: {}
   },
 
   // Alias de seguridad (por si en algún sitio se usa REST)
