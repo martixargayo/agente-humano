@@ -68,81 +68,105 @@ const visemeInfluences = {}; // {blendshapeName: currentValue}
 // Valores en 0–1 (Three.js morphTargetInfluences también usa 0–1)
 
 const VISEME_CONFIG = {
-  // Silencio / reposo
+  // ========================
+  // SILENCIO / REPOSO
+  // ========================
   SIL: {
     type: 'rest',
     shapes: {
-      Mouth_Close: 0.20,
-      Jaw_Open: 0.05,
+      Mouth_Close: 0.80,
+      Jaw_Open: 0.03,
       Mouth_Shrug_Lower: 0.05,
-      Tongue_In: 0.40
+      Mouth_Shrug_Upper: 0.02,
+      Tongue_In: 0.70
     }
   },
 
-  // Alias REST → mismo que SIL (por si en algún sitio aparece REST)
+  // Alias de seguridad (por si en algún sitio se usa REST)
   REST: {
     type: 'rest',
     shapes: {
-      Mouth_Close: 0.20,
-      Jaw_Open: 0.05,
+      Mouth_Close: 0.80,
+      Jaw_Open: 0.03,
       Mouth_Shrug_Lower: 0.05,
-      Tongue_In: 0.40
+      Mouth_Shrug_Upper: 0.02,
+      Tongue_In: 0.70
     }
   },
 
-  // AA : /a/ abierta ("casa")
+  // ========================
+  // VOCALES
+  // ========================
+
+  // AA : /a/ abierta tipo “casa”
   AA: {
     type: 'vowel',
     shapes: {
-      Jaw_Open: 0.75,
-      V_Open: 0.85,
-      Mouth_Shrug_Lower: 0.35,
-      Mouth_Down_Lower_L: 0.35,
-      Mouth_Down_Lower_R: 0.35,
-      Mouth_Up_Upper_L: 0.20,
-      Mouth_Up_Upper_R: 0.20,
-      Mouth_Stretch_L: 0.15,
-      Mouth_Stretch_R: 0.15,
-      Mouth_Pull_Lower_L: 0.15,
-      Mouth_Pull_Lower_R: 0.15,
-      Tongue_Down: 0.30
+      Jaw_Open: 0.80,
+      V_Lip_Open: 0.65,
+
+      Mouth_Drop_Lower: 0.70,
+      Mouth_Drop_Upper: 0.45,
+      Mouth_Down_Lower_L: 0.65,
+      Mouth_Down_Lower_R: 0.65,
+      Mouth_Up_Upper_L: 0.35,
+      Mouth_Up_Upper_R: 0.35,
+
+      Mouth_Stretch_L: 0.25,
+      Mouth_Stretch_R: 0.25,
+      Mouth_Pull_Lower_L: 0.25,
+      Mouth_Pull_Lower_R: 0.25,
+
+      Mouth_Close: 0.0,
+      Tongue_Down: 0.60
     }
   },
 
-  // AE : /a/ algo más cerrada / /e/ abierta
+  // AE : /e/ abierta / media
   AE: {
     type: 'vowel',
     shapes: {
-      Jaw_Open: 0.60,
-      V_Open: 0.65,
-      Mouth_Shrug_Lower: 0.30,
-      Mouth_Stretch_L: 0.45,
-      Mouth_Stretch_R: 0.45,
-      Mouth_Smile_L: 0.10,
-      Mouth_Smile_R: 0.10,
-      Mouth_Pull_Upper_L: 0.20,
-      Mouth_Pull_Upper_R: 0.20,
-      Mouth_Pull_Lower_L: 0.20,
-      Mouth_Pull_Lower_R: 0.20,
-      Tongue_Mid_Up: 0.20
+      Jaw_Open: 0.55,
+      V_Lip_Open: 0.55,
+
+      Mouth_Shrug_Upper: 0.30,
+      Mouth_Shrug_Lower: 0.25,
+      Mouth_Stretch_L: 0.65,
+      Mouth_Stretch_R: 0.65,
+      Mouth_Smile_L: 0.25,
+      Mouth_Smile_R: 0.25,
+
+      Mouth_Pull_Upper_L: 0.35,
+      Mouth_Pull_Upper_R: 0.35,
+      Mouth_Pull_Lower_L: 0.30,
+      Mouth_Pull_Lower_R: 0.30,
+
+      Tongue_Mid_Up: 0.35,
+      Mouth_Close: 0.0
     }
   },
 
-  // EE : /e/ / i/ muy sonriente
+  // EE : /e/ /i/ muy sonriente, muy nítida
   EE: {
     type: 'vowel',
     shapes: {
-      Jaw_Open: 0.25,
-      V_Wide: 0.85,
-      Mouth_Stretch_L: 0.80,
-      Mouth_Stretch_R: 0.80,
-      Mouth_Smile_L: 0.20,
-      Mouth_Smile_R: 0.20,
-      Mouth_Tighten_L: 0.30,
-      Mouth_Tighten_R: 0.30,
-      Mouth_Pull_Upper_L: 0.30,
-      Mouth_Pull_Upper_R: 0.30,
-      Tongue_Mid_Up: 0.15
+      Jaw_Open: 0.30,
+      V_Wide: 0.95,
+
+      Mouth_Stretch_L: 0.90,
+      Mouth_Stretch_R: 0.90,
+      Mouth_Smile_L: 0.55,
+      Mouth_Smile_R: 0.55,
+
+      Mouth_Tighten_L: 0.40,
+      Mouth_Tighten_R: 0.40,
+      Mouth_Shrug_Upper: 0.35,
+
+      Mouth_Pull_Upper_L: 0.35,
+      Mouth_Pull_Upper_R: 0.35,
+
+      Tongue_Mid_Up: 0.30,
+      Mouth_Close: 0.0
     }
   },
 
@@ -150,16 +174,23 @@ const VISEME_CONFIG = {
   IH: {
     type: 'vowel',
     shapes: {
-      Jaw_Open: 0.18,
-      V_Wide: 0.55,
-      Mouth_Stretch_L: 0.50,
-      Mouth_Stretch_R: 0.50,
-      Mouth_Smile_L: 0.15,
-      Mouth_Smile_R: 0.15,
-      Mouth_Tighten_L: 0.25,
-      Mouth_Tighten_R: 0.25,
-      Mouth_Pull_Upper_L: 0.20,
-      Mouth_Pull_Upper_R: 0.20
+      Jaw_Open: 0.22,
+      V_Wide: 0.70,
+
+      Mouth_Stretch_L: 0.70,
+      Mouth_Stretch_R: 0.70,
+      Mouth_Smile_L: 0.35,
+      Mouth_Smile_R: 0.35,
+
+      Mouth_Tighten_L: 0.30,
+      Mouth_Tighten_R: 0.30,
+      Mouth_Shrug_Upper: 0.25,
+
+      Mouth_Pull_Upper_L: 0.30,
+      Mouth_Pull_Upper_R: 0.30,
+
+      Tongue_Mid_Up: 0.20,
+      Mouth_Close: 0.0
     }
   },
 
@@ -167,88 +198,122 @@ const VISEME_CONFIG = {
   OH: {
     type: 'vowel',
     shapes: {
-      Jaw_Open: 0.40,
+      Jaw_Open: 0.45,
       V_Tight_O: 0.80,
-      Mouth_Funnel_Up_L: 0.75,
-      Mouth_Funnel_Up_R: 0.75,
-      Mouth_Funnel_Down_L: 0.60,
-      Mouth_Funnel_Down_R: 0.60,
-      Mouth_Pucker_Up_L: 0.35,
-      Mouth_Pucker_Up_R: 0.35,
-      Mouth_Pucker_Down_L: 0.25,
-      Mouth_Pucker_Down_R: 0.25,
-      Mouth_Shrug_Lower: 0.15
+
+      Mouth_Funnel_Up_L: 0.85,
+      Mouth_Funnel_Up_R: 0.85,
+      Mouth_Funnel_Down_L: 0.70,
+      Mouth_Funnel_Down_R: 0.70,
+
+      Mouth_Pucker_Up_L: 0.45,
+      Mouth_Pucker_Up_R: 0.45,
+      Mouth_Pucker_Down_L: 0.40,
+      Mouth_Pucker_Down_R: 0.40,
+
+      Mouth_Shrug_Lower: 0.20,
+      Mouth_Close: 0.0
     }
   },
 
-  // OO : /u/ / "oo"
+  // OO : /u/ “oo”
   OO: {
     type: 'vowel',
     shapes: {
-      Jaw_Open: 0.18,
-      V_Tight: 0.60,
-      Mouth_Pucker_Up_L: 0.90,
-      Mouth_Pucker_Up_R: 0.90,
-      Mouth_Pucker_Down_L: 0.80,
-      Mouth_Pucker_Down_R: 0.80,
-      Mouth_Funnel_Up_L: 0.40,
-      Mouth_Funnel_Up_R: 0.40,
-      Mouth_Funnel_Down_L: 0.35,
-      Mouth_Funnel_Down_R: 0.35,
-      Mouth_Push_Upper_L: 0.55,
-      Mouth_Push_Upper_R: 0.55,
-      Mouth_Push_Lower_L: 0.55,
-      Mouth_Push_Lower_R: 0.55
+      Jaw_Open: 0.25,
+      V_Tight: 0.85,
+
+      Mouth_Pucker_Up_L: 1.00,
+      Mouth_Pucker_Up_R: 1.00,
+      Mouth_Pucker_Down_L: 0.95,
+      Mouth_Pucker_Down_R: 0.95,
+
+      Mouth_Funnel_Up_L: 0.55,
+      Mouth_Funnel_Up_R: 0.55,
+      Mouth_Funnel_Down_L: 0.50,
+      Mouth_Funnel_Down_R: 0.50,
+
+      Mouth_Push_Upper_L: 0.70,
+      Mouth_Push_Upper_R: 0.70,
+      Mouth_Push_Lower_L: 0.70,
+      Mouth_Push_Lower_R: 0.70,
+
+      Mouth_Close: 0.0
     }
   },
 
-  // MBP : bilabiales (m, b, p)
+  // ========================
+  // CONSONANTES LABIALES
+  // ========================
+
+  // MBP : bilabiales (m, b, p) – cierre fuerte
   MBP: {
     type: 'consonant',
     shapes: {
-      Jaw_Open: 0.0,
-      Mouth_Close: 1.0,
+      Jaw_Open: 0.02,
+      Mouth_Close: 1.00,
+
       V_Explosive: 0.90,
-      Mouth_Press_L: 0.70,
-      Mouth_Press_R: 0.70,
-      Mouth_Tighten_L: 0.50,
-      Mouth_Tighten_R: 0.50,
-      Mouth_Chin_Up: 0.30
+      Mouth_Press_L: 0.80,
+      Mouth_Press_R: 0.80,
+
+      Mouth_Tighten_L: 0.60,
+      Mouth_Tighten_R: 0.60,
+      Mouth_Chin_Up: 0.40,
+
+      Mouth_Roll_In_Upper_L: 0.40,
+      Mouth_Roll_In_Upper_R: 0.40,
+      Mouth_Roll_In_Lower_L: 0.40,
+      Mouth_Roll_In_Lower_R: 0.40,
+
+      Tongue_In: 0.80
     }
   },
 
-  // FV : labiodentales (f, v)
+  // FV : labiodentales (f, v) – labio inferior contra dientes superiores
   FV: {
     type: 'consonant',
     shapes: {
-      Jaw_Open: 0.12,
-      V_Dental_Lip: 0.90,
-      Mouth_Lower_L: 0.70,
-      Mouth_Lower_R: 0.70,
-      Mouth_Down_Lower_L: 0.60,
-      Mouth_Down_Lower_R: 0.60,
-      Mouth_Press_L: 0.40,
-      Mouth_Press_R: 0.40,
-      Mouth_Pull_Lower_L: 0.45,
-      Mouth_Pull_Lower_R: 0.45,
-      Mouth_Tighten_L: 0.35,
-      Mouth_Tighten_R: 0.35
+      Jaw_Open: 0.18,
+      V_Dental_Lip: 1.00,
+
+      Mouth_Lower_L: 0.75,
+      Mouth_Lower_R: 0.75,
+      Mouth_Down_Lower_L: 0.55,
+      Mouth_Down_Lower_R: 0.55,
+
+      Mouth_Press_L: 0.50,
+      Mouth_Press_R: 0.50,
+      Mouth_Tighten_L: 0.45,
+      Mouth_Tighten_R: 0.45,
+
+      Mouth_Close: 0.20,
+      Tongue_In: 0.70
     }
   },
+
+  // ========================
+  // DENTALES / LENGUA
+  // ========================
 
   // TH : lengua entre dientes (θ, ð)
   TH: {
     type: 'consonant',
     shapes: {
-      Jaw_Open: 0.18,
-      V_Open: 0.25,
-      Mouth_Shrug_Lower: 0.25,
-      Mouth_Down_Lower_L: 0.35,
-      Mouth_Down_Lower_R: 0.35,
-      Tongue_Tip_Up: 0.60,
-      Tongue_Out: 0.65,
-      Tongue_Extend: 0.50,
-      Tongue_Narrow: 0.40
+      Jaw_Open: 0.22,
+      V_Lip_Open: 0.30,
+
+      Mouth_Shrug_Lower: 0.30,
+      Mouth_Down_Lower_L: 0.45,
+      Mouth_Down_Lower_R: 0.45,
+      Mouth_Drop_Upper: 0.30,
+
+      Tongue_Tip_Up: 0.80,
+      Tongue_Out: 0.90,
+      Tongue_Extend: 0.70,
+      Tongue_Narrow: 0.55,
+
+      Mouth_Close: 0.0
     }
   },
 
@@ -257,83 +322,124 @@ const VISEME_CONFIG = {
     type: 'consonant',
     shapes: {
       Jaw_Open: 0.22,
-      V_Lip_Open: 0.30,
-      Mouth_Shrug_Lower: 0.25,
-      Tongue_Tip_Up: 0.75,
-      Tongue_Mid_Up: 0.60,
-      Tongue_Extend: 0.25,
-      Tongue_Wide: 0.35
+      V_Lip_Open: 0.25,
+
+      Mouth_Shrug_Lower: 0.20,
+
+      Tongue_Tip_Up: 0.85,
+      Tongue_Mid_Up: 0.70,
+      Tongue_Extend: 0.40,
+      Tongue_Wide: 0.55,
+
+      Mouth_Close: 0.10
     }
   },
 
-  // S : sibilantes / consonantes "planas"
+  // S : sibilantes (s, z, t “plano”, etc.)
   S: {
     type: 'consonant',
     shapes: {
-      Jaw_Open: 0.12,
-      V_Wide: 0.40,
-      Mouth_Stretch_L: 0.55,
-      Mouth_Stretch_R: 0.55,
-      Mouth_Tighten_L: 0.45,
-      Mouth_Tighten_R: 0.45,
-      Mouth_Pull_Upper_L: 0.30,
-      Mouth_Pull_Upper_R: 0.30,
-      Tongue_Tip_Up: 0.40,
-      Tongue_Narrow: 0.45
+      Jaw_Open: 0.18,
+      V_Wide: 0.55,
+
+      Mouth_Stretch_L: 0.75,
+      Mouth_Stretch_R: 0.75,
+      Mouth_Tighten_L: 0.55,
+      Mouth_Tighten_R: 0.55,
+
+      Mouth_Pull_Upper_L: 0.35,
+      Mouth_Pull_Upper_R: 0.35,
+
+      Tongue_Tip_Up: 0.60,
+      Tongue_Narrow: 0.70,
+
+      Mouth_Close: 0.20
     }
   },
 
-  // CH : africadas / post-alveolares
+  // ========================
+  // AFRICADAS / POSTALVEOLARES
+  // ========================
+
+  // CH : africada /t͡ʃ/, /ʃ/, etc.
   CH: {
     type: 'consonant',
     shapes: {
-      Jaw_Open: 0.22,
-      V_Affricate: 0.80,
-      Mouth_Funnel_Up_L: 0.40,
-      Mouth_Funnel_Up_R: 0.40,
-      Mouth_Funnel_Down_L: 0.35,
-      Mouth_Funnel_Down_R: 0.35,
-      Mouth_Pucker_Up_L: 0.30,
-      Mouth_Pucker_Up_R: 0.30,
-      Mouth_Tighten_L: 0.35,
-      Mouth_Tighten_R: 0.35,
-      Tongue_Mid_Up: 0.35
+      Jaw_Open: 0.30,
+      V_Affricate: 0.85,
+
+      Mouth_Funnel_Up_L: 0.45,
+      Mouth_Funnel_Up_R: 0.45,
+      Mouth_Funnel_Down_L: 0.40,
+      Mouth_Funnel_Down_R: 0.40,
+
+      Mouth_Pucker_Up_L: 0.35,
+      Mouth_Pucker_Up_R: 0.35,
+      Mouth_Pucker_Down_L: 0.35,
+      Mouth_Pucker_Down_R: 0.35,
+
+      Mouth_Tighten_L: 0.45,
+      Mouth_Tighten_R: 0.45,
+      Mouth_Shrug_Upper: 0.20,
+
+      Tongue_Mid_Up: 0.50,
+      Tongue_Tip_Up: 0.30,
+
+      Mouth_Close: 0.10
     }
   },
 
-  // KG : velares (/k/, /g/, /x/)
+  // ========================
+  // VELARES
+  // ========================
+
+  // KG : velares (k, g, x)
   KG: {
     type: 'consonant',
     shapes: {
-      Jaw_Open: 0.18,
-      V_Open: 0.15,
+      Jaw_Open: 0.25,
+      V_Lip_Open: 0.20,
+
       Mouth_Shrug_Lower: 0.15,
-      Tongue_Roll: 0.70,
-      Tongue_Mid_Up: 0.30,
-      Tongue_Tip_Down: 0.25
+
+      Tongue_Roll: 0.85,
+      Tongue_Mid_Up: 0.50,
+      Tongue_Tip_Down: 0.40,
+
+      Mouth_Close: 0.20
     }
   },
 
-  // R : róticas (r, ɾ)
+  // ========================
+  // RÓTICAS
+  // ========================
+
+  // R : r, erre simple / múltiple
   R: {
     type: 'consonant',
     shapes: {
-      Jaw_Open: 0.15,
-      V_Tight: 0.35,
-      Mouth_Pucker_Up_L: 0.40,
-      Mouth_Pucker_Up_R: 0.40,
-      Mouth_Pucker_Down_L: 0.35,
-      Mouth_Pucker_Down_R: 0.35,
-      Mouth_Stretch_L: 0.25,
-      Mouth_Stretch_R: 0.25,
-      Mouth_Tighten_L: 0.35,
-      Mouth_Tighten_R: 0.35,
-      Tongue_Tip_Up: 0.50,
-      Tongue_Mid_Up: 0.40,
-      Tongue_Narrow: 0.35
+      Jaw_Open: 0.20,
+      V_Lip_Open: 0.30,
+
+      Mouth_Pucker_Up_L: 0.30,
+      Mouth_Pucker_Up_R: 0.30,
+      Mouth_Pucker_Down_L: 0.30,
+      Mouth_Pucker_Down_R: 0.30,
+
+      Mouth_Stretch_L: 0.20,
+      Mouth_Stretch_R: 0.20,
+      Mouth_Tighten_L: 0.40,
+      Mouth_Tighten_R: 0.40,
+
+      Tongue_Tip_Up: 0.70,
+      Tongue_Mid_Up: 0.50,
+      Tongue_Narrow: 0.50,
+
+      Mouth_Close: 0.10
     }
   }
 };
+
 
 // Lista de todos los blendshapes que usamos para visemas
 const ALL_VISEME_SHAPES = Array.from(
