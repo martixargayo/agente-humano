@@ -362,6 +362,8 @@ const COARTICULATION_WEIGHTS = {
   next: 0.2
 };
 
+let lastDebugViseme = null;   // DEBUG: visema dominante previo
+
 function getVisemeBlendAtTime(t) {
   if (!visemeTimeline || visemeTimeline.length === 0) {
     return { SIL: 1.0 };
@@ -406,8 +408,21 @@ function getVisemeBlendAtTime(t) {
     result[k] /= sum;
   }
 
+  // DEBUG: log solo cuando cambia el visema dominante
+  const activeEntry = Object.entries(result).sort((a, b) => b[1] - a[1])[0];
+  const activeViseme = activeEntry ? activeEntry[0] : null;
+
+  if (activeViseme && activeViseme !== lastDebugViseme) {
+    console.log(
+      '[LIP] t=', t.toFixed(3),
+      'visemas=', result
+    );
+    lastDebugViseme = activeViseme;
+  }
+
   return result;
 }
+
 
 // Helpers generales lipsync
 
@@ -549,6 +564,7 @@ loader.load(
 );
 
 export async function playAudioWithVisemes(audioUrl, timeline) {
+  console.log('[LIP] Timeline recibido del backend:', timeline);
   setVisemeTimeline(timeline);
 
   if (audioCtx) {

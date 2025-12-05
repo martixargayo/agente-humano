@@ -214,6 +214,12 @@ def build_viseme_timeline_from_bfa(
                 start_s = float(start_ms) / 1000.0
                 end_s = float(end_ms) / 1000.0
 
+                # DEBUG: ver fonema → visema
+                print(
+                    f"[BFA] phoneme={label!r} -> viseme={viseme}, "
+                    f"{start_s:.3f}-{end_s:.3f}s"
+                )
+
                 viseme_timeline.append(
                     {
                         "start": start_s,
@@ -221,6 +227,7 @@ def build_viseme_timeline_from_bfa(
                         "viseme": viseme,
                     }
                 )
+
 
         # 4) Fusionar fonemas consecutivos con el mismo visema (suaviza timeline)
         merged: List[Dict] = []
@@ -237,6 +244,8 @@ def build_viseme_timeline_from_bfa(
                 merged.append(seg)
 
         print(f"[BFA] timeline visemas: {len(merged)} segmentos")
+        for seg in merged:
+            print(f"[BFA] VISEME_SEG: {seg['viseme']} {seg['start']:.3f}-{seg['end']:.3f}s")
 
         return merged
 
