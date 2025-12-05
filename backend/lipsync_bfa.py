@@ -20,84 +20,128 @@ ALIGNER = PhonemeTimestampAligner(
 )
 
 
-# --- 2) Mapeo fonema IPA -> visema lógico (para tu rig CC4) ---
+# --- 2) Mapeo fonema IPA -> visema lógico (versión "industrial" para tu rig CC) ---
 
-# Esto es una primera versión razonable para español.
-# Más adelante se puede afinar / extender.
+
+"""
+Set de visemas que usaremos en todo el sistema:
+
+- AA  : /a/ abierta ("casa")
+- AE  : /a/ más cerrada o /e/ abierta ("mesa", transiciones a /a/)
+- EE  : /e/ e /i/ muy abierta/sonriente ("sí", "tiene")
+- IH  : /i/ más relajada / media
+- OH  : /o/ media ("cosa")
+- OO  : /u/ / "oo" redondeada ("tú", "uno")
+
+- MBP : bilabiales (m, b, p)
+- FV  : labiodentales (f, v)
+- TH  : dentales con lengua visible (θ, ð) – en ES se puede usar en "za, ce, ci..."
+- L   : laterales /L/ ("la", "el") y nasales suaves
+- S   : sibilantes ("s", "z") y muchas consonantes fricativas / oclusivas "planas"
+- CH  : africadas / post-alveolares ("ch", "sh", etc.)
+- KG  : velares posteriores ("k", "g", "x")
+- R   : /r/ y /ɾ/
+
+- SIL : silencio / reposo (boca neutra)
+"""
+
 PHONEME_TO_VISEME: Dict[str, str] = {
-    # Vocales
+    # --- Vocales principales ---
+    # a abierta
     "a": "AA",
     "aː": "AA",
-    "e": "E",
-    "eː": "E",
-    "i": "I",
-    "iː": "I",
-    "o": "O",
-    "oː": "O",
-    "u": "U",
-    "uː": "U",
 
-    # Diptongos frecuentes (los mandamos a vocal dominante)
-    "ai": "AA",
+    # e algo más abierta → AE
+    "ɛ": "AE",
+    "e": "AE",
+    "eː": "AE",
+
+    # i, vocal muy anterior → EE / IH según intensidad
+    "i": "EE",
+    "iː": "EE",
+
+    # o → OH
+    "o": "OH",
+    "oː": "OH",
+
+    # u → OO
+    "u": "OO",
+    "uː": "OO",
+
+    # --- Diptongos frecuentes (mandamos a vocal dominante) ---
+    "ai": "AE",
     "au": "AA",
-    "ei": "E",
-    "oi": "O",
-    "ou": "O",
-    "ia": "I",
-    "ie": "I",
-    "io": "I",
-    "ua": "U",
-    "ue": "U",
-    "uo": "U",
+    "ei": "EE",
+    "oi": "OH",
+    "ou": "OH",
+    "ia": "EE",
+    "ie": "EE",
+    "io": "EE",
+    "ua": "OO",
+    "ue": "OO",
+    "uo": "OO",
 
-    # Bilabiales / labiales → cierre MBP
+    # --- Bilabiales / labiales → MBP ---
     "p": "MBP",
     "b": "MBP",
     "m": "MBP",
 
-    # Labiodentales → FV
+    # --- Labiodentales → FV ---
     "f": "FV",
-    "v": "FV",
+    "v": "FV",  # en ES suena más a /b/ pero nos interesa el gesto labiodental
 
-    # Africadas / fricativas palatales → CH
+    # --- Dentales fricativas (θ, ð) → TH (lengua entre dientes) ---
+    "θ": "TH",
+    "ð": "TH",
+
+    # --- Africadas / fricativas palatales → CH ---
     "t͡ʃ": "CH",
     "ʃ": "CH",
     "ʒ": "CH",
     "d͡ʒ": "CH",
 
-    # Aproximantes / semivocales → W (redondeo suave)
-    "w": "W",
-    "ɥ": "W",
+    # --- Sibilantes / fricativas alveolares → S ---
+    "s": "S",
+    "z": "S",
 
-    # Resto de consonantes que mueven algo la boca
-    # (ligera apertura tipo "E")
-    "s": "E",
-    "z": "E",
-    "θ": "E",
-    "ð": "E",
-    "t": "E",
-    "d": "E",
-    "n": "E",
-    "ɲ": "E",
-    "l": "E",
-    "r": "E",
-    "ɾ": "E",
-    "k": "E",
-    "g": "E",
-    "x": "E",
+    # --- Oclusivas / consonantes "planas" → S (boca en posición media) ---
+    "t": "S",
+    "d": "S",
+    "n": "S",
+    "ɲ": "S",   # ñ
+    "ç": "S",
+    "x": "KG",  # /x/ tipo "jamón" -> posterior, lo mando a KG
+
+    # --- Laterales /L/ y nasales suaves → L ---
+    "l": "L",
+
+    # --- Róticas /R/ ---
+    "r": "R",
+    "ɾ": "R",
+
+    # --- Velares /K,G/ ---
+    "k": "KG",
+    "g": "KG",
+
+    # Aproximantes / semivocales → las acerco a OO (labios algo redondeados)
+    "w": "OO",
+    "ɥ": "OO",
 }
 
 
 def phoneme_to_viseme(phoneme: str) -> str:
     """
-    Convierte un fonema IPA (BFA/espeak) en uno de tus visemas lógicos.
-    Si no lo conoce, devuelve REST (boca neutra).
+    Convierte un fonema IPA (BFA/espeak) en uno de los visemas lógicos:
+
+    {AA, AE, EE, IH, OH, OO, MBP, FV, TH, L, S, CH, KG, R, SIL}
+
+    Si no lo conoce, devuelve SIL (boca en reposo).
     """
     phoneme = (phoneme or "").strip().lower()
     if not phoneme:
-        return "REST"
+        return "SIL"
 
-    # Normalizar pequeñas variaciones (ejemplo)
+    # Normalizar pequeñas variaciones: alargadas, etc.
     replacements = {
         "aː": "a",
         "eː": "e",
@@ -107,10 +151,11 @@ def phoneme_to_viseme(phoneme: str) -> str:
     }
     phoneme = replacements.get(phoneme, phoneme)
 
-    return PHONEME_TO_VISEME.get(phoneme, "REST")
+    return PHONEME_TO_VISEME.get(phoneme, "SIL")
 
 
 # --- 3) Función central: audio_bytes (WAV) + texto -> timeline de visemas ---
+
 
 def build_viseme_timeline_from_bfa(
     text: str,
@@ -124,6 +169,9 @@ def build_viseme_timeline_from_bfa(
       { "start": 0.00, "end": 0.08, "viseme": "MBP" },
       ...
     ]
+
+    Donde "viseme" es uno de:
+    {AA, AE, EE, IH, OH, OO, MBP, FV, TH, L, S, CH, KG, R, SIL}
     """
 
     if not audio_bytes_wav:
@@ -148,7 +196,6 @@ def build_viseme_timeline_from_bfa(
             do_groups=True,
             debug=False,
         )
-
 
         # 3) Traducir JSON de BFA a timeline de visemas
         viseme_timeline: List[Dict] = []
@@ -175,7 +222,7 @@ def build_viseme_timeline_from_bfa(
                     }
                 )
 
-        # Opcional: fusionar fonemas consecutivos con el mismo visema
+        # 4) Fusionar fonemas consecutivos con el mismo visema (suaviza timeline)
         merged: List[Dict] = []
         for seg in viseme_timeline:
             if not merged:
@@ -189,7 +236,6 @@ def build_viseme_timeline_from_bfa(
             else:
                 merged.append(seg)
 
-        # LOG para comprobar que hay timeline
         print(f"[BFA] timeline visemas: {len(merged)} segmentos")
 
         return merged

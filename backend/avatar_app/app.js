@@ -64,124 +64,273 @@ const skinnedMeshes = [];
 const morphNames = new Set();
 const visemeInfluences = {}; // {blendshapeName: currentValue}
 
-// --- Config ULTRA de visemas → conjunto de blendshapes ---
+// --- Config ULTRA de visemas → conjunto de blendshapes CC ---
+// Valores en 0–1 (Three.js morphTargetInfluences también usa 0–1)
 
 const VISEME_CONFIG = {
+  // Silencio / reposo
+  SIL: {
+    type: 'rest',
+    shapes: {
+      Mouth_Close: 0.20,
+      Jaw_Open: 0.05,
+      Mouth_Shrug_Lower: 0.05,
+      Tongue_In: 0.40
+    }
+  },
+
+  // Alias REST → mismo que SIL (por si en algún sitio aparece REST)
   REST: {
     type: 'rest',
     shapes: {
-      Mouth_Close: 0.1,
-      Jaw_Open: 0.05
+      Mouth_Close: 0.20,
+      Jaw_Open: 0.05,
+      Mouth_Shrug_Lower: 0.05,
+      Tongue_In: 0.40
     }
   },
+
+  // AA : /a/ abierta ("casa")
   AA: {
     type: 'vowel',
     shapes: {
-      Jaw_Open: 0.65,
-      V_Open: 0.9,
-      Mouth_Shrug_Lower: 0.25
+      Jaw_Open: 0.75,
+      V_Open: 0.85,
+      Mouth_Shrug_Lower: 0.35,
+      Mouth_Down_Lower_L: 0.35,
+      Mouth_Down_Lower_R: 0.35,
+      Mouth_Up_Upper_L: 0.20,
+      Mouth_Up_Upper_R: 0.20,
+      Mouth_Stretch_L: 0.15,
+      Mouth_Stretch_R: 0.15,
+      Mouth_Pull_Lower_L: 0.15,
+      Mouth_Pull_Lower_R: 0.15,
+      Tongue_Down: 0.30
     }
   },
-  E: {
+
+  // AE : /a/ algo más cerrada / /e/ abierta
+  AE: {
     type: 'vowel',
     shapes: {
+      Jaw_Open: 0.60,
+      V_Open: 0.65,
+      Mouth_Shrug_Lower: 0.30,
+      Mouth_Stretch_L: 0.45,
+      Mouth_Stretch_R: 0.45,
+      Mouth_Smile_L: 0.10,
+      Mouth_Smile_R: 0.10,
+      Mouth_Pull_Upper_L: 0.20,
+      Mouth_Pull_Upper_R: 0.20,
+      Mouth_Pull_Lower_L: 0.20,
+      Mouth_Pull_Lower_R: 0.20,
+      Tongue_Mid_Up: 0.20
+    }
+  },
+
+  // EE : /e/ / i/ muy sonriente
+  EE: {
+    type: 'vowel',
+    shapes: {
+      Jaw_Open: 0.25,
       V_Wide: 0.85,
-      Jaw_Open: 0.28,
-      Mouth_Stretch_L: 0.7,
-      Mouth_Stretch_R: 0.7,
+      Mouth_Stretch_L: 0.80,
+      Mouth_Stretch_R: 0.80,
+      Mouth_Smile_L: 0.20,
+      Mouth_Smile_R: 0.20,
+      Mouth_Tighten_L: 0.30,
+      Mouth_Tighten_R: 0.30,
+      Mouth_Pull_Upper_L: 0.30,
+      Mouth_Pull_Upper_R: 0.30,
+      Tongue_Mid_Up: 0.15
+    }
+  },
+
+  // IH : /i/ más relajada
+  IH: {
+    type: 'vowel',
+    shapes: {
+      Jaw_Open: 0.18,
+      V_Wide: 0.55,
+      Mouth_Stretch_L: 0.50,
+      Mouth_Stretch_R: 0.50,
       Mouth_Smile_L: 0.15,
-      Mouth_Smile_R: 0.15
+      Mouth_Smile_R: 0.15,
+      Mouth_Tighten_L: 0.25,
+      Mouth_Tighten_R: 0.25,
+      Mouth_Pull_Upper_L: 0.20,
+      Mouth_Pull_Upper_R: 0.20
     }
   },
-  I: {
+
+  // OH : /o/ media
+  OH: {
     type: 'vowel',
     shapes: {
-      V_Wide: 0.8,
-      Jaw_Open: 0.24,
-      Mouth_Stretch_L: 0.6,
-      Mouth_Stretch_R: 0.6,
-      Mouth_Smile_Sharp_L: 0.25,
-      Mouth_Smile_Sharp_R: 0.25
+      Jaw_Open: 0.40,
+      V_Tight_O: 0.80,
+      Mouth_Funnel_Up_L: 0.75,
+      Mouth_Funnel_Up_R: 0.75,
+      Mouth_Funnel_Down_L: 0.60,
+      Mouth_Funnel_Down_R: 0.60,
+      Mouth_Pucker_Up_L: 0.35,
+      Mouth_Pucker_Up_R: 0.35,
+      Mouth_Pucker_Down_L: 0.25,
+      Mouth_Pucker_Down_R: 0.25,
+      Mouth_Shrug_Lower: 0.15
     }
   },
-  O: {
+
+  // OO : /u/ / "oo"
+  OO: {
     type: 'vowel',
     shapes: {
-      V_Tight_O: 0.9,
-      Jaw_Open: 0.42,
-      Mouth_Pucker_Up_L: 0.65,
-      Mouth_Pucker_Up_R: 0.65,
-      Mouth_Pucker_Down_L: 0.55,
-      Mouth_Pucker_Down_R: 0.55
+      Jaw_Open: 0.18,
+      V_Tight: 0.60,
+      Mouth_Pucker_Up_L: 0.90,
+      Mouth_Pucker_Up_R: 0.90,
+      Mouth_Pucker_Down_L: 0.80,
+      Mouth_Pucker_Down_R: 0.80,
+      Mouth_Funnel_Up_L: 0.40,
+      Mouth_Funnel_Up_R: 0.40,
+      Mouth_Funnel_Down_L: 0.35,
+      Mouth_Funnel_Down_R: 0.35,
+      Mouth_Push_Upper_L: 0.55,
+      Mouth_Push_Upper_R: 0.55,
+      Mouth_Push_Lower_L: 0.55,
+      Mouth_Push_Lower_R: 0.55
     }
   },
-  U: {
-    type: 'vowel',
-    shapes: {
-      V_Tight: 0.9,
-      Jaw_Open: 0.28,
-      Mouth_Pucker_Up_L: 0.55,
-      Mouth_Pucker_Up_R: 0.55,
-      Mouth_Pucker_Down_L: 0.45,
-      Mouth_Pucker_Down_R: 0.45
-    }
-  },
+
+  // MBP : bilabiales (m, b, p)
   MBP: {
-    type: 'mbp',
+    type: 'consonant',
     shapes: {
+      Jaw_Open: 0.0,
       Mouth_Close: 1.0,
-      V_Explosive: 0.6,
-      Jaw_Open: 0.05
+      V_Explosive: 0.90,
+      Mouth_Press_L: 0.70,
+      Mouth_Press_R: 0.70,
+      Mouth_Tighten_L: 0.50,
+      Mouth_Tighten_R: 0.50,
+      Mouth_Chin_Up: 0.30
     }
   },
-  MBP_PRE: {
-    type: 'mbp',
-    shapes: {
-      Mouth_Close: 0.6,
-      V_Explosive: 0.3,
-      Jaw_Open: 0.08
-    }
-  },
-  MBP_RELEASE: {
-    type: 'mbp',
-    shapes: {
-      Mouth_Close: 0.3,
-      V_Explosive: 0.2,
-      Jaw_Open: 0.12
-    }
-  },
+
+  // FV : labiodentales (f, v)
   FV: {
     type: 'consonant',
     shapes: {
-      V_Dental_Lip: 1.0,
-      Mouth_Close: 0.3,
-      Jaw_Open: 0.15
+      Jaw_Open: 0.12,
+      V_Dental_Lip: 0.90,
+      Mouth_Lower_L: 0.70,
+      Mouth_Lower_R: 0.70,
+      Mouth_Down_Lower_L: 0.60,
+      Mouth_Down_Lower_R: 0.60,
+      Mouth_Press_L: 0.40,
+      Mouth_Press_R: 0.40,
+      Mouth_Pull_Lower_L: 0.45,
+      Mouth_Pull_Lower_R: 0.45,
+      Mouth_Tighten_L: 0.35,
+      Mouth_Tighten_R: 0.35
     }
   },
+
+  // TH : lengua entre dientes (θ, ð)
+  TH: {
+    type: 'consonant',
+    shapes: {
+      Jaw_Open: 0.18,
+      V_Open: 0.25,
+      Mouth_Shrug_Lower: 0.25,
+      Mouth_Down_Lower_L: 0.35,
+      Mouth_Down_Lower_R: 0.35,
+      Tongue_Tip_Up: 0.60,
+      Tongue_Out: 0.65,
+      Tongue_Extend: 0.50,
+      Tongue_Narrow: 0.40
+    }
+  },
+
+  // L : lateral /L/
+  L: {
+    type: 'consonant',
+    shapes: {
+      Jaw_Open: 0.22,
+      V_Lip_Open: 0.30,
+      Mouth_Shrug_Lower: 0.25,
+      Tongue_Tip_Up: 0.75,
+      Tongue_Mid_Up: 0.60,
+      Tongue_Extend: 0.25,
+      Tongue_Wide: 0.35
+    }
+  },
+
+  // S : sibilantes / consonantes "planas"
+  S: {
+    type: 'consonant',
+    shapes: {
+      Jaw_Open: 0.12,
+      V_Wide: 0.40,
+      Mouth_Stretch_L: 0.55,
+      Mouth_Stretch_R: 0.55,
+      Mouth_Tighten_L: 0.45,
+      Mouth_Tighten_R: 0.45,
+      Mouth_Pull_Upper_L: 0.30,
+      Mouth_Pull_Upper_R: 0.30,
+      Tongue_Tip_Up: 0.40,
+      Tongue_Narrow: 0.45
+    }
+  },
+
+  // CH : africadas / post-alveolares
   CH: {
     type: 'consonant',
     shapes: {
-      V_Affricate: 1.0,
-      Jaw_Open: 0.32,
-      Mouth_Tighten_L: 0.2,
-      Mouth_Tighten_R: 0.2
+      Jaw_Open: 0.22,
+      V_Affricate: 0.80,
+      Mouth_Funnel_Up_L: 0.40,
+      Mouth_Funnel_Up_R: 0.40,
+      Mouth_Funnel_Down_L: 0.35,
+      Mouth_Funnel_Down_R: 0.35,
+      Mouth_Pucker_Up_L: 0.30,
+      Mouth_Pucker_Up_R: 0.30,
+      Mouth_Tighten_L: 0.35,
+      Mouth_Tighten_R: 0.35,
+      Tongue_Mid_Up: 0.35
     }
   },
-  W: {
-    type: 'semiVowel',
-    shapes: {
-      V_Lip_Open: 0.7,
-      Mouth_Pucker_Up_L: 0.4,
-      Mouth_Pucker_Up_R: 0.4,
-      Mouth_Pucker_Down_L: 0.4,
-      Mouth_Pucker_Down_R: 0.4
-    }
-  },
-  EXP: {
+
+  // KG : velares (/k/, /g/, /x/)
+  KG: {
     type: 'consonant',
     shapes: {
-      V_Explosive: 1.0,
-      Jaw_Open: 0.2
+      Jaw_Open: 0.18,
+      V_Open: 0.15,
+      Mouth_Shrug_Lower: 0.15,
+      Tongue_Roll: 0.70,
+      Tongue_Mid_Up: 0.30,
+      Tongue_Tip_Down: 0.25
+    }
+  },
+
+  // R : róticas (r, ɾ)
+  R: {
+    type: 'consonant',
+    shapes: {
+      Jaw_Open: 0.15,
+      V_Tight: 0.35,
+      Mouth_Pucker_Up_L: 0.40,
+      Mouth_Pucker_Up_R: 0.40,
+      Mouth_Pucker_Down_L: 0.35,
+      Mouth_Pucker_Down_R: 0.35,
+      Mouth_Stretch_L: 0.25,
+      Mouth_Stretch_R: 0.25,
+      Mouth_Tighten_L: 0.35,
+      Mouth_Tighten_R: 0.35,
+      Tongue_Tip_Up: 0.50,
+      Tongue_Mid_Up: 0.40,
+      Tongue_Narrow: 0.35
     }
   }
 };
@@ -215,7 +364,7 @@ const COARTICULATION_WEIGHTS = {
 
 function getVisemeBlendAtTime(t) {
   if (!visemeTimeline || visemeTimeline.length === 0) {
-    return { REST: 1.0 };
+    return { SIL: 1.0 };
   }
 
   let currentIndex = -1;
@@ -229,7 +378,7 @@ function getVisemeBlendAtTime(t) {
   }
 
   if (currentIndex === -1) {
-    return { REST: 1.0 };
+    return { SIL: 1.0 };
   }
 
   const result = {};
@@ -250,7 +399,7 @@ function getVisemeBlendAtTime(t) {
   const sum = Object.values(result).reduce((a, b) => a + b, 0);
 
   if (!sum) {
-    return { REST: 1.0 };
+    return { SIL: 1.0 };
   }
 
   for (const k of Object.keys(result)) {
@@ -285,7 +434,7 @@ function computeTargetsFromVisemeWeights(visemeWeights) {
   });
 
   for (const [visemeName, weight] of Object.entries(visemeWeights)) {
-    const cfg = VISEME_CONFIG[visemeName] || VISEME_CONFIG.REST;
+    const cfg = VISEME_CONFIG[visemeName] || VISEME_CONFIG.SIL;
     if (!cfg || !cfg.shapes) continue;
 
     for (const [shapeName, value] of Object.entries(cfg.shapes)) {
@@ -429,39 +578,39 @@ export async function playAudioWithVisemes(audioUrl, timeline) {
 function playFakeDemoTimeline() {
   const demoTimeline = [
     { start: 0.00, end: 0.08, viseme: 'CH' },
-    { start: 0.08, end: 0.24, viseme: 'O' },
-    { start: 0.24, end: 0.36, viseme: 'E' },
+    { start: 0.08, end: 0.24, viseme: 'OH' },
+    { start: 0.24, end: 0.36, viseme: 'EE' },
     { start: 0.36, end: 0.56, viseme: 'AA' },
 
-    { start: 0.56, end: 0.64, viseme: 'REST' },
+    { start: 0.56, end: 0.64, viseme: 'SIL' },
 
-    { start: 0.64, end: 0.80, viseme: 'E' },
-    { start: 0.80, end: 1.00, viseme: 'O' },
-    { start: 1.00, end: 1.20, viseme: 'I' },
+    { start: 0.64, end: 0.80, viseme: 'EE' },
+    { start: 0.80, end: 1.00, viseme: 'OH' },
+    { start: 1.00, end: 1.20, viseme: 'IH' },
 
-    { start: 1.20, end: 1.28, viseme: 'REST' },
+    { start: 1.20, end: 1.28, viseme: 'SIL' },
 
     { start: 1.28, end: 1.44, viseme: 'MBP' },
     { start: 1.44, end: 1.64, viseme: 'AA' },
-    { start: 1.64, end: 1.84, viseme: 'E' },
-    { start: 1.84, end: 2.04, viseme: 'E' },
+    { start: 1.64, end: 1.84, viseme: 'EE' },
+    { start: 1.84, end: 2.04, viseme: 'EE' },
 
-    { start: 2.04, end: 2.12, viseme: 'REST' },
+    { start: 2.04, end: 2.12, viseme: 'SIL' },
 
-    { start: 2.12, end: 2.28, viseme: 'E' },
+    { start: 2.12, end: 2.28, viseme: 'EE' },
     { start: 2.28, end: 2.44, viseme: 'AA' },
-    { start: 2.44, end: 2.64, viseme: 'E' },
-    { start: 2.64, end: 2.86, viseme: 'O' },
+    { start: 2.44, end: 2.64, viseme: 'EE' },
+    { start: 2.64, end: 2.86, viseme: 'OH' },
 
-    { start: 2.86, end: 2.94, viseme: 'REST' },
+    { start: 2.86, end: 2.94, viseme: 'SIL' },
 
-    { start: 2.94, end: 3.08, viseme: 'E' },
-    { start: 3.08, end: 3.28, viseme: 'O' },
-    { start: 3.28, end: 3.44, viseme: 'E' },
-    { start: 3.44, end: 3.64, viseme: 'E' },
-    { start: 3.64, end: 3.88, viseme: 'E' },
+    { start: 2.94, end: 3.08, viseme: 'EE' },
+    { start: 3.08, end: 3.28, viseme: 'OH' },
+    { start: 3.28, end: 3.44, viseme: 'EE' },
+    { start: 3.44, end: 3.64, viseme: 'EE' },
+    { start: 3.64, end: 3.88, viseme: 'EE' },
 
-    { start: 3.88, end: 4.20, viseme: 'REST' }
+    { start: 3.88, end: 4.20, viseme: 'SIL' }
   ];
 
   setVisemeTimeline(demoTimeline);
@@ -702,54 +851,54 @@ async function startRecording() {
     };
 
     mediaRecorder.onstop = async () => {
-  // Parar ondas
-  if (waveAnimationId) cancelAnimationFrame(waveAnimationId);
-  waveAnimationId = null;
+      // Parar ondas
+      if (waveAnimationId) cancelAnimationFrame(waveAnimationId);
+      waveAnimationId = null;
 
-  if (waveAudioCtx) {
-    waveAudioCtx.close();
-    waveAudioCtx = null;
-  }
+      if (waveAudioCtx) {
+        waveAudioCtx.close();
+        waveAudioCtx = null;
+      }
 
-  if (audioStream) {
-    audioStream.getTracks().forEach(t => t.stop());
-    audioStream = null;
-  }
+      if (audioStream) {
+        audioStream.getTracks().forEach(t => t.stop());
+        audioStream = null;
+      }
 
-  micBtn.textContent = '🎤 Hablar';
-  micLabel.textContent = 'Procesando audio...';
+      micBtn.textContent = '🎤 Hablar';
+      micLabel.textContent = 'Procesando audio...';
 
-  const blob = new Blob(audioChunks, { type: 'audio/webm' });
+      const blob = new Blob(audioChunks, { type: 'audio/webm' });
 
-  try {
-    const text = await sendAudioToGoogleSTT(blob);
-    if (!text) {
-      micLabel.textContent = 'No se ha entendido el audio';
-      return;
-    }
+      try {
+        const text = await sendAudioToGoogleSTT(blob);
+        if (!text) {
+          micLabel.textContent = 'No se ha entendido el audio';
+          return;
+        }
 
-    // Volcamos el texto al textarea
-    userTextEl.value = text;
-    micLabel.textContent = 'Texto reconocido, enviando al agente...';
+        // Volcamos el texto al textarea
+        userTextEl.value = text;
+        micLabel.textContent = 'Texto reconocido, enviando al agente...';
 
-    const modeRadio = document.querySelector('input[name="agentMode"]:checked');
-    const mode = modeRadio ? modeRadio.value : 'negociar';
-    const withAudio = !textOnlyCheckbox.checked;
+        const modeRadio = document.querySelector('input[name="agentMode"]:checked');
+        const mode = modeRadio ? modeRadio.value : 'negociar';
+        const withAudio = !textOnlyCheckbox.checked;
 
-    sendToAgentBtn.disabled = true;
-    sendToAgentBtn.textContent = 'Hablando...';
-    try {
-      await sendTextToAgent(text, { mode, withAudio });
-    } finally {
-      sendToAgentBtn.disabled = false;
-      sendToAgentBtn.textContent = 'Enviar al agente';
-      micLabel.textContent = 'Pulsa el micro y habla';
-    }
-  } catch (err) {
-    console.error('Error en STT:', err);
-    micLabel.textContent = 'Error al reconocer el audio';
-  }
-};
+        sendToAgentBtn.disabled = true;
+        sendToAgentBtn.textContent = 'Hablando...';
+        try {
+          await sendTextToAgent(text, { mode, withAudio });
+        } finally {
+          sendToAgentBtn.disabled = false;
+          sendToAgentBtn.textContent = 'Enviar al agente';
+          micLabel.textContent = 'Pulsa el micro y habla';
+        }
+      } catch (err) {
+        console.error('Error en STT:', err);
+        micLabel.textContent = 'Error al reconocer el audio';
+      }
+    };
 
     mediaRecorder.start();
 
