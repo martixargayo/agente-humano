@@ -297,11 +297,10 @@ const ExpressionEngine = {
   weight: 0.3,
   targetWeight: 0.3,
   update(delta) {
-    if (AvatarState.emotion === 'neutral') this.targetWeight = 0.2;
-    else this.targetWeight = 0.5;
-
     const smoothing = 1 - Math.exp(-delta * 4);
-    this.weight += (this.targetWeight - this.weight) * smoothing;
+    const emotionBase = AvatarState.emotion === 'neutral' ? 0.6 : 1.0;
+    const desired = this.targetWeight * emotionBase;
+    this.weight += (desired - this.weight) * smoothing;
 
     const preset = EMOTIONS[AvatarState.emotion] || {};
     const targets = {};
@@ -319,8 +318,8 @@ let blinkTimer = 0;
 let nextBlink = 2 + Math.random() * 3;
 let blinkPhase = 0;
 const idleNoise = [
-  ['Eye_Squint_L', 0.05, 1.1],
-  ['Eye_Squint_R', 0.05, 0.9],
+  ['Eye_Squint_Inner_L', 0.05, 1.1],
+  ['Eye_Squint_Inner_R', 0.05, 0.9],
   ['Brow_Raise_Outer_L', 0.04, 0.7],
   ['Mouth_Lips_Press_L', 0.05, 0.5],
   ['Mouth_Lips_Press_R', 0.05, 0.6],
@@ -369,10 +368,7 @@ function lookAtBone(bone, target, strength = 1) {
   if (!bone) return;
   const dir = new THREE.Vector3().subVectors(target, bone.getWorldPosition(new THREE.Vector3())).normalize();
   const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir);
-  const current = bone.quaternion.clone();
   bone.quaternion.slerp(q, strength);
-  bone.updateMatrixWorld();
-  bone.quaternion.copy(current.slerp(q, strength));
 }
 
 const GazeHeadController = {
@@ -441,7 +437,7 @@ export async function playAudioWithVisemes(audioUrl, timeline, { emotion = 'neut
 const loader = new GLTFLoader();
 let avatar = null;
 loader.load(
-  './avatar_cc4_male.glb',
+  './aaron_meshopt.glb',
   (gltf) => {
     avatar = gltf.scene;
     scene.add(avatar);
@@ -505,6 +501,7 @@ const BACKEND_URL = '';
 async function sendTextToAgent(message, { mode = 'negociar', withAudio = true } = {}) {
   const lastReplyEl = document.getElementById('lastReply');
   lastReplyEl.textContent = '…';
+  AvatarState.mode = 'THINKING';
   try {
     const endpoint = mode === 'chat' ? '/chat' : '/negociar';
     const res = await fetch(`${BACKEND_URL}${endpoint}`, {
@@ -523,7 +520,10 @@ async function sendTextToAgent(message, { mode = 'negociar', withAudio = true } 
     const intensity = data.tone === 'excited' ? 1.25 : data.tone === 'calm' ? 0.8 : 1.0;
     lastReplyEl.textContent = replyText;
     AvatarState.emotion = emotion;
-    if (!withAudio || !replyText) return;
+    if (!withAudio || !replyText) {
+      AvatarState.mode = 'IDLE';
+      return;
+    }
 
     const ttsRes = await fetch(`${BACKEND_URL}/tts_with_visemes`, {
       method: 'POST',
@@ -542,6 +542,9 @@ async function sendTextToAgent(message, { mode = 'negociar', withAudio = true } 
   } catch (err) {
     console.error('Error al hablar con el backend:', err);
     lastReplyEl.textContent = 'Error de red con el backend.';
+    AvatarState.mode = 'IDLE';
+  } finally {
+    if (AvatarState.mode !== 'SPEAKING') AvatarState.mode = 'IDLE';
   }
 }
 
@@ -655,6 +658,7 @@ async function startRecording() {
   mediaRecorder.start();
   isRecording = true;
   micLabel.textContent = 'Grabando…';
+  AvatarState.mode = 'LISTENING';
 
   waveAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
   waveAnalyser = waveAudioCtx.createAnalyser();
@@ -673,6 +677,7 @@ function stopRecording() {
   if (waveAudioCtx) waveAudioCtx.close();
   waveAudioCtx = null;
   cancelAnimationFrame(waveAnimationId);
+  if (AvatarState.mode === 'LISTENING') AvatarState.mode = 'IDLE';
 }
 
 if (micBtn) {
