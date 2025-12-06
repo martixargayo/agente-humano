@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 // ----------------------------
@@ -434,7 +436,13 @@ export async function playAudioWithVisemes(audioUrl, timeline, { emotion = 'neut
 // ----------------------------
 // CARGA DEL AVATAR
 // ----------------------------
+const ktx2Loader = new KTX2Loader()
+  .setTranscoderPath('https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/libs/basis/')
+  .detectSupport(renderer);
+
 const loader = new GLTFLoader();
+loader.setKTX2Loader(ktx2Loader);
+loader.setMeshoptDecoder(MeshoptDecoder);
 let avatar = null;
 loader.load(
   './aaron_meshopt.glb',
