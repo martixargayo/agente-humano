@@ -65,6 +65,27 @@
       </label>
     </div>
 
+    <div style="margin-top: 6px; font-size: 13px;">
+      <div>Estado emocional</div>
+      <select id="emotionSelect" style="width: 180px; margin-top: 4px;">
+        <option value="neutral" selected>Neutral</option>
+        <option value="happy">Feliz / alegre</option>
+        <option value="angry">Enfado / tensión</option>
+        <option value="sad">Triste / calmado</option>
+      </select>
+      <div style="margin-top: 6px;">
+        <label for="expressionIntensity">Intensidad facial</label>
+        <input type="range" id="expressionIntensity" min="0" max="1" step="0.05" value="0.45" />
+        <span id="expressionValue" style="font-size:12px;color:#9ca3af;">0.45</span>
+      </div>
+      <div style="margin-top: 6px;">
+        <label>
+          <input type="checkbox" id="idleMotionToggle" checked />
+          Movimiento idle (respiración / balanceo)
+        </label>
+      </div>
+    </div>
+
     <!-- BOTÓN ENVIAR TEXTO -->
     <button id="sendToAgentBtn" style="margin-top: 6px;">Enviar al agente</button>
 
