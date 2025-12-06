@@ -670,7 +670,7 @@ function updateBlink(delta) {
 const loader = new GLTFLoader();
 
 loader.load(
-  './avatar_cc4_male.glb',
+  './aaron_meshopt.glb',
   gltf => {
     console.log('GLB cargado correctamente');
     avatar = gltf.scene;
