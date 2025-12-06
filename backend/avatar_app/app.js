@@ -14,9 +14,32 @@ scene.background = new THREE.Color(0x000000);
 const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.01, 100);
 camera.position.set(0.0116, 1.6245, 0.8421);
 
+let contextLost = false;
+
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
+
+canvas.addEventListener(
+  'webglcontextlost',
+  (event) => {
+    event.preventDefault();
+    contextLost = true;
+    console.warn('WebGL context lost; pausing render loop');
+  },
+  false,
+);
+
+canvas.addEventListener(
+  'webglcontextrestored',
+  () => {
+    contextLost = false;
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    console.info('WebGL context restored; resuming render loop');
+  },
+  false,
+);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
@@ -461,6 +484,7 @@ loader.load(
 const clock = new THREE.Clock();
 function animate() {
   requestAnimationFrame(animate);
+  if (contextLost) return;
   const delta = clock.getDelta();
   const time = clock.elapsedTime;
 
