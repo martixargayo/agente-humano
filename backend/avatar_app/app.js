@@ -777,6 +777,8 @@ function animate() {
     const smoothing = 1 - Math.exp(-clock.getDelta() * 15);
     AvatarState.talkLevel += (targetTalk - AvatarState.talkLevel) * smoothing;
 
+    // TEST RÁPIDO: forzar boca abierta SIEMPRE
+    AvatarState.talkLevel = 1.0;
     particleMaterial.uniforms.uTalk.value = AvatarState.talkLevel;
 
     // restOpen fijo alto para ver siempre separación
@@ -799,6 +801,13 @@ function animate() {
       particlePoints.position.y = 0.01 * Math.sin(t * 0.9) + 0.005 * Math.sin(t * 0.37);
     }
   }
+
+  if (AudioDebug.enabled) {
+  console.log('frame', {
+    mode: AvatarState.mode,
+    talkLevel: Number(AvatarState.talkLevel.toFixed(3))
+  });
+}
 
   controls.update();
   renderer.render(scene, camera);
