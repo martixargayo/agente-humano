@@ -487,6 +487,9 @@ async def tts(payload: TTSRequest):
         print(f">>> /tts llamado. Texto: {payload.text!r}")
         print(f">>> model={TTS_MODEL}, voice={voice}, response_format={fmt}")
 
+        media_type = (
+            "audio/mpeg" if fmt == "mp3" else "audio/ogg" if fmt == "opus" else "audio/wav"
+        )
         audio = openai_client.audio.speech.create(
             model=TTS_MODEL,
             voice=voice,
@@ -495,12 +498,18 @@ async def tts(payload: TTSRequest):
         )
 
         audio_bytes = audio.content
-        print(f">>> /tts: audio_bytes len={len(audio_bytes)}")
-
-        media_type = (
-            "audio/mpeg" if fmt == "mp3" else "audio/ogg" if fmt == "opus" else "audio/wav"
+        print(
+            f">>> /tts: audio_bytes len={len(audio_bytes)}, media_type={media_type}"
         )
         audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
+        logger.info(
+            "Enviando audio TTS base64",
+            extra={
+                "tts_format": fmt,
+                "audio_mime_type": media_type,
+                "audio_base64_len": len(audio_b64),
+            },
+        )
 
         return TTSAudioResponse(
             audio_base64=audio_b64,

@@ -548,7 +548,14 @@ function base64ToAudioUrl(b64, mimeType = 'audio/wav') {
   }
 
   const blob = new Blob([byteArray], { type: mimeType || 'audio/wav' });
-  return URL.createObjectURL(blob);
+  const audioUrl = URL.createObjectURL(blob);
+
+  return {
+    audioUrl,
+    resolvedMimeType: blob.type,
+    byteLength: byteArray.length,
+    base64Length: sanitized.length,
+  };
 }
 
 const BACKEND_URL = '';
@@ -569,8 +576,24 @@ async function requestTTS(text) {
     throw new Error('Respuesta TTS sin audio');
   }
 
-  const audioUrl = base64ToAudioUrl(audioBase64, audioMimeType || 'audio/wav');
-  return audioUrl;
+  let audioUrlData;
+  try {
+    audioUrlData = base64ToAudioUrl(audioBase64, audioMimeType || 'audio/wav');
+  } catch (err) {
+    console.error('[audio] Fallo al convertir base64 de TTS en blob', err);
+    throw err;
+  }
+
+  if (AudioDebug.enabled) {
+    console.info('[audio-debug] TTS recibido', {
+      mimeType: audioMimeType,
+      resolvedMimeType: audioUrlData.resolvedMimeType,
+      base64Length: audioUrlData.base64Length,
+      byteLength: audioUrlData.byteLength,
+    });
+  }
+
+  return audioUrlData;
 }
 
 async function sendTextToAgent(message, { mode = 'negociar', withAudio = true } = {}) {
@@ -603,8 +626,13 @@ async function sendTextToAgent(message, { mode = 'negociar', withAudio = true } 
       return;
     }
 
-    const audioUrl = await requestTTS(replyText);
-    await playAudioFromUrl(audioUrl, { emotion, speechIntensity: intensity });
+    const { audioUrl, resolvedMimeType, byteLength } = await requestTTS(replyText);
+    await playAudioFromUrl(audioUrl, {
+      emotion,
+      speechIntensity: intensity,
+      mimeType: resolvedMimeType,
+      byteLength,
+    });
   } catch (err) {
     console.error('Error al hablar con el backend:', err);
     if (lastReplyEl) lastReplyEl.textContent = err.message || 'Error de red';
@@ -612,7 +640,10 @@ async function sendTextToAgent(message, { mode = 'negociar', withAudio = true } 
   }
 }
 
-async function playAudioFromUrl(audioUrl, { emotion = 'neutral', speechIntensity = 1.0 } = {}) {
+async function playAudioFromUrl(
+  audioUrl,
+  { emotion = 'neutral', speechIntensity = 1.0, mimeType, byteLength } = {}
+) {
   cleanupAudio();
 
   audioElement = new Audio(audioUrl);
@@ -635,6 +666,18 @@ async function playAudioFromUrl(audioUrl, { emotion = 'neutral', speechIntensity
   AvatarState.emotion = emotion;
   AvatarState.speechIntensity = speechIntensity;
 
+  const logState = (label) => {
+    if (!AudioDebug.enabled) return;
+    console.info(`[audio-debug] ${label}`, {
+      readyState: audioElement.readyState,
+      networkState: audioElement.networkState,
+      currentSrc: audioElement.currentSrc,
+      duration: audioElement.duration,
+      mimeType: mimeType || '(desconocido)',
+      byteLength,
+    });
+  };
+
   const logPlay = () => {
     console.info('[audio-debug] Reproduciendo audio', {
       duration: audioElement?.duration,
@@ -644,6 +687,9 @@ async function playAudioFromUrl(audioUrl, { emotion = 'neutral', speechIntensity
   };
   audioElement.addEventListener('play', () => AudioDebug.enabled && logPlay());
   audioElement.addEventListener('playing', () => AudioDebug.enabled && logPlay());
+  ['loadedmetadata', 'canplay', 'canplaythrough', 'stalled', 'suspend', 'abort', 'waiting'].forEach(
+    (eventName) => audioElement.addEventListener(eventName, () => logState(eventName))
+  );
   audioElement.onerror = (e) => {
     const mediaError = audioElement?.error;
     console.error('[audio] Error en elemento de audio', {
@@ -651,7 +697,11 @@ async function playAudioFromUrl(audioUrl, { emotion = 'neutral', speechIntensity
       code: mediaError?.code,
       mediaError,
       src: audioElement?.src,
-      mimeType: audioUrl ? audioUrl.split(':')[1]?.split(';')[0] : undefined,
+      currentSrc: audioElement?.currentSrc,
+      mimeType: mimeType || mediaError?.message,
+      byteLength,
+      readyState: audioElement?.readyState,
+      networkState: audioElement?.networkState,
     });
   };
 
@@ -700,6 +750,7 @@ function getTalkLevelFromAudio() {
     const v = analyserData[i] / 128 - 1; // -1..1
     sum += v * v;
   }
+
 
 
   const rms = Math.sqrt(sum / analyserData.length);
