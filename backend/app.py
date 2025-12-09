@@ -13,9 +13,7 @@ import io  # arriba del archivo
 from fastapi.responses import StreamingResponse
 from openai import OpenAI
 
-from lipsync_bfa import build_viseme_timeline_from_bfa
 import base64
-from typing import List, Dict
 
 import pathlib
 from fastapi.staticfiles import StaticFiles
@@ -33,7 +31,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import logging
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("tts_visemes")
+logger = logging.getLogger("tts_audio")
 
 app = FastAPI(title="Agente Humano - MVP")
 
@@ -108,17 +106,9 @@ class TTSRequest(BaseModel):
     voice: str | None = None   # opcional, por si luego quieres cambiar
     format: str | None = None  # "mp3", "opus", "wav"
 
-class TTSVisemeRequest(BaseModel):
-    text: str
-    voice: str | None = None   # igual que TTSRequest
-    format: str | None = None  # lo ignoraremos y forzaremos WAV por dentro
-
-
-class TTSVisemeResponse(BaseModel):
+class TTSAudioResponse(BaseModel):
     audio_base64: str
     audio_mime_type: str
-    timeline: List[Dict]
-
 
 @app.get("/health")
 def health_check():
@@ -482,13 +472,13 @@ async def tts_openai(payload: TTSRequest):
 
 
     
-@app.post("/tts_with_visemes", response_model=TTSVisemeResponse)
-async def tts_with_visemes(payload: TTSVisemeRequest):
+@app.post("/tts", response_model=TTSAudioResponse)
+async def tts(payload: TTSRequest):
     try:
         voice = payload.voice or DEFAULT_VOICE
-        fmt = "wav"
+        fmt = payload.format or "wav"
 
-        print(f">>> /tts_with_visemes llamado. Texto: {payload.text!r}")
+        print(f">>> /tts llamado. Texto: {payload.text!r}")
         print(f">>> model={TTS_MODEL}, voice={voice}, response_format={fmt}")
 
         audio = openai_client.audio.speech.create(
@@ -498,34 +488,20 @@ async def tts_with_visemes(payload: TTSVisemeRequest):
             response_format=fmt,
         )
 
-        # OpenAI nuevo SDK: el contenido binario está en `audio.content`
         audio_bytes = audio.content
-        print(f">>> /tts_with_visemes: audio_bytes len={len(audio_bytes)}")
-
-        # --- Timeline de visemas con BFA (con fallback) ---
-        try:
-            timeline = build_viseme_timeline_from_bfa(
-                text=payload.text,
-                audio_bytes_wav=audio_bytes,
-            )
-        except Exception as e:
-            print("ERROR construyendo timeline BFA:", repr(e))
-            # Fallback: sin visemas, pero devolvemos audio.
-            timeline = []
+        print(f">>> /tts: audio_bytes len={len(audio_bytes)}")
 
         media_type = "audio/wav"
         audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
 
-        return TTSVisemeResponse(
+        return TTSAudioResponse(
             audio_base64=audio_b64,
             audio_mime_type=media_type,
-            timeline=timeline,
         )
 
     except Exception as e:
-        print("ERROR en /tts_with_visemes:", repr(e))
+        print("ERROR en /tts:", repr(e))
         raise HTTPException(
             status_code=500,
-            detail=f"Error en TTS+visemas: {e}",
+            detail=f"Error en TTS: {e}",
         )
-

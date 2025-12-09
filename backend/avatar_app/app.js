@@ -499,7 +499,7 @@ function base64ToAudioUrl(b64, mimeType = 'audio/wav') {
 const BACKEND_URL = '';
 
 async function requestTTS(text) {
-  const res = await fetch(`${BACKEND_URL}/tts_with_visemes`, {
+  const res = await fetch(`${BACKEND_URL}/tts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text }),
