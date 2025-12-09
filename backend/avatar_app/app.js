@@ -14,10 +14,27 @@ const AvatarState = {
   idleMotionEnabled: true,
 };
 
+const AudioDebug = {
+  enabled: false,
+  minRms: 0.02,
+  scale: 10,
+  logIntervalMs: 1000,
+};
+
+(() => {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('audioDebug') === '1') AudioDebug.enabled = true;
+  const minRms = parseFloat(params.get('minRms'));
+  if (!Number.isNaN(minRms)) AudioDebug.minRms = minRms;
+  const scale = parseFloat(params.get('levelScale'));
+  if (!Number.isNaN(scale)) AudioDebug.scale = scale;
+})();
+
 let audioElement = null;
 let audioCtx = null;
 let analyser = null;
 let analyserData = null;
+let lastAudioDebugLog = 0;
 
 function cleanupAudio() {
   if (audioElement) {
@@ -575,6 +592,16 @@ async function playAudioFromUrl(audioUrl, { emotion = 'neutral', speechIntensity
   AvatarState.emotion = emotion;
   AvatarState.speechIntensity = speechIntensity;
 
+  if (AudioDebug.enabled) {
+    console.info('[audio-debug] Inicio reproducción', {
+      emotion,
+      speechIntensity,
+      analyserFftSize: analyser.fftSize,
+      minRms: AudioDebug.minRms,
+      scale: AudioDebug.scale,
+    });
+  }
+
   audioElement.onended = () => {
     AvatarState.mode = 'IDLE';
     AvatarState.speechIntensity = 1.0;
@@ -589,7 +616,16 @@ function getTalkLevelFromAudio() {
   // Se mide la energía RMS del waveform para detectar presencia de voz y
   // mapearla a la apertura de la boca. Así el movimiento depende sólo del
   // audio real: si llega señal suben los labios, si no, se cierran.
-  if (!(AvatarState.mode === 'SPEAKING' && analyser && analyserData)) return 0;
+  if (!(AvatarState.mode === 'SPEAKING' && analyser && analyserData)) {
+    if (AudioDebug.enabled) {
+      console.warn('[audio-debug] Sin señal de analyser', {
+        mode: AvatarState.mode,
+        hasAnalyser: !!analyser,
+        hasData: !!analyserData,
+      });
+    }
+    return 0;
+  }
 
   analyser.getByteTimeDomainData(analyserData);
   let sum = 0;
@@ -602,8 +638,23 @@ function getTalkLevelFromAudio() {
   const intensity = AvatarState.speechIntensity || 1.0;
 
   // Umbral mínimo para evitar ruido y escala lineal hasta 1.0.
-  const normalized = Math.min(1, Math.max(0, (rms - 0.02) * 10));
-  return normalized * intensity;
+  const normalized = Math.min(1, Math.max(0, (rms - AudioDebug.minRms) * AudioDebug.scale));
+  const talk = normalized * intensity;
+
+  if (AudioDebug.enabled) {
+    const now = performance.now();
+    if (now - lastAudioDebugLog > AudioDebug.logIntervalMs) {
+      lastAudioDebugLog = now;
+      console.info('[audio-debug] RMS', {
+        rms: Number(rms.toFixed(4)),
+        intensity,
+        normalized: Number(normalized.toFixed(3)),
+        talk: Number(talk.toFixed(3)),
+      });
+    }
+  }
+
+  return talk;
 }
 
 // =========================
