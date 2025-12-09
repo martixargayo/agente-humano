@@ -43,19 +43,27 @@ const AudioDebug = {
   }
 })();
 
-let audioElement = null;
 let audioCtx = null;
 let analyser = null;
 let analyserData = null;
 let lastAudioDebugLog = 0;
 let lastMissingAnalyserLog = 0;
 let silentFrameCount = 0;
+let audioSource = null;
 
 function cleanupAudio() {
-  if (audioElement) {
-    audioElement.pause();
-    audioElement.src = '';
-    audioElement = null;
+  if (audioSource) {
+    try {
+      audioSource.stop();
+    } catch (err) {
+      if (AudioDebug.enabled) console.warn('[audio-debug] Error al parar source', err);
+    }
+    try {
+      audioSource.disconnect();
+    } catch (err) {
+      if (AudioDebug.enabled) console.warn('[audio-debug] Error al desconectar source', err);
+    }
+    audioSource = null;
   }
   if (audioCtx) {
     audioCtx.close();
@@ -519,7 +527,7 @@ window.addEventListener('resize', () => {
 // =========================
 // 6. Utilidades de red y audio
 // =========================
-function base64ToAudioUrl(b64, mimeType = 'audio/wav') {
+function base64ToAudioData(b64, mimeType = 'audio/wav') {
   if (typeof b64 !== 'string' || !b64.trim()) {
     throw new Error('Respuesta TTS sin audio_base64 válido');
   }
@@ -548,7 +556,13 @@ function base64ToAudioUrl(b64, mimeType = 'audio/wav') {
   }
 
   const blob = new Blob([byteArray], { type: mimeType || 'audio/wav' });
-  return URL.createObjectURL(blob);
+  const objectUrl = URL.createObjectURL(blob);
+  const arrayBuffer = byteArray.buffer.slice(
+    byteArray.byteOffset,
+    byteArray.byteOffset + byteArray.byteLength,
+  );
+
+  return { blob, objectUrl, mimeType: mimeType || 'audio/wav', arrayBuffer };
 }
 
 const BACKEND_URL = '';
@@ -569,8 +583,7 @@ async function requestTTS(text) {
     throw new Error('Respuesta TTS sin audio');
   }
 
-  const audioUrl = base64ToAudioUrl(audioBase64, audioMimeType || 'audio/wav');
-  return audioUrl;
+  return base64ToAudioData(audioBase64, audioMimeType || 'audio/wav');
 }
 
 async function sendTextToAgent(message, { mode = 'negociar', withAudio = true } = {}) {
@@ -603,8 +616,8 @@ async function sendTextToAgent(message, { mode = 'negociar', withAudio = true } 
       return;
     }
 
-    const audioUrl = await requestTTS(replyText);
-    await playAudioFromUrl(audioUrl, { emotion, speechIntensity: intensity });
+    const audioData = await requestTTS(replyText);
+    await playAudioFromAudioData(audioData, { emotion, speechIntensity: intensity });
   } catch (err) {
     console.error('Error al hablar con el backend:', err);
     if (lastReplyEl) lastReplyEl.textContent = err.message || 'Error de red';
@@ -612,21 +625,40 @@ async function sendTextToAgent(message, { mode = 'negociar', withAudio = true } 
   }
 }
 
-async function playAudioFromUrl(audioUrl, { emotion = 'neutral', speechIntensity = 1.0 } = {}) {
+async function playAudioFromAudioData(
+  audioData,
+  { emotion = 'neutral', speechIntensity = 1.0 } = {},
+) {
   cleanupAudio();
 
-  audioElement = new Audio(audioUrl);
-  audioElement.crossOrigin = 'anonymous';
+  if (!audioData?.arrayBuffer) {
+    throw new Error('Audio inválido (sin buffer)');
+  }
 
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  const source = audioCtx.createMediaElementSource(audioElement);
+
+  let audioBuffer;
+  try {
+    // Decode the full audio before reproducirlo; si falla, sabremos que el base64 está mal
+    const bufferForDecode = audioData.arrayBuffer.slice(0);
+    audioBuffer = await audioCtx.decodeAudioData(bufferForDecode);
+  } catch (err) {
+    console.error('[audio] No se pudo decodificar audio_base64', err);
+    AvatarState.mode = 'IDLE';
+    AvatarState.talkLevel = 0;
+    cleanupAudio();
+    throw err;
+  }
 
   analyser = audioCtx.createAnalyser();
   analyser.fftSize = 512;
   analyser.smoothingTimeConstant = 0.4;
   analyserData = new Uint8Array(analyser.frequencyBinCount);
 
-  source.connect(analyser);
+  audioSource = audioCtx.createBufferSource();
+  audioSource.buffer = audioBuffer;
+
+  audioSource.connect(analyser);
   analyser.connect(audioCtx.destination);
 
   await audioCtx.resume();
@@ -635,21 +667,11 @@ async function playAudioFromUrl(audioUrl, { emotion = 'neutral', speechIntensity
   AvatarState.emotion = emotion;
   AvatarState.speechIntensity = speechIntensity;
 
-  const logPlay = () => {
-    console.info('[audio-debug] Reproduciendo audio', {
-      duration: audioElement?.duration,
-      emotion,
-      speechIntensity,
-    });
-  };
-  audioElement.addEventListener('play', () => AudioDebug.enabled && logPlay());
-  audioElement.addEventListener('playing', () => AudioDebug.enabled && logPlay());
-  audioElement.onerror = (e) => {
-    console.error('[audio] Error en elemento de audio', e?.message || e);
-  };
-
   if (AudioDebug.enabled) {
     console.info('[audio-debug] Inicio reproducción', {
+      mimeType: audioData?.mimeType,
+      blobSize: audioData?.blob?.size,
+      decodedDuration: audioBuffer?.duration,
       emotion,
       speechIntensity,
       analyserFftSize: analyser.fftSize,
@@ -658,14 +680,14 @@ async function playAudioFromUrl(audioUrl, { emotion = 'neutral', speechIntensity
     });
   }
 
-  audioElement.onended = () => {
+  audioSource.onended = () => {
     AvatarState.mode = 'IDLE';
     AvatarState.speechIntensity = 1.0;
     AvatarState.talkLevel = 0;
     cleanupAudio();
   };
 
-  audioElement.play();
+  audioSource.start();
 }
 
 function getTalkLevelFromAudio() {
