@@ -16,8 +16,9 @@ const AvatarState = {
 
 const AudioDebug = {
   enabled: false,
-  minRms: 0.02,
-  scale: 10,
+  // Ajuste para que el audio de TTS genere más movimiento
+  minRms: 0.005,   // antes 0.02
+  scale: 30,       // antes 10
   logIntervalMs: 1000,
 };
 
@@ -350,6 +351,7 @@ function generateFaceParticlesFromVertices(srcGeometry) {
     clusterIds[i] = cx + cy * 10.0;
 
     // ------- Cálculo de región de boca -------
+
     let dx = x - MOUTH_CENTER_X;
     let ax = Math.abs(dx);
 
@@ -483,8 +485,8 @@ loader.load(
         uTalkFreq: { value: 24.0 }, // velocidad "bla bla"
         uLipDepthAmp: { value: 0.03 }, // cuánto entra hacia dentro
 
-        // rest pose (apertura mínima constante)
-        uRestOpen: { value: 0.08 },
+        // rest pose (apertura mínima constante) – elevado como en la versión antigua
+        uRestOpen: { value: 0.30 },
 
         // respiración
         uBreathAmp: { value: 1.0 }, // cantidad de respiración
@@ -641,10 +643,8 @@ async function playAudioFromUrl(audioUrl, { emotion = 'neutral', speechIntensity
 }
 
 function getTalkLevelFromAudio() {
-  // Se mide la energía RMS del waveform para detectar presencia de voz y
-  // mapearla a la apertura de la boca. Así el movimiento depende sólo del
-  // audio real: si llega señal suben los labios, si no, se cierran.
-  if (!(AvatarState.mode === 'SPEAKING' && analyser && analyserData)) {
+  // Relajamos la condición: solo exigimos que exista analyser + buffer
+  if (!(analyser && analyserData)) {
     if (AudioDebug.enabled) {
       const now = performance.now();
       if (now - lastMissingAnalyserLog > AudioDebug.logIntervalMs) {
@@ -719,7 +719,9 @@ function animate() {
     AvatarState.talkLevel += (targetTalk - AvatarState.talkLevel) * smoothing;
 
     particleMaterial.uniforms.uTalk.value = AvatarState.talkLevel;
-    particleMaterial.uniforms.uRestOpen.value = AvatarState.mode === 'SPEAKING' ? 0.07 : 0.03;
+
+    // restOpen fijo alto para asegurar separación visible de labios
+    particleMaterial.uniforms.uRestOpen.value = 0.30;
   }
 
   // movimiento global de cabeza/cuello (más vivo y menos lineal)
