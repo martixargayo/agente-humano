@@ -765,23 +765,17 @@ function animate() {
   if (particleMaterial) {
     particleMaterial.uniforms.uTime.value = elapsed;
 
-    // 3) Tomamos el nivel de audio
     const audioTalk = getTalkLevelFromAudio();
-
-    // 4) Fallback: si estamos en SPEAKING y el nivel es muy bajo, forzamos apertura
     let targetTalk = audioTalk;
+
     if (AvatarState.mode === 'SPEAKING' && targetTalk < 0.05) {
-      targetTalk = 1.0; // como el botón antiguo
+      targetTalk = 1.0; // efecto "botón antiguo" mientras habla
     }
 
     const smoothing = 1 - Math.exp(-clock.getDelta() * 15);
     AvatarState.talkLevel += (targetTalk - AvatarState.talkLevel) * smoothing;
 
-    // TEST RÁPIDO: forzar boca abierta SIEMPRE
-    AvatarState.talkLevel = 1.0;
     particleMaterial.uniforms.uTalk.value = AvatarState.talkLevel;
-
-    // restOpen fijo alto para ver siempre separación
     particleMaterial.uniforms.uRestOpen.value = 0.30;
   }
 
