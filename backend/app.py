@@ -476,7 +476,13 @@ async def tts_openai(payload: TTSRequest):
 async def tts(payload: TTSRequest):
     try:
         voice = payload.voice or DEFAULT_VOICE
-        fmt = payload.format or "wav"
+        fmt = payload.format or DEFAULT_FORMAT
+
+        if fmt not in {"mp3", "opus", "wav"}:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Formato de audio no soportado: {fmt}",
+            )
 
         print(f">>> /tts llamado. Texto: {payload.text!r}")
         print(f">>> model={TTS_MODEL}, voice={voice}, response_format={fmt}")
@@ -491,7 +497,9 @@ async def tts(payload: TTSRequest):
         audio_bytes = audio.content
         print(f">>> /tts: audio_bytes len={len(audio_bytes)}")
 
-        media_type = "audio/wav"
+        media_type = (
+            "audio/mpeg" if fmt == "mp3" else "audio/ogg" if fmt == "opus" else "audio/wav"
+        )
         audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
 
         return TTSAudioResponse(

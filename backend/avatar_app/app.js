@@ -520,11 +520,34 @@ window.addEventListener('resize', () => {
 // 6. Utilidades de red y audio
 // =========================
 function base64ToAudioUrl(b64, mimeType = 'audio/wav') {
-  const byteChars = atob(b64);
+  if (typeof b64 !== 'string' || !b64.trim()) {
+    throw new Error('Respuesta TTS sin audio_base64 válido');
+  }
+
+  // Normalizamos por si viniera con prefijo data: o espacios/saltos de línea
+  const sanitized = b64
+    .replace(/^data:[^;]+;base64,/, '')
+    .replace(/\s+/g, '')
+    .replace(/-/g, '+')
+    .replace(/_/g, '/');
+
+  let byteChars;
+  try {
+    byteChars = atob(sanitized);
+  } catch (err) {
+    console.error('[audio] No se pudo decodificar base64', err);
+    throw new Error('Audio base64 corrupto');
+  }
+
   const byteNumbers = new Array(byteChars.length);
   for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
   const byteArray = new Uint8Array(byteNumbers);
-  const blob = new Blob([byteArray], { type: mimeType });
+
+  if (byteArray.length === 0) {
+    throw new Error('Audio vacío tras decodificar base64');
+  }
+
+  const blob = new Blob([byteArray], { type: mimeType || 'audio/wav' });
   return URL.createObjectURL(blob);
 }
 
@@ -541,7 +564,12 @@ async function requestTTS(text) {
     throw new Error(`Error TTS: ${res.status} ${msg}`);
   }
   const data = await res.json();
-  const audioUrl = base64ToAudioUrl(data.audio_base64, data.audio_mime_type || 'audio/wav');
+  const { audio_base64: audioBase64, audio_mime_type: audioMimeType } = data;
+  if (!audioBase64) {
+    throw new Error('Respuesta TTS sin audio');
+  }
+
+  const audioUrl = base64ToAudioUrl(audioBase64, audioMimeType || 'audio/wav');
   return audioUrl;
 }
 
@@ -617,7 +645,14 @@ async function playAudioFromUrl(audioUrl, { emotion = 'neutral', speechIntensity
   audioElement.addEventListener('play', () => AudioDebug.enabled && logPlay());
   audioElement.addEventListener('playing', () => AudioDebug.enabled && logPlay());
   audioElement.onerror = (e) => {
-    console.error('[audio] Error en elemento de audio', e?.message || e);
+    const mediaError = audioElement?.error;
+    console.error('[audio] Error en elemento de audio', {
+      message: e?.message || e,
+      code: mediaError?.code,
+      mediaError,
+      src: audioElement?.src,
+      mimeType: audioUrl ? audioUrl.split(':')[1]?.split(';')[0] : undefined,
+    });
   };
 
   if (AudioDebug.enabled) {
@@ -637,7 +672,9 @@ async function playAudioFromUrl(audioUrl, { emotion = 'neutral', speechIntensity
     cleanupAudio();
   };
 
-  audioElement.play();
+  audioElement.play().catch((err) => {
+    console.error('[audio] No se pudo iniciar reproducción', err);
+  });
 }
 
 function getTalkLevelFromAudio() {
@@ -663,6 +700,7 @@ function getTalkLevelFromAudio() {
     const v = analyserData[i] / 128 - 1; // -1..1
     sum += v * v;
   }
+
 
   const rms = Math.sqrt(sum / analyserData.length);
   const intensity = AvatarState.speechIntensity || 1.0;
