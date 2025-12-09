@@ -585,6 +585,27 @@ async function playAudioFromUrl(audioUrl, { emotion = 'neutral', speechIntensity
   audioElement.play();
 }
 
+function getTalkLevelFromAudio() {
+  // Se mide la energía RMS del waveform para detectar presencia de voz y
+  // mapearla a la apertura de la boca. Así el movimiento depende sólo del
+  // audio real: si llega señal suben los labios, si no, se cierran.
+  if (!(AvatarState.mode === 'SPEAKING' && analyser && analyserData)) return 0;
+
+  analyser.getByteTimeDomainData(analyserData);
+  let sum = 0;
+  for (let i = 0; i < analyserData.length; i++) {
+    const v = analyserData[i] / 128 - 1; // -1..1
+    sum += v * v;
+  }
+
+  const rms = Math.sqrt(sum / analyserData.length);
+  const intensity = AvatarState.speechIntensity || 1.0;
+
+  // Umbral mínimo para evitar ruido y escala lineal hasta 1.0.
+  const normalized = Math.min(1, Math.max(0, (rms - 0.02) * 10));
+  return normalized * intensity;
+}
+
 // =========================
 // 7. Loop
 // =========================
@@ -595,21 +616,7 @@ function animate() {
   if (particleMaterial) {
     particleMaterial.uniforms.uTime.value = elapsed;
 
-    // calcular apertura de boca según audio real
-    let targetTalk = 0;
-    if (AvatarState.mode === 'SPEAKING' && analyser && analyserData) {
-      analyser.getByteTimeDomainData(analyserData);
-      let sum = 0;
-      for (let i = 0; i < analyserData.length; i++) {
-        const v = analyserData[i] / 128 - 1; // -1..1
-        sum += v * v;
-      }
-      const rms = Math.sqrt(sum / analyserData.length);
-      // mapear RMS a apertura. Umbral bajo para que cierre en pausas.
-      const intensity = AvatarState.speechIntensity || 1.0;
-      targetTalk = Math.min(1, Math.max(0, (rms - 0.02) * 10)) * intensity;
-    }
-
+    const targetTalk = getTalkLevelFromAudio();
     const smoothing = 1 - Math.exp(-clock.getDelta() * 15);
     AvatarState.talkLevel += (targetTalk - AvatarState.talkLevel) * smoothing;
 
@@ -650,9 +657,6 @@ animate();
 const sendToAgentBtn = document.getElementById('sendToAgentBtn');
 const userTextEl = document.getElementById('userText');
 const textOnlyCheckbox = document.getElementById('textOnly');
-const emotionSelect = document.getElementById('emotionSelect');
-const expressionSlider = document.getElementById('expressionIntensity');
-const expressionValue = document.getElementById('expressionValue');
 const idleMotionToggle = document.getElementById('idleMotionToggle');
 
 if (sendToAgentBtn) {
@@ -680,24 +684,6 @@ if (userTextEl) {
       sendToAgentBtn?.click();
     }
   });
-}
-
-if (emotionSelect) {
-  AvatarState.emotion = emotionSelect.value || 'neutral';
-  emotionSelect.addEventListener('change', (e) => {
-    AvatarState.emotion = e.target.value;
-  });
-}
-
-if (expressionSlider) {
-  const applyIntensity = (value) => {
-    const num = parseFloat(value);
-    if (Number.isFinite(num) && expressionValue) {
-      expressionValue.textContent = num.toFixed(2);
-    }
-  };
-  applyIntensity(expressionSlider.value || '0.45');
-  expressionSlider.addEventListener('input', (e) => applyIntensity(e.target.value));
 }
 
 if (idleMotionToggle) {
