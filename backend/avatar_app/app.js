@@ -50,6 +50,7 @@ let analyserData = null;
 let lastAudioDebugLog = 0;
 let lastMissingAnalyserLog = 0;
 let silentFrameCount = 0;
+let lastSilentTalkLog = 0;
 
 function cleanupAudio() {
   if (audioElement) {
@@ -550,6 +551,15 @@ function base64ToAudioUrl(b64, mimeType = 'audio/wav') {
   const blob = new Blob([byteArray], { type: mimeType || 'audio/wav' });
   const audioUrl = URL.createObjectURL(blob);
 
+  if (AudioDebug.enabled) {
+    console.info('[audio-debug] Blob creado', {
+      resolvedMimeType: blob.type,
+      byteLength: byteArray.length,
+      base64Length: sanitized.length,
+      sample: byteArray.slice(0, 12),
+    });
+  }
+
   return {
     audioUrl,
     resolvedMimeType: blob.type,
@@ -590,6 +600,7 @@ async function requestTTS(text) {
       resolvedMimeType: audioUrlData.resolvedMimeType,
       base64Length: audioUrlData.base64Length,
       byteLength: audioUrlData.byteLength,
+      audioUrl: audioUrlData.audioUrl,
     });
   }
 
@@ -667,15 +678,20 @@ async function playAudioFromUrl(
   AvatarState.speechIntensity = speechIntensity;
 
   const logState = (label) => {
-    if (!AudioDebug.enabled) return;
-    console.info(`[audio-debug] ${label}`, {
+    const payload = {
       readyState: audioElement.readyState,
       networkState: audioElement.networkState,
       currentSrc: audioElement.currentSrc,
+      src: audioElement.src,
       duration: audioElement.duration,
       mimeType: mimeType || '(desconocido)',
       byteLength,
-    });
+      audioUrl,
+    };
+    if (AudioDebug.enabled) {
+      console.info(`[audio-debug] ${label}`, payload);
+    }
+    return payload;
   };
 
   const logPlay = () => {
@@ -692,6 +708,7 @@ async function playAudioFromUrl(
   );
   audioElement.onerror = (e) => {
     const mediaError = audioElement?.error;
+    const detail = logState('error-state');
     console.error('[audio] Error en elemento de audio', {
       message: e?.message || e,
       code: mediaError?.code,
@@ -702,7 +719,16 @@ async function playAudioFromUrl(
       byteLength,
       readyState: audioElement?.readyState,
       networkState: audioElement?.networkState,
+      audioUrl,
+      eventType: e?.type,
+      detail,
     });
+  };
+
+  audioElement.onloadeddata = () => {
+    if (AudioDebug.enabled) {
+      console.info('[audio-debug] Datos de audio cargados', logState('loadeddata'));
+    }
   };
 
   if (AudioDebug.enabled) {
@@ -724,6 +750,7 @@ async function playAudioFromUrl(
 
   audioElement.play().catch((err) => {
     console.error('[audio] No se pudo iniciar reproducción', err);
+    logState('play-rejected');
   });
 }
 
@@ -751,8 +778,6 @@ function getTalkLevelFromAudio() {
     sum += v * v;
   }
 
-
-
   const rms = Math.sqrt(sum / analyserData.length);
   const intensity = AvatarState.speechIntensity || 1.0;
 
@@ -762,6 +787,23 @@ function getTalkLevelFromAudio() {
     Math.max(0, (rms - AudioDebug.minRms) * AudioDebug.scale)
   );
   const talk = normalized * intensity;
+
+  if (AvatarState.mode === 'SPEAKING' && talk < 0.01) {
+    const now = performance.now();
+    if (now - lastSilentTalkLog > 1500) {
+      lastSilentTalkLog = now;
+      console.warn('[audio] Nivel de RMS casi nulo durante SPEAKING', {
+        rms: Number(rms.toFixed(4)),
+        normalized: Number(normalized.toFixed(4)),
+        talk: Number(talk.toFixed(4)),
+        readyState: audioElement?.readyState,
+        networkState: audioElement?.networkState,
+        hasAnalyser: !!analyser,
+        hasData: !!analyserData,
+        mode: AvatarState.mode,
+      });
+    }
+  }
 
   if (AudioDebug.enabled) {
     const now = performance.now();
@@ -791,7 +833,6 @@ function getTalkLevelFromAudio() {
   }
 
   return talk;
-}
 
 
 // =========================
