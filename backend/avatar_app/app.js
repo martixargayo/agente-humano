@@ -28,6 +28,18 @@ const AudioDebug = {
   if (!Number.isNaN(minRms)) AudioDebug.minRms = minRms;
   const scale = parseFloat(params.get('levelScale'));
   if (!Number.isNaN(scale)) AudioDebug.scale = scale;
+  const logIntervalMs = parseFloat(params.get('logIntervalMs'));
+  if (!Number.isNaN(logIntervalMs)) AudioDebug.logIntervalMs = logIntervalMs;
+
+  if (AudioDebug.enabled) {
+    console.info('[audio-debug] Activado', {
+      minRms: AudioDebug.minRms,
+      scale: AudioDebug.scale,
+      logIntervalMs: AudioDebug.logIntervalMs,
+    });
+  } else {
+    console.info('Para depurar el movimiento de labios añade ?audioDebug=1&minRms=0.01&levelScale=15 a la URL.');
+  }
 })();
 
 let audioElement = null;
@@ -35,6 +47,9 @@ let audioCtx = null;
 let analyser = null;
 let analyserData = null;
 let lastAudioDebugLog = 0;
+let lastMissingAnalyserLog = 0;
+let silentFrameCount = 0;
+
 
 function cleanupAudio() {
   if (audioElement) {
@@ -592,6 +607,19 @@ async function playAudioFromUrl(audioUrl, { emotion = 'neutral', speechIntensity
   AvatarState.emotion = emotion;
   AvatarState.speechIntensity = speechIntensity;
 
+  const logPlay = () => {
+    console.info('[audio-debug] Reproduciendo audio', {
+      duration: audioElement?.duration,
+      emotion,
+      speechIntensity,
+    });
+  };
+  audioElement.addEventListener('play', () => AudioDebug.enabled && logPlay());
+  audioElement.addEventListener('playing', () => AudioDebug.enabled && logPlay());
+  audioElement.onerror = (e) => {
+    console.error('[audio] Error en elemento de audio', e?.message || e);
+  };
+
   if (AudioDebug.enabled) {
     console.info('[audio-debug] Inicio reproducción', {
       emotion,
@@ -618,11 +646,15 @@ function getTalkLevelFromAudio() {
   // audio real: si llega señal suben los labios, si no, se cierran.
   if (!(AvatarState.mode === 'SPEAKING' && analyser && analyserData)) {
     if (AudioDebug.enabled) {
-      console.warn('[audio-debug] Sin señal de analyser', {
-        mode: AvatarState.mode,
-        hasAnalyser: !!analyser,
-        hasData: !!analyserData,
-      });
+      const now = performance.now();
+      if (now - lastMissingAnalyserLog > AudioDebug.logIntervalMs) {
+        lastMissingAnalyserLog = now;
+        console.warn('[audio-debug] Sin señal de analyser', {
+          mode: AvatarState.mode,
+          hasAnalyser: !!analyser,
+          hasData: !!analyserData,
+        });
+      }
     }
     return 0;
   }
@@ -650,12 +682,27 @@ function getTalkLevelFromAudio() {
         intensity,
         normalized: Number(normalized.toFixed(3)),
         talk: Number(talk.toFixed(3)),
+        bufferSample: analyserData.slice(0, 8),
       });
+    }
+
+    if (rms < AudioDebug.minRms) {
+      silentFrameCount += 1;
+      if (silentFrameCount % 30 === 0) {
+        console.warn('[audio-debug] Señal de audio por debajo del umbral', {
+          rms: Number(rms.toFixed(4)),
+          minRms: AudioDebug.minRms,
+          silentFrames: silentFrameCount,
+        });
+      }
+    } else {
+      silentFrameCount = 0;
     }
   }
 
   return talk;
 }
+
 
 // =========================
 // 7. Loop
