@@ -1,752 +1,594 @@
-import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
-import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+// app.js
+alert('app.js malla de puntos dinámica + sombreado por textura está cargando');
 
-// ----------------------------
-// ESCENA BÁSICA
-// ----------------------------
+import * as THREE from 'three';
+import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/loaders/GLTFLoader.js';
+import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/controls/OrbitControls.js';
+import * as BufferGeometryUtils from 'https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/utils/BufferGeometryUtils.js';
+
+// =========================
+// 1. Escena básica
+// =========================
 const canvas = document.getElementById('c');
+
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x000000);
 
-const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.01, 100);
-camera.position.set(0.0116, 1.6245, 0.8421);
+const camera = new THREE.PerspectiveCamera(
+  40,
+  window.innerWidth / window.innerHeight,
+  0.01,
+  100
+);
+camera.position.set(0, 0.25, 1.9);
 
-let contextLost = false;
-
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+const renderer = new THREE.WebGLRenderer({
+  canvas,
+  antialias: true
+});
 renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
 
-canvas.addEventListener(
-  'webglcontextlost',
-  (event) => {
-    event.preventDefault();
-    contextLost = true;
-    console.warn('WebGL context lost; pausing render loop');
-  },
-  false,
-);
-
-canvas.addEventListener(
-  'webglcontextrestored',
-  () => {
-    contextLost = false;
-    renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    console.info('WebGL context restored; resuming render loop');
-  },
-  false,
-);
-
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
-controls.target.set(0, 1.6, 0);
-controls.minDistance = 0.5;
-controls.maxDistance = 4;
-controls.update();
+controls.dampingFactor = 0.08;
+controls.target.set(0, 0.2, 0);
 
-const keyLight = new THREE.DirectionalLight(0xffffff, 1.0);
+const keyLight = new THREE.DirectionalLight(0xffffff, 0.9);
 keyLight.position.set(2, 4, 3);
 scene.add(keyLight);
 
-const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
-fillLight.position.set(-3, 2, 1);
-scene.add(fillLight);
-
-const rimLight = new THREE.DirectionalLight(0xffffff, 0.2);
-rimLight.position.set(0, 3, -3);
+const rimLight = new THREE.DirectionalLight(0xffffff, 0.5);
+rimLight.position.set(-2, 3, -2);
 scene.add(rimLight);
 
-scene.add(new THREE.AmbientLight(0xffffff, 0.25));
+const ambient = new THREE.AmbientLight(0xffffff, 0.2);
+scene.add(ambient);
 
-// ----------------------------
-// RIG DEL AVATAR
-// ----------------------------
-const rig = {
-  meshes: [],
-  morphs: new Map(), // nombre -> { targets: [{mesh,index}] }
-  bones: { head: null, neck: null, spine: null, eyes: { L: null, R: null } },
+const clock = new THREE.Clock();
+
+// =========================
+// Config boca (ajustable a mano)
+// =========================
+const MOUTH_CENTER_Y = 0.16;     // posición vertical del centro de la boca
+const MOUTH_CENTER_X = -0.045;  // posición horizontal del centro de la boca
+const MOUTH_WIDTH    = 0.18;    // ancho de la región de boca
+const MOUTH_HEIGHT   = 0.20;    // alto máximo (labios + hueco)
+const MOUTH_CURVE    = 0.0;     // curvatura en U (0 = recto)
+
+// =========================
+// Control "Hablar" (botón)
+// =========================
+let isTalking = false;
+
+const talkButton = document.createElement('button');
+talkButton.textContent = 'Hablar (mantén)';
+Object.assign(talkButton.style, {
+  position: 'fixed',
+  bottom: '20px',
+  left: '50%',
+  transform: 'translateX(-50%)',
+  padding: '10px 22px',
+  borderRadius: '999px',
+  border: 'none',
+  background: 'rgba(255,255,255,0.14)',
+  color: '#ffffff',
+  fontFamily:
+    'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  fontSize: '13px',
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase',
+  cursor: 'pointer',
+  backdropFilter: 'blur(12px)',
+  zIndex: '10'
+});
+document.body.appendChild(talkButton);
+
+const startTalking = () => {
+  isTalking = true;
+};
+const stopTalking = () => {
+  isTalking = false;
 };
 
-function mapMorphTargets(root) {
-  rig.meshes.length = 0;
-  rig.morphs.clear();
+talkButton.addEventListener('mousedown', startTalking);
+talkButton.addEventListener('mouseup', stopTalking);
+talkButton.addEventListener('mouseleave', stopTalking);
 
-  root.traverse((obj) => {
-    if (obj.isBone) {
-      const name = obj.name.toLowerCase();
-      if (name.includes('head') && !rig.bones.head) rig.bones.head = obj;
-      else if (name.includes('neck') && !rig.bones.neck) rig.bones.neck = obj;
-      else if ((name.includes('spine') || name.includes('chest')) && !rig.bones.spine) rig.bones.spine = obj;
-      else if (name.includes('eye') && name.includes('l')) rig.bones.eyes.L = obj;
-      else if (name.includes('eye') && name.includes('r')) rig.bones.eyes.R = obj;
+talkButton.addEventListener(
+  'touchstart',
+  (e) => {
+    e.preventDefault();
+    startTalking();
+  },
+  { passive: false }
+);
+talkButton.addEventListener(
+  'touchend',
+  (e) => {
+    e.preventDefault();
+    stopTalking();
+  },
+  { passive: false }
+);
+
+// =========================
+// 2. Shaders de partículas
+// =========================
+
+// Vertex: movimiento tipo “campo” + respiración + boca hablando + tamaño fijo
+const vertexShader = /* glsl */ `
+precision highp float;
+
+uniform float uPointSize;
+uniform float uTime;
+uniform float uGlobalAmp;
+uniform float uClusterAmp;
+uniform float uNoiseAmp;
+
+// habla
+uniform float uTalk;
+uniform float uTalkAmpTop;
+uniform float uTalkAmpBot;
+uniform float uTalkFreq;
+uniform float uLipDepthAmp;
+uniform float uRestOpen;   // apertura mínima en reposo
+
+// respiración
+uniform float uBreathAmp;
+uniform float uBreathFreq;
+
+attribute vec3 aBasePosition;
+attribute vec3 aRandom;
+attribute float aClusterId;
+attribute vec2 aUv;
+
+// boca
+attribute float aMouthWeight;
+attribute float aMouthSide;
+
+varying vec2 vUv;
+
+// --- helpers de ruido simples --- //
+float hash11(float p) {
+  return fract(sin(p * 127.1) * 43758.5453123);
+}
+
+float hash21(vec2 p) {
+  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+}
+
+float simpleNoise(vec3 p, float t) {
+  float n1 = hash21(p.xy + t);
+  float n2 = hash21(p.yz - t * 0.5);
+  return (n1 + n2) * 0.5; // 0..1
+}
+
+void main() {
+  vUv = aUv;
+
+  vec3 pos = aBasePosition;
+  float t = uTime;
+
+  // 1) ONDA GLOBAL SUAVE (como “campo” de la cara)
+  float globalPhase = t * 0.5;
+  float swayX = sin(globalPhase + aRandom.x * 6.2831);
+  float swayY = cos(globalPhase * 0.8 + aRandom.y * 6.2831);
+
+  vec3 globalOffset = vec3(
+    swayX * 0.003,
+    swayY * 0.002,
+    0.0
+  ) * uGlobalAmp;
+
+  // 2) MOVIMIENTO POR CLUSTERS (manchas)
+  float clusterPhase = hash11(aClusterId + 10.0) * 6.2831;
+  float clusterAnim = sin(t * 0.8 + clusterPhase);
+
+  vec3 clusterDir = normalize(vec3(
+    hash11(aClusterId + 1.0) - 0.5,
+    hash11(aClusterId + 2.0) - 0.5,
+    hash11(aClusterId + 3.0) - 0.5
+  ));
+
+  vec3 clusterOffset = clusterDir * clusterAnim * 0.004 * uClusterAmp;
+
+  // 3) MICRO-NOISE (ligero temblor elegante)
+  float n = simpleNoise(aBasePosition * 1.5, t * 0.6);
+  float micro = (n - 0.5); // -0.5..+0.5
+
+  vec3 microDir = normalize(aRandom * 2.0 - 1.0);
+  vec3 microOffset = microDir * micro * 0.002 * uNoiseAmp;
+
+  // 3.5) RESPIRACIÓN SUAVE (más peso en zona baja)
+  float breathPhase = sin(uTime * uBreathFreq) * 0.5 + 0.5; // 0..1
+  float heightFactor = clamp(1.0 - (aBasePosition.y + 0.3) * 2.0, 0.0, 1.0);
+  float breath = breathPhase * heightFactor * uBreathAmp;
+  vec3 breathOffset = vec3(0.0, breath * 0.01, breath * 0.005);
+
+  // 4) HABLA: labios arriba/abajo + un poco hacia dentro (Z-)
+  float phase = sin(uTime * uTalkFreq);
+  float talkOpen = max(phase, 0.0) * uTalk; // apertura por habla (0..1)
+
+  // apertura total = rest + habla
+  float totalOpen = uRestOpen + talkOpen;
+  totalOpen = clamp(totalOpen, 0.0, 1.0);
+
+  // +1 labio superior, -1 labio inferior
+  float side = aMouthSide;
+
+  // amplitud distinta arriba/abajo
+  float lipAmp = mix(uTalkAmpBot, uTalkAmpTop, step(0.0, side));
+
+  // factor total según peso de boca y apertura
+  float mouthFactor = aMouthWeight * totalOpen;
+
+  // desplazamiento vertical
+  float verticalOffset = side * lipAmp * mouthFactor;
+
+  // pequeño desplazamiento hacia dentro (Z-)
+  float depthOffset = -uLipDepthAmp * mouthFactor;
+
+  vec3 mouthOffset = vec3(
+    0.0,
+    verticalOffset,
+    depthOffset
+  );
+
+  // POSICIÓN FINAL
+  vec3 displaced = pos
+    + globalOffset
+    + clusterOffset
+    + microOffset
+    + breathOffset
+    + mouthOffset;
+
+  vec4 mvPosition = modelViewMatrix * vec4(displaced, 1.0);
+
+  // Tamaño FIJO en pantalla (no depende de la distancia)
+  gl_PointSize = uPointSize;
+
+  gl_Position = projectionMatrix * mvPosition;
+}
+`;
+
+// Fragment: disco suave + modulación por textura de color (zonas claras/oscuras)
+const fragmentShader = /* glsl */ `
+precision highp float;
+
+uniform vec3 uColor;
+uniform sampler2D uColorMap;
+uniform float uUseMap; // 1.0 si hay textura, 0.0 si no
+
+varying vec2 vUv;
+
+void main() {
+  // 1) círculo suave
+  vec2 p = gl_PointCoord * 2.0 - 1.0;
+  float r2 = dot(p, p);
+  if (r2 > 1.0) discard;
+
+  float r = sqrt(r2);
+  float circle = 1.0 - smoothstep(0.7, 1.0, r);
+
+  // 2) leer color de la textura de piel (si existe)
+  vec3 texColor = texture2D(uColorMap, vUv).rgb;
+
+  // brillo 0..1
+  float densityRaw = (texColor.r + texColor.g + texColor.b) / 3.0;
+  // si no hay textura, usamos 1.0 (todo visible)
+  float density = mix(1.0, densityRaw, uUseMap);
+
+  // 3) mapear brillo → alpha (zonas oscuras casi desaparecen)
+  float alphaMask = density;
+  float alpha = circle * alphaMask;
+
+  if (alpha < 0.02) discard;
+
+  // 4) color final: base gris, ligeramente modulado por el brillo
+  vec3 baseColor = uColor;
+  vec3 finalColor = mix(baseColor * 0.6, baseColor, density);
+
+  gl_FragColor = vec4(finalColor, alpha);
+}
+`;
+
+// =========================
+// 3. Generar puntos desde vértices (cara frontal) + UV
+// =========================
+function generateFaceParticlesFromVertices(srcGeometry) {
+  const srcPos = srcGeometry.getAttribute('position');
+  const srcUv  = srcGeometry.getAttribute('uv');
+
+  const vertexCount = srcPos.count;
+
+  const v = new THREE.Vector3();
+  const uv = new THREE.Vector2();
+
+  const posArray = [];
+  const uvArray  = [];
+
+  for (let i = 0; i < vertexCount; i++) {
+    v.fromBufferAttribute(srcPos, i);
+
+    // Corte frontal: solo puntos con Z >= 0 (ajusta si ves la cara al revés)
+    if (v.z < 0.0) continue;
+
+    posArray.push(v.x, v.y, v.z);
+
+    if (srcUv) {
+      uv.fromBufferAttribute(srcUv, i);
+      uvArray.push(uv.x, uv.y);
+    } else {
+      // por si no hay UV, ponemos algo por defecto
+      uvArray.push(0.0, 0.0);
+    }
+  }
+
+  console.log('Vértices usados (cara frontal plano Z=0):', posArray.length / 3);
+
+  const positions = new Float32Array(posArray);
+  const uvs       = new Float32Array(uvArray);
+  const count     = positions.length / 3;
+
+  // Atributos extra para movimiento tipo Phantom
+  const basePositions = new Float32Array(positions.length);
+  basePositions.set(positions);
+
+  const randoms    = new Float32Array(count * 3);
+  const clusterIds = new Float32Array(count);
+
+  // Boca
+  const mouthWeights = new Float32Array(count);
+  const mouthSides   = new Float32Array(count);
+
+  for (let i = 0; i < count; i++) {
+    // random por punto
+    randoms[i * 3 + 0] = Math.random();
+    randoms[i * 3 + 1] = Math.random();
+    randoms[i * 3 + 2] = Math.random();
+
+    const x = positions[i * 3 + 0];
+    const y = positions[i * 3 + 1];
+
+    // clusterId simple a partir de X/Y (para mover “manchas” juntas)
+    const cx = Math.floor((x + 0.4) * 10.0);
+    const cy = Math.floor((y + 0.4) * 10.0);
+    clusterIds[i] = cx + cy * 10.0;
+
+    // ------- Cálculo de región de boca -------
+    let dx = x - MOUTH_CENTER_X;
+    let ax = Math.abs(dx);
+
+    let weight = 0.0;
+    let side   = 0.0;
+
+    if (ax <= MOUTH_WIDTH) {
+      let normX = dx / MOUTH_WIDTH;
+      let curveY = MOUTH_CENTER_Y - MOUTH_CURVE * normX * normX;
+      let dy = y - curveY;
+      let ay = Math.abs(dy);
+
+      if (ay <= MOUTH_HEIGHT) {
+        let wx = 1.0 - ax / MOUTH_WIDTH;   // centro horizontal más peso
+        let wy = 1.0 - ay / MOUTH_HEIGHT;  // cerca de la curva, más peso
+        weight = wx * wy;
+
+        if (weight < 0.0) weight = 0.0;
+        if (weight > 1.0) weight = 1.0;
+
+        if (dy > 0.0) {
+          side = 1.0;     // labio superior
+        } else if (dy < 0.0) {
+          side = -1.0;    // labio inferior
+        } else {
+          side = 0.0;
+        }
+      }
+    }
+
+    mouthWeights[i] = weight;
+    mouthSides[i]   = side;
+  }
+
+  const particlesGeo = new THREE.BufferGeometry();
+  particlesGeo.setAttribute(
+    'position',
+    new THREE.BufferAttribute(positions, 3)
+  );
+  particlesGeo.setAttribute(
+    'aUv',
+    new THREE.BufferAttribute(uvs, 2)
+  );
+  particlesGeo.setAttribute(
+    'aBasePosition',
+    new THREE.BufferAttribute(basePositions, 3)
+  );
+  particlesGeo.setAttribute(
+    'aRandom',
+    new THREE.BufferAttribute(randoms, 3)
+  );
+  particlesGeo.setAttribute(
+    'aClusterId',
+    new THREE.BufferAttribute(clusterIds, 1)
+  );
+  particlesGeo.setAttribute(
+    'aMouthWeight',
+    new THREE.BufferAttribute(mouthWeights, 1)
+  );
+  particlesGeo.setAttribute(
+    'aMouthSide',
+    new THREE.BufferAttribute(mouthSides, 1)
+  );
+
+  return particlesGeo;
+}
+
+// Tamaño de punto fijo
+const POINT_SIZE = 3.5 * window.devicePixelRatio;
+
+// =========================
+// 4. Cargar GLB, fusionar capas, crear partículas
+// =========================
+const loader = new GLTFLoader();
+
+let particleMaterial = null;
+let particlePoints = null; // <<< necesitamos referencia global para mover la cabeza
+
+loader.load(
+  './faceVolumen.glb',
+  (gltf) => {
+    console.log('GLB cargado correctamente');
+
+    const meshes = [];
+    gltf.scene.traverse((obj) => {
+      if (obj.isMesh) meshes.push(obj);
+    });
+
+    console.log('Meshes encontrados:', meshes.map(m => m.name));
+    if (!meshes.length) {
+      console.error('No se encontraron mallas en el GLB');
       return;
     }
 
-    if (obj.isMesh && obj.morphTargetDictionary && obj.morphTargetInfluences) {
-      rig.meshes.push(obj);
-      const dict = obj.morphTargetDictionary;
-      for (const [name, idx] of Object.entries(dict)) {
-        if (!rig.morphs.has(name)) {
-          rig.morphs.set(name, { targets: [] });
-        }
-        rig.morphs.get(name).targets.push({ mesh: obj, index: idx });
+    // intentar recuperar la textura de color de la cara
+    let colorMap = null;
+    for (const m of meshes) {
+      if (m.material && m.material.map) {
+        colorMap = m.material.map;
+        break;
       }
     }
-  });
-}
-
-function setMorph(name, value) {
-  const entry = rig.morphs.get(name);
-  if (!entry) return;
-  for (const { mesh, index } of entry.targets) {
-    mesh.morphTargetInfluences[index] = value;
-  }
-}
-
-function applyMorphState(targets, smoothing = 0.25) {
-  for (const [name, targetValue] of Object.entries(targets)) {
-    const entry = rig.morphs.get(name);
-    if (!entry) continue;
-    for (const { mesh, index } of entry.targets) {
-      const current = mesh.morphTargetInfluences[index] || 0;
-      mesh.morphTargetInfluences[index] = current + (targetValue - current) * smoothing;
+    if (!colorMap) {
+      console.warn('No se ha encontrado material.map (textura de color). Se usará densidad = 1 en todo.');
     }
-  }
-}
 
-function mergeTargets(...lists) {
-  const result = {};
-  lists.forEach((targets) => {
-    if (!targets) return;
-    for (const [name, value] of Object.entries(targets)) {
-      result[name] = Math.min(1, (result[name] || 0) + value);
-    }
-  });
-  return result;
-}
-
-// ----------------------------
-// CONFIG DE VISEMAS ESPECÍFICOS DE AARON
-// ----------------------------
-const VISEME_CONFIG = {
-  AA: {
-    Jaw_Open: 0.85,
-    V_Open: 1.0,
-    Mouth_UpperLip_Raise_L: 0.2,
-    Mouth_UpperLip_Raise_R: 0.2,
-    Mouth_LowerLip_Depress_L: 0.35,
-    Mouth_LowerLip_Depress_R: 0.35,
-    Mouth_Stretch_L: 0.15,
-    Mouth_Stretch_R: 0.15,
-  },
-  E: {
-    Jaw_Open: 0.55,
-    V_Wide: 0.9,
-    Mouth_Stretch_L: 0.4,
-    Mouth_Stretch_R: 0.4,
-    Cheek_Enhance_L: 0.2,
-    Cheek_Enhance_R: 0.2,
-  },
-  I: {
-    Jaw_Open: 0.35,
-    V_Wide: 1.0,
-    Mouth_Stretch_L: 0.6,
-    Mouth_Stretch_R: 0.6,
-    Mouth_Dimple_L: 0.3,
-    Mouth_Dimple_R: 0.3,
-  },
-  O: {
-    Jaw_Open: 0.45,
-    V_Tight_O: 1.0,
-    Mouth_Funnel_UL: 0.7,
-    Mouth_Funnel_UR: 0.7,
-    Mouth_Funnel_DL: 0.7,
-    Mouth_Funnel_DR: 0.7,
-    Mouth_Lips_Towards_UL: 0.25,
-    Mouth_Lips_Towards_UR: 0.25,
-    Mouth_Lips_Towards_DL: 0.25,
-    Mouth_Lips_Towards_DR: 0.25,
-  },
-  U: {
-    Jaw_Open: 0.3,
-    V_Tight_O: 0.9,
-    Mouth_Funnel_UL: 0.5,
-    Mouth_Funnel_UR: 0.5,
-    Mouth_Funnel_DL: 0.5,
-    Mouth_Funnel_DR: 0.5,
-    Mouth_Lips_Towards_UL: 0.45,
-    Mouth_Lips_Towards_UR: 0.45,
-    Mouth_Lips_Towards_DL: 0.45,
-    Mouth_Lips_Towards_DR: 0.45,
-  },
-  MBP: {
-    Jaw_Open: 0.05,
-    V_Explosive: 0.9,
-    V_Dental_Lip: 0.2,
-    Mouth_Lips_Together_UL: 1.0,
-    Mouth_Lips_Together_UR: 1.0,
-    Mouth_Lips_Together_DL: 1.0,
-    Mouth_Lips_Together_DR: 1.0,
-    Mouth_Lips_Press_L: 0.8,
-    Mouth_Lips_Press_R: 0.8,
-  },
-  FV: {
-    Jaw_Open: 0.25,
-    V_Dental_Lip: 1.0,
-    Mouth_Lips_Towards_UL: 0.6,
-    Mouth_Lips_Towards_UR: 0.6,
-    Mouth_UpperLip_Raise_L: 0.25,
-    Mouth_UpperLip_Raise_R: 0.25,
-    Mouth_Lips_Press_L: 0.3,
-    Mouth_Lips_Press_R: 0.3,
-  },
-  CH: {
-    Jaw_Open: 0.35,
-    V_Affricate: 1.0,
-    Mouth_Stretch_L: 0.25,
-    Mouth_Stretch_R: 0.25,
-    Mouth_LowerLip_Depress_L: 0.2,
-    Mouth_LowerLip_Depress_R: 0.2,
-  },
-  W: {
-    Jaw_Open: 0.3,
-    V_Lip_Open: 1.0,
-    Mouth_Lips_Push_UL: 0.6,
-    Mouth_Lips_Push_UR: 0.6,
-    Mouth_Lips_Push_DL: 0.6,
-    Mouth_Lips_Push_DR: 0.6,
-  },
-  REST: {
-    Mouth_Lips_Press_L: 0.2,
-    Mouth_Lips_Press_R: 0.2,
-  },
-};
-
-const COARTICULATION_WEIGHTS = { prev: 0.2, current: 0.6, next: 0.2 };
-
-// ----------------------------
-// ESTADO GLOBAL
-// ----------------------------
-const AvatarState = {
-  mode: 'IDLE', // IDLE | LISTENING | THINKING | SPEAKING
-  emotion: 'neutral',
-  speechIntensity: 1.0,
-  visemeTimeline: [],
-  audioStart: 0,
-  audioDuration: 0,
-  idleMotionEnabled: true,
-};
-
-// ----------------------------
-// LIPSYNC ENGINE
-// ----------------------------
-const LipsyncEngine = {
-  getVisemeWeights(time) {
-    const tl = AvatarState.visemeTimeline;
-    if (!tl.length) return { REST: 1 };
-
-    let currentIndex = tl.findIndex((v) => time >= v.start && time < v.end);
-    if (currentIndex === -1) return { REST: 1 };
-
-    const prev = tl[currentIndex - 1];
-    const current = tl[currentIndex];
-    const next = tl[currentIndex + 1];
-
-    const weights = {};
-    if (prev) weights[prev.viseme] = COARTICULATION_WEIGHTS.prev;
-    if (current) weights[current.viseme] = COARTICULATION_WEIGHTS.current;
-    if (next) weights[next.viseme] = COARTICULATION_WEIGHTS.next;
-
-    return weights;
-  },
-
-  buildTargets(visemeWeights, intensity = 1.0) {
-    const targets = {};
-    for (const [viseme, weight] of Object.entries(visemeWeights)) {
-      const cfg = VISEME_CONFIG[viseme] || VISEME_CONFIG.REST;
-      for (const [name, base] of Object.entries(cfg)) {
-        targets[name] = (targets[name] || 0) + base * weight * intensity;
-      }
-    }
-    Object.keys(targets).forEach((k) => {
-      targets[k] = Math.min(1, targets[k]);
+    const geoms = [];
+    meshes.forEach((m) => {
+      const g = m.geometry.clone();
+      m.updateWorldMatrix(true, false);
+      g.applyMatrix4(m.matrixWorld);
+      geoms.push(g);
     });
-    return targets;
-  },
-};
 
-// ----------------------------
-// EXPRESSION ENGINE
-// ----------------------------
-const EMOTIONS = {
-  neutral: {},
-  happy: {
-    Mouth_Corner_Pull_L: 0.4,
-    Mouth_Corner_Pull_R: 0.4,
-    Mouth_Dimple_L: 0.25,
-    Mouth_Dimple_R: 0.25,
-    Cheek_Enhance_L: 0.3,
-    Cheek_Enhance_R: 0.3,
-    Eye_Squint_Inner_L: 0.2,
-    Eye_Squint_Inner_R: 0.2,
-    Brow_Raise_Outer_L: 0.2,
-    Brow_Raise_Outer_R: 0.2,
-  },
-  sad: {
-    Mouth_Corner_Depress_L: 0.4,
-    Mouth_Corner_Depress_R: 0.4,
-    Brow_Raise_In_L: 0.3,
-    Brow_Raise_In_R: 0.3,
-    Eye_Relax_L: 0.2,
-    Eye_Relax_R: 0.2,
-  },
-  angry: {
-    Brow_Down_L: 0.55,
-    Brow_Down_R: 0.55,
-    Mouth_Lips_Press_L: 0.35,
-    Mouth_Lips_Press_R: 0.35,
-    Nose_Nostril_Dilate_L: 0.3,
-    Nose_Nostril_Dilate_R: 0.3,
-    Eye_Squint_Inner_L: 0.25,
-    Eye_Squint_Inner_R: 0.25,
-    Jaw_Clench_L: 0.2,
-    Jaw_Clench_R: 0.2,
-  },
-};
+    const mergeFn =
+      BufferGeometryUtils.mergeGeometries ||
+      BufferGeometryUtils.mergeBufferGeometries;
 
-const ExpressionEngine = {
-  weight: 0.3,
-  targetWeight: 0.3,
-  update(delta) {
-    const smoothing = 1 - Math.exp(-delta * 4);
-    const emotionBase = AvatarState.emotion === 'neutral' ? 0.6 : 1.0;
-    const desired = this.targetWeight * emotionBase;
-    this.weight += (desired - this.weight) * smoothing;
-
-    const preset = EMOTIONS[AvatarState.emotion] || {};
-    const targets = {};
-    for (const [name, value] of Object.entries(preset)) {
-      targets[name] = value * this.weight;
+    const mergedGeom = mergeFn(geoms, true);
+    if (!mergedGeom) {
+      console.error('Fallo al fusionar geometrías');
+      return;
     }
-    return targets;
-  },
-};
+    mergedGeom.computeVertexNormals();
 
-// ----------------------------
-// IDLE ENGINE (parpadeo + micro movimientos)
-// ----------------------------
-let blinkTimer = 0;
-let nextBlink = 2 + Math.random() * 3;
-let blinkPhase = 0;
-const idleNoise = [
-  ['Eye_Squint_Inner_L', 0.05, 1.1],
-  ['Eye_Squint_Inner_R', 0.05, 0.9],
-  ['Brow_Raise_Outer_L', 0.04, 0.7],
-  ['Mouth_Lips_Press_L', 0.05, 0.5],
-  ['Mouth_Lips_Press_R', 0.05, 0.6],
-];
+    // centrar la malla fusionada
+    mergedGeom.computeBoundingBox();
+    const box = mergedGeom.boundingBox;
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+    mergedGeom.translate(-center.x, -center.y, -center.z);
 
-const IdleEngine = {
-  update(delta, time, mode) {
-    const targets = {};
+    // Generar partículas a partir de los vértices (solo frontal) + UV
+    const particlesGeo = generateFaceParticlesFromVertices(mergedGeom);
 
-    // blink
-    blinkTimer += delta;
-    if (blinkTimer > nextBlink) {
-      blinkTimer = 0;
-      nextBlink = 2 + Math.random() * 4;
-      blinkPhase = 1;
-    }
-    if (blinkPhase > 0) {
-      blinkPhase = Math.max(0, blinkPhase - delta * 3.5);
-      const v = Math.sin(Math.PI * (1 - blinkPhase));
-      targets.Eye_Blink_L = v;
-      targets.Eye_Blink_R = v;
-    }
+    particleMaterial = new THREE.ShaderMaterial({
+      vertexShader,
+      fragmentShader,
+      transparent: true,
+      depthWrite: true,
+      blending: THREE.NormalBlending,
+      uniforms: {
+        uPointSize:    { value: POINT_SIZE },
+        uColor:        { value: new THREE.Color(0xdddddd) },
+        uColorMap:     { value: colorMap },
+        uUseMap:       { value: colorMap ? 1.0 : 0.0 },
 
-    // micro expressions
-    if (AvatarState.idleMotionEnabled) {
-      const idleFactor = mode === 'SPEAKING' ? 0.15 : 0.3;
-      idleNoise.forEach(([name, amp, speed], idx) => {
-        const wave = Math.sin(time * speed + idx * 1.7);
-        targets[name] = Math.max(0, (0.5 + 0.5 * wave) * amp * idleFactor);
-      });
-    }
+        uTime:         { value: 0.0 },
+        uGlobalAmp:    { value: 1.5 },
+        uClusterAmp:   { value: 1.5 },
+        uNoiseAmp:     { value: 1.6 },
 
-    return targets;
-  },
-};
+        // habla
+        uTalk:         { value: 0.0 },
+        uTalkAmpTop:   { value: 0.012 }, // apertura labio superior
+        uTalkAmpBot:   { value: 0.035 }, // apertura labio inferior
+        uTalkFreq:     { value: 24.0 },  // velocidad "bla bla"
+        uLipDepthAmp:  { value: 0.030 }, // cuánto entra hacia dentro
 
-// ----------------------------
-// GAZE + HEAD CONTROLLER
-// ----------------------------
-const gaze = {
-  current: new THREE.Vector3(0, 1.6, 2),
-  target: new THREE.Vector3(0, 1.6, 2),
-};
+        // rest pose (apertura mínima constante)
+        uRestOpen:     { value: 0.30 },
 
-function lookAtBone(bone, target, strength = 1) {
-  if (!bone) return;
-  const dir = new THREE.Vector3().subVectors(target, bone.getWorldPosition(new THREE.Vector3())).normalize();
-  const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir);
-  bone.quaternion.slerp(q, strength);
-}
+        // respiración
+        uBreathAmp:    { value: 1.0 },  // cantidad de respiración
+        uBreathFreq:   { value: 0.6 }   // velocidad respiración (lenta)
+      }
+    });
 
-const GazeHeadController = {
-  update(delta, mode) {
-    const jitter = mode === 'LISTENING' ? 0.2 : 0.5;
-    if (Math.random() < delta * 0.5) {
-      this.pickNewTarget(mode, jitter);
-    }
-    gaze.current.lerp(gaze.target, delta * 0.5);
-    lookAtBone(rig.bones.eyes.L, gaze.current, 0.6);
-    lookAtBone(rig.bones.eyes.R, gaze.current, 0.6);
-    lookAtBone(rig.bones.head, gaze.current, 0.3);
-  },
+    particlePoints = new THREE.Points(particlesGeo, particleMaterial);
+    particlePoints.frustumCulled = false;
+    scene.add(particlePoints);
 
-  pickNewTarget(mode, jitter) {
-    const base = new THREE.Vector3(0, 1.6, 2);
-    if (mode === 'LISTENING') base.set(0, 1.6, 2.5);
-    gaze.target = base.add(new THREE.Vector3((Math.random() - 0.5) * jitter, (Math.random() - 0.5) * jitter, 0));
-  },
-};
-
-// ----------------------------
-// AUDIO + TIMELINE
-// ----------------------------
-let audioElement = null;
-let audioCtx = null;
-
-function setVisemeTimeline(timeline) {
-  AvatarState.visemeTimeline = (timeline || []).slice().sort((a, b) => a.start - b.start);
-  if (AvatarState.visemeTimeline.length) {
-    const last = AvatarState.visemeTimeline[AvatarState.visemeTimeline.length - 1];
-    AvatarState.audioDuration = last.end;
-  }
-}
-
-export async function playAudioWithVisemes(audioUrl, timeline, { emotion = 'neutral', speechIntensity = 1.0 } = {}) {
-  setVisemeTimeline(timeline);
-  AvatarState.mode = 'SPEAKING';
-  AvatarState.emotion = emotion;
-  AvatarState.speechIntensity = speechIntensity;
-
-  if (audioCtx) {
-    audioCtx.close();
-    audioCtx = null;
-  }
-
-  audioElement = new Audio(audioUrl);
-  audioElement.crossOrigin = 'anonymous';
-  audioCtx = new AudioContext();
-  const source = audioCtx.createMediaElementSource(audioElement);
-  source.connect(audioCtx.destination);
-
-  await audioCtx.resume();
-  AvatarState.audioStart = audioCtx.currentTime;
-
-  audioElement.onended = () => {
-    AvatarState.mode = 'IDLE';
-  };
-
-  audioElement.play();
-}
-
-// ----------------------------
-// CARGA DEL AVATAR
-// ----------------------------
-const ktx2Loader = new KTX2Loader()
-  .setTranscoderPath('https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/libs/basis/')
-  .detectSupport(renderer);
-
-const loader = new GLTFLoader();
-loader.setKTX2Loader(ktx2Loader);
-loader.setMeshoptDecoder(MeshoptDecoder);
-let avatar = null;
-loader.load(
-  './aaron_meshopt.glb',
-  (gltf) => {
-    avatar = gltf.scene;
-    scene.add(avatar);
-    mapMorphTargets(avatar);
+    controls.target.set(0, 0.15, 0);
+    controls.update();
   },
   undefined,
-  (err) => console.error('Error cargando GLB', err),
+  (err) => {
+    console.error('Error cargando faceVolumen.glb', err);
+  }
 );
 
-// ----------------------------
-// LOOP PRINCIPAL
-// ----------------------------
-const clock = new THREE.Clock();
+// =========================
+// 5. Resize
+// =========================
+window.addEventListener('resize', () => {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+});
+
+// =========================
+// 6. Loop
+// =========================
 function animate() {
   requestAnimationFrame(animate);
-  if (contextLost) return;
-  const delta = clock.getDelta();
-  const time = clock.elapsedTime;
 
-  // actualizar mirada y huesos
-  GazeHeadController.update(delta, AvatarState.mode);
-
-  // decidir targets según modo
-  let targets = {};
-  if (AvatarState.mode === 'SPEAKING') {
-    const t = audioCtx ? audioCtx.currentTime - AvatarState.audioStart : 0;
-    const visemeWeights = LipsyncEngine.getVisemeWeights(t);
-    const lipTargets = LipsyncEngine.buildTargets(visemeWeights, AvatarState.speechIntensity);
-    const expressionTargets = ExpressionEngine.update(delta);
-    const idleTargets = IdleEngine.update(delta, time, 'SPEAKING');
-    targets = mergeTargets(lipTargets, expressionTargets, idleTargets);
-  } else if (AvatarState.mode === 'LISTENING' || AvatarState.mode === 'THINKING') {
-    const expressionTargets = ExpressionEngine.update(delta);
-    const idleTargets = IdleEngine.update(delta, time, 'LISTENING');
-    targets = mergeTargets(expressionTargets, idleTargets);
-  } else {
-    const idleTargets = IdleEngine.update(delta, time, 'IDLE');
-    const expressionTargets = ExpressionEngine.update(delta);
-    targets = mergeTargets(idleTargets, expressionTargets);
+  const elapsed = clock.getElapsedTime();
+  if (particleMaterial) {
+    particleMaterial.uniforms.uTime.value = elapsed;
+    particleMaterial.uniforms.uTalk.value = isTalking ? 1.0 : 0.0;
   }
 
-  applyMorphState(targets, 0.25);
+  // movimiento global de cabeza/cuello (más vivo y menos lineal)
+  if (particlePoints) {
+    const t = elapsed;
+
+    // combinamos varias senoidales para que no parezca péndulo perfecto
+    const headYaw =
+      Math.sin(t * 0.8) * 0.025 +   // movimiento principal
+      Math.sin(t * 1.7) * 0.03;    // pequeña variación rápida
+
+    const headPitch =
+      Math.sin(t * 0.6 + 1.0) * 0.03 +
+      Math.sin(t * 1.3) * 0.02;
+
+    const headRoll =
+      Math.sin(t * 0.45 + 2.0) * 0.03; // ligera inclinación lateral
+
+    particlePoints.rotation.y = headYaw;   // izquierda-derecha
+    particlePoints.rotation.x = headPitch; // arriba-abajo
+    particlePoints.rotation.z = headRoll;  // cabeceo lateral
+
+    // movimiento del cuerpo/cuello tipo “acomodo”
+    particlePoints.position.y =
+      0.01 * Math.sin(t * 0.9) +
+      0.005 * Math.sin(t * 0.37);
+  }
 
   controls.update();
   renderer.render(scene, camera);
 }
+
 animate();
-
-// ----------------------------
-// UTILIDADES / UI
-// ----------------------------
-function base64ToAudioUrl(b64, mimeType = 'audio/wav') {
-  const byteChars = atob(b64);
-  const byteNumbers = new Array(byteChars.length);
-  for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
-  const byteArray = new Uint8Array(byteNumbers);
-  const blob = new Blob([byteArray], { type: mimeType });
-  return URL.createObjectURL(blob);
-}
-
-const BACKEND_URL = '';
-async function sendTextToAgent(message, { mode = 'negociar', withAudio = true } = {}) {
-  const lastReplyEl = document.getElementById('lastReply');
-  lastReplyEl.textContent = '…';
-  AvatarState.mode = 'THINKING';
-  try {
-    const endpoint = mode === 'chat' ? '/chat' : '/negociar';
-    const res = await fetch(`${BACKEND_URL}${endpoint}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: 'test_user', session_id: 'sesion_1', message }),
-    });
-    if (!res.ok) {
-      const errText = await res.text();
-      lastReplyEl.textContent = `Error agente: ${res.status} ${errText}`;
-      return;
-    }
-    const data = await res.json();
-    const replyText = data.reply || '';
-    const emotion = data.emotion || 'neutral';
-    const intensity = data.tone === 'excited' ? 1.25 : data.tone === 'calm' ? 0.8 : 1.0;
-    lastReplyEl.textContent = replyText;
-    AvatarState.emotion = emotion;
-    if (!withAudio || !replyText) {
-      AvatarState.mode = 'IDLE';
-      return;
-    }
-
-    const ttsRes = await fetch(`${BACKEND_URL}/tts_with_visemes`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: replyText }),
-    });
-    if (!ttsRes.ok) {
-      const errText = await ttsRes.text();
-      console.error('Error TTS+visemas:', errText);
-      return;
-    }
-    const ttsData = await ttsRes.json();
-    const audioUrl = base64ToAudioUrl(ttsData.audio_base64, ttsData.audio_mime_type);
-    const timeline = ttsData.timeline || [];
-    await playAudioWithVisemes(audioUrl, timeline, { emotion, speechIntensity: intensity });
-  } catch (err) {
-    console.error('Error al hablar con el backend:', err);
-    lastReplyEl.textContent = 'Error de red con el backend.';
-    AvatarState.mode = 'IDLE';
-  } finally {
-    if (AvatarState.mode !== 'SPEAKING') AvatarState.mode = 'IDLE';
-  }
-}
-
-const sendToAgentBtn = document.getElementById('sendToAgentBtn');
-const userTextEl = document.getElementById('userText');
-const textOnlyCheckbox = document.getElementById('textOnly');
-const emotionSelect = document.getElementById('emotionSelect');
-const expressionSlider = document.getElementById('expressionIntensity');
-const expressionValue = document.getElementById('expressionValue');
-const idleMotionToggle = document.getElementById('idleMotionToggle');
-
-sendToAgentBtn.addEventListener('click', async () => {
-  const text = (userTextEl.value || '').trim();
-  if (!text) return;
-  const modeRadio = document.querySelector('input[name="agentMode"]:checked');
-  const mode = modeRadio ? modeRadio.value : 'negociar';
-  const withAudio = !textOnlyCheckbox.checked;
-  sendToAgentBtn.disabled = true;
-  sendToAgentBtn.textContent = 'Hablando...';
-  try {
-    await sendTextToAgent(text, { mode, withAudio });
-  } finally {
-    sendToAgentBtn.disabled = false;
-    sendToAgentBtn.textContent = 'Enviar al agente';
-  }
-});
-
-if (emotionSelect) {
-  AvatarState.emotion = emotionSelect.value || 'neutral';
-  emotionSelect.addEventListener('change', (e) => {
-    AvatarState.emotion = e.target.value;
-  });
-}
-
-if (expressionSlider) {
-  const applyIntensity = (value) => {
-    const num = parseFloat(value);
-    if (Number.isFinite(num)) {
-      ExpressionEngine.targetWeight = num;
-      if (expressionValue) expressionValue.textContent = num.toFixed(2);
-    }
-  };
-  applyIntensity(expressionSlider.value || '0.45');
-  expressionSlider.addEventListener('input', (e) => applyIntensity(e.target.value));
-}
-
-if (idleMotionToggle) {
-  idleMotionToggle.addEventListener('change', (e) => {
-    AvatarState.idleMotionEnabled = e.target.checked;
-  });
-}
-
-userTextEl.addEventListener('keydown', (e) => {
-  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-    e.preventDefault();
-    sendToAgentBtn.click();
-  }
-});
-
-// ----------------------------
-// MICROFONO (igual que antes)
-// ----------------------------
-const micBtn = document.getElementById('micBtn');
-const waveCanvas = document.getElementById('waveCanvas');
-const micLabel = document.getElementById('micLabel');
-let mediaRecorder = null;
-let audioChunks = [];
-let isRecording = false;
-let audioStream = null;
-let waveAudioCtx = null;
-let waveAnalyser = null;
-let waveDataArray = null;
-let waveAnimationId = null;
-
-function drawWaveform() {
-  if (!waveCanvas || !waveAnalyser) return;
-  const ctx = waveCanvas.getContext('2d');
-  const width = waveCanvas.width;
-  const height = waveCanvas.height;
-  waveAnimationId = requestAnimationFrame(drawWaveform);
-  waveAnalyser.getByteTimeDomainData(waveDataArray);
-  ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = 'rgba(15,23,42,1)';
-  ctx.fillRect(0, 0, width, height);
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = '#22c55e';
-  ctx.beginPath();
-  const sliceWidth = width / waveDataArray.length;
-  let x = 0;
-  for (let i = 0; i < waveDataArray.length; i++) {
-    const v = waveDataArray[i] / 128.0;
-    const y = (v * height) / 2;
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-    x += sliceWidth;
-  }
-  ctx.lineTo(width, height / 2);
-  ctx.stroke();
-}
-
-async function startRecording() {
-  if (!navigator.mediaDevices?.getUserMedia) return alert('getUserMedia no soportado');
-  audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  mediaRecorder = new MediaRecorder(audioStream);
-  audioChunks = [];
-  mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
-  mediaRecorder.onstop = async () => {
-    const blob = new Blob(audioChunks, { type: 'audio/webm' });
-    console.log('Audio grabado (no enviado en esta demo):', blob.size, 'bytes');
-  };
-  mediaRecorder.start();
-  isRecording = true;
-  micLabel.textContent = 'Grabando…';
-  AvatarState.mode = 'LISTENING';
-
-  waveAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  waveAnalyser = waveAudioCtx.createAnalyser();
-  waveAnalyser.fftSize = 1024;
-  const source = waveAudioCtx.createMediaStreamSource(audioStream);
-  source.connect(waveAnalyser);
-  waveDataArray = new Uint8Array(waveAnalyser.frequencyBinCount);
-  drawWaveform();
-}
-
-function stopRecording() {
-  if (mediaRecorder && isRecording) mediaRecorder.stop();
-  if (audioStream) audioStream.getTracks().forEach((t) => t.stop());
-  isRecording = false;
-  micLabel.textContent = 'Pulsa el micro y habla';
-  if (waveAudioCtx) waveAudioCtx.close();
-  waveAudioCtx = null;
-  cancelAnimationFrame(waveAnimationId);
-  if (AvatarState.mode === 'LISTENING') AvatarState.mode = 'IDLE';
-}
-
-if (micBtn) {
-  micBtn.addEventListener('click', async () => {
-    if (isRecording) {
-      stopRecording();
-      micBtn.textContent = '🎤 Hablar';
-    } else {
-      await startRecording();
-      micBtn.textContent = '⏹️ Detener';
-    }
-  });
-}
-
-// Demo de labios sin audio
-const demoBtn = document.getElementById('demoBtn');
-if (demoBtn) {
-  demoBtn.addEventListener('click', () => {
-    AvatarState.mode = 'SPEAKING';
-    setVisemeTimeline([
-      { start: 0, end: 0.3, viseme: 'AA' },
-      { start: 0.3, end: 0.6, viseme: 'E' },
-      { start: 0.6, end: 0.9, viseme: 'I' },
-      { start: 0.9, end: 1.2, viseme: 'O' },
-      { start: 1.2, end: 1.5, viseme: 'U' },
-      { start: 1.5, end: 1.8, viseme: 'MBP' },
-      { start: 1.8, end: 2.1, viseme: 'FV' },
-      { start: 2.1, end: 2.4, viseme: 'CH' },
-      { start: 2.4, end: 2.7, viseme: 'W' },
-      { start: 2.7, end: 3.0, viseme: 'REST' },
-    ]);
-    AvatarState.audioStart = audioCtx ? audioCtx.currentTime : 0;
-    AvatarState.audioDuration = 3.0;
-    setTimeout(() => (AvatarState.mode = 'IDLE'), 3200);
-  });
-}
-
-window.scene = scene;
-window.camera = camera;
-window.rig = rig;
