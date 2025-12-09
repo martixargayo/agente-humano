@@ -1,10 +1,37 @@
-// app.js
-alert('app.js malla de puntos dinámica + sombreado por textura está cargando');
-
 import * as THREE from 'three';
-import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/loaders/GLTFLoader.js';
-import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/controls/OrbitControls.js';
-import * as BufferGeometryUtils from 'https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/utils/BufferGeometryUtils.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
+
+// =========================
+// Estado global del avatar / audio
+// =========================
+const AvatarState = {
+  mode: 'IDLE', // IDLE | LISTENING | THINKING | SPEAKING
+  emotion: 'neutral',
+  talkLevel: 0,
+  speechIntensity: 1.0,
+  idleMotionEnabled: true,
+};
+
+let audioElement = null;
+let audioCtx = null;
+let analyser = null;
+let analyserData = null;
+
+function cleanupAudio() {
+  if (audioElement) {
+    audioElement.pause();
+    audioElement.src = '';
+    audioElement = null;
+  }
+  if (audioCtx) {
+    audioCtx.close();
+    audioCtx = null;
+  }
+  analyser = null;
+  analyserData = null;
+}
 
 // =========================
 // 1. Escena básica
@@ -14,18 +41,10 @@ const canvas = document.getElementById('c');
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x000000);
 
-const camera = new THREE.PerspectiveCamera(
-  40,
-  window.innerWidth / window.innerHeight,
-  0.01,
-  100
-);
+const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.01, 100);
 camera.position.set(0, 0.25, 1.9);
 
-const renderer = new THREE.WebGLRenderer({
-  canvas,
-  antialias: true
-});
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
 
@@ -50,67 +69,11 @@ const clock = new THREE.Clock();
 // =========================
 // Config boca (ajustable a mano)
 // =========================
-const MOUTH_CENTER_Y = 0.16;     // posición vertical del centro de la boca
-const MOUTH_CENTER_X = -0.045;  // posición horizontal del centro de la boca
-const MOUTH_WIDTH    = 0.18;    // ancho de la región de boca
-const MOUTH_HEIGHT   = 0.20;    // alto máximo (labios + hueco)
-const MOUTH_CURVE    = 0.0;     // curvatura en U (0 = recto)
-
-// =========================
-// Control "Hablar" (botón)
-// =========================
-let isTalking = false;
-
-const talkButton = document.createElement('button');
-talkButton.textContent = 'Hablar (mantén)';
-Object.assign(talkButton.style, {
-  position: 'fixed',
-  bottom: '20px',
-  left: '50%',
-  transform: 'translateX(-50%)',
-  padding: '10px 22px',
-  borderRadius: '999px',
-  border: 'none',
-  background: 'rgba(255,255,255,0.14)',
-  color: '#ffffff',
-  fontFamily:
-    'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-  fontSize: '13px',
-  letterSpacing: '0.08em',
-  textTransform: 'uppercase',
-  cursor: 'pointer',
-  backdropFilter: 'blur(12px)',
-  zIndex: '10'
-});
-document.body.appendChild(talkButton);
-
-const startTalking = () => {
-  isTalking = true;
-};
-const stopTalking = () => {
-  isTalking = false;
-};
-
-talkButton.addEventListener('mousedown', startTalking);
-talkButton.addEventListener('mouseup', stopTalking);
-talkButton.addEventListener('mouseleave', stopTalking);
-
-talkButton.addEventListener(
-  'touchstart',
-  (e) => {
-    e.preventDefault();
-    startTalking();
-  },
-  { passive: false }
-);
-talkButton.addEventListener(
-  'touchend',
-  (e) => {
-    e.preventDefault();
-    stopTalking();
-  },
-  { passive: false }
-);
+const MOUTH_CENTER_Y = 0.16; // posición vertical del centro de la boca
+const MOUTH_CENTER_X = -0.045; // posición horizontal del centro de la boca
+const MOUTH_WIDTH = 0.18; // ancho de la región de boca
+const MOUTH_HEIGHT = 0.2; // alto máximo (labios + hueco)
+const MOUTH_CURVE = 0.0; // curvatura en U (0 = recto)
 
 // =========================
 // 2. Shaders de partículas
@@ -298,7 +261,7 @@ void main() {
 // =========================
 function generateFaceParticlesFromVertices(srcGeometry) {
   const srcPos = srcGeometry.getAttribute('position');
-  const srcUv  = srcGeometry.getAttribute('uv');
+  const srcUv = srcGeometry.getAttribute('uv');
 
   const vertexCount = srcPos.count;
 
@@ -306,7 +269,7 @@ function generateFaceParticlesFromVertices(srcGeometry) {
   const uv = new THREE.Vector2();
 
   const posArray = [];
-  const uvArray  = [];
+  const uvArray = [];
 
   for (let i = 0; i < vertexCount; i++) {
     v.fromBufferAttribute(srcPos, i);
@@ -325,22 +288,20 @@ function generateFaceParticlesFromVertices(srcGeometry) {
     }
   }
 
-  console.log('Vértices usados (cara frontal plano Z=0):', posArray.length / 3);
-
   const positions = new Float32Array(posArray);
-  const uvs       = new Float32Array(uvArray);
-  const count     = positions.length / 3;
+  const uvs = new Float32Array(uvArray);
+  const count = positions.length / 3;
 
   // Atributos extra para movimiento tipo Phantom
   const basePositions = new Float32Array(positions.length);
   basePositions.set(positions);
 
-  const randoms    = new Float32Array(count * 3);
+  const randoms = new Float32Array(count * 3);
   const clusterIds = new Float32Array(count);
 
   // Boca
   const mouthWeights = new Float32Array(count);
-  const mouthSides   = new Float32Array(count);
+  const mouthSides = new Float32Array(count);
 
   for (let i = 0; i < count; i++) {
     // random por punto
@@ -361,7 +322,7 @@ function generateFaceParticlesFromVertices(srcGeometry) {
     let ax = Math.abs(dx);
 
     let weight = 0.0;
-    let side   = 0.0;
+    let side = 0.0;
 
     if (ax <= MOUTH_WIDTH) {
       let normX = dx / MOUTH_WIDTH;
@@ -370,17 +331,17 @@ function generateFaceParticlesFromVertices(srcGeometry) {
       let ay = Math.abs(dy);
 
       if (ay <= MOUTH_HEIGHT) {
-        let wx = 1.0 - ax / MOUTH_WIDTH;   // centro horizontal más peso
-        let wy = 1.0 - ay / MOUTH_HEIGHT;  // cerca de la curva, más peso
+        let wx = 1.0 - ax / MOUTH_WIDTH; // centro horizontal más peso
+        let wy = 1.0 - ay / MOUTH_HEIGHT; // cerca de la curva, más peso
         weight = wx * wy;
 
         if (weight < 0.0) weight = 0.0;
         if (weight > 1.0) weight = 1.0;
 
         if (dy > 0.0) {
-          side = 1.0;     // labio superior
+          side = 1.0; // labio superior
         } else if (dy < 0.0) {
-          side = -1.0;    // labio inferior
+          side = -1.0; // labio inferior
         } else {
           side = 0.0;
         }
@@ -388,38 +349,17 @@ function generateFaceParticlesFromVertices(srcGeometry) {
     }
 
     mouthWeights[i] = weight;
-    mouthSides[i]   = side;
+    mouthSides[i] = side;
   }
 
   const particlesGeo = new THREE.BufferGeometry();
-  particlesGeo.setAttribute(
-    'position',
-    new THREE.BufferAttribute(positions, 3)
-  );
-  particlesGeo.setAttribute(
-    'aUv',
-    new THREE.BufferAttribute(uvs, 2)
-  );
-  particlesGeo.setAttribute(
-    'aBasePosition',
-    new THREE.BufferAttribute(basePositions, 3)
-  );
-  particlesGeo.setAttribute(
-    'aRandom',
-    new THREE.BufferAttribute(randoms, 3)
-  );
-  particlesGeo.setAttribute(
-    'aClusterId',
-    new THREE.BufferAttribute(clusterIds, 1)
-  );
-  particlesGeo.setAttribute(
-    'aMouthWeight',
-    new THREE.BufferAttribute(mouthWeights, 1)
-  );
-  particlesGeo.setAttribute(
-    'aMouthSide',
-    new THREE.BufferAttribute(mouthSides, 1)
-  );
+  particlesGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  particlesGeo.setAttribute('aUv', new THREE.BufferAttribute(uvs, 2));
+  particlesGeo.setAttribute('aBasePosition', new THREE.BufferAttribute(basePositions, 3));
+  particlesGeo.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 3));
+  particlesGeo.setAttribute('aClusterId', new THREE.BufferAttribute(clusterIds, 1));
+  particlesGeo.setAttribute('aMouthWeight', new THREE.BufferAttribute(mouthWeights, 1));
+  particlesGeo.setAttribute('aMouthSide', new THREE.BufferAttribute(mouthSides, 1));
 
   return particlesGeo;
 }
@@ -433,19 +373,16 @@ const POINT_SIZE = 3.5 * window.devicePixelRatio;
 const loader = new GLTFLoader();
 
 let particleMaterial = null;
-let particlePoints = null; // <<< necesitamos referencia global para mover la cabeza
+let particlePoints = null; // referencia global para mover la cabeza
 
 loader.load(
-  './faceVolumen.glb',
+  './FaceVolumen.glb',
   (gltf) => {
-    console.log('GLB cargado correctamente');
-
     const meshes = [];
     gltf.scene.traverse((obj) => {
       if (obj.isMesh) meshes.push(obj);
     });
 
-    console.log('Meshes encontrados:', meshes.map(m => m.name));
     if (!meshes.length) {
       console.error('No se encontraron mallas en el GLB');
       return;
@@ -471,9 +408,7 @@ loader.load(
       geoms.push(g);
     });
 
-    const mergeFn =
-      BufferGeometryUtils.mergeGeometries ||
-      BufferGeometryUtils.mergeBufferGeometries;
+    const mergeFn = BufferGeometryUtils.mergeGeometries || BufferGeometryUtils.mergeBufferGeometries;
 
     const mergedGeom = mergeFn(geoms, true);
     if (!mergedGeom) {
@@ -499,30 +434,30 @@ loader.load(
       depthWrite: true,
       blending: THREE.NormalBlending,
       uniforms: {
-        uPointSize:    { value: POINT_SIZE },
-        uColor:        { value: new THREE.Color(0xdddddd) },
-        uColorMap:     { value: colorMap },
-        uUseMap:       { value: colorMap ? 1.0 : 0.0 },
+        uPointSize: { value: POINT_SIZE },
+        uColor: { value: new THREE.Color(0xdddddd) },
+        uColorMap: { value: colorMap },
+        uUseMap: { value: colorMap ? 1.0 : 0.0 },
 
-        uTime:         { value: 0.0 },
-        uGlobalAmp:    { value: 1.5 },
-        uClusterAmp:   { value: 1.5 },
-        uNoiseAmp:     { value: 1.6 },
+        uTime: { value: 0.0 },
+        uGlobalAmp: { value: 1.5 },
+        uClusterAmp: { value: 1.5 },
+        uNoiseAmp: { value: 1.6 },
 
         // habla
-        uTalk:         { value: 0.0 },
-        uTalkAmpTop:   { value: 0.012 }, // apertura labio superior
-        uTalkAmpBot:   { value: 0.035 }, // apertura labio inferior
-        uTalkFreq:     { value: 24.0 },  // velocidad "bla bla"
-        uLipDepthAmp:  { value: 0.030 }, // cuánto entra hacia dentro
+        uTalk: { value: 0.0 },
+        uTalkAmpTop: { value: 0.012 }, // apertura labio superior
+        uTalkAmpBot: { value: 0.035 }, // apertura labio inferior
+        uTalkFreq: { value: 24.0 }, // velocidad "bla bla"
+        uLipDepthAmp: { value: 0.03 }, // cuánto entra hacia dentro
 
         // rest pose (apertura mínima constante)
-        uRestOpen:     { value: 0.30 },
+        uRestOpen: { value: 0.08 },
 
         // respiración
-        uBreathAmp:    { value: 1.0 },  // cantidad de respiración
-        uBreathFreq:   { value: 0.6 }   // velocidad respiración (lenta)
-      }
+        uBreathAmp: { value: 1.0 }, // cantidad de respiración
+        uBreathFreq: { value: 0.6 }, // velocidad respiración (lenta)
+      },
     });
 
     particlePoints = new THREE.Points(particlesGeo, particleMaterial);
@@ -534,8 +469,8 @@ loader.load(
   },
   undefined,
   (err) => {
-    console.error('Error cargando faceVolumen.glb', err);
-  }
+    console.error('Error cargando FaceVolumen.glb', err);
+  },
 );
 
 // =========================
@@ -550,7 +485,108 @@ window.addEventListener('resize', () => {
 });
 
 // =========================
-// 6. Loop
+// 6. Utilidades de red y audio
+// =========================
+function base64ToAudioUrl(b64, mimeType = 'audio/wav') {
+  const byteChars = atob(b64);
+  const byteNumbers = new Array(byteChars.length);
+  for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
+  const byteArray = new Uint8Array(byteNumbers);
+  const blob = new Blob([byteArray], { type: mimeType });
+  return URL.createObjectURL(blob);
+}
+
+const BACKEND_URL = '';
+
+async function requestTTS(text) {
+  const res = await fetch(`${BACKEND_URL}/tts_with_visemes`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+  if (!res.ok) {
+    const msg = await res.text();
+    throw new Error(`Error TTS: ${res.status} ${msg}`);
+  }
+  const data = await res.json();
+  const audioUrl = base64ToAudioUrl(data.audio_base64, data.audio_mime_type || 'audio/wav');
+  return audioUrl;
+}
+
+async function sendTextToAgent(message, { mode = 'negociar', withAudio = true } = {}) {
+  const lastReplyEl = document.getElementById('lastReply');
+  if (lastReplyEl) lastReplyEl.textContent = '…';
+  AvatarState.mode = 'THINKING';
+
+  try {
+    const endpoint = mode === 'chat' ? '/chat' : '/negociar';
+    const res = await fetch(`${BACKEND_URL}${endpoint}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: 'web_user', session_id: 'sesion_demo', message }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Error agente: ${res.status} ${errText}`);
+    }
+
+    const data = await res.json();
+    const replyText = data.reply || '';
+    const emotion = data.emotion || 'neutral';
+    const intensity = data.tone === 'excited' ? 1.25 : data.tone === 'calm' ? 0.8 : 1.0;
+    AvatarState.emotion = emotion;
+    if (lastReplyEl) lastReplyEl.textContent = replyText;
+
+    if (!withAudio || !replyText) {
+      AvatarState.mode = 'IDLE';
+      return;
+    }
+
+    const audioUrl = await requestTTS(replyText);
+    await playAudioFromUrl(audioUrl, { emotion, speechIntensity: intensity });
+  } catch (err) {
+    console.error('Error al hablar con el backend:', err);
+    if (lastReplyEl) lastReplyEl.textContent = err.message || 'Error de red';
+    AvatarState.mode = 'IDLE';
+  }
+}
+
+async function playAudioFromUrl(audioUrl, { emotion = 'neutral', speechIntensity = 1.0 } = {}) {
+  cleanupAudio();
+
+  audioElement = new Audio(audioUrl);
+  audioElement.crossOrigin = 'anonymous';
+
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const source = audioCtx.createMediaElementSource(audioElement);
+
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 512;
+  analyser.smoothingTimeConstant = 0.4;
+  analyserData = new Uint8Array(analyser.frequencyBinCount);
+
+  source.connect(analyser);
+  analyser.connect(audioCtx.destination);
+
+  await audioCtx.resume();
+
+  AvatarState.mode = 'SPEAKING';
+  AvatarState.emotion = emotion;
+  AvatarState.speechIntensity = speechIntensity;
+
+  audioElement.onended = () => {
+    AvatarState.mode = 'IDLE';
+    AvatarState.speechIntensity = 1.0;
+    AvatarState.talkLevel = 0;
+    cleanupAudio();
+  };
+
+  audioElement.play();
+}
+
+// =========================
+// 7. Loop
 // =========================
 function animate() {
   requestAnimationFrame(animate);
@@ -558,7 +594,27 @@ function animate() {
   const elapsed = clock.getElapsedTime();
   if (particleMaterial) {
     particleMaterial.uniforms.uTime.value = elapsed;
-    particleMaterial.uniforms.uTalk.value = isTalking ? 1.0 : 0.0;
+
+    // calcular apertura de boca según audio real
+    let targetTalk = 0;
+    if (AvatarState.mode === 'SPEAKING' && analyser && analyserData) {
+      analyser.getByteTimeDomainData(analyserData);
+      let sum = 0;
+      for (let i = 0; i < analyserData.length; i++) {
+        const v = analyserData[i] / 128 - 1; // -1..1
+        sum += v * v;
+      }
+      const rms = Math.sqrt(sum / analyserData.length);
+      // mapear RMS a apertura. Umbral bajo para que cierre en pausas.
+      const intensity = AvatarState.speechIntensity || 1.0;
+      targetTalk = Math.min(1, Math.max(0, (rms - 0.02) * 10)) * intensity;
+    }
+
+    const smoothing = 1 - Math.exp(-clock.getDelta() * 15);
+    AvatarState.talkLevel += (targetTalk - AvatarState.talkLevel) * smoothing;
+
+    particleMaterial.uniforms.uTalk.value = AvatarState.talkLevel;
+    particleMaterial.uniforms.uRestOpen.value = AvatarState.mode === 'SPEAKING' ? 0.07 : 0.03;
   }
 
   // movimiento global de cabeza/cuello (más vivo y menos lineal)
@@ -566,25 +622,20 @@ function animate() {
     const t = elapsed;
 
     // combinamos varias senoidales para que no parezca péndulo perfecto
-    const headYaw =
-      Math.sin(t * 0.8) * 0.025 +   // movimiento principal
-      Math.sin(t * 1.7) * 0.03;    // pequeña variación rápida
+    const headYaw = Math.sin(t * 0.8) * 0.025 + Math.sin(t * 1.7) * 0.03; // izquierda-derecha
 
-    const headPitch =
-      Math.sin(t * 0.6 + 1.0) * 0.03 +
-      Math.sin(t * 1.3) * 0.02;
+    const headPitch = Math.sin(t * 0.6 + 1.0) * 0.03 + Math.sin(t * 1.3) * 0.02; // arriba-abajo
 
-    const headRoll =
-      Math.sin(t * 0.45 + 2.0) * 0.03; // ligera inclinación lateral
+    const headRoll = Math.sin(t * 0.45 + 2.0) * 0.03; // cabeceo lateral
 
-    particlePoints.rotation.y = headYaw;   // izquierda-derecha
-    particlePoints.rotation.x = headPitch; // arriba-abajo
-    particlePoints.rotation.z = headRoll;  // cabeceo lateral
+    particlePoints.rotation.y = headYaw;
+    particlePoints.rotation.x = headPitch;
+    particlePoints.rotation.z = headRoll;
 
     // movimiento del cuerpo/cuello tipo “acomodo”
-    particlePoints.position.y =
-      0.01 * Math.sin(t * 0.9) +
-      0.005 * Math.sin(t * 0.37);
+    if (AvatarState.idleMotionEnabled) {
+      particlePoints.position.y = 0.01 * Math.sin(t * 0.9) + 0.005 * Math.sin(t * 0.37);
+    }
   }
 
   controls.update();
@@ -592,3 +643,153 @@ function animate() {
 }
 
 animate();
+
+// =========================
+// 8. UI básica (texto → agente → TTS)
+// =========================
+const sendToAgentBtn = document.getElementById('sendToAgentBtn');
+const userTextEl = document.getElementById('userText');
+const textOnlyCheckbox = document.getElementById('textOnly');
+const emotionSelect = document.getElementById('emotionSelect');
+const expressionSlider = document.getElementById('expressionIntensity');
+const expressionValue = document.getElementById('expressionValue');
+const idleMotionToggle = document.getElementById('idleMotionToggle');
+
+if (sendToAgentBtn) {
+  sendToAgentBtn.addEventListener('click', async () => {
+    const text = (userTextEl?.value || '').trim();
+    if (!text) return;
+    const modeRadio = document.querySelector('input[name="agentMode"]:checked');
+    const mode = modeRadio ? modeRadio.value : 'negociar';
+    const withAudio = !textOnlyCheckbox?.checked;
+    sendToAgentBtn.disabled = true;
+    sendToAgentBtn.textContent = 'Hablando...';
+    try {
+      await sendTextToAgent(text, { mode, withAudio });
+    } finally {
+      sendToAgentBtn.disabled = false;
+      sendToAgentBtn.textContent = 'Enviar al agente';
+    }
+  });
+}
+
+if (userTextEl) {
+  userTextEl.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      sendToAgentBtn?.click();
+    }
+  });
+}
+
+if (emotionSelect) {
+  AvatarState.emotion = emotionSelect.value || 'neutral';
+  emotionSelect.addEventListener('change', (e) => {
+    AvatarState.emotion = e.target.value;
+  });
+}
+
+if (expressionSlider) {
+  const applyIntensity = (value) => {
+    const num = parseFloat(value);
+    if (Number.isFinite(num) && expressionValue) {
+      expressionValue.textContent = num.toFixed(2);
+    }
+  };
+  applyIntensity(expressionSlider.value || '0.45');
+  expressionSlider.addEventListener('input', (e) => applyIntensity(e.target.value));
+}
+
+if (idleMotionToggle) {
+  idleMotionToggle.addEventListener('change', (e) => {
+    AvatarState.idleMotionEnabled = e.target.checked;
+  });
+}
+
+// =========================
+// 9. Mic simple (visual)
+// =========================
+const micBtn = document.getElementById('micBtn');
+const waveCanvas = document.getElementById('waveCanvas');
+const micLabel = document.getElementById('micLabel');
+let mediaRecorder = null;
+let audioChunks = [];
+let isRecording = false;
+let audioStream = null;
+let waveAudioCtx = null;
+let waveAnalyser = null;
+let waveDataArray = null;
+let waveAnimationId = null;
+
+function drawWaveform() {
+  if (!waveCanvas || !waveAnalyser) return;
+  const ctx = waveCanvas.getContext('2d');
+  const width = waveCanvas.width;
+  const height = waveCanvas.height;
+  waveAnimationId = requestAnimationFrame(drawWaveform);
+  waveAnalyser.getByteTimeDomainData(waveDataArray);
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = 'rgba(15,23,42,1)';
+  ctx.fillRect(0, 0, width, height);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#22c55e';
+  ctx.beginPath();
+  const sliceWidth = width / waveDataArray.length;
+  let x = 0;
+  for (let i = 0; i < waveDataArray.length; i++) {
+    const v = waveDataArray[i] / 128.0;
+    const y = (v * height) / 2;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+    x += sliceWidth;
+  }
+  ctx.lineTo(width, height / 2);
+  ctx.stroke();
+}
+
+async function startRecording() {
+  if (!navigator.mediaDevices?.getUserMedia) return alert('getUserMedia no soportado');
+  audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  mediaRecorder = new MediaRecorder(audioStream);
+  audioChunks = [];
+  mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+  mediaRecorder.onstop = async () => {
+    const blob = new Blob(audioChunks, { type: 'audio/webm' });
+    console.log('Audio grabado (no enviado en esta demo):', blob.size, 'bytes');
+  };
+  mediaRecorder.start();
+  isRecording = true;
+  if (micLabel) micLabel.textContent = 'Grabando…';
+  AvatarState.mode = 'LISTENING';
+
+  waveAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  waveAnalyser = waveAudioCtx.createAnalyser();
+  waveAnalyser.fftSize = 1024;
+  const source = waveAudioCtx.createMediaStreamSource(audioStream);
+  source.connect(waveAnalyser);
+  waveDataArray = new Uint8Array(waveAnalyser.frequencyBinCount);
+  drawWaveform();
+}
+
+function stopRecording() {
+  if (mediaRecorder && isRecording) mediaRecorder.stop();
+  if (audioStream) audioStream.getTracks().forEach((t) => t.stop());
+  isRecording = false;
+  if (micLabel) micLabel.textContent = 'Pulsa el micro y habla';
+  if (waveAudioCtx) waveAudioCtx.close();
+  waveAudioCtx = null;
+  cancelAnimationFrame(waveAnimationId);
+  if (AvatarState.mode === 'LISTENING') AvatarState.mode = 'IDLE';
+}
+
+if (micBtn) {
+  micBtn.addEventListener('click', async () => {
+    if (isRecording) {
+      stopRecording();
+      micBtn.textContent = '🎤 Hablar';
+    } else {
+      await startRecording();
+      micBtn.textContent = '⏹️ Detener';
+    }
+  });
+}
