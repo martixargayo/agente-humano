@@ -16,9 +16,9 @@ const AvatarState = {
 
 const AudioDebug = {
   enabled: false,
-  // Ajuste para que el audio de TTS genere más movimiento
-  minRms: 0.005,   // antes 0.02
-  scale: 30,       // antes 10
+  // Más sensible para ver movimiento de labios
+  minRms: 0.005,  // antes 0.02
+  scale: 30,      // antes 10
   logIntervalMs: 1000,
 };
 
@@ -50,7 +50,6 @@ let analyserData = null;
 let lastAudioDebugLog = 0;
 let lastMissingAnalyserLog = 0;
 let silentFrameCount = 0;
-
 
 function cleanupAudio() {
   if (audioElement) {
@@ -351,7 +350,6 @@ function generateFaceParticlesFromVertices(srcGeometry) {
     clusterIds[i] = cx + cy * 10.0;
 
     // ------- Cálculo de región de boca -------
-
     let dx = x - MOUTH_CENTER_X;
     let ax = Math.abs(dx);
 
@@ -485,7 +483,7 @@ loader.load(
         uTalkFreq: { value: 24.0 }, // velocidad "bla bla"
         uLipDepthAmp: { value: 0.03 }, // cuánto entra hacia dentro
 
-        // rest pose (apertura mínima constante) – elevado como en la versión antigua
+        // rest pose (apertura mínima constante) – alto para ver la separación
         uRestOpen: { value: 0.30 },
 
         // respiración
@@ -643,7 +641,7 @@ async function playAudioFromUrl(audioUrl, { emotion = 'neutral', speechIntensity
 }
 
 function getTalkLevelFromAudio() {
-  // Relajamos la condición: solo exigimos que exista analyser + buffer
+  // 1) Relajamos la condición: solo exigimos analyser + buffer
   if (!(analyser && analyserData)) {
     if (AudioDebug.enabled) {
       const now = performance.now();
@@ -669,8 +667,11 @@ function getTalkLevelFromAudio() {
   const rms = Math.sqrt(sum / analyserData.length);
   const intensity = AvatarState.speechIntensity || 1.0;
 
-  // Umbral mínimo para evitar ruido y escala lineal hasta 1.0.
-  const normalized = Math.min(1, Math.max(0, (rms - AudioDebug.minRms) * AudioDebug.scale));
+  // 2) Umbral mínimo y escala más agresivos
+  const normalized = Math.min(
+    1,
+    Math.max(0, (rms - AudioDebug.minRms) * AudioDebug.scale)
+  );
   const talk = normalized * intensity;
 
   if (AudioDebug.enabled) {
@@ -714,13 +715,21 @@ function animate() {
   if (particleMaterial) {
     particleMaterial.uniforms.uTime.value = elapsed;
 
-    const targetTalk = getTalkLevelFromAudio();
+    // 3) Tomamos el nivel de audio
+    const audioTalk = getTalkLevelFromAudio();
+
+    // 4) Fallback: si estamos en SPEAKING y el nivel es muy bajo, forzamos apertura
+    let targetTalk = audioTalk;
+    if (AvatarState.mode === 'SPEAKING' && targetTalk < 0.05) {
+      targetTalk = 1.0; // como el botón antiguo
+    }
+
     const smoothing = 1 - Math.exp(-clock.getDelta() * 15);
     AvatarState.talkLevel += (targetTalk - AvatarState.talkLevel) * smoothing;
 
     particleMaterial.uniforms.uTalk.value = AvatarState.talkLevel;
 
-    // restOpen fijo alto para asegurar separación visible de labios
+    // restOpen fijo alto para ver siempre separación
     particleMaterial.uniforms.uRestOpen.value = 0.30;
   }
 
@@ -728,18 +737,14 @@ function animate() {
   if (particlePoints) {
     const t = elapsed;
 
-    // combinamos varias senoidales para que no parezca péndulo perfecto
     const headYaw = Math.sin(t * 0.8) * 0.025 + Math.sin(t * 1.7) * 0.03; // izquierda-derecha
-
     const headPitch = Math.sin(t * 0.6 + 1.0) * 0.03 + Math.sin(t * 1.3) * 0.02; // arriba-abajo
-
     const headRoll = Math.sin(t * 0.45 + 2.0) * 0.03; // cabeceo lateral
 
     particlePoints.rotation.y = headYaw;
     particlePoints.rotation.x = headPitch;
     particlePoints.rotation.z = headRoll;
 
-    // movimiento del cuerpo/cuello tipo “acomodo”
     if (AvatarState.idleMotionEnabled) {
       particlePoints.position.y = 0.01 * Math.sin(t * 0.9) + 0.005 * Math.sin(t * 0.37);
     }
