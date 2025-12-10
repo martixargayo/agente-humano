@@ -88,7 +88,7 @@ stt_config = speech.RecognitionConfig(
 openai_client = OpenAI()  # usa OPENAI_API_KEY del entorno
 
 TTS_MODEL = os.getenv("OPENAI_TTS_MODEL", "gpt-4o-mini-tts")
-DEFAULT_VOICE = os.getenv("OPENAI_TTS_VOICE", "alloy")
+DEFAULT_VOICE = os.getenv("OPENAI_TTS_VOICE", "deep")
 DEFAULT_FORMAT = os.getenv("OPENAI_TTS_FORMAT", "mp3")
 
 
