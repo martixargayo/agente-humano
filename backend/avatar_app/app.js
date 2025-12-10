@@ -50,6 +50,7 @@ let lastAudioDebugLog = 0;
 let lastMissingAnalyserLog = 0;
 let silentFrameCount = 0;
 let audioSource = null;
+let lipHoldActive = false;
 
 function cleanupAudio() {
   if (audioSource) {
@@ -784,11 +785,12 @@ function animate() {
 
     let targetTalk = 0.0;
 
-    if (lipTestActive) {
-      // Modo prueba: seno simple 0..1 para ver los labios moverse
-      const tTest = elapsed - lipTestStartTime;
-      targetTalk = 0.5 + 0.5 * Math.sin(tTest * 6.0);
+    if (lipHoldActive) {
+      // Modo test: igual que el sistema antiguo
+      // uTalk = 1.0 constante y el shader se encarga del bla-bla
+      targetTalk = 1.0;
     } else {
+      // Modo normal: nivel desde el audio
       const audioTalk = getTalkLevelFromAudio();
       targetTalk = audioTalk;
     }
@@ -798,8 +800,9 @@ function animate() {
 
     particleMaterial.uniforms.uTalk.value = AvatarState.talkLevel;
 
-    // restOpen fijo alto para ver siempre separación
-    particleMaterial.uniforms.uRestOpen.value = 0.30;
+    // Un poco más abierto cuando habla o durante el test
+    particleMaterial.uniforms.uRestOpen.value =
+      (AvatarState.mode === 'SPEAKING' || lipHoldActive) ? 0.08 : 0.03;
   }
 
   // movimiento global de cabeza/cuello (más vivo y menos lineal)
@@ -822,6 +825,7 @@ function animate() {
   controls.update();
   renderer.render(scene, camera);
 }
+
 
 animate();
 
@@ -954,12 +958,13 @@ if (micBtn) {
   });
 }
 
+
 // =========================
-// 10. Botón "Test labios" (solo front, sin backend)
+// 10. Botón "Hablar (test)" – solo frontend, sin backend
 // =========================
-testLipsBtn = document.createElement('button');
-testLipsBtn.textContent = 'Test labios';
-Object.assign(testLipsBtn.style, {
+const testTalkBtn = document.createElement('button');
+testTalkBtn.textContent = 'Hablar (test)';
+Object.assign(testTalkBtn.style, {
   position: 'fixed',
   bottom: '16px',
   right: '16px',
@@ -976,21 +981,39 @@ Object.assign(testLipsBtn.style, {
   backdropFilter: 'blur(10px)',
   zIndex: '20',
 });
-document.body.appendChild(testLipsBtn);
+document.body.appendChild(testTalkBtn);
 
-testLipsBtn.addEventListener('click', () => {
-  lipTestActive = !lipTestActive;
-  if (lipTestActive) {
-    // Apagamos cualquier audio real
-    cleanupAudio();
-    AvatarState.mode = 'SPEAKING';
-    lipTestStartTime = clock.getElapsedTime();
-    testLipsBtn.textContent = 'Parar test labios';
-    console.log('[test-lips] Test de labios ACTIVADO');
-  } else {
-    AvatarState.mode = 'IDLE';
-    AvatarState.talkLevel = 0;
-    testLipsBtn.textContent = 'Test labios';
-    console.log('[test-lips] Test de labios DESACTIVADO');
-  }
-});
+const startLipTest = () => {
+  lipHoldActive = true;
+  AvatarState.mode = 'SPEAKING';
+  console.log('[test-lips] Mantener pulsado: ACTIVADO');
+};
+
+const stopLipTest = () => {
+  lipHoldActive = false;
+  AvatarState.mode = 'IDLE';
+  AvatarState.talkLevel = 0;
+  console.log('[test-lips] Mantener pulsado: DESACTIVADO');
+};
+
+testTalkBtn.addEventListener('mousedown', startLipTest);
+testTalkBtn.addEventListener('mouseup', stopLipTest);
+testTalkBtn.addEventListener('mouseleave', stopLipTest);
+
+testTalkBtn.addEventListener(
+  'touchstart',
+  (e) => {
+    e.preventDefault();
+    startLipTest();
+  },
+  { passive: false },
+);
+
+testTalkBtn.addEventListener(
+  'touchend',
+  (e) => {
+    e.preventDefault();
+    stopLipTest();
+  },
+  { passive: false },
+);
