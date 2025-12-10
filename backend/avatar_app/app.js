@@ -134,7 +134,7 @@ const clock = new THREE.Clock();
 // =========================
 const MOUTH_CENTER_Y = 0.16; // posición vertical del centro de la boca
 const MOUTH_CENTER_X = -0.045; // posición horizontal del centro de la boca
-const MOUTH_WIDTH = 0.18; // ancho de la región de boca
+const MOUTH_WIDTH = 0.10; // ancho de la región de boca
 const MOUTH_HEIGHT = 0.2; // alto máximo (labios + hueco)
 const MOUTH_CURVE = 0.0; // curvatura en U (0 = recto)
 
