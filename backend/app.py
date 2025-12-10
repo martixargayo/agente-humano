@@ -99,6 +99,27 @@ Tone: masculine, calm, confident, and natural.
 Style: conversational and close, like an adult from Spain speaking directly to the listener.
 """
 
+@app.on_event("startup")
+async def warmup_tts():
+    """
+    Llamada de calentamiento para que el primer TTS
+    no tenga el coste de arranque del modelo.
+    """
+    try:
+        # Texto corto y neutro, solo para que el modelo cargue.
+        resp = openai_client.audio.speech.create(
+            model=TTS_MODEL,
+            voice=DEFAULT_VOICE,
+            input="Calibración de voz.",
+            response_format=DEFAULT_FORMAT,
+            instructions=SPANISH_EU_VOICE_INSTRUCTIONS,
+        )
+        # Forzamos a materializar los bytes (según formato)
+        audio_bytes = getattr(resp, "content", None) or resp.read()
+        print(f"[warmup] TTS precalentado. bytes={len(audio_bytes)}")
+    except Exception as e:
+        print("[warmup] Falló warmup TTS:", repr(e))
+
 
 class ChatRequest(BaseModel):
     user_id: str
