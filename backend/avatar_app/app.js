@@ -51,6 +51,14 @@ let lastMissingAnalyserLog = 0;
 let silentFrameCount = 0;
 let audioSource = null;
 let lipHoldActive = false;
+let lipsyncLevel = 0; // nivel suavizado 0..1
+
+const LipsyncConfig = {
+  attack: 25,        // rapidez al subir (abrir boca)
+  release: 8,        // rapidez al bajar (cerrar)
+  floorSpeaking: 0.15, // mínima apertura cuando hay voz clara
+};
+
 
 function cleanupAudio() {
   if (audioSource) {
@@ -706,6 +714,7 @@ async function playAudioFromAudioData(
 }
 
 function getTalkLevelFromAudio() {
+  // Si no hay analyser, no hay audio → cerramos boca
   if (!(analyser && analyserData)) {
     if (AudioDebug.enabled) {
       const now = performance.now();
@@ -718,9 +727,11 @@ function getTalkLevelFromAudio() {
         });
       }
     }
+    lipsyncLevel = 0;
     return 0;
   }
 
+  // 1) RMS crudo del audio
   analyser.getByteTimeDomainData(analyserData);
   let sum = 0;
   for (let i = 0; i < analyserData.length; i++) {
@@ -731,11 +742,36 @@ function getTalkLevelFromAudio() {
   const rms = Math.sqrt(sum / analyserData.length);
   const intensity = AvatarState.speechIntensity || 1.0;
 
+  // 2) Normalizar volumen → 0..1 con minRms y scale
   const normalized = Math.min(
     1,
-    Math.max(0, (rms - AudioDebug.minRms) * AudioDebug.scale)
+    Math.max(0, (rms - AudioDebug.minRms) * AudioDebug.scale),
   );
-  const talk = normalized * intensity;
+  const rawTalk = normalized * intensity; // valor “rápido” sin suavizar
+
+  // 3) Target según modo (silencios vs hablar)
+  let target = 0.0;
+
+  if (AvatarState.mode === 'SPEAKING') {
+    if (rawTalk <= 0.001) {
+      // silencio claro → dejar que la boca se cierre
+      target = 0.0;
+    } else {
+      // hay voz: aseguramos una apertura mínima decente
+      target = Math.max(rawTalk, LipsyncConfig.floorSpeaking);
+    }
+  } else {
+    // IDLE / LISTENING / THINKING → boca cerrada
+    target = 0.0;
+  }
+
+  // 4) Envelope: ataque rápido, release más lento (no vibra feo)
+  const dt = 1 / 60; // aprox 60 FPS, no usamos clock aquí
+  const speed =
+    target > lipsyncLevel ? LipsyncConfig.attack : LipsyncConfig.release;
+  const smoothing = 1 - Math.exp(-dt * speed);
+
+  lipsyncLevel += (target - lipsyncLevel) * smoothing;
 
   if (AudioDebug.enabled) {
     const now = performance.now();
@@ -743,10 +779,9 @@ function getTalkLevelFromAudio() {
       lastAudioDebugLog = now;
       console.info('[audio-debug] RMS', {
         rms: Number(rms.toFixed(4)),
-        intensity,
         normalized: Number(normalized.toFixed(3)),
-        talk: Number(talk.toFixed(3)),
-        bufferSample: analyserData.slice(0, 8),
+        rawTalk: Number(rawTalk.toFixed(3)),
+        lipsyncLevel: Number(lipsyncLevel.toFixed(3)),
       });
     }
 
@@ -764,8 +799,9 @@ function getTalkLevelFromAudio() {
     }
   }
 
-  return talk;
+  return lipsyncLevel;
 }
+
 
 // =========================
 // 7. Loop + modo test labios
