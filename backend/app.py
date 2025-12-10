@@ -90,6 +90,14 @@ openai_client = OpenAI()  # usa OPENAI_API_KEY del entorno
 TTS_MODEL = os.getenv("OPENAI_TTS_MODEL", "gpt-4o-mini-tts")
 DEFAULT_VOICE = os.getenv("OPENAI_TTS_VOICE", "onyx")
 DEFAULT_FORMAT = os.getenv("OPENAI_TTS_FORMAT", "mp3")
+SPANISH_EU_VOICE_INSTRUCTIONS = """
+Language: Spanish (es-ES).
+Accent: European Spanish (Spain), not Latin American.
+Pronunciation: Use standard peninsular Spanish; avoid Latin American intonation and seseo typical of Latin America.
+Intonation: neutral and slightly descending at sentence endings, avoid sing-song or overly melodic patterns.
+Tone: masculine, calm, confident, and natural.
+Style: conversational and close, like an adult from Spain speaking directly to the listener.
+"""
 
 
 class ChatRequest(BaseModel):
@@ -445,6 +453,7 @@ async def tts_openai(payload: TTSRequest):
             voice=voice,
             input=payload.text,
             response_format=fmt,
+            instructions=SPANISH_EU_VOICE_INSTRUCTIONS,
         )
 
         audio_bytes = audio_resp.read()  # <--- aquí también
@@ -495,6 +504,7 @@ async def tts(payload: TTSRequest):
             voice=voice,
             input=payload.text,
             response_format=fmt,
+            instructions=SPANISH_EU_VOICE_INSTRUCTIONS,
         )
 
         audio_bytes = audio.content
