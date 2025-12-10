@@ -16,9 +16,9 @@ const AvatarState = {
 
 const AudioDebug = {
   enabled: false,
-  // Más sensible para ver movimiento de labios
-  minRms: 0.005,  // antes 0.02
-  scale: 30,      // antes 10
+  // Más sensible para ver movimiento de labios␊
+  minRms: 0.004,  // umbral de silencio medido con TTS
+  scale: 28,      // factor para llevar RMS útil al rango 0..1
   logIntervalMs: 1000,
 };
 
@@ -54,9 +54,9 @@ let lipHoldActive = false;
 let lipsyncLevel = 0; // nivel suavizado 0..1
 
 const LipsyncConfig = {
-  attack: 25,        // rapidez al subir (abrir boca)
-  release: 8,        // rapidez al bajar (cerrar)
-  floorSpeaking: 0.15, // mínima apertura cuando hay voz clara
+  attack: 32,          // rapidez al subir (abrir boca)
+  release: 12,         // rapidez al bajar (cerrar)
+  floorSpeaking: 0.12, // mínima apertura cuando hay voz clara
 };
 
 
@@ -749,17 +749,28 @@ function getTalkLevelFromAudio() {
   );
   const rawTalk = normalized * intensity; // valor “rápido” sin suavizar
 
-  // 3) Target según modo (silencios vs hablar)
+  // 3) Target según modo (silencios vs hablar) con umbrales sencillos
   let target = 0.0;
 
   if (AvatarState.mode === 'SPEAKING') {
-    if (rawTalk <= 0.001) {
-      // silencio claro → dejar que la boca se cierre
+    if (rms < 0.004) {
+      // silencio claro → cerramos
       target = 0.0;
+    } else if (rms < 0.012) {
+      // consonantes suaves / respiraciones
+      target = 0.22;
+    } else if (rms < 0.028) {
+      // voz normal
+      target = Math.max(0.48, rawTalk);
+    } else if (rms < 0.06) {
+      // sílabas marcadas
+      target = Math.max(0.75, rawTalk);
     } else {
-      // hay voz: aseguramos una apertura mínima decente
-      target = Math.max(rawTalk, LipsyncConfig.floorSpeaking);
+      // picos fuertes
+      target = 0.95;
     }
+
+    target = Math.max(target, LipsyncConfig.floorSpeaking * (rms >= AudioDebug.minRms ? 1 : 0));
   } else {
     // IDLE / LISTENING / THINKING → boca cerrada
     target = 0.0;
