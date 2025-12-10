@@ -581,7 +581,7 @@ async def tts_realtime_generate_wav(text: str, voice: str | None = None) -> tupl
 
     voice_name = (voice or REALTIME_VOICE_DEFAULT).strip() or REALTIME_VOICE_DEFAULT
 
-    # Conectamos al WebSocket Realtime (firmando cabeceras en formato lista de tuplas)
+     # Conectamos al WebSocket Realtime (firmando cabeceras en formato lista de tuplas)
     headers = [
         ("Authorization", f"Bearer {api_key}"),
         ("OpenAI-Beta", "realtime=v1"),
@@ -595,25 +595,21 @@ async def tts_realtime_generate_wav(text: str, voice: str | None = None) -> tupl
         session_update = {
             "type": "session.update",
             "session": {
-                "type": "realtime",
                 "model": REALTIME_MODEL,
-                "output_modalities": ["audio"],
+                # Solo queremos audio de salida. El input es texto.
+                "modalities": ["audio"],
                 "instructions": (
                     "Eres un motor de LOCUCIÓN. "
                     "Tu única tarea es LEER EN VOZ ALTA, literalmente, el texto "
                     "que el usuario proporcione. No añadas ni quites palabras."
                 ),
-                "audio": {
-                    "output": {
-                        "format": {
-                            "type": "audio/pcm",
-                        },
-                        "voice": voice_name,
-                    }
-                },
+                # Formato PCM16 estándar para Realtime
+                "output_audio_format": "pcm16",
+                "voice": voice_name,
             },
         }
         await ws.send(json.dumps(session_update))
+
 
         # 2) Creamos item de conversación con el texto a leer
         conv_item = {
