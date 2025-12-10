@@ -29,7 +29,7 @@
       padding: 10px 12px;
       border-radius: 10px;
       font-size: 14px;
-      width: 340px;
+      width: 360px;
       backdrop-filter: blur(6px);
       box-shadow: 0 10px 30px rgba(0,0,0,0.4);
     }
@@ -55,6 +55,87 @@
       min-height: 60px;
     }
     button { cursor: pointer; }
+    #voicePanel {
+      position: fixed;
+      bottom: 16px;
+      left: 16px;
+      z-index: 15;
+      width: 380px;
+      background: rgba(8, 15, 30, 0.8);
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      padding: 12px 14px;
+      border: 1px solid rgba(255,255,255,0.05);
+      backdrop-filter: blur(8px);
+    }
+    #voicePanel h2 {
+      margin: 0 0 8px;
+      font-size: 15px;
+      letter-spacing: 0.02em;
+    }
+    .voice-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 6px;
+      flex-wrap: wrap;
+    }
+    .voice-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.06);
+      font-size: 12px;
+    }
+    .voice-status {
+      font-weight: 600;
+      color: #a5b4fc;
+    }
+    .voice-status.listening { color: #22c55e; }
+    .voice-status.auto { color: #fbbf24; }
+    #voiceTranscript {
+      min-height: 64px;
+      border-radius: 8px;
+      padding: 8px 10px;
+      background: rgba(255,255,255,0.06);
+      font-size: 14px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .voice-buttons button {
+      flex: 1;
+      border: none;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #0b1220;
+      background: linear-gradient(135deg, #34d399, #10b981);
+    }
+    .voice-buttons button.stop {
+      background: linear-gradient(135deg, #f97316, #ef4444);
+      color: #fff;
+    }
+    .voice-buttons button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .hidden-while-voice {
+      transition: opacity 0.2s ease, height 0.2s ease;
+    }
+    .voice-only .hidden-while-voice {
+      opacity: 0;
+      height: 0;
+      overflow: hidden;
+      pointer-events: none;
+    }
+    .voice-hint {
+      font-size: 12px;
+      color: #cbd5e1;
+      margin-top: 6px;
+    }
   </style>
 </head>
 <body>
@@ -71,15 +152,17 @@
       </label>
     </div>
 
-    <div style="margin-top: 6px;">
+    <div id="textControls" class="hidden-while-voice" style="margin-top: 6px;">
       <textarea id="userText" rows="2" placeholder="Escribe aquí... (Ctrl/Cmd+Enter para enviar)"></textarea>
-    </div>
 
-    <div style="margin-top: 4px;">
-      <label>
-        <input type="checkbox" id="textOnly" />
-        Solo texto (sin voz)
-      </label>
+      <div style="margin-top: 4px;">
+        <label>
+          <input type="checkbox" id="textOnly" />
+          Solo texto (sin voz)
+        </label>
+      </div>
+
+      <button id="sendToAgentBtn" style="margin-top: 6px; width: 100%;">Enviar al agente</button>
     </div>
 
     <div style="margin-top: 6px; font-size: 13px;">
@@ -91,21 +174,38 @@
       </div>
     </div>
 
-    <button id="sendToAgentBtn" style="margin-top: 6px; width: 100%;">Enviar al agente</button>
-
-    <div style="margin-top: 6px;">
-      <button id="micBtn">🎤 Hablar</button>
-    </div>
-    <canvas id="waveCanvas" width="320" height="40"
-            style="margin-top:4px;background:rgba(15,23,42,0.9);border-radius:4px;"></canvas>
-    <div id="micLabel" style="font-size:12px;margin-top:2px;color:#9ca3af;">
-      Pulsa el micro y habla
-    </div>
-
     <div style="margin-top: 6px; font-size: 12px;">
       Respuesta:
       <span id="lastReply"></span>
     </div>
+  </div>
+
+  <div id="voicePanel">
+    <div class="voice-row" style="justify-content: space-between;">
+      <h2 style="margin:0;">Zona de voz</h2>
+      <label class="voice-pill" title="Oculta la caja de texto y centra la interacción en voz">
+        <input type="checkbox" id="voiceModeToggle" />
+        Solo voz
+      </label>
+    </div>
+
+    <div class="voice-row">
+      <span class="voice-pill">
+        Estado:
+        <span id="voiceStatus" class="voice-status">En espera</span>
+      </span>
+      <span class="voice-pill" id="voiceAutoPill" title="Se reactivará solo tras la primera respuesta del avatar" style="display:none;">
+        Autoescucha lista
+      </span>
+    </div>
+
+    <div class="voice-row voice-buttons" style="margin-top: 10px;">
+      <button id="voiceStartBtn">🎤 Hablar</button>
+      <button id="voiceStopBtn" class="stop" disabled>⏹️ Enviar ahora</button>
+    </div>
+
+    <div id="voiceTranscript" style="margin-top: 8px;" aria-live="polite"></div>
+    <div class="voice-hint">Pulsa Enter para detener y enviar el audio transcrito sin usar el ratón.</div>
   </div>
 
   <canvas id="c"></canvas>

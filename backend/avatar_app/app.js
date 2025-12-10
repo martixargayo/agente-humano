@@ -791,6 +791,7 @@ async function playAudioFromAudioData(
     AvatarState.speechIntensity = 1.0;
     AvatarState.talkLevel = 0;
     cleanupAudio();
+    handleAgentSpeechEnded();
   };
 
   if (AudioDebug.enabled) {
@@ -1027,93 +1028,198 @@ if (idleMotionToggle) {
 }
 
 // =========================
-// 9. Mic simple (visual)
+// 9. Zona de voz (STT + auto reactivación)
 // =========================
-const micBtn = document.getElementById('micBtn');
-const waveCanvas = document.getElementById('waveCanvas');
-const micLabel = document.getElementById('micLabel');
-let mediaRecorder = null;
-let audioChunks = [];
-let isRecording = false;
-let audioStream = null;
-let waveAudioCtx = null;
-let waveAnalyser = null;
-let waveDataArray = null;
-let waveAnimationId = null;
+const voiceStartBtn = document.getElementById('voiceStartBtn');
+const voiceStopBtn = document.getElementById('voiceStopBtn');
+const voiceStatusEl = document.getElementById('voiceStatus');
+const voiceTranscriptEl = document.getElementById('voiceTranscript');
+const voiceModeToggle = document.getElementById('voiceModeToggle');
+const voiceAutoPill = document.getElementById('voiceAutoPill');
 
-function drawWaveform() {
-  if (!waveCanvas || !waveAnalyser) return;
-  const ctx = waveCanvas.getContext('2d');
-  const width = waveCanvas.width;
-  const height = waveCanvas.height;
-  waveAnimationId = requestAnimationFrame(drawWaveform);
-  waveAnalyser.getByteTimeDomainData(waveDataArray);
-  ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = 'rgba(15,23,42,1)';
-  ctx.fillRect(0, 0, width, height);
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = '#22c55e';
-  ctx.beginPath();
-  const sliceWidth = width / waveDataArray.length;
-  let x = 0;
-  for (let i = 0; i < waveDataArray.length; i++) {
-    const v = waveDataArray[i] / 128.0;
-    const y = (v * height) / 2;
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-    x += sliceWidth;
+let speechRecognition = null;
+let isListening = false;
+let pendingSend = false;
+let transcriptText = '';
+let interimText = '';
+let autoListenReady = false;
+let autoListenArmPending = false;
+
+function updateVoiceStatus(text, { listening = false, auto = false } = {}) {
+  if (voiceStatusEl) {
+    voiceStatusEl.textContent = text;
+    voiceStatusEl.classList.toggle('listening', listening);
+    voiceStatusEl.classList.toggle('auto', auto);
   }
-  ctx.lineTo(width, height / 2);
-  ctx.stroke();
 }
 
-async function startRecording() {
-  if (!navigator.mediaDevices?.getUserMedia) return alert('getUserMedia no soportado');
-  audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  mediaRecorder = new MediaRecorder(audioStream);
-  audioChunks = [];
-  mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
-  mediaRecorder.onstop = async () => {
-    const blob = new Blob(audioChunks, { type: 'audio/webm' });
-    console.log('Audio grabado (no enviado en esta demo):', blob.size, 'bytes');
-  };
-  mediaRecorder.start();
-  isRecording = true;
-  if (micLabel) micLabel.textContent = 'Grabando…';
-  AvatarState.mode = 'LISTENING';
+function ensureSpeechRecognition() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    updateVoiceStatus('STT no disponible en este navegador');
+    return null;
+  }
+  if (!speechRecognition) {
+    speechRecognition = new SpeechRecognition();
+    speechRecognition.lang = 'es-ES';
+    speechRecognition.continuous = true;
+    speechRecognition.interimResults = true;
 
-  waveAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  waveAnalyser = waveAudioCtx.createAnalyser();
-  waveAnalyser.fftSize = 1024;
-  const source = waveAudioCtx.createMediaStreamSource(audioStream);
-  source.connect(waveAnalyser);
-  waveDataArray = new Uint8Array(waveAnalyser.frequencyBinCount);
-  drawWaveform();
+    speechRecognition.onresult = (event) => {
+      interimText = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        const text = result[0]?.transcript || '';
+        if (result.isFinal) {
+          transcriptText += text + ' ';
+        } else {
+          interimText += text;
+        }
+      }
+      const combined = `${transcriptText}${interimText}`.trim();
+      if (voiceTranscriptEl) voiceTranscriptEl.textContent = combined;
+    };
+
+    speechRecognition.onerror = (event) => {
+      console.warn('[voz] Error STT', event.error);
+      updateVoiceStatus('Hubo un problema con el micro');
+      isListening = false;
+      voiceStartBtn && (voiceStartBtn.disabled = false);
+      voiceStopBtn && (voiceStopBtn.disabled = true);
+    };
+
+    speechRecognition.onend = () => {
+      const shouldSend = pendingSend;
+      isListening = false;
+      pendingSend = false;
+      voiceStartBtn && (voiceStartBtn.disabled = false);
+      voiceStopBtn && (voiceStopBtn.disabled = true);
+
+      if (shouldSend) {
+        sendVoiceTranscript();
+        return;
+      }
+
+      updateVoiceStatus('En espera');
+
+      if (autoListenReady && voiceModeToggle?.checked) {
+        setTimeout(() => startVoiceCapture({ autoTriggered: true }), 120);
+      }
+    };
+  }
+  return speechRecognition;
 }
 
-function stopRecording() {
-  if (mediaRecorder && isRecording) mediaRecorder.stop();
-  if (audioStream) audioStream.getTracks().forEach((t) => t.stop());
-  isRecording = false;
-  if (micLabel) micLabel.textContent = 'Pulsa el micro y habla';
-  if (waveAudioCtx) waveAudioCtx.close();
-  waveAudioCtx = null;
-  cancelAnimationFrame(waveAnimationId);
-  if (AvatarState.mode === 'LISTENING') AvatarState.mode = 'IDLE';
+function startVoiceCapture({ autoTriggered = false } = {}) {
+  if (!voiceModeToggle?.checked && autoTriggered) return;
+  const recognizer = ensureSpeechRecognition();
+  if (!recognizer || isListening) return;
+  transcriptText = '';
+  interimText = '';
+  pendingSend = false;
+  try {
+    recognizer.start();
+    isListening = true;
+    if (voiceTranscriptEl) voiceTranscriptEl.textContent = '';
+    updateVoiceStatus(autoTriggered ? 'Autoescuchando…' : 'Escuchando…', {
+      listening: true,
+      auto: autoTriggered,
+    });
+    if (voiceStartBtn) voiceStartBtn.disabled = true;
+    if (voiceStopBtn) voiceStopBtn.disabled = false;
+    AvatarState.mode = 'LISTENING';
+  } catch (err) {
+    console.error('No se pudo iniciar el reconocimiento de voz', err);
+    updateVoiceStatus('No se pudo iniciar el micro');
+  }
 }
 
-if (micBtn) {
-  micBtn.addEventListener('click', async () => {
-    if (isRecording) {
-      stopRecording();
-      micBtn.textContent = '🎤 Hablar';
-    } else {
-      await startRecording();
-      micBtn.textContent = '⏹️ Detener';
+function stopVoiceCapture({ send = false } = {}) {
+  if (!speechRecognition) return;
+  pendingSend = send;
+  try {
+    speechRecognition.stop();
+  } catch (err) {
+    console.error('Error al parar reconocimiento', err);
+  }
+}
+
+async function sendVoiceTranscript() {
+  const finalText = (transcriptText || interimText || '').trim();
+  if (!finalText) {
+    updateVoiceStatus('Sin audio para enviar');
+    return;
+  }
+
+  autoListenArmPending = true;
+  updateVoiceStatus('Enviando al avatar…');
+  if (voiceStartBtn) voiceStartBtn.disabled = true;
+  if (voiceStopBtn) voiceStopBtn.disabled = true;
+
+  const modeRadio = document.querySelector('input[name="agentMode"]:checked');
+  const mode = modeRadio ? modeRadio.value : 'negociar';
+  const withAudio = !textOnlyCheckbox?.checked;
+
+  try {
+    await sendTextToAgent(finalText, { mode, withAudio });
+    if (!withAudio) {
+      handleVoiceAutoReady();
+      if (voiceModeToggle?.checked) {
+        startVoiceCapture({ autoTriggered: true });
+      }
+    }
+  } finally {
+    transcriptText = '';
+    interimText = '';
+    if (voiceTranscriptEl) voiceTranscriptEl.textContent = '';
+    if (voiceStartBtn) voiceStartBtn.disabled = false;
+    updateVoiceStatus('Esperando respuesta…');
+  }
+}
+
+function handleVoiceAutoReady() {
+  autoListenReady = true;
+  autoListenArmPending = false;
+  if (voiceAutoPill) voiceAutoPill.style.display = 'inline-flex';
+  updateVoiceStatus('Autoescucha lista', { auto: true });
+}
+
+function handleAgentSpeechEnded() {
+  if (autoListenArmPending) {
+    handleVoiceAutoReady();
+  }
+  if (autoListenReady && voiceModeToggle?.checked) {
+    startVoiceCapture({ autoTriggered: true });
+  }
+}
+
+if (voiceModeToggle) {
+  voiceModeToggle.addEventListener('change', () => {
+    document.body.classList.toggle('voice-only', voiceModeToggle.checked);
+    if (!voiceModeToggle.checked) {
+      autoListenReady = false;
+      autoListenArmPending = false;
+      if (voiceAutoPill) voiceAutoPill.style.display = 'none';
+      updateVoiceStatus('En espera');
     }
   });
 }
 
+if (voiceStartBtn) {
+  voiceStartBtn.addEventListener('click', () => startVoiceCapture());
+}
+
+if (voiceStopBtn) {
+  voiceStopBtn.addEventListener('click', () => stopVoiceCapture({ send: true }));
+}
+
+window.addEventListener('keydown', (event) => {
+  if (!voiceModeToggle?.checked) return;
+  if (event.key === 'Enter' && isListening) {
+    event.preventDefault();
+    stopVoiceCapture({ send: true });
+  }
+});
 
 // =========================
 // 10. Botón "Hablar (test)" – solo frontend, sin backend
