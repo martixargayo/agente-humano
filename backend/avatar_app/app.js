@@ -52,6 +52,20 @@ let silentFrameCount = 0;
 let audioSource = null;
 let lipHoldActive = false;
 let lipsyncLevel = 0; // nivel suavizado 0..1
+const debugStats = {
+  frames: 0,
+  rmsSum: 0,
+  rmsMin: Number.POSITIVE_INFINITY,
+  rmsMax: 0,
+  normalizedMin: Number.POSITIVE_INFINITY,
+  normalizedMax: 0,
+  rawTalkMin: Number.POSITIVE_INFINITY,
+  rawTalkMax: 0,
+  targetMin: Number.POSITIVE_INFINITY,
+  targetMax: 0,
+  speakingFrames: 0,
+  silentFrames: 0,
+};
 
 const LipsyncConfig = {
   attack: 32,          // rapidez al subir (abrir boca)
@@ -714,7 +728,7 @@ async function playAudioFromAudioData(
 }
 
 function getTalkLevelFromAudio() {
-  // Si no hay analyser, no hay audio → cerramos boca
+  // Si no hay analyser, no hay audio → cerramos boca␊
   if (!(analyser && analyserData)) {
     if (AudioDebug.enabled) {
       const now = performance.now();
@@ -785,15 +799,60 @@ function getTalkLevelFromAudio() {
   lipsyncLevel += (target - lipsyncLevel) * smoothing;
 
   if (AudioDebug.enabled) {
+    debugStats.frames += 1;
+    debugStats.rmsSum += rms;
+    debugStats.rmsMin = Math.min(debugStats.rmsMin, rms);
+    debugStats.rmsMax = Math.max(debugStats.rmsMax, rms);
+    debugStats.normalizedMin = Math.min(debugStats.normalizedMin, normalized);
+    debugStats.normalizedMax = Math.max(debugStats.normalizedMax, normalized);
+    debugStats.rawTalkMin = Math.min(debugStats.rawTalkMin, rawTalk);
+    debugStats.rawTalkMax = Math.max(debugStats.rawTalkMax, rawTalk);
+    debugStats.targetMin = Math.min(debugStats.targetMin, target);
+    debugStats.targetMax = Math.max(debugStats.targetMax, target);
+    if (rms >= AudioDebug.minRms) {
+      debugStats.speakingFrames += 1;
+    } else {
+      debugStats.silentFrames += 1;
+    }
+
     const now = performance.now();
     if (now - lastAudioDebugLog > AudioDebug.logIntervalMs) {
       lastAudioDebugLog = now;
+      const avgRms = debugStats.frames ? debugStats.rmsSum / debugStats.frames : 0;
       console.info('[audio-debug] RMS', {
         rms: Number(rms.toFixed(4)),
         normalized: Number(normalized.toFixed(3)),
         rawTalk: Number(rawTalk.toFixed(3)),
         lipsyncLevel: Number(lipsyncLevel.toFixed(3)),
+        target: Number(target.toFixed(3)),
+        stats: {
+          frames: debugStats.frames,
+          rmsMin: Number(debugStats.rmsMin.toFixed(4)),
+          rmsMax: Number(debugStats.rmsMax.toFixed(4)),
+          rmsAvg: Number(avgRms.toFixed(4)),
+          normalizedMin: Number(debugStats.normalizedMin.toFixed(3)),
+          normalizedMax: Number(debugStats.normalizedMax.toFixed(3)),
+          rawTalkMin: Number(debugStats.rawTalkMin.toFixed(3)),
+          rawTalkMax: Number(debugStats.rawTalkMax.toFixed(3)),
+          targetMin: Number(debugStats.targetMin.toFixed(3)),
+          targetMax: Number(debugStats.targetMax.toFixed(3)),
+          speakingFrames: debugStats.speakingFrames,
+          silentFrames: debugStats.silentFrames,
+        },
       });
+
+      debugStats.frames = 0;
+      debugStats.rmsSum = 0;
+      debugStats.rmsMin = Number.POSITIVE_INFINITY;
+      debugStats.rmsMax = 0;
+      debugStats.normalizedMin = Number.POSITIVE_INFINITY;
+      debugStats.normalizedMax = 0;
+      debugStats.rawTalkMin = Number.POSITIVE_INFINITY;
+      debugStats.rawTalkMax = 0;
+      debugStats.targetMin = Number.POSITIVE_INFINITY;
+      debugStats.targetMax = 0;
+      debugStats.speakingFrames = 0;
+      debugStats.silentFrames = 0;
     }
 
     if (rms < AudioDebug.minRms) {
@@ -812,6 +871,7 @@ function getTalkLevelFromAudio() {
 
   return lipsyncLevel;
 }
+
 
 
 // =========================
