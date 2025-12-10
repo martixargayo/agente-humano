@@ -763,7 +763,7 @@ function getTalkLevelFromAudio() {
   );
   const rawTalk = normalized * intensity; // valor “rápido” sin suavizar
 
-  // 3) Target según modo (silencios vs hablar) usando NORMALIZED
+  // 3) Target según modo usando NORMALIZED (no RMS directo)
   let target = 0.0;
 
   if (AvatarState.mode === 'SPEAKING') {
@@ -789,7 +789,7 @@ function getTalkLevelFromAudio() {
   }
 
   // 4) Envelope: ataque rápido, release más lento (no vibra feo)
-  const dt = 1 / 60; // aprox 60 FPS, no usamos clock aquí
+  const dt = 1 / 60; // aprox 60 FPS
   const speed =
     target > lipsyncLevel ? LipsyncConfig.attack : LipsyncConfig.release;
   const smoothing = 1 - Math.exp(-dt * speed);
@@ -872,7 +872,6 @@ function getTalkLevelFromAudio() {
 
   return lipsyncLevel;
 }
-
 
 
 // =========================
