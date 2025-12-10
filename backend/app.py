@@ -28,12 +28,11 @@ load_dotenv()
 
 from fastapi.middleware.cors import CORSMiddleware
 
+from websockets.asyncio.client import connect as ws_connect  # pip install websockets
+
 import asyncio
 import json
 import wave
-
-import websockets  # pip install websockets
-
 
 import logging
 
@@ -582,13 +581,15 @@ async def tts_realtime_generate_wav(text: str, voice: str | None = None) -> tupl
 
     voice_name = (voice or REALTIME_VOICE_DEFAULT).strip() or REALTIME_VOICE_DEFAULT
 
-    # Conectamos al WebSocket Realtime
-    async with websockets.connect(
+    # Conectamos al WebSocket Realtime (firmando cabeceras en formato lista de tuplas)
+    headers = [
+        ("Authorization", f"Bearer {api_key}"),
+        ("OpenAI-Beta", "realtime=v1"),
+    ]
+
+    async with ws_connect(
         REALTIME_WS_URL,
-        extra_headers={
-            "Authorization": f"Bearer {api_key}",
-            "OpenAI-Beta": "realtime=v1",
-        },
+        additional_headers=headers,
     ) as ws:
         # 1) Actualizamos sesión: solo audio de salida + instrucciones de "lector literal"
         session_update = {
