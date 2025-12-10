@@ -690,26 +690,49 @@ async function playAudioFromAudioData(
   // para evitar que la boca se mueva “a medio audio”.
   const detectLeadingSilenceSeconds = (
     buffer,
-    { threshold = 0.004, maxLookaheadMs = 1200 } = {},
+    {
+      threshold = 0.002,
+      windowMs = 12,
+      lookaheadMs = 1800,
+      consecutiveWindows = 2,
+    } = {},
   ) => {
+    // Detecta el primer tramo con RMS real en vez de un único sample para no comerse
+    // el ataque suave de voces como Onyx (que pueden arrancar con valores muy bajos).
     if (!buffer?.numberOfChannels) return 0;
+
     const channelData = buffer.getChannelData(0);
     const sampleRate = buffer.sampleRate || 48000;
+    const windowSize = Math.max(1, Math.floor((sampleRate * windowMs) / 1000));
     const maxSamples = Math.min(
       channelData.length,
-      Math.floor((sampleRate * maxLookaheadMs) / 1000),
+      Math.floor((sampleRate * lookaheadMs) / 1000),
     );
 
-    let firstIndex = -1;
-    for (let i = 0; i < maxSamples; i++) {
-      if (Math.abs(channelData[i]) > threshold) {
-        firstIndex = i;
-        break;
+    const rmsAt = (offset, len) => {
+      let sum = 0;
+      for (let i = 0; i < len; i++) {
+        const v = channelData[offset + i];
+        sum += v * v;
+      }
+      return Math.sqrt(sum / len);
+    };
+
+    let consec = 0;
+    for (let start = 0; start + windowSize <= maxSamples; start += windowSize) {
+      const rms = rmsAt(start, windowSize);
+      if (rms > threshold) {
+        consec += 1;
+        if (consec >= consecutiveWindows) {
+          const offsetSamples = start - (consecutiveWindows - 1) * windowSize;
+          return Math.max(0, offsetSamples) / sampleRate;
+        }
+      } else {
+        consec = 0;
       }
     }
 
-    if (firstIndex <= 0) return 0;
-    return firstIndex / sampleRate;
+    return 0;
   };
 
   const startOffsetSec = detectLeadingSilenceSeconds(audioBuffer);
