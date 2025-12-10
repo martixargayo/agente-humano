@@ -742,50 +742,64 @@ function getTalkLevelFromAudio() {
   const rms = Math.sqrt(sum / analyserData.length);
   const intensity = AvatarState.speechIntensity || 1.0;
 
-  // 1) Normalizamos como antes
-let level = Math.min(
-  1,
-  Math.max(0, (rms - AudioDebug.minRms) * AudioDebug.scale)
-);
+  // 2) Normalizar volumen → 0..1 con minRms y scale
+  const normalized = Math.min(
+    1,
+    Math.max(0, (rms - AudioDebug.minRms) * AudioDebug.scale),
+  );
+  const rawTalk = normalized * intensity; // valor “rápido” sin suavizar
 
-// 2) Aplicamos intensidad del avatar (excited/calm)
-level *= intensity;
+  // 3) Target según modo (silencios vs hablar)
+  let target = 0.0;
 
-// 3) Curva suave: pequeños sonidos casi no abren
-level = Math.pow(level, 0.6); // 0.5–0.7 da más contraste
-
-// 4) "Gate" de silencio: si es muy pequeño, lo consideramos 0 (boca cerrada)
-if (level < 0.15) {
-  level = 0.0;
-}
-
-if (AudioDebug.enabled) {
-  const now = performance.now();
-  if (now - lastAudioDebugLog > AudioDebug.logIntervalMs) {
-    lastAudioDebugLog = now;
-    console.info('[audio-debug] RMS', {
-      rms: Number(rms.toFixed(4)),
-      intensity,
-      level: Number(level.toFixed(3)),
-      bufferSample: analyserData.slice(0, 8),
-    });
-  }
-
-  if (rms < AudioDebug.minRms) {
-    silentFrameCount += 1;
-    if (silentFrameCount % 30 === 0) {
-      console.warn('[audio-debug] Señal de audio por debajo del umbral', {
-        rms: Number(rms.toFixed(4)),
-        minRms: AudioDebug.minRms,
-        silentFrames: silentFrameCount,
-      });
+  if (AvatarState.mode === 'SPEAKING') {
+    if (rawTalk <= 0.001) {
+      // silencio claro → dejar que la boca se cierre
+      target = 0.0;
+    } else {
+      // hay voz: aseguramos una apertura mínima decente
+      target = Math.max(rawTalk, LipsyncConfig.floorSpeaking);
     }
   } else {
-    silentFrameCount = 0;
+    // IDLE / LISTENING / THINKING → boca cerrada
+    target = 0.0;
   }
-}
 
-return level;
+  // 4) Envelope: ataque rápido, release más lento (no vibra feo)
+  const dt = 1 / 60; // aprox 60 FPS, no usamos clock aquí
+  const speed =
+    target > lipsyncLevel ? LipsyncConfig.attack : LipsyncConfig.release;
+  const smoothing = 1 - Math.exp(-dt * speed);
+
+  lipsyncLevel += (target - lipsyncLevel) * smoothing;
+
+  if (AudioDebug.enabled) {
+    const now = performance.now();
+    if (now - lastAudioDebugLog > AudioDebug.logIntervalMs) {
+      lastAudioDebugLog = now;
+      console.info('[audio-debug] RMS', {
+        rms: Number(rms.toFixed(4)),
+        normalized: Number(normalized.toFixed(3)),
+        rawTalk: Number(rawTalk.toFixed(3)),
+        lipsyncLevel: Number(lipsyncLevel.toFixed(3)),
+      });
+    }
+
+    if (rms < AudioDebug.minRms) {
+      silentFrameCount += 1;
+      if (silentFrameCount % 30 === 0) {
+        console.warn('[audio-debug] Señal de audio por debajo del umbral', {
+          rms: Number(rms.toFixed(4)),
+          minRms: AudioDebug.minRms,
+          silentFrames: silentFrameCount,
+        });
+      }
+    } else {
+      silentFrameCount = 0;
+    }
+  }
+
+  return lipsyncLevel;
 }
 
 
