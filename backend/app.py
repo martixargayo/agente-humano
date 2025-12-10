@@ -589,7 +589,8 @@ async def tts_realtime_generate_wav(text: str, voice: str | None = None) -> tupl
 
     async with ws_connect(
         REALTIME_WS_URL,
-        additional_headers=headers,
+        # websockets.connect espera el parámetro "extra_headers" (no "additional_headers").
+        extra_headers=headers,
     ) as ws:
         # 1) Actualizamos sesión: solo audio de salida + instrucciones de "lector literal"
         session_update = {
