@@ -28,6 +28,13 @@ load_dotenv()
 
 from fastapi.middleware.cors import CORSMiddleware
 
+import asyncio
+import json
+import wave
+
+import websockets  # pip install websockets
+
+
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -98,6 +105,16 @@ Intonation: neutral and slightly descending at sentence endings, avoid sing-song
 Tone: masculine, calm, confident, and natural.
 Style: conversational and close, like an adult from Spain speaking directly to the listener.
 """
+# --- Config OpenAI Realtime TTS (voz tipo ChatGPT) ---
+
+REALTIME_MODEL = os.getenv("OPENAI_REALTIME_MODEL", "gpt-realtime")
+REALTIME_VOICE_DEFAULT = os.getenv("OPENAI_REALTIME_VOICE", "alloy")
+
+# URL WebSocket del Realtime API
+REALTIME_WS_URL = os.getenv(
+    "OPENAI_REALTIME_WS_URL",
+    f"wss://api.openai.com/v1/realtime?model={REALTIME_MODEL}",
+)
 
 @app.on_event("startup")
 async def warmup_tts():
@@ -552,4 +569,145 @@ async def tts(payload: TTSRequest):
         raise HTTPException(
             status_code=500,
             detail=f"Error en TTS: {e}",
+        )
+
+async def tts_realtime_generate_wav(text: str, voice: str | None = None) -> tuple[bytes, str]:
+    """
+    Usa el modelo Realtime (gpt-realtime / gpt-4o-realtime...) para leer en voz alta
+    el texto dado y devuelve un WAV (audio_bytes, mime_type).
+    """
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY no configurada para Realtime")
+
+    voice_name = (voice or REALTIME_VOICE_DEFAULT).strip() or REALTIME_VOICE_DEFAULT
+
+    # Conectamos al WebSocket Realtime
+    async with websockets.connect(
+        REALTIME_WS_URL,
+        extra_headers={
+            "Authorization": f"Bearer {api_key}",
+            "OpenAI-Beta": "realtime=v1",
+        },
+    ) as ws:
+        # 1) Actualizamos sesión: solo audio de salida + instrucciones de "lector literal"
+        session_update = {
+            "type": "session.update",
+            "session": {
+                "type": "realtime",
+                "model": REALTIME_MODEL,
+                "output_modalities": ["audio"],
+                "instructions": (
+                    "Eres un motor de LOCUCIÓN. "
+                    "Tu única tarea es LEER EN VOZ ALTA, literalmente, el texto "
+                    "que el usuario proporcione. No añadas ni quites palabras."
+                ),
+                "audio": {
+                    "output": {
+                        "format": {
+                            "type": "audio/pcm",
+                        },
+                        "voice": voice_name,
+                    }
+                },
+            },
+        }
+        await ws.send(json.dumps(session_update))
+
+        # 2) Creamos item de conversación con el texto a leer
+        conv_item = {
+            "type": "conversation.item.create",
+            "item": {
+                "type": "message",
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": text,
+                    }
+                ],
+            },
+        }
+        await ws.send(json.dumps(conv_item))
+
+        # 3) Pedimos respuesta SOLO audio
+        resp_create = {
+            "type": "response.create",
+            "response": {
+                "output_modalities": ["audio"],
+                "instructions": "Lee literalmente el contenido del último mensaje del usuario.",
+            },
+        }
+        await ws.send(json.dumps(resp_create))
+
+        # 4) Recogemos chunks de audio PCM16 (base64) y los juntamos
+        pcm_chunks: list[bytes] = []
+        sample_rate = 24000  # típico en Realtime para audio/pcm
+
+        while True:
+            raw_msg = await ws.recv()
+            try:
+                event = json.loads(raw_msg)
+            except Exception:
+                continue
+
+            etype = event.get("type")
+
+            if etype == "response.audio.delta":
+                b64 = event.get("delta") or ""
+                if b64:
+                    pcm_chunks.append(base64.b64decode(b64))
+
+            elif etype == "response.audio.done":
+                # nada especial, esperamos a response.done
+                continue
+
+            elif etype == "response.done":
+                break
+
+            elif etype == "error":
+                raise RuntimeError(f"Realtime error: {event}")
+
+        if not pcm_chunks:
+            raise RuntimeError("Realtime no devolvió audio (pcm_chunks vacío)")
+
+        pcm_data = b"".join(pcm_chunks)
+
+        # 5) Empaquetamos PCM16 en WAV
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as wf:
+            wf.setnchannels(1)      # mono
+            wf.setsampwidth(2)      # 16 bits
+            wf.setframerate(sample_rate)
+            wf.writeframes(pcm_data)
+        wav_bytes = buf.getvalue()
+
+        return wav_bytes, "audio/wav"
+
+
+@app.post("/tts_realtime", response_model=TTSAudioResponse)
+async def tts_realtime(payload: TTSRequest):
+    """
+    TTS usando el modelo Realtime (voz tipo ChatGPT).
+    Recibe texto y devuelve audio_base64 + audio_mime_type (WAV).
+    """
+    try:
+        # Usamos la voz que venga en el payload o la por defecto de Realtime
+        wav_bytes, mime_type = await tts_realtime_generate_wav(
+            text=payload.text,
+            voice=payload.voice,
+        )
+
+        audio_b64 = base64.b64encode(wav_bytes).decode("ascii")
+
+        return TTSAudioResponse(
+            audio_base64=audio_b64,
+            audio_mime_type=mime_type,
+        )
+
+    except Exception as e:
+        print("ERROR en /tts_realtime:", repr(e))
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error en TTS Realtime: {e}",
         )

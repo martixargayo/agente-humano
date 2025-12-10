@@ -5,3 +5,4 @@ bournemouth-forced-aligner
 torch
 torchaudio
 torchcodec
+websockets>=12.0

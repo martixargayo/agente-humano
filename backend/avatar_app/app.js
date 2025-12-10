@@ -640,7 +640,7 @@ async function warmupFrontendTts() {
 
 
 async function requestTTS(text) {
-  const res = await fetch(`${BACKEND_URL}/tts`, {
+  const res = await fetch(`${BACKEND_URL}/tts_realtime`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text }),
