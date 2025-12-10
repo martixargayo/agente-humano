@@ -509,8 +509,8 @@ loader.load(
 
         // habla
         uTalk: { value: 0.0 },
-        uTalkAmpTop: { value: 0.12 }, // apertura labio superior
-        uTalkAmpBot: { value: 0.35 }, // apertura labio inferior
+        uTalkAmpTop: { value: 1.12 }, // apertura labio superior
+        uTalkAmpBot: { value: 1.35 }, // apertura labio inferior
         uTalkFreq: { value: 24.0 }, // velocidad "bla bla"
         uLipDepthAmp: { value: 0.3 }, // cuánto entra hacia dentro
 
