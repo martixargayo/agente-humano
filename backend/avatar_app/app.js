@@ -512,7 +512,7 @@ loader.load(
         uTalkAmpTop: { value: 0.012 }, // apertura labio superior
         uTalkAmpBot: { value: 0.035 }, // apertura labio inferior
         uTalkFreq: { value: 24.0 }, // velocidad "bla bla"
-        uLipDepthAmp: { value: 0.3 }, // cuánto entra hacia dentro
+        uLipDepthAmp: { value: 0.1 }, // cuánto entra hacia dentro
 
         // rest pose (apertura mínima constante) – alto para ver la separación
         uRestOpen: { value: 0.30 },
