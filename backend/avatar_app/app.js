@@ -781,29 +781,29 @@ function animate() {
   const delta = clock.getDelta();
 
   if (particleMaterial) {
-  particleMaterial.uniforms.uTime.value = elapsed;
+    particleMaterial.uniforms.uTime.value = elapsed;
 
-  let targetTalk = 0.0;
+    let targetTalk = 0.0;
 
-  if (lipHoldActive) {
-    // EXACTAMENTE como el demo: botón → uTalk = 1.0
-    targetTalk = 1.0;
-  } else {
-    // Cuando habla con TTS, usamos el audio, pero queremos llegar fácil a 1.0
-    const audioTalk = getTalkLevelFromAudio();
-    const talkGain = 1.3; // súbelo/bájalo si quieres más/menos apertura
-    targetTalk = Math.min(1.0, audioTalk * talkGain);
+    if (lipHoldActive) {
+      // Modo test: igual que el sistema antiguo
+      // uTalk = 1.0 constante y el shader se encarga del bla-bla
+      targetTalk = 1.0;
+    } else {
+      // Modo normal: nivel desde el audio
+      const audioTalk = getTalkLevelFromAudio();
+      targetTalk = audioTalk;
+    }
+
+    const smoothing = 1 - Math.exp(-delta * 15);
+    AvatarState.talkLevel += (targetTalk - AvatarState.talkLevel) * smoothing;
+
+    particleMaterial.uniforms.uTalk.value = AvatarState.talkLevel;
+
+    // Un poco más abierto cuando habla o durante el test
+    particleMaterial.uniforms.uRestOpen.value =
+      (AvatarState.mode === 'SPEAKING' || lipHoldActive) ? 0.08 : 0.03;
   }
-
-  const smoothing = 1 - Math.exp(-delta * 15);
-  AvatarState.talkLevel += (targetTalk - AvatarState.talkLevel) * smoothing;
-
-  particleMaterial.uniforms.uTalk.value = AvatarState.talkLevel;
-
-  // Igual que en el demo: restOpen SIEMPRE 0.30 (hueco visible todo el rato)
-  particleMaterial.uniforms.uRestOpen.value = 0.30;
-}
-
 
   // movimiento global de cabeza/cuello (más vivo y menos lineal)
   if (particlePoints) {
