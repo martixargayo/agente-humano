@@ -677,12 +677,52 @@ async function playAudioFromAudioData(
   }
 
   if (AudioDebug.enabled) {
-  console.log('[avatar] TTS decodificado', {
-    mimeType: audioData?.mimeType,
-    blobSize: audioData?.blob?.size,
-    duration: audioBuffer?.duration,
-  });
-}
+    console.log('[avatar] TTS decodificado', {
+      mimeType: audioData?.mimeType,
+      blobSize: audioData?.blob?.size,
+      duration: audioBuffer?.duration,
+    });
+  }
+
+  // === Recorte de silencio inicial ===
+  // Algunas voces (p. ej., Onyx) traen un pequeño silencio / breath al inicio.
+  // Detectamos el primer sample con energía y arrancamos la reproducción desde ahí
+  // para evitar que la boca se mueva “a medio audio”.
+  const detectLeadingSilenceSeconds = (
+    buffer,
+    { threshold = 0.004, maxLookaheadMs = 1200 } = {},
+  ) => {
+    if (!buffer?.numberOfChannels) return 0;
+    const channelData = buffer.getChannelData(0);
+    const sampleRate = buffer.sampleRate || 48000;
+    const maxSamples = Math.min(
+      channelData.length,
+      Math.floor((sampleRate * maxLookaheadMs) / 1000),
+    );
+
+    let firstIndex = -1;
+    for (let i = 0; i < maxSamples; i++) {
+      if (Math.abs(channelData[i]) > threshold) {
+        firstIndex = i;
+        break;
+      }
+    }
+
+    if (firstIndex <= 0) return 0;
+    return firstIndex / sampleRate;
+  };
+
+  const startOffsetSec = detectLeadingSilenceSeconds(audioBuffer);
+  const clampedOffset = Math.max(
+    0,
+    Math.min(startOffsetSec, Math.max(0, audioBuffer.duration - 0.05)),
+  );
+  if (AudioDebug.enabled && clampedOffset > 0) {
+    console.info('[audio-debug] Recortando silencio inicial', {
+      startOffsetSec: Number(clampedOffset.toFixed(3)),
+      duration: Number(audioBuffer.duration.toFixed(3)),
+    });
+  }
 
   analyser = audioCtx.createAnalyser();
   analyser.fftSize = 512;
@@ -724,7 +764,8 @@ async function playAudioFromAudioData(
   if (AudioDebug.enabled) {
     console.log('[avatar] TTS playback start');
   }
-  audioSource.start();
+  // Saltamos el silencio inicial estimado para que el audio y el lip-sync arranquen alineados
+  audioSource.start(0, clampedOffset);
 }
 
 function getTalkLevelFromAudio() {
