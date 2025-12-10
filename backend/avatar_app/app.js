@@ -595,6 +595,50 @@ function base64ToAudioData(b64, mimeType = 'audio/wav') {
 
 const BACKEND_URL = '';
 
+// =========================
+// WARMUP TTS DEL FRONTEND
+// =========================
+let frontendTtsWarmedUp = false;
+
+async function warmupFrontendTts() {
+  if (frontendTtsWarmedUp) return;
+  try {
+    console.log("[warmup] Iniciando warmup del TTS...");
+
+    // 1. Pedimos un TTS muy corto al mismo endpoint real
+    const audioData = await requestTTS("Calibración de audio.");
+
+    // 2. Creamos el AudioContext real
+    const ctx = getOrCreateAudioContext();
+
+    // 3. Decodificamos el audio igual que haría playAudioFromAudioData
+    const bufferForDecode = audioData.arrayBuffer.slice(0);
+    const audioBuffer = await ctx.decodeAudioData(bufferForDecode);
+
+    // 4. Creamos un source, pero lo reproducimos a volumen 0
+    const gain = ctx.createGain();
+    gain.gain.value = 0.0; // silencio total
+
+    const source = ctx.createBufferSource();
+    source.buffer = audioBuffer;
+
+    source.connect(gain);
+    gain.connect(ctx.destination);
+
+    await ctx.resume();
+
+    // 5. Arrancamos el audio con offset seguro para inicializar pipeline WebAudio
+    const startTime = ctx.currentTime + 0.05;
+    source.start(startTime);
+
+    frontendTtsWarmedUp = true;
+    console.log("[warmup] Frontend TTS OK");
+  } catch (e) {
+    console.warn("[warmup] Falló warmup frontend TTS:", e);
+  }
+}
+
+
 async function requestTTS(text) {
   const res = await fetch(`${BACKEND_URL}/tts`, {
     method: 'POST',
@@ -1129,3 +1173,13 @@ testTalkBtn.addEventListener(
   },
   { passive: false },
 );
+
+// =========================
+// Lanzar warmup TTS al cargar página
+// =========================
+window.addEventListener("load", () => {
+  // Un pequeño delay evita interferencias con WebGL y carga del avatar
+  setTimeout(() => {
+    warmupFrontendTts();
+  }, 600);
+});
