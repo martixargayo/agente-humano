@@ -16,7 +16,7 @@ const AvatarState = {
 
 const AudioDebug = {
   enabled: false,
-  // Más sensible para ver movimiento de labios␊
+  // Más sensible para ver movimiento de labios
   minRms: 0.004,  // umbral de silencio medido con TTS
   scale: 28,      // factor para llevar RMS útil al rango 0..1
   logIntervalMs: 1000,
@@ -73,6 +73,13 @@ const LipsyncConfig = {
   floorSpeaking: 0.12, // mínima apertura cuando hay voz clara
 };
 
+// === NUEVO: helper para un AudioContext global y reutilizable ===
+function getOrCreateAudioContext() {
+  if (!audioCtx || audioCtx.state === 'closed') {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  return audioCtx;
+}
 
 function cleanupAudio() {
   if (audioSource) {
@@ -88,12 +95,10 @@ function cleanupAudio() {
     }
     audioSource = null;
   }
-  if (audioCtx) {
-    audioCtx.close();
-    audioCtx = null;
-  }
+  // No cerramos el audioCtx para poder reutilizarlo y evitar recortes en la primera frase
   analyser = null;
   analyserData = null;
+  silentFrameCount = 0;
 }
 
 // =========================
@@ -656,18 +661,19 @@ async function playAudioFromAudioData(
   lipTestActive = false;
   if (testLipsBtn) testLipsBtn.textContent = 'Test labios';
 
+  // Paramos cualquier audio anterior, pero mantenemos el AudioContext
   cleanupAudio();
 
   if (!audioData?.arrayBuffer) {
     throw new Error('Audio inválido (sin buffer)');
   }
 
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const ctx = getOrCreateAudioContext();
 
   let audioBuffer;
   try {
     const bufferForDecode = audioData.arrayBuffer.slice(0);
-    audioBuffer = await audioCtx.decodeAudioData(bufferForDecode);
+    audioBuffer = await ctx.decodeAudioData(bufferForDecode);
   } catch (err) {
     console.error('[audio] No se pudo decodificar audio_base64', err);
     AvatarState.mode = 'IDLE';
@@ -675,6 +681,27 @@ async function playAudioFromAudioData(
     cleanupAudio();
     throw err;
   }
+
+    // --- Padding de silencio para evitar que el navegador recorte el inicio ---
+  const paddingSeconds = 0.06; // ~60ms
+  const paddingSamples = Math.floor(audioBuffer.sampleRate * paddingSeconds);
+
+  const paddedBuffer = ctx.createBuffer(
+    audioBuffer.numberOfChannels,
+    audioBuffer.length + paddingSamples,
+    audioBuffer.sampleRate,
+  );
+
+  for (let ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
+    const src = audioBuffer.getChannelData(ch);
+    const dst = paddedBuffer.getChannelData(ch);
+
+    // Dejamos los primeros paddingSamples en 0 (silencio) y copiamos el audio detrás
+    dst.set(src, paddingSamples);
+  }
+
+  audioBuffer = paddedBuffer;
+
 
   if (AudioDebug.enabled) {
     console.log('[avatar] TTS decodificado', {
@@ -684,81 +711,19 @@ async function playAudioFromAudioData(
     });
   }
 
-  // === Recorte de silencio inicial ===
-  // Algunas voces (p. ej., Onyx) traen un pequeño silencio / breath al inicio.
-  // Detectamos el primer sample con energía y arrancamos la reproducción desde ahí
-  // para evitar que la boca se mueva “a medio audio”.
-  const detectLeadingSilenceSeconds = (
-    buffer,
-    {
-      threshold = 0.002,
-      windowMs = 12,
-      lookaheadMs = 1800,
-      consecutiveWindows = 2,
-    } = {},
-  ) => {
-    // Detecta el primer tramo con RMS real en vez de un único sample para no comerse
-    // el ataque suave de voces como Onyx (que pueden arrancar con valores muy bajos).
-    if (!buffer?.numberOfChannels) return 0;
-
-    const channelData = buffer.getChannelData(0);
-    const sampleRate = buffer.sampleRate || 48000;
-    const windowSize = Math.max(1, Math.floor((sampleRate * windowMs) / 1000));
-    const maxSamples = Math.min(
-      channelData.length,
-      Math.floor((sampleRate * lookaheadMs) / 1000),
-    );
-
-    const rmsAt = (offset, len) => {
-      let sum = 0;
-      for (let i = 0; i < len; i++) {
-        const v = channelData[offset + i];
-        sum += v * v;
-      }
-      return Math.sqrt(sum / len);
-    };
-
-    let consec = 0;
-    for (let start = 0; start + windowSize <= maxSamples; start += windowSize) {
-      const rms = rmsAt(start, windowSize);
-      if (rms > threshold) {
-        consec += 1;
-        if (consec >= consecutiveWindows) {
-          const offsetSamples = start - (consecutiveWindows - 1) * windowSize;
-          return Math.max(0, offsetSamples) / sampleRate;
-        }
-      } else {
-        consec = 0;
-      }
-    }
-
-    return 0;
-  };
-
-  const startOffsetSec = detectLeadingSilenceSeconds(audioBuffer);
-  const clampedOffset = Math.max(
-    0,
-    Math.min(startOffsetSec, Math.max(0, audioBuffer.duration - 0.05)),
-  );
-  if (AudioDebug.enabled && clampedOffset > 0) {
-    console.info('[audio-debug] Recortando silencio inicial', {
-      startOffsetSec: Number(clampedOffset.toFixed(3)),
-      duration: Number(audioBuffer.duration.toFixed(3)),
-    });
-  }
-
-  analyser = audioCtx.createAnalyser();
+  // Configuramos el analyser cada vez, pero con el mismo AudioContext global
+  analyser = ctx.createAnalyser();
   analyser.fftSize = 512;
   analyser.smoothingTimeConstant = 0.4;
   analyserData = new Uint8Array(analyser.frequencyBinCount);
 
-  audioSource = audioCtx.createBufferSource();
+  audioSource = ctx.createBufferSource();
   audioSource.buffer = audioBuffer;
 
   audioSource.connect(analyser);
-  analyser.connect(audioCtx.destination);
+  analyser.connect(ctx.destination);
 
-  await audioCtx.resume();
+  await ctx.resume();
 
   AvatarState.mode = 'SPEAKING';
   AvatarState.emotion = emotion;
@@ -787,8 +752,10 @@ async function playAudioFromAudioData(
   if (AudioDebug.enabled) {
     console.log('[avatar] TTS playback start');
   }
-  // Saltamos el silencio inicial estimado para que el audio y el lip-sync arranquen alineados
-  audioSource.start(0, clampedOffset);
+
+  // Arrancamos el audio con un pequeño offset temporal (50ms) para estabilizar el contexto
+  const startTime = ctx.currentTime + 0.05;
+  audioSource.start(startTime);
 }
 
 function getTalkLevelFromAudio() {
@@ -971,7 +938,6 @@ function animate() {
   controls.update();
   renderer.render(scene, camera);
 }
-
 
 animate();
 
