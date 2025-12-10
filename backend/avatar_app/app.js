@@ -728,7 +728,7 @@ async function playAudioFromAudioData(
 }
 
 function getTalkLevelFromAudio() {
-  // Si no hay analyser, no hay audio → cerramos boca␊
+  // Si no hay analyser, no hay audio → cerramos boca
   if (!(analyser && analyserData)) {
     if (AudioDebug.enabled) {
       const now = performance.now();
@@ -763,28 +763,26 @@ function getTalkLevelFromAudio() {
   );
   const rawTalk = normalized * intensity; // valor “rápido” sin suavizar
 
-  // 3) Target según modo (silencios vs hablar) con umbrales sencillos
+  // 3) Target según modo (silencios vs hablar) usando NORMALIZED
   let target = 0.0;
 
   if (AvatarState.mode === 'SPEAKING') {
-    if (rms < 0.004) {
-      // silencio claro → cerramos
+    if (normalized < 0.06) {
+      // silencio / ruido muy bajo → boca cerrada
       target = 0.0;
-    } else if (rms < 0.012) {
-      // consonantes suaves / respiraciones
-      target = 0.22;
-    } else if (rms < 0.028) {
+    } else if (normalized < 0.25) {
+      // susurros / consonantes suaves
+      target = 0.25;
+    } else if (normalized < 0.55) {
       // voz normal
-      target = Math.max(0.48, rawTalk);
-    } else if (rms < 0.06) {
+      target = 0.5;
+    } else if (normalized < 0.85) {
       // sílabas marcadas
-      target = Math.max(0.75, rawTalk);
+      target = 0.8;
     } else {
       // picos fuertes
-      target = 0.95;
+      target = 1.0;
     }
-
-    target = Math.max(target, LipsyncConfig.floorSpeaking * (rms >= AudioDebug.minRms ? 1 : 0));
   } else {
     // IDLE / LISTENING / THINKING → boca cerrada
     target = 0.0;
@@ -798,6 +796,7 @@ function getTalkLevelFromAudio() {
 
   lipsyncLevel += (target - lipsyncLevel) * smoothing;
 
+  // 5) Debug detallado: stats por segundo
   if (AudioDebug.enabled) {
     debugStats.frames += 1;
     debugStats.rmsSum += rms;
@@ -809,6 +808,7 @@ function getTalkLevelFromAudio() {
     debugStats.rawTalkMax = Math.max(debugStats.rawTalkMax, rawTalk);
     debugStats.targetMin = Math.min(debugStats.targetMin, target);
     debugStats.targetMax = Math.max(debugStats.targetMax, target);
+
     if (rms >= AudioDebug.minRms) {
       debugStats.speakingFrames += 1;
     } else {
@@ -841,6 +841,7 @@ function getTalkLevelFromAudio() {
         },
       });
 
+      // reset stats
       debugStats.frames = 0;
       debugStats.rmsSum = 0;
       debugStats.rmsMin = Number.POSITIVE_INFINITY;
