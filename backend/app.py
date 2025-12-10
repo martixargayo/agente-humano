@@ -121,8 +121,6 @@ async def warmup_tts():
         print("[warmup] Falló warmup TTS:", repr(e))
 
 
-
-
 class ChatRequest(BaseModel):
     user_id: str
     session_id: str
