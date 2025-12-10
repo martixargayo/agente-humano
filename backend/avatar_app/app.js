@@ -781,29 +781,42 @@ function animate() {
   const delta = clock.getDelta();
 
   if (particleMaterial) {
-    particleMaterial.uniforms.uTime.value = elapsed;
+  particleMaterial.uniforms.uTime.value = elapsed;
 
-    let targetTalk = 0.0;
+  // 1) Medimos nivel de audio (0..1)
+  const audioTalk = getTalkLevelFromAudio();
 
-    if (lipHoldActive) {
-      // Modo test: igual que el sistema antiguo
-      // uTalk = 1.0 constante y el shader se encarga del bla-bla
-      targetTalk = 1.0;
-    } else {
-      // Modo normal: nivel desde el audio
-      const audioTalk = getTalkLevelFromAudio();
-      targetTalk = audioTalk;
-    }
+  // 2) Tratamiento especial según modo
+  let targetTalk = 0.0;
 
-    const smoothing = 1 - Math.exp(-delta * 15);
-    AvatarState.talkLevel += (targetTalk - AvatarState.talkLevel) * smoothing;
-
-    particleMaterial.uniforms.uTalk.value = AvatarState.talkLevel;
-
-    // Un poco más abierto cuando habla o durante el test
-    particleMaterial.uniforms.uRestOpen.value =
-      (AvatarState.mode === 'SPEAKING' || lipHoldActive) ? 0.08 : 0.03;
+  if (lipHoldActive) {
+    // Botón de test: boca muy abierta constante
+    targetTalk = 1.0;
+  } else if (AvatarState.mode === 'SPEAKING') {
+    // Hablando: usamos el volumen real, pero con un mínimo para que no se quede “muerta”
+    const baseFloor = 0.15; // apertura mínima cuando hay voz
+    targetTalk = Math.max(audioTalk, baseFloor);
+  } else {
+    // Idle / listening: boca cerrada
+    targetTalk = 0.0;
   }
+
+  // 3) Smoothing distinto para subida y bajada (ataque / release)
+  const delta = clock.getDelta();
+  const attackSpeed = 25;  // cuán rápido sube
+  const releaseSpeed = 8;  // cuán rápido baja (más lento = más suave)
+
+  const speed = targetTalk > AvatarState.talkLevel ? attackSpeed : releaseSpeed;
+  const smoothing = 1 - Math.exp(-delta * speed);
+
+  AvatarState.talkLevel += (targetTalk - AvatarState.talkLevel) * smoothing;
+
+  // 4) Pasamos al shader
+  particleMaterial.uniforms.uTalk.value = AvatarState.talkLevel;
+
+  // 5) restOpen: pequeña apertura base (muy poca) SIEMPRE igual
+  particleMaterial.uniforms.uRestOpen.value = 0.03;
+}
 
   // movimiento global de cabeza/cuello (más vivo y menos lineal)
   if (particlePoints) {
