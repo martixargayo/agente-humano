@@ -629,6 +629,10 @@ async function playAudioFromAudioData(
   audioData,
   { emotion = 'neutral', speechIntensity = 1.0 } = {},
 ) {
+  // Si estaba el test de labios activo, lo apagamos
+  lipTestActive = false;
+  if (testLipsBtn) testLipsBtn.textContent = 'Test labios';
+
   cleanupAudio();
 
   if (!audioData?.arrayBuffer) {
@@ -639,7 +643,6 @@ async function playAudioFromAudioData(
 
   let audioBuffer;
   try {
-    // Decode the full audio before reproducirlo; si falla, sabremos que el base64 está mal
     const bufferForDecode = audioData.arrayBuffer.slice(0);
     audioBuffer = await audioCtx.decodeAudioData(bufferForDecode);
   } catch (err) {
@@ -648,6 +651,14 @@ async function playAudioFromAudioData(
     AvatarState.talkLevel = 0;
     cleanupAudio();
     throw err;
+  }
+
+  if (AudioDebug.enabled) {
+    console.log('[avatar] TTS decodificado', {
+      mimeType: audioData?.mimeType,
+      blobSize: audioData?.blob?.size,
+      duration: audioBuffer?.duration,
+    });
   }
 
   analyser = audioCtx.createAnalyser();
@@ -669,9 +680,6 @@ async function playAudioFromAudioData(
 
   if (AudioDebug.enabled) {
     console.info('[audio-debug] Inicio reproducción', {
-      mimeType: audioData?.mimeType,
-      blobSize: audioData?.blob?.size,
-      decodedDuration: audioBuffer?.duration,
       emotion,
       speechIntensity,
       analyserFftSize: analyser.fftSize,
@@ -681,17 +689,22 @@ async function playAudioFromAudioData(
   }
 
   audioSource.onended = () => {
+    if (AudioDebug.enabled) {
+      console.log('[avatar] TTS terminado');
+    }
     AvatarState.mode = 'IDLE';
     AvatarState.speechIntensity = 1.0;
     AvatarState.talkLevel = 0;
     cleanupAudio();
   };
 
+  if (AudioDebug.enabled) {
+    console.log('[avatar] TTS playback start');
+  }
   audioSource.start();
 }
 
 function getTalkLevelFromAudio() {
-  // 1) Relajamos la condición: solo exigimos analyser + buffer
   if (!(analyser && analyserData)) {
     if (AudioDebug.enabled) {
       const now = performance.now();
@@ -717,7 +730,6 @@ function getTalkLevelFromAudio() {
   const rms = Math.sqrt(sum / analyserData.length);
   const intensity = AvatarState.speechIntensity || 1.0;
 
-  // 2) Umbral mínimo y escala más agresivos
   const normalized = Math.min(
     1,
     Math.max(0, (rms - AudioDebug.minRms) * AudioDebug.scale)
@@ -754,28 +766,39 @@ function getTalkLevelFromAudio() {
   return talk;
 }
 
+// =========================
+// 7. Loop + modo test labios
+// =========================
+let lipTestActive = false;
+let lipTestStartTime = 0;
+let testLipsBtn = null;
 
-// =========================
-// 7. Loop
-// =========================
 function animate() {
   requestAnimationFrame(animate);
 
   const elapsed = clock.getElapsedTime();
+  const delta = clock.getDelta();
+
   if (particleMaterial) {
     particleMaterial.uniforms.uTime.value = elapsed;
 
-    const audioTalk = getTalkLevelFromAudio();
-    let targetTalk = audioTalk;
+    let targetTalk = 0.0;
 
-    if (AvatarState.mode === 'SPEAKING' && targetTalk < 0.05) {
-      targetTalk = 1.0; // efecto "botón antiguo" mientras habla
+    if (lipTestActive) {
+      // Modo prueba: seno simple 0..1 para ver los labios moverse
+      const tTest = elapsed - lipTestStartTime;
+      targetTalk = 0.5 + 0.5 * Math.sin(tTest * 6.0);
+    } else {
+      const audioTalk = getTalkLevelFromAudio();
+      targetTalk = audioTalk;
     }
 
-    const smoothing = 1 - Math.exp(-clock.getDelta() * 15);
+    const smoothing = 1 - Math.exp(-delta * 15);
     AvatarState.talkLevel += (targetTalk - AvatarState.talkLevel) * smoothing;
 
     particleMaterial.uniforms.uTalk.value = AvatarState.talkLevel;
+
+    // restOpen fijo alto para ver siempre separación
     particleMaterial.uniforms.uRestOpen.value = 0.30;
   }
 
@@ -795,13 +818,6 @@ function animate() {
       particlePoints.position.y = 0.01 * Math.sin(t * 0.9) + 0.005 * Math.sin(t * 0.37);
     }
   }
-
-  if (AudioDebug.enabled) {
-  console.log('frame', {
-    mode: AvatarState.mode,
-    talkLevel: Number(AvatarState.talkLevel.toFixed(3))
-  });
-}
 
   controls.update();
   renderer.render(scene, camera);
@@ -938,3 +954,43 @@ if (micBtn) {
   });
 }
 
+// =========================
+// 10. Botón "Test labios" (solo front, sin backend)
+// =========================
+testLipsBtn = document.createElement('button');
+testLipsBtn.textContent = 'Test labios';
+Object.assign(testLipsBtn.style, {
+  position: 'fixed',
+  bottom: '16px',
+  right: '16px',
+  padding: '8px 14px',
+  borderRadius: '999px',
+  border: 'none',
+  background: 'rgba(255,255,255,0.14)',
+  color: '#ffffff',
+  fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  fontSize: '12px',
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase',
+  cursor: 'pointer',
+  backdropFilter: 'blur(10px)',
+  zIndex: '20',
+});
+document.body.appendChild(testLipsBtn);
+
+testLipsBtn.addEventListener('click', () => {
+  lipTestActive = !lipTestActive;
+  if (lipTestActive) {
+    // Apagamos cualquier audio real
+    cleanupAudio();
+    AvatarState.mode = 'SPEAKING';
+    lipTestStartTime = clock.getElapsedTime();
+    testLipsBtn.textContent = 'Parar test labios';
+    console.log('[test-lips] Test de labios ACTIVADO');
+  } else {
+    AvatarState.mode = 'IDLE';
+    AvatarState.talkLevel = 0;
+    testLipsBtn.textContent = 'Test labios';
+    console.log('[test-lips] Test de labios DESACTIVADO');
+  }
+});
