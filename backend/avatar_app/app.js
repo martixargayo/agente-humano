@@ -874,8 +874,6 @@ function getTalkLevelFromAudio() {
   return lipsyncLevel;
 }
 
-
-
 // =========================
 // 7. Loop + modo test labios
 // =========================
@@ -887,7 +885,7 @@ function animate() {
   requestAnimationFrame(animate);
 
   const elapsed = clock.getElapsedTime();
-  const delta = clock.getDelta();
+  const delta = clock.getDelta(); // ahora mismo no lo usamos, pero no pasa nada
 
   if (particleMaterial) {
     particleMaterial.uniforms.uTime.value = elapsed;
@@ -895,23 +893,19 @@ function animate() {
     let targetTalk = 0.0;
 
     if (lipHoldActive) {
-      // Modo test: igual que el sistema antiguo
-      // uTalk = 1.0 constante y el shader se encarga del bla-bla
+      // Modo test: boca a tope
       targetTalk = 1.0;
     } else {
-      // Modo normal: nivel desde el audio
-      const audioTalk = getTalkLevelFromAudio();
-      targetTalk = audioTalk;
+      // Modo normal: nivel desde el audio (ya suavizado)
+      targetTalk = getTalkLevelFromAudio();
     }
 
-    const smoothing = 1 - Math.exp(-delta * 15);
-    AvatarState.talkLevel += (targetTalk - AvatarState.talkLevel) * smoothing;
-
+    // usamos el mismo camino para ambos modos
+    AvatarState.talkLevel = targetTalk;
     particleMaterial.uniforms.uTalk.value = AvatarState.talkLevel;
 
-    // Un poco más abierto cuando habla o durante el test
-    particleMaterial.uniforms.uRestOpen.value =
-      (AvatarState.mode === 'SPEAKING' || lipHoldActive) ? 0.08 : 0.03;
+    // rest casi fijo, la apertura viene de uTalk
+    particleMaterial.uniforms.uRestOpen.value = 0.03;
   }
 
   // movimiento global de cabeza/cuello (más vivo y menos lineal)
@@ -927,7 +921,8 @@ function animate() {
     particlePoints.rotation.z = headRoll;
 
     if (AvatarState.idleMotionEnabled) {
-      particlePoints.position.y = 0.01 * Math.sin(t * 0.9) + 0.005 * Math.sin(t * 0.37);
+      particlePoints.position.y =
+        0.01 * Math.sin(t * 0.9) + 0.005 * Math.sin(t * 0.37);
     }
   }
 
