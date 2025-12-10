@@ -838,7 +838,7 @@ function animate() {
 
     // Un poco más abierto cuando habla o durante el test
     particleMaterial.uniforms.uRestOpen.value =
-      (AvatarState.mode === 'SPEAKING' || lipHoldActive) ? 0.03 : 0.01;
+      (AvatarState.mode === 'SPEAKING' || lipHoldActive) ? 0.08 : 0.03;
   }
 
   // movimiento global de cabeza/cuello (más vivo y menos lineal)
