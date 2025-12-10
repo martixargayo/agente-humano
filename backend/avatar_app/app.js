@@ -677,12 +677,34 @@ async function playAudioFromAudioData(
   }
 
   if (AudioDebug.enabled) {
-    console.log('[avatar] TTS decodificado', {
-      mimeType: audioData?.mimeType,
-      blobSize: audioData?.blob?.size,
-      duration: audioBuffer?.duration,
-    });
+  console.log('[avatar] TTS decodificado', {
+    mimeType: audioData?.mimeType,
+    blobSize: audioData?.blob?.size,
+    duration: audioBuffer?.duration,
+  });
+}
+
+  // === DESCARGAR EL AUDIO EXACTO QUE SE VA A REPRODUCIR ===
+  try {
+    let blob;
+    if (audioData?.blob) {
+      blob = audioData.blob;
+    } else {
+      blob = new Blob([audioData.arrayBuffer], { type: "audio/mpeg" });
+    }
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "tts-output.mp3";
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  } catch (err) {
+    console.warn("[audio] No se pudo descargar el audio TTS", err);
   }
+
 
   analyser = audioCtx.createAnalyser();
   analyser.fftSize = 512;
