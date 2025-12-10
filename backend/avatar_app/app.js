@@ -750,7 +750,7 @@ async function playAudioFromAudioData(
 }
 
 function getTalkLevelFromAudio() {
-  // Si no hay analyser, no hay audio → cerramos boca
+  // 0) Si no hay analyser, no hay audio → boca cerrada
   if (!(analyser && analyserData)) {
     if (AudioDebug.enabled) {
       const now = performance.now();
@@ -767,71 +767,73 @@ function getTalkLevelFromAudio() {
     return 0;
   }
 
-  // 1) RMS crudo del audio
+  // 1) RMS crudo del audio (-1..1 → RMS 0..~0.3)
   analyser.getByteTimeDomainData(analyserData);
   let sum = 0;
   for (let i = 0; i < analyserData.length; i++) {
     const v = analyserData[i] / 128 - 1; // -1..1
     sum += v * v;
   }
-
   const rms = Math.sqrt(sum / analyserData.length);
   const intensity = AvatarState.speechIntensity || 1.0;
 
-  // 2) Normalizar volumen → 0..1 con minRms y scale
-  const normalized = Math.min(
-    1,
-    Math.max(0, (rms - AudioDebug.minRms) * AudioDebug.scale),
-  );
-  const rawTalk = normalized * intensity; // valor “rápido” sin suavizar
+  // === NÚMEROS SACADOS DE AUDITION ===
+  // Silencio ≈ -57 dB → ≈ 0.0014 (muy bajo)
+  // Voz media ≈ -18 / -22 dB → ≈ 0.08–0.12
+  const SILENCE_RMS = 0.01;  // ≈ -40 dB: por encima del ruido, por debajo de la voz normal
+  const VOICE_RMS   = 0.12;  // zona en la que consideramos "voz bastante fuerte"
 
-  // 3) Target según modo usando NORMALIZED (no RMS directo)
+  // 2) Contador de frames "silenciosos" para no parpadear la boca
+  if (rms < SILENCE_RMS) {
+    silentFrameCount++;
+  } else {
+    silentFrameCount = 0;
+  }
+
   let target = 0.0;
 
   if (AvatarState.mode === 'SPEAKING') {
-    if (normalized < 0.06) {
-      // silencio / ruido muy bajo → boca cerrada
+    // Si llevamos al menos 2 frames (≈100ms) por debajo del umbral ⇒ silencio real
+    if (silentFrameCount >= 2) {
       target = 0.0;
-    } else if (normalized < 0.25) {
-      // susurros / consonantes suaves
-      target = 0.25;
-    } else if (normalized < 0.55) {
-      // voz normal
-      target = 0.5;
-    } else if (normalized < 0.85) {
-      // sílabas marcadas
-      target = 0.8;
     } else {
-      // picos fuertes
-      target = 1.0;
+      // 3) Mapear RMS → 0..1 usando el rango [SILENCE_RMS, VOICE_RMS]
+      let t = (rms - SILENCE_RMS) / (VOICE_RMS - SILENCE_RMS);
+      t = Math.max(0, Math.min(1, t)); // clamp 0..1
+
+      // aplicar intensidad del backend (excited/calm)
+      t *= intensity;
+
+      // levantar un poco el suelo cuando hay voz
+      if (t > 0) {
+        const floor = LipsyncConfig.floorSpeaking; // 0.12
+        t = floor + (1.0 - floor) * t;
+      }
+
+      target = t;
     }
   } else {
     // IDLE / LISTENING / THINKING → boca cerrada
     target = 0.0;
   }
 
-  // 4) Envelope: ataque rápido, release más lento (no vibra feo)
+  // 4) Envelope: ataque rápido, release más lento
   const dt = 1 / 60; // aprox 60 FPS
   const speed =
     target > lipsyncLevel ? LipsyncConfig.attack : LipsyncConfig.release;
   const smoothing = 1 - Math.exp(-dt * speed);
-
   lipsyncLevel += (target - lipsyncLevel) * smoothing;
 
-  // 5) Debug detallado: stats por segundo
+  // 5) Debug actualizado (sin el viejo "normalized" por minRms/scale)
   if (AudioDebug.enabled) {
     debugStats.frames += 1;
     debugStats.rmsSum += rms;
     debugStats.rmsMin = Math.min(debugStats.rmsMin, rms);
     debugStats.rmsMax = Math.max(debugStats.rmsMax, rms);
-    debugStats.normalizedMin = Math.min(debugStats.normalizedMin, normalized);
-    debugStats.normalizedMax = Math.max(debugStats.normalizedMax, normalized);
-    debugStats.rawTalkMin = Math.min(debugStats.rawTalkMin, rawTalk);
-    debugStats.rawTalkMax = Math.max(debugStats.rawTalkMax, rawTalk);
     debugStats.targetMin = Math.min(debugStats.targetMin, target);
     debugStats.targetMax = Math.max(debugStats.targetMax, target);
 
-    if (rms >= AudioDebug.minRms) {
+    if (rms >= SILENCE_RMS) {
       debugStats.speakingFrames += 1;
     } else {
       debugStats.silentFrames += 1;
@@ -843,8 +845,6 @@ function getTalkLevelFromAudio() {
       const avgRms = debugStats.frames ? debugStats.rmsSum / debugStats.frames : 0;
       console.info('[audio-debug] RMS', {
         rms: Number(rms.toFixed(4)),
-        normalized: Number(normalized.toFixed(3)),
-        rawTalk: Number(rawTalk.toFixed(3)),
         lipsyncLevel: Number(lipsyncLevel.toFixed(3)),
         target: Number(target.toFixed(3)),
         stats: {
@@ -852,10 +852,6 @@ function getTalkLevelFromAudio() {
           rmsMin: Number(debugStats.rmsMin.toFixed(4)),
           rmsMax: Number(debugStats.rmsMax.toFixed(4)),
           rmsAvg: Number(avgRms.toFixed(4)),
-          normalizedMin: Number(debugStats.normalizedMin.toFixed(3)),
-          normalizedMax: Number(debugStats.normalizedMax.toFixed(3)),
-          rawTalkMin: Number(debugStats.rawTalkMin.toFixed(3)),
-          rawTalkMax: Number(debugStats.rawTalkMax.toFixed(3)),
           targetMin: Number(debugStats.targetMin.toFixed(3)),
           targetMax: Number(debugStats.targetMax.toFixed(3)),
           speakingFrames: debugStats.speakingFrames,
@@ -868,32 +864,16 @@ function getTalkLevelFromAudio() {
       debugStats.rmsSum = 0;
       debugStats.rmsMin = Number.POSITIVE_INFINITY;
       debugStats.rmsMax = 0;
-      debugStats.normalizedMin = Number.POSITIVE_INFINITY;
-      debugStats.normalizedMax = 0;
-      debugStats.rawTalkMin = Number.POSITIVE_INFINITY;
-      debugStats.rawTalkMax = 0;
       debugStats.targetMin = Number.POSITIVE_INFINITY;
       debugStats.targetMax = 0;
       debugStats.speakingFrames = 0;
       debugStats.silentFrames = 0;
     }
-
-    if (rms < AudioDebug.minRms) {
-      silentFrameCount += 1;
-      if (silentFrameCount % 30 === 0) {
-        console.warn('[audio-debug] Señal de audio por debajo del umbral', {
-          rms: Number(rms.toFixed(4)),
-          minRms: AudioDebug.minRms,
-          silentFrames: silentFrameCount,
-        });
-      }
-    } else {
-      silentFrameCount = 0;
-    }
   }
 
   return lipsyncLevel;
 }
+
 
 
 // =========================
