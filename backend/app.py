@@ -88,16 +88,18 @@ stt_config = speech.RecognitionConfig(
 openai_client = OpenAI()  # usa OPENAI_API_KEY del entorno
 
 TTS_MODEL = os.getenv("OPENAI_TTS_MODEL", "gpt-4o-mini-tts")
-DEFAULT_VOICE = os.getenv("OPENAI_TTS_VOICE", "onyx")
-DEFAULT_FORMAT = os.getenv("OPENAI_TTS_FORMAT", "mp3")
-SPANISH_EU_VOICE_INSTRUCTIONS = """
-Language: Spanish (es-ES).
-Accent: European Spanish (Spain), not Latin American.
-Pronunciation: Use standard peninsular Spanish; avoid Latin American intonation and seseo typical of Latin America.
-Intonation: neutral and slightly descending at sentence endings, avoid sing-song or overly melodic patterns.
-Tone: masculine, calm, confident, and natural.
-Style: conversational and close, like an adult from Spain speaking directly to the listener.
-"""
+DEFAULT_VOICE = os.getenv("OPENAI_TTS_VOICE", "cedar")
+DEFAULT_FORMAT = os.getenv("OPENAI_TTS_FORMAT", "wav")
+DEFAULT_SPEED = float(os.getenv("OPENAI_TTS_SPEED", "1.10"))
+TTS_IDENTITY_INSTRUCTIONS = os.getenv(
+    "OPENAI_TTS_INSTRUCTIONS",
+    (
+        "Hombre de Madrid de 35 años. Acento castellano peninsular puro. "
+        "Aplica una distinción fonética estricta entre la 'S' y la 'Z/C' "
+        "(ceceo/seseo español). Tono de voz seco, directo y sin variaciones "
+        "melódicas. Evita cualquier entonación rítmica o cantada."
+    ),
+)
 
 @app.on_event("startup")
 async def warmup_tts():
@@ -112,7 +114,8 @@ async def warmup_tts():
             voice=DEFAULT_VOICE,
             input="Calibración de voz.",
             response_format=DEFAULT_FORMAT,
-            instructions=SPANISH_EU_VOICE_INSTRUCTIONS,
+            speed=DEFAULT_SPEED,
+            instructions=TTS_IDENTITY_INSTRUCTIONS,
         )
         # Forzamos a materializar los bytes (según formato)
         audio_bytes = getattr(resp, "content", None) or resp.read()
@@ -464,7 +467,12 @@ async def stt_google(file: UploadFile = File(...)):
 async def tts_openai(payload: TTSRequest):
     try:
         voice = payload.voice or DEFAULT_VOICE
-        fmt = payload.format or DEFAULT_FORMAT
+        fmt = DEFAULT_FORMAT
+        if payload.format and payload.format != DEFAULT_FORMAT:
+            logger.info(
+                "Formato solicitado ignorado; usando formato TTS por defecto",
+                extra={"requested_format": payload.format, "default_format": DEFAULT_FORMAT},
+            )
 
         print(f"[TTS_OPENAI] Texto: {payload.text!r}")
         print(f"[TTS_OPENAI] model={TTS_MODEL}, voice={voice}, response_format={fmt}")
@@ -474,7 +482,8 @@ async def tts_openai(payload: TTSRequest):
             voice=voice,
             input=payload.text,
             response_format=fmt,
-            instructions=SPANISH_EU_VOICE_INSTRUCTIONS,
+            speed=DEFAULT_SPEED,
+            instructions=TTS_IDENTITY_INSTRUCTIONS,
         )
 
         audio_bytes = audio_resp.read()  # <--- aquí también
@@ -506,8 +515,12 @@ async def tts_openai(payload: TTSRequest):
 async def tts(payload: TTSRequest):
     try:
         voice = payload.voice or DEFAULT_VOICE
-        fmt = payload.format or DEFAULT_FORMAT
-
+        fmt = DEFAULT_FORMAT
+        if payload.format and payload.format != DEFAULT_FORMAT:
+            logger.info(
+                "Formato solicitado ignorado; usando formato TTS por defecto",
+                extra={"requested_format": payload.format, "default_format": DEFAULT_FORMAT},
+            )
         if fmt not in {"mp3", "opus", "wav"}:
             raise HTTPException(
                 status_code=400,
@@ -525,7 +538,8 @@ async def tts(payload: TTSRequest):
             voice=voice,
             input=payload.text,
             response_format=fmt,
-            instructions=SPANISH_EU_VOICE_INSTRUCTIONS,
+            speed=DEFAULT_SPEED,
+            instructions=TTS_IDENTITY_INSTRUCTIONS,
         )
 
         audio_bytes = audio.content
