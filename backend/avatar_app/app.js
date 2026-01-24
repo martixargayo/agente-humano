@@ -1089,7 +1089,9 @@ async function startRecording() {
   mediaRecorder = new MediaRecorder(audioStream);
   audioChunks = [];
   
-  mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+  mediaRecorder.ondataavailable = (e) => {
+    if (e?.data && e.data.size > 0) audioChunks.push(e.data);
+  };
 
   mediaRecorder.onstop = async () => {
     const blob = new Blob(audioChunks, { type: 'audio/webm' });
@@ -1100,6 +1102,9 @@ async function startRecording() {
     setAgentSendBusy(true); // Bloqueamos UI para evitar clics dobles
 
     try {
+      if (!blob.size) {
+        throw new Error('No se capturó audio. Intenta grabar de nuevo.');
+      }
       // Creamos el archivo con nombre (más robusto para el backend)
       const audioFile = new File([blob], 'grabacion.webm', { type: 'audio/webm' });
       const formData = new FormData();
@@ -1149,7 +1154,7 @@ async function startRecording() {
   };
 
   // 2. Iniciar grabación y visualización
-  mediaRecorder.start();
+  mediaRecorder.start(250);
   isRecording = true;
   if (micLabel) micLabel.textContent = 'Grabando…';
   AvatarState.mode = 'LISTENING';
