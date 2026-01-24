@@ -593,7 +593,7 @@ function base64ToAudioData(b64, mimeType = 'audio/wav') {
   return { blob, objectUrl, mimeType: mimeType || 'audio/wav', arrayBuffer };
 }
 
-const BACKEND_URL = '';
+const BACKEND_URL = window.location.origin;
 
 // =========================
 // WARMUP TTS DEL FRONTEND
@@ -1055,6 +1055,9 @@ let waveAnalyser = null;
 let waveDataArray = null;
 let waveAnimationId = null;
 
+// NEW: guardamos mimeType real del recorder para construir el blob/file
+let recorderMimeType = 'audio/webm;codecs=opus';
+
 function drawWaveform() {
   if (!waveCanvas || !waveAnalyser) return;
   const ctx = waveCanvas.getContext('2d');
@@ -1083,18 +1086,32 @@ function drawWaveform() {
 
 async function startRecording() {
   if (!navigator.mediaDevices?.getUserMedia) return alert('getUserMedia no soportado');
-  
+
+  // NEW: gesto de usuario → desbloquear AudioContext y hacer warmup una vez
+  try {
+    getOrCreateAudioContext().resume().catch(() => {});
+    warmupFrontendTts();
+  } catch (_) {}
+
   // 1. Configuración inicial y visual
   audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  mediaRecorder = new MediaRecorder(audioStream);
+
+  // NEW: forzar mimeType estable (tu browser lo soporta)
+  recorderMimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+    ? 'audio/webm;codecs=opus'
+    : 'audio/webm';
+
+  mediaRecorder = new MediaRecorder(audioStream, { mimeType: recorderMimeType });
+
   audioChunks = [];
-  
+
   mediaRecorder.ondataavailable = (e) => {
     if (e?.data && e.data.size > 0) audioChunks.push(e.data);
   };
 
   mediaRecorder.onstop = async () => {
-    const blob = new Blob(audioChunks, { type: 'audio/webm' });
+    // NEW: usar el mimeType real del recorder
+    const blob = new Blob(audioChunks, { type: recorderMimeType });
     const lastReplyEl = document.getElementById('lastReply');
     let hadError = false;
 
@@ -1105,8 +1122,9 @@ async function startRecording() {
       if (!blob.size) {
         throw new Error('No se capturó audio. Intenta grabar de nuevo.');
       }
-      // Creamos el archivo con nombre (más robusto para el backend)
-      const audioFile = new File([blob], 'grabacion.webm', { type: 'audio/webm' });
+
+      // NEW: nombre y type coherentes con mimeType (opus webm)
+      const audioFile = new File([blob], 'grabacion.webm', { type: recorderMimeType });
       const formData = new FormData();
       formData.append('file', audioFile);
 
@@ -1130,9 +1148,8 @@ async function startRecording() {
       const modeRadio = document.querySelector('input[name="agentMode"]:checked');
       const mode = modeRadio ? modeRadio.value : 'negociar';
       const withAudio = !textOnlyCheckbox?.checked;
-      
-      await sendTextToAgent(text, { mode, withAudio });
 
+      await sendTextToAgent(text, { mode, withAudio });
     } catch (err) {
       hadError = true;
       console.error('Error al transcribir/enviar audio:', err);
@@ -1173,11 +1190,17 @@ function stopRecording() {
   if (mediaRecorder && isRecording) {
     try {
       if (mediaRecorder.state === 'recording') {
+        // NEW: asegurar último chunk antes de parar (evita blobs vacíos)
         mediaRecorder.requestData();
+        setTimeout(() => {
+          try { mediaRecorder.stop(); } catch (_) {}
+        }, 150);
+      } else {
+        mediaRecorder.stop();
       }
-      mediaRecorder.stop();
     } catch (err) {
       console.warn('[mic] Error al detener MediaRecorder', err);
+      try { mediaRecorder.stop(); } catch (_) {}
     }
   }
   isRecording = false;
@@ -1196,6 +1219,7 @@ if (micBtn) {
     }
   });
 }
+
 
 
 
@@ -1257,13 +1281,3 @@ testTalkBtn.addEventListener(
   },
   { passive: false },
 );
-
-// =========================
-// Lanzar warmup TTS al cargar página
-// =========================
-window.addEventListener("load", () => {
-  // Un pequeño delay evita interferencias con WebGL y carga del avatar
-  setTimeout(() => {
-    warmupFrontendTts();
-  }, 600);
-});
