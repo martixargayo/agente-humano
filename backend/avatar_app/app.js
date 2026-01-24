@@ -992,6 +992,22 @@ const sendToAgentBtn = document.getElementById('sendToAgentBtn');
 const userTextEl = document.getElementById('userText');
 const textOnlyCheckbox = document.getElementById('textOnly');
 const idleMotionToggle = document.getElementById('idleMotionToggle');
+let agentSendInFlight = 0;
+
+function setAgentSendBusy(isBusy, buttonLabel) {
+  if (!sendToAgentBtn) return;
+  if (isBusy) {
+    agentSendInFlight += 1;
+  } else {
+    agentSendInFlight = Math.max(0, agentSendInFlight - 1);
+  }
+  sendToAgentBtn.disabled = agentSendInFlight > 0;
+  if (agentSendInFlight === 0) {
+    sendToAgentBtn.textContent = 'Enviar al agente';
+  } else if (buttonLabel) {
+    sendToAgentBtn.textContent = buttonLabel;
+  }
+}
 
 if (sendToAgentBtn) {
   sendToAgentBtn.addEventListener('click', async () => {
@@ -1000,13 +1016,11 @@ if (sendToAgentBtn) {
     const modeRadio = document.querySelector('input[name="agentMode"]:checked');
     const mode = modeRadio ? modeRadio.value : 'negociar';
     const withAudio = !textOnlyCheckbox?.checked;
-    sendToAgentBtn.disabled = true;
-    sendToAgentBtn.textContent = 'Hablando...';
+    setAgentSendBusy(true, 'Hablando...');
     try {
       await sendTextToAgent(text, { mode, withAudio });
     } finally {
-      sendToAgentBtn.disabled = false;
-      sendToAgentBtn.textContent = 'Enviar al agente';
+      setAgentSendBusy(false);
     }
   });
 }
@@ -1069,20 +1083,29 @@ function drawWaveform() {
 
 async function startRecording() {
   if (!navigator.mediaDevices?.getUserMedia) return alert('getUserMedia no soportado');
+  
+  // 1. Configuración inicial y visual
   audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
   mediaRecorder = new MediaRecorder(audioStream);
   audioChunks = [];
+  
   mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+
   mediaRecorder.onstop = async () => {
     const blob = new Blob(audioChunks, { type: 'audio/webm' });
     const lastReplyEl = document.getElementById('lastReply');
     let hadError = false;
+
     if (micLabel) micLabel.textContent = 'Transcribiendo…';
+    setAgentSendBusy(true); // Bloqueamos UI para evitar clics dobles
+
     try {
+      // Creamos el archivo con nombre (más robusto para el backend)
       const audioFile = new File([blob], 'grabacion.webm', { type: 'audio/webm' });
       const formData = new FormData();
       formData.append('file', audioFile);
 
+      // Enviar a STT de Google
       const res = await fetch(`${BACKEND_URL}/stt_google`, {
         method: 'POST',
         body: formData,
@@ -1097,10 +1120,14 @@ async function startRecording() {
       const text = (data?.text || '').trim();
       if (!text) throw new Error('Transcripción vacía');
 
+      // Si hay texto, enviamos automáticamente al agente (Tarea 2)
+      if (micLabel) micLabel.textContent = 'Enviando…';
       const modeRadio = document.querySelector('input[name="agentMode"]:checked');
       const mode = modeRadio ? modeRadio.value : 'negociar';
       const withAudio = !textOnlyCheckbox?.checked;
+      
       await sendTextToAgent(text, { mode, withAudio });
+
     } catch (err) {
       hadError = true;
       console.error('Error al transcribir/enviar audio:', err);
@@ -1109,14 +1136,21 @@ async function startRecording() {
       if (micLabel) micLabel.textContent = message;
       AvatarState.mode = 'IDLE';
     } finally {
-      if (!hadError && micLabel) micLabel.textContent = 'Pulsa el micro y habla';
+      setAgentSendBusy(false);
+      // Solo reseteamos el mensaje si no hubo error para no borrar el aviso de fallo
+      if (!hadError && micLabel) {
+        micLabel.textContent = 'Pulsa el micro y habla';
+      }
     }
   };
+
+  // 2. Iniciar grabación y visualización
   mediaRecorder.start();
   isRecording = true;
   if (micLabel) micLabel.textContent = 'Grabando…';
   AvatarState.mode = 'LISTENING';
 
+  // Configuración del canvas de ondas (Waveform)
   waveAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
   waveAnalyser = waveAudioCtx.createAnalyser();
   waveAnalyser.fftSize = 1024;
