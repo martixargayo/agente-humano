@@ -1137,6 +1137,10 @@ async function startRecording() {
       AvatarState.mode = 'IDLE';
     } finally {
       setAgentSendBusy(false);
+      if (audioStream) audioStream.getTracks().forEach((t) => t.stop());
+      if (waveAudioCtx) waveAudioCtx.close();
+      waveAudioCtx = null;
+      cancelAnimationFrame(waveAnimationId);
       // Solo reseteamos el mensaje si no hubo error para no borrar el aviso de fallo
       if (!hadError && micLabel) {
         micLabel.textContent = 'Pulsa el micro y habla';
@@ -1161,13 +1165,18 @@ async function startRecording() {
 }
 
 function stopRecording() {
-  if (mediaRecorder && isRecording) mediaRecorder.stop();
-  if (audioStream) audioStream.getTracks().forEach((t) => t.stop());
+  if (mediaRecorder && isRecording) {
+    try {
+      if (mediaRecorder.state === 'recording') {
+        mediaRecorder.requestData();
+      }
+      mediaRecorder.stop();
+    } catch (err) {
+      console.warn('[mic] Error al detener MediaRecorder', err);
+    }
+  }
   isRecording = false;
-  if (micLabel) micLabel.textContent = 'Pulsa el micro y habla';
-  if (waveAudioCtx) waveAudioCtx.close();
-  waveAudioCtx = null;
-  cancelAnimationFrame(waveAnimationId);
+  if (micLabel) micLabel.textContent = 'Procesando…';
   if (AvatarState.mode === 'LISTENING') AvatarState.mode = 'IDLE';
 }
 
@@ -1182,6 +1191,7 @@ if (micBtn) {
     }
   });
 }
+
 
 
 // =========================
