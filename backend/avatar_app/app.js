@@ -1075,7 +1075,42 @@ async function startRecording() {
   mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
   mediaRecorder.onstop = async () => {
     const blob = new Blob(audioChunks, { type: 'audio/webm' });
-    console.log('Audio grabado (no enviado en esta demo):', blob.size, 'bytes');
+    const lastReplyEl = document.getElementById('lastReply');
+    let hadError = false;
+    if (micLabel) micLabel.textContent = 'Transcribiendo…';
+    try {
+      const audioFile = new File([blob], 'grabacion.webm', { type: 'audio/webm' });
+      const formData = new FormData();
+      formData.append('file', audioFile);
+
+      const res = await fetch(`${BACKEND_URL}/stt_google`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Error STT: ${res.status} ${errText}`);
+      }
+
+      const data = await res.json();
+      const text = (data?.text || '').trim();
+      if (!text) throw new Error('Transcripción vacía');
+
+      const modeRadio = document.querySelector('input[name="agentMode"]:checked');
+      const mode = modeRadio ? modeRadio.value : 'negociar';
+      const withAudio = !textOnlyCheckbox?.checked;
+      await sendTextToAgent(text, { mode, withAudio });
+    } catch (err) {
+      hadError = true;
+      console.error('Error al transcribir/enviar audio:', err);
+      const message = err?.message || 'Error de transcripción';
+      if (lastReplyEl) lastReplyEl.textContent = message;
+      if (micLabel) micLabel.textContent = message;
+      AvatarState.mode = 'IDLE';
+    } finally {
+      if (!hadError && micLabel) micLabel.textContent = 'Pulsa el micro y habla';
+    }
   };
   mediaRecorder.start();
   isRecording = true;
