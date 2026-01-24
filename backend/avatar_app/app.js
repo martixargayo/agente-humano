@@ -1084,6 +1084,21 @@ function drawWaveform() {
   ctx.stroke();
 }
 
+function teardownMic() {
+  try { if (waveAnimationId) cancelAnimationFrame(waveAnimationId); } catch (_) {}
+  waveAnimationId = null;
+
+  try { if (waveAudioCtx) waveAudioCtx.close(); } catch (_) {}
+  waveAudioCtx = null;
+
+  try { if (audioStream) audioStream.getTracks().forEach((t) => t.stop()); } catch (_) {}
+  audioStream = null;
+
+  waveAnalyser = null;
+  waveDataArray = null;
+}
+
+
 async function startRecording() {
   if (!navigator.mediaDevices?.getUserMedia) return alert('getUserMedia no soportado');
 
@@ -1109,66 +1124,72 @@ async function startRecording() {
     if (e?.data && e.data.size > 0) audioChunks.push(e.data);
   };
 
-  mediaRecorder.onstop = async () => {
-    // NEW: usar el mimeType real del recorder
-    const blob = new Blob(audioChunks, { type: recorderMimeType });
-    const lastReplyEl = document.getElementById('lastReply');
-    let hadError = false;
+mediaRecorder.onstop = async () => {
+  const blob = new Blob(audioChunks, { type: recorderMimeType });
+  const lastReplyEl = document.getElementById('lastReply');
+  let hadError = false;
 
-    if (micLabel) micLabel.textContent = 'Transcribiendo…';
-    setAgentSendBusy(true); // Bloqueamos UI para evitar clics dobles
+  if (micLabel) micLabel.textContent = 'Transcribiendo…';
+  setAgentSendBusy(true);
 
-    try {
-      if (!blob.size) {
-        throw new Error('No se capturó audio. Intenta grabar de nuevo.');
-      }
-
-      // NEW: nombre y type coherentes con mimeType (opus webm)
-      const audioFile = new File([blob], 'grabacion.webm', { type: recorderMimeType });
-      const formData = new FormData();
-      formData.append('file', audioFile);
-
-      // Enviar a STT de Google
-      const res = await fetch(`${BACKEND_URL}/stt_google`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(`Error STT: ${res.status} ${errText}`);
-      }
-
-      const data = await res.json();
-      const text = (data?.text || '').trim();
-      if (!text) throw new Error('Transcripción vacía');
-
-      // Si hay texto, enviamos automáticamente al agente (Tarea 2)
-      if (micLabel) micLabel.textContent = 'Enviando…';
-      const modeRadio = document.querySelector('input[name="agentMode"]:checked');
-      const mode = modeRadio ? modeRadio.value : 'negociar';
-      const withAudio = !textOnlyCheckbox?.checked;
-
-      await sendTextToAgent(text, { mode, withAudio });
-    } catch (err) {
-      hadError = true;
-      console.error('Error al transcribir/enviar audio:', err);
-      const message = err?.message || 'Error de transcripción';
-      if (lastReplyEl) lastReplyEl.textContent = message;
-      if (micLabel) micLabel.textContent = message;
-      AvatarState.mode = 'IDLE';
-    } finally {
-      setAgentSendBusy(false);
-      if (audioStream) audioStream.getTracks().forEach((t) => t.stop());
-      if (waveAudioCtx) waveAudioCtx.close();
-      waveAudioCtx = null;
-      cancelAnimationFrame(waveAnimationId);
-      // Solo reseteamos el mensaje si no hubo error para no borrar el aviso de fallo
-      if (!hadError && micLabel) {
-        micLabel.textContent = 'Pulsa el micro y habla';
-      }
+  try {
+    if (!blob.size) {
+      throw new Error('No se capturó audio. Intenta grabar de nuevo.');
     }
-  };
+
+    // Archivo coherente con el mimeType real (opus/webm)
+    const audioFile = new File([blob], 'grabacion.webm', { type: recorderMimeType });
+    const formData = new FormData();
+    formData.append('file', audioFile);
+
+    // Enviar a STT
+    const res = await fetch(`${BACKEND_URL}/stt_google`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Error STT: ${res.status} ${errText}`);
+    }
+
+    const data = await res.json();
+    const text = (data?.text || '').trim();
+    if (!text) throw new Error('Transcripción vacía');
+
+    // UI
+    if (micLabel) micLabel.textContent = 'Enviando…';
+    const modeRadio = document.querySelector('input[name="agentMode"]:checked');
+    const mode = modeRadio ? modeRadio.value : 'negociar';
+    const withAudio = !textOnlyCheckbox?.checked;
+
+    // ✅ CRÍTICO: liberar micro + waveform ANTES del TTS
+    teardownMic();
+
+    // Enviar al agente (esto dispara el TTS)
+    await sendTextToAgent(text, { mode, withAudio });
+
+  } catch (err) {
+    hadError = true;
+
+    // ✅ también liberar recursos si hubo error
+    teardownMic();
+
+    console.error('Error al transcribir/enviar audio:', err);
+    const message = err?.message || 'Error de transcripción';
+    if (lastReplyEl) lastReplyEl.textContent = message;
+    if (micLabel) micLabel.textContent = message;
+    AvatarState.mode = 'IDLE';
+
+  } finally {
+    setAgentSendBusy(false);
+
+    // No borrar mensaje si hubo error
+    if (!hadError && micLabel) {
+      micLabel.textContent = 'Pulsa el micro y habla';
+    }
+  }
+};
 
   // 2. Iniciar grabación y visualización
   mediaRecorder.start(250);
@@ -1190,7 +1211,6 @@ function stopRecording() {
   if (mediaRecorder && isRecording) {
     try {
       if (mediaRecorder.state === 'recording') {
-        // NEW: asegurar último chunk antes de parar (evita blobs vacíos)
         mediaRecorder.requestData();
         setTimeout(() => {
           try { mediaRecorder.stop(); } catch (_) {}
@@ -1203,6 +1223,7 @@ function stopRecording() {
       try { mediaRecorder.stop(); } catch (_) {}
     }
   }
+
   isRecording = false;
   if (micLabel) micLabel.textContent = 'Procesando…';
   if (AvatarState.mode === 'LISTENING') AvatarState.mode = 'IDLE';
@@ -1219,6 +1240,7 @@ if (micBtn) {
     }
   });
 }
+
 
 
 
