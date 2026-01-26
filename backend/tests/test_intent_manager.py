@@ -366,6 +366,13 @@ def test_other_buyer_details_has_text():
     )
 
     details = intent["slots"]["slots_filled"]["other_buyer_details"]["value"]
+    assert isinstance(details, dict)
+    assert set(details.keys()) >= {
+        "claim_text",
+        "offer_price",
+        "timing",
+        "claim_confidence",
+    }
     assert "otro comprador" in details.get("claim_text", "")
 
 
@@ -455,6 +462,7 @@ def test_replan_transition_when_price_firm_detected():
     assert updated["intent_type"] == "closing"
     assert meta["intent_decision"] == "replan"
     assert meta["intent_transition"] == "replan"
+    assert meta["replan_to"] == "closing"
 
 
 def test_unknown_success_criterion_fails():

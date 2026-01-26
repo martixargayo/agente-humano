@@ -131,13 +131,14 @@ def _extract_slots(world_state: WorldState, user_message: str) -> dict:
         slots["deadline_real"] = _slot_entry(world_state.get("deadline_text", ""), evidence, 0.6)
 
     if world_state.get("other_buyer_claimed"):
-        slots["other_buyer"] = _slot_entry("claimed", evidence, 0.5)
         other_buyer_text = world_state.get("other_buyer_text", "").strip()
+        slots["other_buyer"] = _slot_entry("claimed", evidence, 0.5)
         slots["other_buyer_details"] = _slot_entry(
             {
-                "claim_text": other_buyer_text or "",
+                "claim_text": other_buyer_text,
                 "offer_price": world_state.get("other_buyer_offer_price"),
                 "timing": world_state.get("other_buyer_timing_text", "").strip(),
+                "claim_confidence": 0.55,
             },
             evidence,
             0.65,
@@ -304,7 +305,7 @@ def maybe_retarget_steps(
     if not step:
         return
     target = step.get("target_slot", "")
-    if not target:
+    if not target or target in {"unknown"}:
         return
     if target not in intent.get("slots", {}).get("slots_filled", {}):
         return
@@ -386,13 +387,20 @@ def _ensure_steps_hydrated(
     del world_state, belief_state
     if intent.get("status") != "active":
         return intent
+    steps = intent.get("steps")
     step = _current_step(intent)
-    if not step or not isinstance(step, dict) or step.get("target_slot") in {"", "unknown"}:
+    if (
+        not isinstance(steps, list)
+        or not steps
+        or not step
+        or not isinstance(step, dict)
+        or step.get("target_slot") in {"", "unknown"}
+    ):
         missing = _slots_missing(intent)
         intent["steps"] = build_steps(intent.get("intent_type", "info_extract"), missing)
         intent["step_idx"] = 0
         intent["step_attempts"] = 0
-        meta["reasons"].append("steps_hydrated")
+        meta.setdefault("reasons", []).append("steps_hydrated")
     return intent
 
 
@@ -413,14 +421,17 @@ def update_intent_state(
     intent = deepcopy(prev_intent or default_intent_state())
     meta = {
         "intent_prev": deepcopy(intent),
+        "intent_new": {},
         "intent_decision": "",
-        "reasons": [],
-        "slots_filled_delta": {},
-        "commitment_level": "soft",
         "intent_transition": "none",
+        "retarget_slot": "",
+        "replan_to": "",
         "pivot_reason": "",
         "pivot_strategy": "",
         "success_reasons": [],
+        "reasons": [],
+        "slots_filled_delta": {},
+        "commitment_level": "soft",
     }
 
     if intent.get("status") != "active":
@@ -519,8 +530,9 @@ def update_intent_state(
             slots_missing,
         )
         intent["last_observation"] = "Replan hacia cierre por señal fuerte."
-        meta["intent_transition"] = "replan"
         meta["intent_decision"] = "replan"
+        meta["intent_transition"] = "replan"
+        meta["replan_to"] = intent_type
         meta["intent_new"] = deepcopy(intent)
         intent_hint = _build_intent_hint(intent, slots_missing, commitment)
         return intent, meta, intent_hint
@@ -586,7 +598,6 @@ def update_intent_state(
     if retargeted:
         intent["step_attempts"] = 0
         meta["intent_decision"] = "retarget"
-        meta["intent_transition"] = "retarget"
     elif step and _should_advance_step(step, meta["slots_filled_delta"]):
         _advance_step(intent)
         intent["step_attempts"] = 0
