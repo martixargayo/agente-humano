@@ -70,10 +70,20 @@ class _BeliefStateModel(BaseModel):
     ) -> dict[ReasonKey, _BeliefReasonModel]:
         if not isinstance(value, dict):
             return {}
+        reason_priority = {
+            "price_signal": 0,
+            "deadline_signal": 1,
+            "other_buyer_signal": 2,
+            "concession_signal": 3,
+            "docs_signal": 4,
+            "tone_signal": 5,
+        }
         items = sorted(
             value.items(),
-            key=lambda kv: kv[1].weight * kv[1].confidence,
-            reverse=True,
+            key=lambda kv: (
+                -(kv[1].weight * kv[1].confidence),
+                reason_priority.get(kv[0], 999),
+            ),
         )
         return dict(items[:6])
 
@@ -92,6 +102,14 @@ _EVIDENCE_TRIGGERS = (
     "innegociable",
 )
 
+_CRITICAL_FLAGS = (
+    "price_mentioned",
+    "deadline_claimed",
+    "other_buyer_claimed",
+    "docs_claimed",
+    "concession_made",
+)
+
 
 def has_belief_evidence_delta(
     world_diff: dict,
@@ -100,6 +118,8 @@ def has_belief_evidence_delta(
     world: WorldState,
 ) -> bool:
     if world_diff:
+        return True
+    if any(world.get(key) != prev_world.get(key) for key in _CRITICAL_FLAGS):
         return True
     if world.get("tone_signal") != prev_world.get("tone_signal"):
         return True
