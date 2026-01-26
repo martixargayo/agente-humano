@@ -58,6 +58,6 @@ def test_executor_receives_intent_hint(monkeypatch):
 
     system_message = captured["messages"][0].content
     assert "Intención activa" in system_message
-    assert "Step" in system_message
+    assert "Paso actual" in system_message
     assert "Slot objetivo" in system_message
     assert "step_name" not in system_message

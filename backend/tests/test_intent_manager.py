@@ -182,6 +182,47 @@ def test_planner_respects_intent_hard_preferences():
     assert meta["planner_mode"] == "intent_forced"
 
 
+def test_planner_soft_ranks_when_intersection_exists():
+    allowed = ["rapport_build", "deescalate_tension", "info_extract_critical"]
+    intent_hint = {
+        "step_kind": "probe_open",
+        "commitment_level": "soft",
+    }
+
+    constrained, preferred, meta = apply_intent_constraints(allowed, intent_hint)
+
+    intersection = [pid for pid in preferred if pid in allowed]
+    assert constrained[: len(intersection)] == intersection
+    assert meta["planner_mode"] == "intent_soft_ranked"
+
+
+def test_planner_soft_ranking_no_intersection_keeps_order():
+    allowed = ["rapport_build", "deescalate_tension"]
+    intent_hint = {
+        "step_kind": "request_evidence",
+        "commitment_level": "soft",
+    }
+
+    constrained, _preferred, meta = apply_intent_constraints(allowed, intent_hint)
+
+    assert constrained == allowed
+    assert meta["planner_mode"] == "intent_preferred_no_intersection"
+
+
+def test_planner_hard_no_forced_sets_fallback():
+    allowed = ["rapport_build", "info_extract_critical"]
+    intent_hint = {
+        "step_kind": "pressure_soft",
+        "commitment_level": "hard",
+    }
+
+    constrained, _preferred, meta = apply_intent_constraints(allowed, intent_hint)
+
+    assert constrained == allowed
+    assert meta["planner_error"] == "intent_policy_unavailable"
+    assert meta["planner_fallback_used"] is True
+
+
 def test_vague_response_triggers_pivot_sequence():
     world = default_world_state()
     belief = default_belief_state()
@@ -301,7 +342,8 @@ def test_slot_switch_retargets_next_missing():
         turn_count=2,
     )
 
-    assert meta["intent_transition"] == "retarget:seller_urgency_reason"
+    assert meta["intent_transition"] == "retarget"
+    assert meta["retarget_slot"] == "seller_urgency_reason"
     assert updated["step_idx"] == 0
     assert updated["step_attempts"] == 0
     assert hint["target_slot"] == "seller_urgency_reason"
@@ -324,7 +366,7 @@ def test_other_buyer_details_has_text():
     )
 
     details = intent["slots"]["slots_filled"]["other_buyer_details"]["value"]
-    assert "otro comprador" in str(details)
+    assert "otro comprador" in details.get("claim_text", "")
 
 
 def test_pivot_kind_progression():
@@ -412,7 +454,7 @@ def test_replan_transition_when_price_firm_detected():
     assert updated["status"] == "active"
     assert updated["intent_type"] == "closing"
     assert meta["intent_decision"] == "replan"
-    assert meta["intent_transition"] == "replan_to:closing"
+    assert meta["intent_transition"] == "replan"
 
 
 def test_unknown_success_criterion_fails():
@@ -449,3 +491,35 @@ def test_unknown_success_criterion_fails():
 
     assert updated["status"] == "active"
     assert "unknown_success_criterion:unknown_criterion" in meta["reasons"]
+
+
+def test_hydrates_legacy_steps_with_unknown_targets():
+    world = default_world_state()
+    belief = default_belief_state()
+    progress = default_progress_state()
+    intent = default_intent_state()
+    intent.update(
+        {
+            "status": "active",
+            "intent_goal": "Buscar BATNA",
+            "intent_type": "info_extract",
+            "steps": ["ask_open"],
+            "step_idx": 0,
+            "step_attempts": 1,
+            "max_attempts_per_step": 2,
+            "slots": {"slots_required": ["seller_batna"], "slots_optional": [], "slots_filled": {}},
+        }
+    )
+
+    updated, meta, hint = update_intent_state(
+        prev_intent=intent,
+        world_state=world,
+        belief_state=belief,
+        progress_state=progress,
+        user_message="depende",
+        turn_count=2,
+    )
+
+    assert updated["status"] == "active"
+    assert hint["target_slot"] != "unknown"
+    assert meta["reasons"] and "steps_hydrated" in meta["reasons"]

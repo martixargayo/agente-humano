@@ -94,7 +94,7 @@ def _allowed_policy_ids(
         guards = policy.guards or set()
         if required_guards and not required_guards.issubset(guards):
             return True
-        if "avoid_price_numbers" in guards and world_state.get("price_mentioned"):
+        if "requires_price_not_mentioned" in guards and world_state.get("price_mentioned"):
             return True
         return False
 
@@ -180,9 +180,11 @@ def apply_intent_constraints(
         "planner_fallback_used": False,
     }
     preferred = _preferred_policy_ids(intent_hint)
+
     if not intent_hint:
         return allowed, preferred, meta
-    if intent_hint.get("slots_missing") and intent_hint.get("slots_missing") != []:
+
+    if intent_hint.get("slots_missing"):
         allowed = [
             policy_id
             for policy_id in allowed
@@ -207,7 +209,10 @@ def apply_intent_constraints(
             rest = [policy_id for policy_id in allowed if policy_id not in intersection]
             meta["planner_mode"] = "intent_soft_ranked"
             return intersection + rest, preferred, meta
-        meta["planner_mode"] = "intent_preferred"
+        meta["planner_mode"] = "intent_preferred_no_intersection"
+        return allowed, preferred, meta
+
+    meta["planner_mode"] = "no_intent_constraint"
     return allowed, preferred, meta
 
 
