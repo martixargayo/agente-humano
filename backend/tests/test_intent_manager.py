@@ -349,6 +349,62 @@ def test_slot_switch_retargets_next_missing():
     assert hint["target_slot"] == "seller_urgency_reason"
 
 
+def test_retarget_guardrail_forces_step0_target(monkeypatch):
+    def fake_build_steps(intent_type, missing):
+        return [
+            {
+                "kind": "probe_open",
+                "target_slot": "WRONG",
+                "success_if_filled": [missing[0]],
+            }
+        ]
+
+    monkeypatch.setattr(intent_manager, "build_steps", fake_build_steps)
+
+    world = default_world_state()
+    world["batna_claimed"] = True
+    world["batna_text"] = "Tengo otra opción."
+    belief = default_belief_state()
+    progress = default_progress_state()
+    intent = default_intent_state()
+    intent.update(
+        {
+            "status": "active",
+            "intent_goal": "Buscar BATNA",
+            "intent_type": "info_extract",
+            "steps": [
+                {
+                    "kind": "probe_open",
+                    "target_slot": "seller_batna",
+                    "success_if_filled": ["seller_batna"],
+                }
+            ],
+            "step_idx": 0,
+            "step_attempts": 0,
+            "max_attempts_per_step": 2,
+            "slots": {
+                "slots_required": ["seller_batna", "seller_urgency_reason"],
+                "slots_optional": [],
+                "slots_filled": {},
+            },
+        }
+    )
+
+    updated, meta, hint = update_intent_state(
+        prev_intent=intent,
+        world_state=world,
+        belief_state=belief,
+        progress_state=progress,
+        user_message="Tengo otra opción.",
+        turn_count=2,
+    )
+
+    assert meta["intent_transition"] == "retarget"
+    assert meta["retarget_slot"] == "seller_urgency_reason"
+    assert updated["steps"][0]["target_slot"] == "seller_urgency_reason"
+    assert hint["target_slot"] == "seller_urgency_reason"
+
+
 def test_other_buyer_details_has_text():
     world = default_world_state()
     world["other_buyer_claimed"] = True
@@ -531,3 +587,33 @@ def test_hydrates_legacy_steps_with_unknown_targets():
     assert updated["status"] == "active"
     assert hint["target_slot"] != "unknown"
     assert meta["reasons"] and "steps_hydrated" in meta["reasons"]
+
+
+def test_hydration_missing_empty_does_not_break_hint():
+    world = default_world_state()
+    belief = default_belief_state()
+    progress = default_progress_state()
+    intent = default_intent_state()
+    intent.update(
+        {
+            "status": "active",
+            "intent_goal": "Cerrar",
+            "intent_type": "info_extract",
+            "steps": [],
+            "step_idx": 0,
+            "slots": {"slots_required": [], "slots_optional": [], "slots_filled": {}},
+        }
+    )
+
+    updated, meta, hint = update_intent_state(
+        prev_intent=intent,
+        world_state=world,
+        belief_state=belief,
+        progress_state=progress,
+        user_message="ok",
+        turn_count=2,
+    )
+
+    assert updated["status"] == "active"
+    assert "steps_hydrated" in meta["reasons"]
+    assert "step_kind" in hint

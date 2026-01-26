@@ -29,6 +29,7 @@ class IntentSlot(TypedDict):
     value: object
     evidence: str
     confidence: float
+    source: str
 
 
 class IntentSlots(TypedDict):

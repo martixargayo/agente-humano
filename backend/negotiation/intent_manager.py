@@ -104,11 +104,12 @@ def build_steps(intent_type: str, missing: list[str]) -> list[IntentStep]:
     ]
 
 
-def _slot_entry(value: object, evidence: str, confidence: float) -> dict:
+def _slot_entry(value: object, evidence: str, confidence: float, source: str = "world_state") -> dict:
     return {
         "value": value,
         "evidence": evidence,
         "confidence": confidence,
+        "source": source,
     }
 
 
@@ -142,6 +143,7 @@ def _extract_slots(world_state: WorldState, user_message: str) -> dict:
             },
             evidence,
             0.65,
+            source="world_state:other_buyer_claimed",
         )
 
     if world_state.get("concession_made"):
@@ -318,6 +320,10 @@ def maybe_retarget_steps(
     intent["step_attempts"] = 0
     meta["intent_transition"] = "retarget"
     meta["retarget_slot"] = new_target
+    step = _current_step(intent)
+    if step and step.get("target_slot") != new_target:
+        meta.setdefault("reasons", []).append("retarget_step_mismatch")
+        step["target_slot"] = new_target
 
 
 def _should_advance_step(step: IntentStep, slots_delta: dict) -> bool:
@@ -397,7 +403,16 @@ def _ensure_steps_hydrated(
         or step.get("target_slot") in {"", "unknown"}
     ):
         missing = _slots_missing(intent)
-        intent["steps"] = build_steps(intent.get("intent_type", "info_extract"), missing)
+        if not missing:
+            intent["steps"] = [
+                {
+                    "kind": "close_next",
+                    "target_slot": "",
+                    "success_if_filled": [],
+                }
+            ]
+        else:
+            intent["steps"] = build_steps(intent.get("intent_type", "info_extract"), missing)
         intent["step_idx"] = 0
         intent["step_attempts"] = 0
         meta.setdefault("reasons", []).append("steps_hydrated")
