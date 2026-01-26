@@ -49,9 +49,9 @@ class _BeliefDynamicsModel(BaseModel):
 
 class _BeliefToMModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    seller_goals: conlist(str, max_items=6) = Field(default_factory=list)
-    seller_tactics: conlist(str, max_items=6) = Field(default_factory=list)
-    seller_belief_about_me: conlist(str, max_items=6) = Field(default_factory=list)
+    seller_goals: conlist(str, max_length=6) = Field(default_factory=list)
+    seller_tactics: conlist(str, max_length=6) = Field(default_factory=list)
+    seller_belief_about_me: conlist(str, max_length=6) = Field(default_factory=list)
     confidence: confloat(ge=0.0, le=1.0) = 0.4
 
 
@@ -59,7 +59,7 @@ class _BeliefStateModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
     stance: _BeliefStanceModel
     reasons: dict[ReasonKey, _BeliefReasonModel] = Field(default_factory=dict)
-    hypotheses: conlist(str, max_items=5) = Field(default_factory=list)
+    hypotheses: conlist(str, max_length=5) = Field(default_factory=list)
     dynamics: _BeliefDynamicsModel
     tom: _BeliefToMModel
 
@@ -82,7 +82,8 @@ class _BeliefStateModel(BaseModel):
             value.items(),
             key=lambda kv: (
                 -(kv[1].weight * kv[1].confidence),
-                reason_priority.get(kv[0], 999),
+                reason_priority.get(str(kv[0]), 999),
+                str(kv[0]),
             ),
         )
         return dict(items[:6])
