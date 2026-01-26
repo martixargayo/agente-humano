@@ -31,10 +31,10 @@
 
 - **Problema observable**: `pytest -q` fallaba con `ModuleNotFoundError` al importar `negotiation` en un checkout limpio.
 - **Invariante**: los tests deben correr desde la raíz sin `PYTHONPATH` manual ni dependencias del IDE.
-- **Cambio**: se añade `pytest.ini` con `pythonpath = backend` y se refuerza con `backend/tests/conftest.py` para insertar el root de `backend` en `sys.path`.
+- **Cambio**: se añade `pytest.ini` con `pythonpath = backend` y `backend/tests/conftest.py` queda solo para fixtures/env vars.
 - **Por qué esta solución y no otra**: evitar cambios en imports de tests (`backend.negotiation`) reduce acoplamiento y mantiene el import root claro.
-- **Riesgos**: doble configuración podría ocultar errores de packaging si se mueve la estructura del repo.
-- **Mitigación**: keep configuración mínima y explícita; fallo inmediato si falta `backend` en el repo.
+- **Riesgos**: depender solo de `pytest.ini` exige que el repo mantenga la carpeta `backend` en su lugar esperado.
+- **Mitigación**: el fallo es inmediato si falta `backend` en el repo y no se ocultan errores de packaging.
 - **Cómo lo medimos**: `pytest -q` desde raíz y `pytest -q backend/tests/test_state_normalization.py`.
 - **Tests**: `pytest -q`.
 
@@ -53,12 +53,12 @@
 
 - **Problema observable**: la importación de `belief_state_updater` fallaba en runtime al evaluar `conlist(..., max_items=...)`.
 - **Invariante**: los modelos pydantic deben instanciarse sin errores de firma en el entorno de ejecución.
-- **Cambio**: se reemplaza `max_items` por `max_length` en los `conlist` de los modelos internos.
-- **Por qué esta solución y no otra**: mantiene la misma restricción de tamaño y evita condicionales por versión.
-- **Riesgos**: en entornos con pydantic v1 podría requerir compatibilidad adicional.
-- **Mitigación**: cubrir la importación en tests para detectar regresiones.
+- **Cambio**: se fija `pydantic>=2.7,<3` en `requirements.txt` para cerrar la compatibilidad.
+- **Por qué esta solución y no otra**: el pin elimina ambigüedades de firma y evita compat layers innecesarios.
+- **Riesgos**: limita la actualización automática a futuras majors de pydantic.
+- **Mitigación**: revisar el pin al subir dependencias y ejecutar la suite completa.
 - **Cómo lo medimos**: `pytest -q` importa `belief_state_updater` sin excepciones.
-- **Tests**: `test_has_belief_evidence_delta_triggers_on_critical_flag_change`, `test_belief_reasons_tiebreak_is_deterministic`.
+- **Tests**: `test_has_belief_evidence_delta_triggers_on_critical_flag_change`, `test_belief_reasons_tiebreak_is_deterministic_with_real_keys`.
 
 ### Estabilidad de razones top-K (tie-break determinista total)
 
@@ -69,7 +69,7 @@
 - **Riesgos**: keys lexicográficas podrían sesgar el top-K en empates exactos.
 - **Mitigación**: la prioridad explícita sigue dominando; el tercer criterio solo actúa en empates reales.
 - **Cómo lo medimos**: menor churn en `belief.reasons` cuando el score es idéntico.
-- **Tests**: `test_belief_reasons_tiebreak_is_deterministic`.
+- **Tests**: `test_belief_reasons_tiebreak_is_deterministic_with_real_keys`.
 
 ### Normalización robusta de `policy_attempts`
 
@@ -102,7 +102,7 @@
 - **Riesgos**: si el executor devuelve un policy inválido, podríamos persistir datos inconsistentes.
 - **Mitigación**: normalización estricta y issues registrados en `debug_trace`.
 - **Cómo lo medimos**: coherencia en `debug_trace` y métricas de `policy_last_outcome` turno a turno.
-- **Tests**: `test_update_progress_state_tracks_policy_last_outcome`.
+- **Tests**: `test_update_progress_state_tracks_policy_last_outcome`, `test_temporal_invariant_last_policy_executed_is_persisted`.
 
 ## Changelog técnico (deprecaciones y migración)
 
