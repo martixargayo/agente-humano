@@ -6,6 +6,46 @@ InteractionHealth = Literal["stable", "tense", "stalled"]
 RiskPosture = Literal["low", "mid", "high"]
 PolicyOutcome = Literal["good", "neutral", "bad", ""]
 ToneSignal = Literal["neutral", "friendly", "tense"]
+IntentStatus = Literal["inactive", "active", "succeeded", "abandoned"]
+IntentType = Literal[
+    "info_extract",
+    "relationship",
+    "concession",
+    "closing",
+    "credibility_check",
+]
+CommitmentLevel = Literal["hard", "soft"]
+
+
+class IntentSlot(TypedDict):
+    value: object
+    evidence: str
+    confidence: float
+
+
+class IntentSlots(TypedDict):
+    slots_required: List[str]
+    slots_optional: List[str]
+    slots_filled: Dict[str, IntentSlot]
+
+
+class IntentState(TypedDict):
+    status: IntentStatus
+    intent_goal: str
+    intent_type: IntentType
+    steps: List[str]
+    step_idx: int
+    step_attempts: int
+    max_attempts_per_step: int
+    success_criteria: List[str]
+    slots: IntentSlots
+    confidence: float
+    created_turn: int
+    last_turn: int
+    continue_until: str
+    abandon_reasons: List[str]
+    last_observation: str
+    next_action_hint: str
 
 
 class WorldState(TypedDict):
@@ -78,6 +118,7 @@ class ProgressState(TypedDict):
     policy_attempts: Dict[str, int]
     loop_flags: List[str]
     turns_in_same_mode: int
+    intent_state: IntentState
 
 
 def default_world_state() -> WorldState:
@@ -126,6 +167,32 @@ def default_progress_state() -> ProgressState:
         "policy_attempts": {},
         "loop_flags": [],
         "turns_in_same_mode": 0,
+        "intent_state": default_intent_state(),
+    }
+
+
+def default_intent_state() -> IntentState:
+    return {
+        "status": "inactive",
+        "intent_goal": "",
+        "intent_type": "info_extract",
+        "steps": [],
+        "step_idx": 0,
+        "step_attempts": 0,
+        "max_attempts_per_step": 2,
+        "success_criteria": [],
+        "slots": {
+            "slots_required": [],
+            "slots_optional": [],
+            "slots_filled": {},
+        },
+        "confidence": 0.0,
+        "created_turn": 0,
+        "last_turn": 0,
+        "continue_until": "",
+        "abandon_reasons": [],
+        "last_observation": "",
+        "next_action_hint": "",
     }
 
 

@@ -334,6 +334,9 @@ POLICY_PLANNER_USER_PROMPT = """
 [ProgressState]
 {progress_state}
 
+[IntentHint]
+{intent_hint}
+
 [Contexto reciente (2–4 turnos)]
 {recent_context}
 
@@ -345,6 +348,9 @@ POLICY_PLANNER_USER_PROMPT = """
 
 [Policies permitidas]
 {allowed_policy_ids}
+
+[Policies preferidas]
+{preferred_policy_ids}
 
 Devuelve SOLO JSON:
 {

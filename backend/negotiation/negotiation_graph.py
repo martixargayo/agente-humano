@@ -22,6 +22,7 @@ from langchain_core.documents import Document
 
 from .belief_state_updater import update_belief_state
 from .context_utils import build_context_snippet
+from .intent_manager import update_intent_state
 from .policies import get_policy, list_policy_ids
 from .policy_planner import allowed_policy_ids, plan_policy
 from .progress_updater import update_progress_state
@@ -165,6 +166,7 @@ class NegotiationTurn(TypedDict):
     history_text: str
     recent_history_text: str
     user_message: str
+    turn_count: int
 
     objective: str
     constraints: str
@@ -175,6 +177,8 @@ class NegotiationTurn(TypedDict):
     belief_state: BeliefState
     prev_belief_state: BeliefState
     progress_state: ProgressState
+    intent_hint: dict
+    intent_meta: dict
     policy_decision: PolicyDecision
     executed_policy: PolicyDecision | None
     last_policy_executed: PolicyDecision | None
@@ -313,6 +317,21 @@ def belief_updater_node(state: NegotiationTurn) -> NegotiationTurn:
     return state
 
 
+def intent_manager_node(state: NegotiationTurn) -> NegotiationTurn:
+    intent_state, intent_meta, intent_hint = update_intent_state(
+        prev_intent=state.get("progress_state", {}).get("intent_state"),
+        world_state=state["world_state"],
+        belief_state=state["belief_state"],
+        progress_state=state["progress_state"],
+        user_message=state.get("user_message", ""),
+        turn_count=state.get("turn_count", 0),
+    )
+    state["progress_state"]["intent_state"] = intent_state
+    state["intent_hint"] = intent_hint
+    state["intent_meta"] = intent_meta
+    return state
+
+
 def policy_planner_node(state: NegotiationTurn) -> NegotiationTurn:
     deps = state.get("deps", DEFAULT_DEPS)
     _ensure_objective(state)
@@ -323,10 +342,12 @@ def policy_planner_node(state: NegotiationTurn) -> NegotiationTurn:
         world_state=state["world_state"],
         belief_state=state["belief_state"],
         progress_state=state["progress_state"],
+        intent_hint=state.get("intent_hint"),
         objective=state["objective"],
         constraints=state.get("constraints", ""),
         recent_context=state.get("recent_history_text", ""),
     )
+    planner_meta["intent_meta"] = state.get("intent_meta", {})
     state["policy_decision"] = policy_decision
     state["planner_meta"] = planner_meta
     return state
@@ -393,6 +414,11 @@ Riesgo: {risk_posture}
     }
 
     phase_line = f"Phase hint: {phase_hint}." if phase_hint else ""
+    intent_hint = state.get("intent_hint", {}) or {}
+    intent_goal = intent_hint.get("intent_goal", "")
+    step_name = intent_hint.get("step_name", "")
+    next_action_hint = intent_hint.get("next_action_hint", "")
+    slots_missing = intent_hint.get("slots_missing", [])
 
     executor_system = f"""
 {BASE_PERSONALITY_PROMPT}
@@ -430,6 +456,11 @@ Directrices adicionales:
 - Tu micro-objetivo inmediato: {micro_goal}
 - {posture_instructions.get(risk_posture, posture_instructions["low"])}
 - {phase_line}
+- Intención activa: {intent_goal}
+- Paso actual: {step_name}
+- Siguiente foco: {next_action_hint}
+- Slots pendientes: {slots_missing}
+- Regla: ejecuta SOLO el paso actual y no cierres todo en un turno.
 
 Manual táctico de RAG para esta policy:
 {techniques_text}
@@ -498,13 +529,15 @@ workflow = StateGraph(NegotiationTurn)
 
 workflow.add_node("world_updater", world_updater_node)
 workflow.add_node("belief_updater", belief_updater_node)
+workflow.add_node("intent_manager", intent_manager_node)
 workflow.add_node("policy_planner", policy_planner_node)
 workflow.add_node("progress_updater", progress_updater_node)
 workflow.add_node("executor", executor_node)
 
 workflow.add_edge(START, "world_updater")
 workflow.add_edge("world_updater", "belief_updater")
-workflow.add_edge("belief_updater", "policy_planner")
+workflow.add_edge("belief_updater", "intent_manager")
+workflow.add_edge("intent_manager", "policy_planner")
 workflow.add_edge("policy_planner", "progress_updater")
 workflow.add_edge("progress_updater", "executor")
 workflow.add_edge("executor", END)
@@ -572,6 +605,8 @@ def run_negotiation_agent(
         "belief_state": belief_state_input,
         "prev_belief_state": belief_state_input,
         "progress_state": progress_state_input,
+        "intent_hint": {},
+        "intent_meta": {},
         "policy_decision": default_policy_decision(),
         "executed_policy": None,
         "last_policy_executed": last_policy_executed_input,
@@ -579,6 +614,7 @@ def run_negotiation_agent(
         "allowed_policy_ids": [],
         "planner_meta": {},
         "belief_update_meta": {},
+        "turn_count": state.turn_count,
         "deps": deps,
         "response": "",
     }
@@ -624,6 +660,21 @@ def run_negotiation_agent(
             "executed_policy_normalized": normalized_executed_policy,
             "executed_policy_issues": executed_policy_issues,
             "progress_state": new_progress_state,
+            "intent_prev": new_graph_state.get("planner_meta", {}).get("intent_meta", {}).get(
+                "intent_prev", {}
+            ),
+            "intent_new": new_graph_state.get("planner_meta", {}).get("intent_meta", {}).get(
+                "intent_new", {}
+            ),
+            "intent_decision": new_graph_state.get("planner_meta", {}).get(
+                "intent_meta", {}
+            ).get("intent_decision", ""),
+            "intent_slots_delta": new_graph_state.get("planner_meta", {}).get(
+                "intent_meta", {}
+            ).get("slots_filled_delta", {}),
+            "intent_commitment_level": new_graph_state.get("planner_meta", {}).get(
+                "intent_meta", {}
+            ).get("commitment_level", ""),
             "planner_meta": new_graph_state.get("planner_meta", {}),
             "belief_update_meta": new_graph_state.get("belief_update_meta", {}),
             "validation_issues": {

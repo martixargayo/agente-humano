@@ -129,22 +129,87 @@ def _violates_constraints(micro_goal: str, constraints: str) -> bool:
     return False
 
 
+def _preferred_policy_ids(intent_hint: dict | None) -> list[str]:
+    if not intent_hint:
+        return []
+    step_name = intent_hint.get("step_name")
+    if step_name == "ask_open":
+        return ["info_extract_critical", "rapport_build"]
+    if step_name == "narrow":
+        return ["info_extract_critical", "test_credibility"]
+    if step_name == "validate":
+        return ["test_credibility", "info_extract_critical"]
+    if step_name == "leverage":
+        return ["tradeoff_offer", "hold_position"]
+    if step_name == "deescalate":
+        return ["deescalate_tension"]
+    if step_name == "rebuild":
+        return ["rapport_build"]
+    if step_name == "advance":
+        return ["info_extract_critical"]
+    if step_name == "probe":
+        return ["info_extract_critical"]
+    if step_name == "tradeoff":
+        return ["tradeoff_offer"]
+    if step_name == "close":
+        return ["close_with_conditions"]
+    if step_name == "summarize":
+        return ["hold_position", "close_with_conditions"]
+    if step_name == "confirm_terms":
+        return ["close_with_conditions", "hold_position"]
+    if step_name == "ask_evidence":
+        return ["test_credibility"]
+    if step_name == "probe_details":
+        return ["info_extract_critical", "test_credibility"]
+    return []
+
+
+def apply_intent_constraints(
+    allowed: list[str],
+    intent_hint: dict | None,
+) -> tuple[list[str], list[str], dict]:
+    meta = {
+        "planner_mode": "",
+        "planner_error": "",
+        "planner_fallback_used": False,
+    }
+    preferred = _preferred_policy_ids(intent_hint)
+    if not intent_hint:
+        return allowed, preferred, meta
+    commitment = intent_hint.get("commitment_level")
+    if commitment == "hard" and preferred:
+        forced = [policy_id for policy_id in preferred if policy_id in allowed]
+        if forced:
+            meta["planner_mode"] = "intent_forced"
+            return forced, preferred, meta
+        meta["planner_error"] = "intent_policy_unavailable"
+        meta["planner_fallback_used"] = True
+        return allowed, preferred, meta
+    if commitment == "soft" and preferred:
+        meta["planner_mode"] = "intent_preferred"
+    return allowed, preferred, meta
+
+
 def plan_policy(
     world_state: WorldState,
     belief_state: BeliefState,
     progress_state: ProgressState,
+    intent_hint: dict | None,
     objective: str,
     constraints: str,
     recent_context: str,
 ) -> tuple[PolicyDecision, dict]:
     policy_ids = list_policy_ids()
     allowed = _allowed_policy_ids(world_state, belief_state, progress_state)
+    allowed, preferred, intent_meta = apply_intent_constraints(allowed, intent_hint)
     meta = {
         "planner_failed": False,
         "planner_error": "",
         "planner_fallback_used": False,
         "policy_normalization_changed": False,
         "issues": [],
+        "planner_mode": intent_meta.get("planner_mode", ""),
+        "intent_preferred_policy_ids": preferred,
     }
 
     if not policy_ids:
@@ -153,6 +218,13 @@ def plan_policy(
         meta["planner_fallback_used"] = True
         meta["issues"].append("policy_catalog_empty")
         return default_policy_decision(), meta
+
+    if intent_meta.get("planner_error"):
+        meta["planner_failed"] = True
+        meta["planner_error"] = intent_meta["planner_error"]
+        meta["planner_fallback_used"] = True
+        meta["issues"].append(intent_meta["planner_error"])
+        return _fallback_policy(belief_state), meta
 
     if not allowed:
         meta["planner_failed"] = True
@@ -171,6 +243,8 @@ def plan_policy(
         objective=objective,
         constraints=constraints,
         allowed_policy_ids=allowed,
+        intent_hint=json.dumps(intent_hint or {}, ensure_ascii=False),
+        preferred_policy_ids=preferred,
     )
 
     try:
