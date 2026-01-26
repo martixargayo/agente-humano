@@ -134,10 +134,8 @@ def normalize_belief_state(
     reasons_raw = raw.get("reasons", {})
     reasons: Dict[str, Dict[str, object]] = {}
     if isinstance(reasons_raw, dict):
-        for idx, (key, value) in enumerate(reasons_raw.items()):
-            if idx >= 6:
-                issues.append("reasons_trimmed")
-                break
+        scored_reasons: List[Tuple[str, Dict[str, object], float]] = []
+        for key, value in reasons_raw.items():
             if key not in _ALLOWED_REASON_KEYS:
                 issues.append(f"reason_key_invalid:{key}")
                 continue
@@ -149,11 +147,22 @@ def normalize_belief_state(
             evidence = str(value.get("evidence", "")).strip()
             if not evidence:
                 issues.append(f"reason_missing_evidence:{key}")
-            reasons[str(key)] = {
-                "weight": weight,
-                "confidence": confidence,
-                "evidence": evidence,
-            }
+            scored_reasons.append(
+                (
+                    str(key),
+                    {
+                        "weight": weight,
+                        "confidence": confidence,
+                        "evidence": evidence,
+                    },
+                    weight * confidence,
+                )
+            )
+        scored_reasons.sort(key=lambda item: item[2], reverse=True)
+        if len(scored_reasons) > 6:
+            issues.append("reasons_trimmed")
+        for key, payload, _score in scored_reasons[:6]:
+            reasons[key] = payload
     else:
         issues.append("reasons_invalid")
     base["reasons"] = reasons
@@ -240,6 +249,23 @@ def normalize_progress_state(raw: object) -> Tuple[ProgressState, List[str]]:
         last_outcome = base["last_executed_policy_outcome"]
     base["last_executed_policy_outcome"] = last_outcome
 
+    last_chosen_policy_id = raw.get("last_chosen_policy_id", raw.get("last_policy_id", ""))
+    base["last_chosen_policy_id"] = str(
+        last_chosen_policy_id or base["last_chosen_policy_id"]
+    )
+
+    policy_last_outcome = raw.get("policy_last_outcome", {})
+    if isinstance(policy_last_outcome, dict):
+        sanitized: Dict[str, str] = {}
+        for key, value in policy_last_outcome.items():
+            if value not in {"good", "neutral", "bad", ""}:
+                issues.append(f"policy_last_outcome_invalid:{key}")
+                continue
+            sanitized[str(key)] = value
+        base["policy_last_outcome"] = sanitized
+    else:
+        issues.append("policy_last_outcome_invalid")
+
     attempts = raw.get("policy_attempts", {})
     if isinstance(attempts, dict):
         base["policy_attempts"] = {str(k): int(v) for k, v in attempts.items() if isinstance(v, int)}
@@ -248,9 +274,5 @@ def normalize_progress_state(raw: object) -> Tuple[ProgressState, List[str]]:
 
     base["loop_flags"] = _unique_list(_coerce_str_list(raw.get("loop_flags", [])))
     base["turns_in_same_mode"] = int(raw.get("turns_in_same_mode", base["turns_in_same_mode"]))
-    last_chosen_policy_id = raw.get("last_chosen_policy_id", raw.get("last_policy_id", ""))
-    base["last_chosen_policy_id"] = str(
-        last_chosen_policy_id or base["last_chosen_policy_id"]
-    )
 
     return base, issues

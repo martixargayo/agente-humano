@@ -70,8 +70,12 @@ class _BeliefStateModel(BaseModel):
     ) -> dict[ReasonKey, _BeliefReasonModel]:
         if not isinstance(value, dict):
             return {}
-        items = list(value.items())[:6]
-        return dict(items)
+        items = sorted(
+            value.items(),
+            key=lambda kv: kv[1].weight * kv[1].confidence,
+            reverse=True,
+        )
+        return dict(items[:6])
 
 
 _EVIDENCE_TRIGGERS = (
@@ -89,8 +93,19 @@ _EVIDENCE_TRIGGERS = (
 )
 
 
-def has_belief_evidence_delta(world_diff: dict, user_message: str) -> bool:
+def has_belief_evidence_delta(
+    world_diff: dict,
+    user_message: str,
+    prev_world: WorldState,
+    world: WorldState,
+) -> bool:
     if world_diff:
+        return True
+    if world.get("tone_signal") != prev_world.get("tone_signal"):
+        return True
+    prev_hits = set(prev_world.get("tone_marker_hits", []))
+    new_hits = set(world.get("tone_marker_hits", [])) - prev_hits
+    if new_hits:
         return True
     lower = (user_message or "").lower()
     return any(token in lower for token in _EVIDENCE_TRIGGERS)
@@ -122,7 +137,7 @@ def update_belief_state(
         "belief_update_skipped": False,
     }
 
-    if not has_belief_evidence_delta(world_diff, user_message):
+    if not has_belief_evidence_delta(world_diff, user_message, prev_world_state, world_state):
         meta["belief_update_skipped"] = True
         return previous, meta
 
