@@ -10,9 +10,10 @@ from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, ConfigDict, Field
 
 from prompts import POLICY_PLANNER_SYSTEM_PROMPT, POLICY_PLANNER_USER_PROMPT
-from .policies import list_policy_ids, policy_catalog_text
+from .policies import POLICIES, list_policy_ids, policy_catalog_text
 from .schemas import (
     BeliefState,
+    IntentHint,
     PolicyDecision,
     ProgressState,
     WorldState,
@@ -129,44 +130,30 @@ def _violates_constraints(micro_goal: str, constraints: str) -> bool:
     return False
 
 
-def _preferred_policy_ids(intent_hint: dict | None) -> list[str]:
+def _step_kind_to_caps(step_kind: str) -> set[str]:
+    if not step_kind:
+        return set()
+    return {step_kind}
+
+
+def _preferred_policy_ids(intent_hint: IntentHint | None) -> list[str]:
     if not intent_hint:
         return []
-    step_name = intent_hint.get("step_name")
-    if step_name == "ask_open":
-        return ["info_extract_critical", "rapport_build"]
-    if step_name == "narrow":
-        return ["info_extract_critical", "test_credibility"]
-    if step_name == "validate":
-        return ["test_credibility", "info_extract_critical"]
-    if step_name == "leverage":
-        return ["tradeoff_offer", "hold_position"]
-    if step_name == "deescalate":
-        return ["deescalate_tension"]
-    if step_name == "rebuild":
-        return ["rapport_build"]
-    if step_name == "advance":
-        return ["info_extract_critical"]
-    if step_name == "probe":
-        return ["info_extract_critical"]
-    if step_name == "tradeoff":
-        return ["tradeoff_offer"]
-    if step_name == "close":
-        return ["close_with_conditions"]
-    if step_name == "summarize":
-        return ["hold_position", "close_with_conditions"]
-    if step_name == "confirm_terms":
-        return ["close_with_conditions", "hold_position"]
-    if step_name == "ask_evidence":
-        return ["test_credibility"]
-    if step_name == "probe_details":
-        return ["info_extract_critical", "test_credibility"]
-    return []
+    step_kind = intent_hint.get("step_kind", "")
+    required_caps = _step_kind_to_caps(step_kind)
+    if not required_caps:
+        return []
+    preferred = [
+        policy.policy_id
+        for policy in POLICIES
+        if policy.capabilities and required_caps.issubset(policy.capabilities)
+    ]
+    return preferred
 
 
 def apply_intent_constraints(
     allowed: list[str],
-    intent_hint: dict | None,
+    intent_hint: IntentHint | None,
 ) -> tuple[list[str], list[str], dict]:
     meta = {
         "planner_mode": "",
@@ -186,6 +173,10 @@ def apply_intent_constraints(
         meta["planner_fallback_used"] = True
         return allowed, preferred, meta
     if commitment == "soft" and preferred:
+        intersection = [policy_id for policy_id in preferred if policy_id in allowed]
+        if intersection:
+            meta["planner_mode"] = "intent_preferred"
+            return allowed, preferred, meta
         meta["planner_mode"] = "intent_preferred"
     return allowed, preferred, meta
 

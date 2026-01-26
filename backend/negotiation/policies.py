@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List
+from typing import List, Set
 
 
 @dataclass(frozen=True)
@@ -13,6 +13,7 @@ class Policy:
     hard_constraints: str
     rag_query_template: str
     phase_hint: str | None = None
+    capabilities: Set[str] | None = None
 
 
 POLICIES: List[Policy] = [
@@ -25,6 +26,7 @@ POLICIES: List[Policy] = [
             "Tácticas para generar rapport sin perder objetivo en una negociación presencial."
         ),
         phase_hint="1",
+        capabilities={"probe_open"},
     ),
     Policy(
         policy_id="info_extract_critical",
@@ -35,6 +37,7 @@ POLICIES: List[Policy] = [
             "Preguntas y técnicas para descubrir información crítica sin sonar interrogatorio."
         ),
         phase_hint="2",
+        capabilities={"probe_open", "probe_narrow"},
     ),
     Policy(
         policy_id="test_credibility",
@@ -45,6 +48,7 @@ POLICIES: List[Policy] = [
             "Cómo contrastar credibilidad con preguntas indirectas y señales suaves."
         ),
         phase_hint="2",
+        capabilities={"request_evidence", "probe_narrow"},
     ),
     Policy(
         policy_id="delay_price_discussion",
@@ -55,6 +59,7 @@ POLICIES: List[Policy] = [
             "Tácticas para aplazar precio y reconducir a información o valor."
         ),
         phase_hint="2",
+        capabilities={"probe_open"},
     ),
     Policy(
         policy_id="challenge_anchor_indirect",
@@ -65,6 +70,7 @@ POLICIES: List[Policy] = [
             "Formas indirectas de desafiar un precio alto y abrir espacio."
         ),
         phase_hint="4",
+        capabilities={"pressure_soft"},
     ),
     Policy(
         policy_id="tradeoff_offer",
@@ -75,6 +81,7 @@ POLICIES: List[Policy] = [
             "Cómo formular trade-offs claros que mantengan control del valor."
         ),
         phase_hint="4",
+        capabilities={"trade_incentive"},
     ),
     Policy(
         policy_id="hold_position",
@@ -85,6 +92,7 @@ POLICIES: List[Policy] = [
             "Frases breves para mantener posición y seguir negociando."
         ),
         phase_hint="4",
+        capabilities={"pressure_soft", "close_next"},
     ),
     Policy(
         policy_id="deescalate_tension",
@@ -95,6 +103,7 @@ POLICIES: List[Policy] = [
             "Tácticas de desescalada en negociación presencial sin ceder de más."
         ),
         phase_hint="1",
+        capabilities={"pressure_soft", "probe_open"},
     ),
     Policy(
         policy_id="close_with_conditions",
@@ -105,6 +114,7 @@ POLICIES: List[Policy] = [
             "Guía para cerrar condiciones claras y confirmar acuerdo." 
         ),
         phase_hint="5",
+        capabilities={"close_next"},
     ),
 ]
 

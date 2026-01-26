@@ -416,7 +416,8 @@ Riesgo: {risk_posture}
     phase_line = f"Phase hint: {phase_hint}." if phase_hint else ""
     intent_hint = state.get("intent_hint", {}) or {}
     intent_goal = intent_hint.get("intent_goal", "")
-    step_name = intent_hint.get("step_name", "")
+    step_kind = intent_hint.get("step_kind", "")
+    target_slot = intent_hint.get("target_slot", "")
     next_action_hint = intent_hint.get("next_action_hint", "")
     slots_missing = intent_hint.get("slots_missing", [])
 
@@ -457,7 +458,8 @@ Directrices adicionales:
 - {posture_instructions.get(risk_posture, posture_instructions["low"])}
 - {phase_line}
 - Intención activa: {intent_goal}
-- Paso actual: {step_name}
+- Paso actual: {step_kind}
+- Slot objetivo: {target_slot}
 - Siguiente foco: {next_action_hint}
 - Slots pendientes: {slots_missing}
 - Regla: ejecuta SOLO el paso actual y no cierres todo en un turno.
@@ -669,9 +671,20 @@ def run_negotiation_agent(
             "intent_decision": new_graph_state.get("planner_meta", {}).get(
                 "intent_meta", {}
             ).get("intent_decision", ""),
+            "intent_transition": new_graph_state.get("planner_meta", {}).get(
+                "intent_meta", {}
+            ).get("intent_transition", ""),
             "intent_slots_delta": new_graph_state.get("planner_meta", {}).get(
                 "intent_meta", {}
             ).get("slots_filled_delta", {}),
+            "intent_step_kind": new_graph_state.get("intent_hint", {}).get("step_kind", ""),
+            "intent_target_slot": new_graph_state.get("intent_hint", {}).get("target_slot", ""),
+            "intent_pivot_reason": new_graph_state.get("planner_meta", {}).get(
+                "intent_meta", {}
+            ).get("pivot_reason", ""),
+            "intent_success_reasons": new_graph_state.get("planner_meta", {}).get(
+                "intent_meta", {}
+            ).get("success_reasons", []),
             "intent_commitment_level": new_graph_state.get("planner_meta", {}).get(
                 "intent_meta", {}
             ).get("commitment_level", ""),

@@ -1,7 +1,7 @@
 # backend/negotiation/schemas.py
 from __future__ import annotations
 
-from typing import Dict, List, Literal, TypedDict
+from typing import Dict, List, Literal, Set, TypedDict
 InteractionHealth = Literal["stable", "tense", "stalled"]
 RiskPosture = Literal["low", "mid", "high"]
 PolicyOutcome = Literal["good", "neutral", "bad", ""]
@@ -15,6 +15,14 @@ IntentType = Literal[
     "credibility_check",
 ]
 CommitmentLevel = Literal["hard", "soft"]
+StepKind = Literal[
+    "probe_open",
+    "probe_narrow",
+    "request_evidence",
+    "trade_incentive",
+    "pressure_soft",
+    "close_next",
+]
 
 
 class IntentSlot(TypedDict):
@@ -29,11 +37,17 @@ class IntentSlots(TypedDict):
     slots_filled: Dict[str, IntentSlot]
 
 
+class IntentStep(TypedDict):
+    kind: StepKind
+    target_slot: str
+    success_if_filled: List[str]
+
+
 class IntentState(TypedDict):
     status: IntentStatus
     intent_goal: str
     intent_type: IntentType
-    steps: List[str]
+    steps: List[IntentStep]
     step_idx: int
     step_attempts: int
     max_attempts_per_step: int
@@ -58,6 +72,16 @@ class WorldState(TypedDict):
     concession_text: str
     docs_claimed: bool
     docs_types: List[str]
+    batna_claimed: bool
+    batna_text: str
+    urgency_claimed: bool
+    urgency_text: str
+    min_price_claimed: bool
+    min_price_text: str
+    price_firm: bool
+    price_firm_text: str
+    evidence_offered: bool
+    evidence_text: str
     tone_signal: ToneSignal
     tone_marker_hits: List[str]
 
@@ -98,6 +122,19 @@ class PolicyDecision(TypedDict):
     reason: str
     micro_goal: str
     risk_posture: RiskPosture
+    capabilities: Set[str] | None
+
+
+class IntentHint(TypedDict):
+    intent_active: bool
+    intent_goal: str
+    intent_type: str
+    step_kind: str
+    target_slot: str
+    next_action_hint: str
+    slots_missing: List[str]
+    slots_filled_summary: str
+    commitment_level: CommitmentLevel
 
 
 ReasonKey = Literal[
@@ -132,6 +169,16 @@ def default_world_state() -> WorldState:
         "concession_text": "",
         "docs_claimed": False,
         "docs_types": [],
+        "batna_claimed": False,
+        "batna_text": "",
+        "urgency_claimed": False,
+        "urgency_text": "",
+        "min_price_claimed": False,
+        "min_price_text": "",
+        "price_firm": False,
+        "price_firm_text": "",
+        "evidence_offered": False,
+        "evidence_text": "",
         "tone_signal": "neutral",
         "tone_marker_hits": [],
     }
@@ -202,4 +249,5 @@ def default_policy_decision() -> PolicyDecision:
         "reason": "Fallback seguro para mantener buen clima.",
         "micro_goal": "Mantener tono cordial y abrir espacio para información útil.",
         "risk_posture": "low",
+        "capabilities": None,
     }

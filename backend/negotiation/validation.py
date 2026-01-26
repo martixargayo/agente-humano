@@ -104,6 +104,16 @@ def normalize_world_state(raw: object) -> Tuple[WorldState, List[str]]:
     base["concession_text"] = str(raw.get("concession_text", base["concession_text"])).strip()
     base["docs_claimed"] = bool(raw.get("docs_claimed", base["docs_claimed"]))
     base["docs_types"] = _unique_list(_coerce_str_list(raw.get("docs_types", [])))
+    base["batna_claimed"] = bool(raw.get("batna_claimed", base["batna_claimed"]))
+    base["batna_text"] = str(raw.get("batna_text", base["batna_text"])).strip()
+    base["urgency_claimed"] = bool(raw.get("urgency_claimed", base["urgency_claimed"]))
+    base["urgency_text"] = str(raw.get("urgency_text", base["urgency_text"])).strip()
+    base["min_price_claimed"] = bool(raw.get("min_price_claimed", base["min_price_claimed"]))
+    base["min_price_text"] = str(raw.get("min_price_text", base["min_price_text"])).strip()
+    base["price_firm"] = bool(raw.get("price_firm", base["price_firm"]))
+    base["price_firm_text"] = str(raw.get("price_firm_text", base["price_firm_text"])).strip()
+    base["evidence_offered"] = bool(raw.get("evidence_offered", base["evidence_offered"]))
+    base["evidence_text"] = str(raw.get("evidence_text", base["evidence_text"])).strip()
 
     tone_signal = raw.get("tone_signal", base["tone_signal"])
     if tone_signal not in _ALLOWED_TONE:
@@ -331,6 +341,60 @@ def _normalize_slots(raw: object) -> Tuple[dict, List[str]]:
     return slots, issues
 
 
+def _normalize_steps(raw: object) -> Tuple[List[dict], List[str]]:
+    issues: List[str] = []
+    steps: List[dict] = []
+    if not isinstance(raw, list):
+        return steps, ["intent_steps_invalid"]
+
+    legacy_map = {
+        "ask_open": "probe_open",
+        "narrow": "probe_narrow",
+        "validate": "request_evidence",
+        "leverage": "trade_incentive",
+        "deescalate": "pressure_soft",
+        "rebuild": "probe_open",
+        "advance": "close_next",
+        "probe": "probe_open",
+        "tradeoff": "trade_incentive",
+        "close": "close_next",
+        "summarize": "probe_narrow",
+        "confirm_terms": "close_next",
+        "ask_evidence": "request_evidence",
+        "probe_details": "probe_narrow",
+    }
+
+    for idx, item in enumerate(raw):
+        if isinstance(item, str):
+            kind = legacy_map.get(item, "probe_open")
+            steps.append(
+                {
+                    "kind": kind,
+                    "target_slot": "unknown",
+                    "success_if_filled": ["unknown"],
+                }
+            )
+            issues.append(f"intent_step_legacy:{idx}")
+            continue
+        if not isinstance(item, dict):
+            issues.append(f"intent_step_invalid:{idx}")
+            continue
+        kind = str(item.get("kind", "")).strip()
+        target_slot = str(item.get("target_slot", "")).strip()
+        success_if_filled = _unique_list(_coerce_str_list(item.get("success_if_filled", [])))
+        if not kind or not target_slot or not success_if_filled:
+            issues.append(f"intent_step_missing_fields:{idx}")
+            continue
+        steps.append(
+            {
+                "kind": kind,
+                "target_slot": target_slot,
+                "success_if_filled": success_if_filled,
+            }
+        )
+    return steps[:5], issues
+
+
 def normalize_intent_state(raw: object) -> Tuple[IntentState, List[str]]:
     base = default_intent_state()
     issues: List[str] = []
@@ -351,7 +415,10 @@ def normalize_intent_state(raw: object) -> Tuple[IntentState, List[str]]:
     base["intent_type"] = intent_type
 
     base["intent_goal"] = str(raw.get("intent_goal", base["intent_goal"])).strip()
-    base["steps"] = _coerce_str_list(raw.get("steps", []), max_items=5)
+    steps, step_issues = _normalize_steps(raw.get("steps", []))
+    if step_issues:
+        issues.extend(step_issues)
+    base["steps"] = steps
     base["step_idx"] = int(raw.get("step_idx", base["step_idx"]))
     base["step_attempts"] = int(raw.get("step_attempts", base["step_attempts"]))
     base["max_attempts_per_step"] = max(

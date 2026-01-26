@@ -43,6 +43,48 @@ _OTHER_BUYER_PATTERNS = [
     r"ya tengo oferta",
 ]
 
+_BATNA_PATTERNS = [
+    r"tengo otro interesado",
+    r"otro interesado",
+    r"otro comprador",
+    r"me lo quedo",
+    r"me lo quedar[ée]",
+    r"lo llevo a compraventa",
+    r"me lo compra mi primo",
+]
+
+_URGENCY_PATTERNS = [
+    r"lo necesito",
+    r"me urge",
+    r"me urge",
+    r"me viene la reforma",
+    r"esta semana",
+    r"antes del",
+    r"antes de",
+]
+
+_MIN_PRICE_PATTERNS = [
+    r"de\s+\d+.*no bajo",
+    r"mi mínimo es",
+    r"mi minimo es",
+    r"no bajo de",
+]
+
+_PRICE_FIRM_PATTERNS = [
+    r"precio fijo",
+    r"no negociable",
+    r"no negocio",
+    r"precio cerrado",
+]
+
+_EVIDENCE_PATTERNS = [
+    r"tengo factura",
+    r"tengo informe",
+    r"te enseño papeles",
+    r"tengo papeles",
+    r"te puedo mostrar",
+]
+
 _CONCESSION_PATTERNS = [
     r"te lo dejo",
     r"lo dejo en",
@@ -173,6 +215,31 @@ def update_world_state(prev_world: WorldState | None, user_message: str) -> Worl
     other_buyer_match = _detect_keywords(lower, _OTHER_BUYER_PATTERNS)
     if other_buyer_match:
         base["other_buyer_claimed"] = True
+
+    batna_match = _detect_keywords(lower, _BATNA_PATTERNS)
+    if batna_match:
+        base["batna_claimed"] = True
+        base["batna_text"] = _extract_sentence(text, batna_match.span())
+
+    urgency_match = _detect_keywords(lower, _URGENCY_PATTERNS)
+    if urgency_match:
+        base["urgency_claimed"] = True
+        base["urgency_text"] = _extract_sentence(text, urgency_match.span())
+
+    min_price_match = _detect_keywords(lower, _MIN_PRICE_PATTERNS)
+    if min_price_match:
+        base["min_price_claimed"] = True
+        base["min_price_text"] = _extract_sentence(text, min_price_match.span())
+
+    price_firm_match = _detect_keywords(lower, _PRICE_FIRM_PATTERNS)
+    if price_firm_match:
+        base["price_firm"] = True
+        base["price_firm_text"] = _extract_sentence(text, price_firm_match.span())
+
+    evidence_match = _detect_keywords(lower, _EVIDENCE_PATTERNS)
+    if evidence_match:
+        base["evidence_offered"] = True
+        base["evidence_text"] = _extract_sentence(text, evidence_match.span())
 
     concession_match = _detect_keywords(lower, _CONCESSION_PATTERNS)
     if concession_match:
