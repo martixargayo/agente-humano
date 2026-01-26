@@ -6,7 +6,9 @@ import os
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
-from pydantic import BaseModel, Field, confloat, conlist
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, confloat, conlist, field_validator
 
 from prompts import BELIEF_UPDATE_SYSTEM_PROMPT, BELIEF_UPDATE_USER_PROMPT
 from .schemas import BeliefState, PolicyDecision, WorldState, default_belief_state
@@ -27,22 +29,26 @@ _belief_prompt = ChatPromptTemplate.from_messages(
 
 
 class _BeliefReasonModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     weight: confloat(ge=0.0, le=1.0) = 0.5
     confidence: confloat(ge=0.0, le=1.0) = 0.5
     evidence: str = ""
 
 
 class _BeliefStanceModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     deal_feasibility: confloat(ge=0.0, le=1.0) = 0.5
     seller_flexibility: confloat(ge=0.0, le=1.0) = 0.5
 
 
 class _BeliefDynamicsModel(BaseModel):
-    interaction_health: str = "stable"
+    model_config = ConfigDict(extra="forbid")
+    interaction_health: Literal["stable", "tense", "stalled"] = "stable"
     last_update_evidence: str = ""
 
 
 class _BeliefToMModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     seller_goals: conlist(str, max_items=6) = Field(default_factory=list)
     seller_tactics: conlist(str, max_items=6) = Field(default_factory=list)
     seller_belief_about_me: conlist(str, max_items=6) = Field(default_factory=list)
@@ -50,11 +56,20 @@ class _BeliefToMModel(BaseModel):
 
 
 class _BeliefStateModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     stance: _BeliefStanceModel
     reasons: dict[str, _BeliefReasonModel] = Field(default_factory=dict)
     hypotheses: conlist(str, max_items=5) = Field(default_factory=list)
     dynamics: _BeliefDynamicsModel
     tom: _BeliefToMModel
+
+    @field_validator("reasons")
+    @classmethod
+    def _limit_reasons(cls, value: dict[str, _BeliefReasonModel]) -> dict[str, _BeliefReasonModel]:
+        if not isinstance(value, dict):
+            return {}
+        items = list(value.items())[:6]
+        return dict(items)
 
 
 def update_belief_state(
@@ -66,8 +81,17 @@ def update_belief_state(
     last_assistant_message: str,
     user_message: str,
     context_snippet: str,
-) -> BeliefState:
+) -> tuple[BeliefState, dict]:
     previous = prev_belief_state or default_belief_state()
+    meta = {
+        "belief_update_failed": False,
+        "belief_update_error": "",
+        "belief_update_skipped": False,
+    }
+
+    if not world_diff:
+        meta["belief_update_skipped"] = True
+        return previous, meta
 
     messages = _belief_prompt.format_messages(
         prev_belief_state=json.dumps(previous, ensure_ascii=False),
@@ -87,8 +111,10 @@ def update_belief_state(
         normalized, issues = normalize_belief_state(data, previous)
         if issues:
             print(f"[belief_state_updater] Validación: {issues}")
-        return normalized
+        return normalized, meta
     except Exception as exc:
         print(f"[belief_state_updater] Error inesperado: {exc}")
+        meta["belief_update_failed"] = True
+        meta["belief_update_error"] = str(exc)
 
-    return previous
+    return previous, meta

@@ -23,6 +23,7 @@ def build_context_snippet(
     messages: List[Message],
     summary: str | None,
     *,
+    seller_only: bool = True,
     min_turns: int = 2,
     max_turns: int = 4,
     max_chars: int = 1200,
@@ -30,15 +31,23 @@ def build_context_snippet(
     if not messages:
         return "(sin mensajes previos relevantes)"
 
-    user_indices = _user_turn_indices(messages)
+    filtered_messages = (
+        [msg for msg in messages if msg.get("role") == "user"]
+        if seller_only
+        else list(messages)
+    )
+    if not filtered_messages:
+        return "(sin mensajes previos relevantes)"
+
+    user_indices = _user_turn_indices(filtered_messages)
     if not user_indices:
-        snippet_text = _format_messages_as_text(messages[-max_turns:])
+        snippet_text = _format_messages_as_text(filtered_messages[-max_turns:])
     else:
         turns_to_take = min(max_turns, len(user_indices))
         if turns_to_take < min_turns:
             turns_to_take = len(user_indices)
         start_idx = user_indices[-turns_to_take]
-        snippet_text = _format_messages_as_text(messages[start_idx:])
+        snippet_text = _format_messages_as_text(filtered_messages[start_idx:])
 
     prefix = ""
     if summary:

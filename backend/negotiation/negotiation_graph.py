@@ -135,6 +135,8 @@ class NegotiationTurn(TypedDict):
     last_policy_decision: PolicyDecision
     last_assistant_message: str
     allowed_policy_ids: List[str]
+    planner_meta: dict
+    belief_update_meta: dict
 
     response: str
 
@@ -248,7 +250,7 @@ def world_updater_node(state: NegotiationTurn) -> NegotiationTurn:
 def belief_updater_node(state: NegotiationTurn) -> NegotiationTurn:
     prev_belief = state.get("belief_state") or default_belief_state()
     state["prev_belief_state"] = prev_belief
-    state["belief_state"] = update_belief_state(
+    belief_state, belief_meta = update_belief_state(
         prev_belief_state=prev_belief,
         prev_world_state=state["prev_world_state"],
         world_state=state["world_state"],
@@ -258,6 +260,8 @@ def belief_updater_node(state: NegotiationTurn) -> NegotiationTurn:
         user_message=state.get("user_message", ""),
         context_snippet=state.get("recent_history_text", ""),
     )
+    state["belief_state"] = belief_state
+    state["belief_update_meta"] = belief_meta
     return state
 
 
@@ -266,7 +270,7 @@ def policy_planner_node(state: NegotiationTurn) -> NegotiationTurn:
     state["allowed_policy_ids"] = allowed_policy_ids(
         state["world_state"], state["belief_state"], state["progress_state"]
     )
-    state["policy_decision"] = plan_policy(
+    policy_decision, planner_meta = plan_policy(
         world_state=state["world_state"],
         belief_state=state["belief_state"],
         progress_state=state["progress_state"],
@@ -274,6 +278,8 @@ def policy_planner_node(state: NegotiationTurn) -> NegotiationTurn:
         constraints=state.get("constraints", ""),
         recent_context=state.get("recent_history_text", ""),
     )
+    state["policy_decision"] = policy_decision
+    state["planner_meta"] = planner_meta
     return state
 
 
@@ -281,6 +287,7 @@ def progress_updater_node(state: NegotiationTurn) -> NegotiationTurn:
     state["progress_state"] = update_progress_state(
         prev_progress=state.get("progress_state"),
         policy_decision=state["policy_decision"],
+        last_policy_executed=state.get("last_policy_decision"),
         prev_world_state=state["prev_world_state"],
         world_state=state["world_state"],
         prev_belief_state=state.get("prev_belief_state"),
@@ -466,7 +473,7 @@ def run_negotiation_agent(
 
     summary_text = state.summary or "Aún no hay resumen de la conversación."
     history_text = _format_messages_as_text(state.history)
-    recent_history_text = build_context_snippet(state.history, state.summary)
+    recent_history_text = build_context_snippet(state.history, state.summary, seller_only=True)
 
     objective = state.negotiation_objective or ""
     constraints = (
@@ -497,9 +504,11 @@ def run_negotiation_agent(
         "prev_belief_state": belief_state_input,
         "progress_state": progress_state_input,
         "policy_decision": policy_state_input,
-        "last_policy_decision": policy_state_input,
+        "last_policy_decision": state.last_policy_executed or {},
         "last_assistant_message": _last_assistant_message(state.history),
         "allowed_policy_ids": [],
+        "planner_meta": {},
+        "belief_update_meta": {},
         "response": "",
     }
 
@@ -519,6 +528,7 @@ def run_negotiation_agent(
     state.belief_state = new_belief_state
     state.policy_state = new_policy_state
     state.progress_state = new_progress_state
+    state.last_policy_executed = new_policy_state
 
     reply_text = new_graph_state["response"].strip()
 
@@ -535,6 +545,8 @@ def run_negotiation_agent(
             "allowed_policy_ids": new_graph_state.get("allowed_policy_ids", []),
             "policy_decision": new_policy_state,
             "progress_state": new_progress_state,
+            "planner_meta": new_graph_state.get("planner_meta", {}),
+            "belief_update_meta": new_graph_state.get("belief_update_meta", {}),
             "validation_issues": {
                 "world_in": world_issues_in,
                 "belief_in": belief_issues_in,
@@ -545,7 +557,20 @@ def run_negotiation_agent(
                 "policy_out": policy_issues_out,
                 "progress_out": progress_issues_out,
             },
-            "fallback_used": new_graph_state.get("policy_decision") != new_policy_state,
+            "planner_failed": new_graph_state.get("planner_meta", {}).get("planner_failed", False),
+            "planner_error": new_graph_state.get("planner_meta", {}).get("planner_error", ""),
+            "planner_fallback_used": new_graph_state.get("planner_meta", {}).get(
+                "planner_fallback_used", False
+            ),
+            "policy_normalization_changed": new_graph_state.get("planner_meta", {}).get(
+                "policy_normalization_changed", False
+            ),
+            "belief_update_failed": new_graph_state.get("belief_update_meta", {}).get(
+                "belief_update_failed", False
+            ),
+            "belief_update_error": new_graph_state.get("belief_update_meta", {}).get(
+                "belief_update_error", ""
+            ),
         }
     )
     save_session_state(state)

@@ -88,6 +88,7 @@ def _evaluate_outcome(
 def update_progress_state(
     prev_progress: ProgressState | None,
     policy_decision: PolicyDecision,
+    last_policy_executed: PolicyDecision | None,
     prev_world_state: WorldState,
     world_state: WorldState,
     prev_belief_state: BeliefState | None,
@@ -97,7 +98,7 @@ def update_progress_state(
     if prev_progress:
         progress.update(prev_progress)
 
-    previous_policy_id = prev_progress.get("last_policy_id", "") if prev_progress else ""
+    previous_policy_id = last_policy_executed.get("policy_id", "") if last_policy_executed else ""
     if previous_policy_id:
         progress["last_policy_outcome"] = _evaluate_outcome(
             previous_policy_id,

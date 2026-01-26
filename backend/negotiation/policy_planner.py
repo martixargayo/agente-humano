@@ -16,7 +16,6 @@ from .schemas import (
     PolicyDecision,
     ProgressState,
     WorldState,
-    default_policy_decision,
 )
 from .validation import normalize_policy_decision
 
@@ -131,9 +130,16 @@ def plan_policy(
     objective: str,
     constraints: str,
     recent_context: str,
-) -> PolicyDecision:
+) -> tuple[PolicyDecision, dict]:
     catalog_text = policy_catalog_text()
     allowed = _allowed_policy_ids(world_state, belief_state, progress_state)
+    meta = {
+        "planner_failed": False,
+        "planner_error": "",
+        "planner_fallback_used": False,
+        "policy_normalization_changed": False,
+        "issues": [],
+    }
 
     messages = _planner_prompt.format_messages(
         policy_catalog=catalog_text,
@@ -151,15 +157,26 @@ def plan_policy(
         result = structured_llm.invoke(messages)
         data = result.model_dump()
         normalized, issues = normalize_policy_decision(data, allowed)
+        meta["issues"] = issues
+        meta["policy_normalization_changed"] = any(
+            normalized.get(key) != data.get(key)
+            for key in ("policy_id", "reason", "micro_goal", "risk_posture")
+        )
         if issues:
             print(f"[policy_planner] Validación: {issues}")
+        if issues or normalized["policy_id"] not in allowed:
+            meta["planner_fallback_used"] = True
+            return _fallback_policy(belief_state), meta
         normalized["micro_goal"] = _repair_micro_goal(
             normalized["policy_id"], normalized["micro_goal"]
         )
         if _violates_constraints(normalized["micro_goal"], constraints):
             print("[policy_planner] Micro-objetivo viola constraints, reparando.")
             normalized["micro_goal"] = "Mantener confidencial el límite y avanzar con cautela."
-        return normalized
+        return normalized, meta
     except Exception as exc:
         print(f"[policy_planner] Output inválido, usando fallback: {exc}")
-        return _fallback_policy(belief_state)
+        meta["planner_failed"] = True
+        meta["planner_error"] = str(exc)
+        meta["planner_fallback_used"] = True
+        return _fallback_policy(belief_state), meta
