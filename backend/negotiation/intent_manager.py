@@ -133,8 +133,15 @@ def _extract_slots(world_state: WorldState, user_message: str) -> dict:
     if world_state.get("other_buyer_claimed"):
         slots["other_buyer"] = _slot_entry("claimed", evidence, 0.5)
         other_buyer_text = world_state.get("other_buyer_text", "").strip()
-        detail = other_buyer_text or "claimed"
-        slots["other_buyer_details"] = _slot_entry(detail, evidence, 0.4)
+        slots["other_buyer_details"] = _slot_entry(
+            {
+                "claim_text": other_buyer_text or "",
+                "offer_price": world_state.get("other_buyer_offer_price"),
+                "timing": world_state.get("other_buyer_timing_text", "").strip(),
+            },
+            evidence,
+            0.65,
+        )
 
     if world_state.get("concession_made"):
         slots["concession"] = _slot_entry(world_state.get("concession_text", ""), evidence, 0.6)
@@ -266,6 +273,12 @@ def _pivot_strategy_from_kind(step_kind: str) -> str:
     return mapping.get(step_kind, "open")
 
 
+def _pivot_strategy_from_transition(prev_kind: str, new_kind: str) -> str:
+    prev_label = _pivot_strategy_from_kind(prev_kind)
+    new_label = _pivot_strategy_from_kind(new_kind)
+    return f"{prev_label}_to_{new_label}"
+
+
 def choose_pivot_kind(current_kind: StepKind) -> StepKind:
     order: list[StepKind] = [
         "probe_open",
@@ -302,7 +315,8 @@ def maybe_retarget_steps(
     intent["steps"] = build_steps(intent.get("intent_type", "info_extract"), missing)
     intent["step_idx"] = 0
     intent["step_attempts"] = 0
-    meta["intent_transition"] = f"retarget:{new_target}"
+    meta["intent_transition"] = "retarget"
+    meta["retarget_slot"] = new_target
 
 
 def _should_advance_step(step: IntentStep, slots_delta: dict) -> bool:
@@ -361,6 +375,25 @@ def _current_step(intent: IntentState) -> IntentStep | None:
         return None
     step_idx = min(intent.get("step_idx", 0), len(intent["steps"]) - 1)
     return intent["steps"][step_idx]
+
+
+def _ensure_steps_hydrated(
+    intent: IntentState,
+    world_state: WorldState,
+    belief_state: BeliefState,
+    meta: dict,
+) -> IntentState:
+    del world_state, belief_state
+    if intent.get("status") != "active":
+        return intent
+    step = _current_step(intent)
+    if not step or not isinstance(step, dict) or step.get("target_slot") in {"", "unknown"}:
+        missing = _slots_missing(intent)
+        intent["steps"] = build_steps(intent.get("intent_type", "info_extract"), missing)
+        intent["step_idx"] = 0
+        intent["step_attempts"] = 0
+        meta["reasons"].append("steps_hydrated")
+    return intent
 
 
 def _should_replan(intent: IntentState, world_state: WorldState) -> str | None:
@@ -438,6 +471,8 @@ def update_intent_state(
         intent_hint = _build_intent_hint(intent, slots_missing, meta["commitment_level"])
         return intent, meta, intent_hint
 
+    intent = _ensure_steps_hydrated(intent, world_state, belief_state, meta)
+
     slots_filled = dict(intent.get("slots", {}).get("slots_filled", {}))
     extracted = _extract_slots(world_state, user_message)
     for key, payload in extracted.items():
@@ -484,14 +519,14 @@ def update_intent_state(
             slots_missing,
         )
         intent["last_observation"] = "Replan hacia cierre por señal fuerte."
-        meta["intent_transition"] = f"replan_to:{intent_type}"
+        meta["intent_transition"] = "replan"
         meta["intent_decision"] = "replan"
         meta["intent_new"] = deepcopy(intent)
         intent_hint = _build_intent_hint(intent, slots_missing, commitment)
         return intent, meta, intent_hint
 
     maybe_retarget_steps(intent, world_state, user_message, meta)
-    retargeted = meta.get("intent_transition", "").startswith("retarget:")
+    retargeted = meta.get("intent_transition", "") == "retarget"
     slots_missing = _slots_missing(intent)
 
     succeeded, success_reasons = evaluate_success(intent, world_state, belief_state, meta)
@@ -501,6 +536,7 @@ def update_intent_state(
         intent["last_observation"] = "Criterios mínimos completados."
         intent["last_turn"] = turn_count
         meta["intent_decision"] = "succeed"
+        meta["intent_transition"] = "succeed"
         meta["success_reasons"] = success_reasons
         meta["intent_new"] = deepcopy(intent)
         return intent, meta, _build_intent_hint(intent, [], commitment)
@@ -550,10 +586,12 @@ def update_intent_state(
     if retargeted:
         intent["step_attempts"] = 0
         meta["intent_decision"] = "retarget"
+        meta["intent_transition"] = "retarget"
     elif step and _should_advance_step(step, meta["slots_filled_delta"]):
         _advance_step(intent)
         intent["step_attempts"] = 0
         meta["intent_decision"] = "advance"
+        meta["intent_transition"] = "advance"
     else:
         intent["step_attempts"] = intent.get("step_attempts", 0) + 1
         pivot_reason = ""
@@ -567,17 +605,20 @@ def update_intent_state(
 
         if intent["step_attempts"] >= intent.get("max_attempts_per_step", 2):
             if pivot_reason:
-                new_kind = choose_pivot_kind(step.get("kind", "probe_open") if step else "probe_open")
+                prev_kind = step.get("kind", "probe_open") if step else "probe_open"
+                new_kind = choose_pivot_kind(prev_kind)
                 if step:
                     step["kind"] = new_kind
                 intent["step_attempts"] = 0
                 meta["intent_decision"] = "pivot"
+                meta["intent_transition"] = "pivot"
                 meta["pivot_reason"] = pivot_reason
-                meta["pivot_strategy"] = _pivot_strategy_from_kind(new_kind)
+                meta["pivot_strategy"] = _pivot_strategy_from_transition(prev_kind, new_kind)
             else:
                 _advance_step(intent)
                 intent["step_attempts"] = 0
                 meta["intent_decision"] = "advance"
+                meta["intent_transition"] = "advance"
         else:
             meta["intent_decision"] = "continue"
 

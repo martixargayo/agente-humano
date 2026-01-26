@@ -459,23 +459,19 @@ Directrices adicionales:
 - {posture_instructions.get(risk_posture, posture_instructions["low"])}
 - {phase_line}
 - Intención activa: {intent_goal}
-- Step: {step_kind}
+- Paso actual: {step_kind}
 - Slot objetivo: {target_slot}
 - Siguiente foco: {next_action_hint}
 - Slots pendientes: {slots_missing}
 - Compromiso: {commitment_level}
-- Regla: ejecuta SOLO el step actual.
-- Regla: tu ÚNICA pregunta debe estar orientada al {target_slot}.
-- Regla: no preguntes por otros slots.
+- Regla: 2 frases, 1 pregunta, y la pregunta debe pedir {target_slot}.
+- Si {target_slot} está vacío, pregunta por el primer slot de {slots_missing} o pide un detalle verificable alineado con el paso actual.
 
 Manual táctico de RAG para esta policy:
 {techniques_text}
 
 Reglas de estilo para tus respuestas al vendedor:
 - Debes obedecer siempre las <style_rules_absolute>.
-- Máximo 2 frases por turno, sin excepciones.
-- Solo una pregunta por turno, al final de la última frase.
-- Si te salen dos preguntas, fusiónalas en una sola que cubra lo esencial.
 - Hablas como Daniel-comprador, nunca como IA.
 - Responde como si estuvierais hablando en persona, cara a cara.
 - No uses listas ni bullets en tu respuesta al vendedor.
@@ -686,6 +682,9 @@ def run_negotiation_agent(
             "intent_pivot_reason": new_graph_state.get("planner_meta", {}).get(
                 "intent_meta", {}
             ).get("pivot_reason", ""),
+            "intent_pivot_strategy": new_graph_state.get("planner_meta", {}).get(
+                "intent_meta", {}
+            ).get("pivot_strategy", ""),
             "intent_success_reasons": new_graph_state.get("planner_meta", {}).get(
                 "intent_meta", {}
             ).get("success_reasons", []),
