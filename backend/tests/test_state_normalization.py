@@ -3,8 +3,6 @@ import os
 
 import pytest
 
-os.environ.setdefault("OPENAI_API_KEY", "test")
-
 from negotiation.schemas import (
     default_belief_state,
     default_policy_decision,
@@ -130,17 +128,65 @@ def test_has_belief_evidence_delta_triggers_on_tone_change():
     assert has_belief_evidence_delta({}, "", prev, cur) is True
 
 
-def test_belief_reasons_tiebreak_is_deterministic():
+def test_belief_reasons_tiebreak_is_deterministic_with_real_keys():
     from negotiation.belief_state_updater import _BeliefReasonModel, _BeliefStateModel
 
     reasons = {
-        "b_reason": _BeliefReasonModel(weight=0.5, confidence=0.5, evidence=""),
-        "a_reason": _BeliefReasonModel(weight=0.5, confidence=0.5, evidence=""),
+        "tone_signal": _BeliefReasonModel(weight=0.5, confidence=0.5, evidence="x"),
+        "docs_signal": _BeliefReasonModel(weight=0.5, confidence=0.5, evidence="x"),
     }
 
     limited = _BeliefStateModel._limit_reasons(reasons)
 
-    assert list(limited.keys()) == ["a_reason", "b_reason"]
+    assert list(limited.keys()) == ["docs_signal", "tone_signal"]
+
+
+def test_temporal_invariant_last_policy_executed_is_persisted(monkeypatch):
+    from negotiation.negotiation_graph import run_negotiation_agent
+    from negotiation.schemas import default_belief_state, default_policy_decision
+    from state import SessionState
+
+    def fake_plan_policy(*args, **kwargs):
+        decision = default_policy_decision()
+        decision["policy_id"] = "rapport_build"
+        return decision, {"planner_meta": {"mock": True}}
+
+    def fake_update_belief_state(*args, **kwargs):
+        return default_belief_state(), {"belief_meta": {"mock": True}}
+
+    class _FakeLLMResult:
+        def __init__(self, content: str):
+            self.content = content
+
+    class _FakeLLM:
+        def invoke(self, messages):
+            return _FakeLLMResult("ok-response")
+
+    monkeypatch.setattr(
+        "negotiation.negotiation_graph.plan_policy", fake_plan_policy, raising=False
+    )
+    monkeypatch.setattr(
+        "negotiation.negotiation_graph.update_belief_state",
+        fake_update_belief_state,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "negotiation.negotiation_graph.get_policy_tactics", lambda *args, **kwargs: "", raising=False
+    )
+    monkeypatch.setattr(
+        "negotiation.negotiation_graph.normalize_text",
+        lambda text, user_message: text,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "negotiation.negotiation_graph.executor_llm", _FakeLLM(), raising=False
+    )
+
+    state = SessionState(user_id="u", session_id="s")
+    run_negotiation_agent(state, "hola")
+
+    assert state.last_policy_executed is not None
+    assert state.last_policy_executed.get("policy_id") == "rapport_build"
 
 
 def test_allowed_policy_ids_uses_outcome_per_policy():
