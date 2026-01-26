@@ -68,6 +68,9 @@ class WorldState(TypedDict):
     deadline_claimed: bool
     deadline_text: str
     other_buyer_claimed: bool
+    other_buyer_text: str
+    other_buyer_offer_price: float | None
+    other_buyer_timing_text: str
     concession_made: bool
     concession_text: str
     docs_claimed: bool
@@ -165,6 +168,9 @@ def default_world_state() -> WorldState:
         "deadline_claimed": False,
         "deadline_text": "",
         "other_buyer_claimed": False,
+        "other_buyer_text": "",
+        "other_buyer_offer_price": None,
+        "other_buyer_timing_text": "",
         "concession_made": False,
         "concession_text": "",
         "docs_claimed": False,

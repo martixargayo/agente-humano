@@ -100,6 +100,15 @@ def normalize_world_state(raw: object) -> Tuple[WorldState, List[str]]:
     base["deadline_claimed"] = bool(raw.get("deadline_claimed", base["deadline_claimed"]))
     base["deadline_text"] = str(raw.get("deadline_text", base["deadline_text"])).strip()
     base["other_buyer_claimed"] = bool(raw.get("other_buyer_claimed", base["other_buyer_claimed"]))
+    base["other_buyer_text"] = str(raw.get("other_buyer_text", base["other_buyer_text"])).strip()
+    other_offer = raw.get("other_buyer_offer_price", base["other_buyer_offer_price"])
+    if other_offer is None:
+        base["other_buyer_offer_price"] = None
+    else:
+        base["other_buyer_offer_price"] = _coerce_float(other_offer, 0.0)
+    base["other_buyer_timing_text"] = str(
+        raw.get("other_buyer_timing_text", base["other_buyer_timing_text"])
+    ).strip()
     base["concession_made"] = bool(raw.get("concession_made", base["concession_made"]))
     base["concession_text"] = str(raw.get("concession_text", base["concession_text"])).strip()
     base["docs_claimed"] = bool(raw.get("docs_claimed", base["docs_claimed"]))

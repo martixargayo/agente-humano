@@ -34,6 +34,17 @@ _DEADLINE_PATTERNS = [
     r"\bya\b",
 ]
 
+_TIMING_PATTERNS = [
+    r"\bhoy\b",
+    r"\bmañana\b",
+    r"\besta semana\b",
+    r"\beste finde\b",
+    r"\bantes de\b",
+    r"\bpara el\b",
+    r"\ben \d+ días\b",
+    r"\ben \d+ semanas\b",
+]
+
 _OTHER_BUYER_PATTERNS = [
     r"otro comprador",
     r"otra persona",
@@ -126,6 +137,13 @@ def _extract_sentence(text: str, match_span: tuple[int, int]) -> str:
     return text.strip()
 
 
+def _extract_timing_phrase(text: str) -> str:
+    match = _detect_keywords(text.lower(), _TIMING_PATTERNS)
+    if not match:
+        return ""
+    return _extract_sentence(text, match.span())
+
+
 def _parse_number(raw: str) -> float | None:
     cleaned = raw.replace(" ", "").replace("€", "")
     if not cleaned:
@@ -215,6 +233,9 @@ def update_world_state(prev_world: WorldState | None, user_message: str) -> Worl
     other_buyer_match = _detect_keywords(lower, _OTHER_BUYER_PATTERNS)
     if other_buyer_match:
         base["other_buyer_claimed"] = True
+        base["other_buyer_text"] = _extract_sentence(text, other_buyer_match.span())
+        base["other_buyer_offer_price"] = _extract_price(base["other_buyer_text"].lower())
+        base["other_buyer_timing_text"] = _extract_timing_phrase(base["other_buyer_text"])
 
     batna_match = _detect_keywords(lower, _BATNA_PATTERNS)
     if batna_match:
