@@ -114,9 +114,6 @@ def _allowed_policy_ids(
         if count >= 3 and outcomes.get(policy_id) in {"bad", "neutral"}:
             allowed.discard(policy_id)
 
-    if world_state.get("price_mentioned"):
-        allowed.discard("delay_price_discussion")
-
     allowed = {policy_id for policy_id in allowed if not _guard_violation(policy_id)}
 
     if not allowed:
