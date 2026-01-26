@@ -100,7 +100,14 @@ def _load_negotiation_rag_index():
         return None
 
 
-NEGOTIATION_RAG_INDEX = _load_negotiation_rag_index()
+_NEGOTIATION_RAG_INDEX = None
+
+
+def get_negotiation_rag_index():
+    global _NEGOTIATION_RAG_INDEX
+    if _NEGOTIATION_RAG_INDEX is None:
+        _NEGOTIATION_RAG_INDEX = _load_negotiation_rag_index()
+    return _NEGOTIATION_RAG_INDEX
 
 # ---- Modelo principal (executor) ----
 
@@ -221,7 +228,8 @@ def get_policy_tactics(policy_id: str, context: str) -> str:
     policy = get_policy(policy_id)
     policy_label = policy.description if policy else policy_id
 
-    if NEGOTIATION_RAG_INDEX is None:
+    rag_index = get_negotiation_rag_index()
+    if rag_index is None:
         return (
             f"[RAG FALLBACK] Tácticas para policy {policy_label}:\n"
             "- Mantén claridad y brevedad.\n"
@@ -240,7 +248,7 @@ Objetivo: recuperar tácticas concretas para ejecutar esta policy.
 """
 
     try:
-        docs = NEGOTIATION_RAG_INDEX.similarity_search(query, k=3)
+        docs = rag_index.similarity_search(query, k=3)
         if not docs:
             return (
                 f"[RAG VACÍO] No se encontraron tácticas específicas para {policy_id}."
