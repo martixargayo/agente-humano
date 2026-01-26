@@ -39,7 +39,13 @@ def test_executor_receives_intent_hint(monkeypatch):
             "status": "active",
             "intent_goal": "Aclarar términos",
             "intent_type": "info_extract",
-            "steps": ["ask_open"],
+            "steps": [
+                {
+                    "kind": "probe_open",
+                    "target_slot": "seller_batna",
+                    "success_if_filled": ["seller_batna"],
+                }
+            ],
             "step_idx": 0,
             "slots": {"slots_required": ["price"], "slots_optional": [], "slots_filled": {}},
         }
@@ -53,3 +59,4 @@ def test_executor_receives_intent_hint(monkeypatch):
     system_message = captured["messages"][0].content
     assert "Intención activa" in system_message
     assert "Paso actual" in system_message
+    assert "Slot objetivo" in system_message
