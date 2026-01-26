@@ -488,7 +488,13 @@ def run_negotiation_agent(
     progress_state_input, progress_issues_in = normalize_progress_state(state.progress_state)
     policy_issues_in: list[str] = []
     last_policy_executed_input = state.last_policy_executed
-    if last_policy_executed_input:
+    if (
+        not last_policy_executed_input
+        or not isinstance(last_policy_executed_input, dict)
+        or not last_policy_executed_input.get("policy_id")
+    ):
+        last_policy_executed_input = None
+    else:
         _, policy_issues_in = normalize_policy_decision(
             last_policy_executed_input, list_policy_ids()
         )

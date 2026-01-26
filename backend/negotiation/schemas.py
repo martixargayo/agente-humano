@@ -74,6 +74,7 @@ class ProgressState(TypedDict):
     last_executed_policy_id: str
     last_executed_policy_outcome: PolicyOutcome
     last_chosen_policy_id: str
+    policy_last_outcome: Dict[str, PolicyOutcome]
     policy_attempts: Dict[str, int]
     loop_flags: List[str]
     turns_in_same_mode: int
@@ -121,6 +122,7 @@ def default_progress_state() -> ProgressState:
         "last_executed_policy_id": "",
         "last_executed_policy_outcome": "",
         "last_chosen_policy_id": "",
+        "policy_last_outcome": {},
         "policy_attempts": {},
         "loop_flags": [],
         "turns_in_same_mode": 0,

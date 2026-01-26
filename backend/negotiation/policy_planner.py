@@ -86,9 +86,9 @@ def _allowed_policy_ids(
             allowed.remove(last_policy)
 
     attempts = progress_state.get("policy_attempts", {})
-    last_outcome = progress_state.get("last_executed_policy_outcome", "")
+    outcomes = progress_state.get("policy_last_outcome", {})
     for policy_id, count in attempts.items():
-        if count >= 3 and last_outcome in {"bad", "neutral"}:
+        if count >= 3 and outcomes.get(policy_id) in {"bad", "neutral"}:
             allowed.discard(policy_id)
 
     if world_state.get("price_mentioned"):

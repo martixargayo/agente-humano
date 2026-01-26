@@ -100,14 +100,18 @@ def update_progress_state(
 
     previous_policy_id = last_policy_executed.get("policy_id", "") if last_policy_executed else ""
     if previous_policy_id:
-        progress["last_executed_policy_id"] = previous_policy_id
-        progress["last_executed_policy_outcome"] = _evaluate_outcome(
+        outcome = _evaluate_outcome(
             previous_policy_id,
             prev_world_state,
             world_state,
             prev_belief_state,
             belief_state,
         )
+        progress["last_executed_policy_id"] = previous_policy_id
+        progress["last_executed_policy_outcome"] = outcome
+        last_by_policy = dict(progress.get("policy_last_outcome", {}))
+        last_by_policy[previous_policy_id] = outcome
+        progress["policy_last_outcome"] = last_by_policy
 
     policy_id = policy_decision.get("policy_id", "")
     if policy_id:
