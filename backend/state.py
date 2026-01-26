@@ -34,6 +34,7 @@ class SessionState:
     world_state: Dict = field(default_factory=dict)
     belief_state: Dict = field(default_factory=dict)
     policy_state: Dict = field(default_factory=dict)
+    last_policy_executed: Dict = field(default_factory=dict)
     progress_state: Dict = field(default_factory=dict)
     debug_trace: List[Dict] = field(default_factory=list)
 

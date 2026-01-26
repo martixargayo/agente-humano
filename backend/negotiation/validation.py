@@ -63,6 +63,9 @@ def normalize_world_state(raw: object) -> Tuple[WorldState, List[str]]:
     if not isinstance(raw, dict):
         issues.append("world_state_no_dict")
         return base, issues
+    if "tone_signal" not in raw:
+        issues.append("tone_signal_missing")
+        return base, issues
 
     base["price_mentioned"] = bool(raw.get("price_mentioned", base["price_mentioned"]))
     price_value = raw.get("price_value", base["price_value"])
@@ -82,7 +85,7 @@ def normalize_world_state(raw: object) -> Tuple[WorldState, List[str]]:
     tone_signal = raw.get("tone_signal", base["tone_signal"])
     if tone_signal not in _ALLOWED_TONE:
         issues.append("tone_signal_invalid")
-        tone_signal = base["tone_signal"]
+        return base, issues
     base["tone_signal"] = tone_signal
 
     tone_markers = _coerce_str_list(raw.get("tone_marker_hits", []), max_items=10)
@@ -180,8 +183,6 @@ def normalize_policy_decision(
     base = default_policy_decision()
     issues: List[str] = []
     allowed = set(allowed_policy_ids)
-    if base["policy_id"] not in allowed and allowed:
-        base["policy_id"] = sorted(allowed)[0]
 
     if not isinstance(raw, dict):
         issues.append("policy_decision_no_dict")
@@ -190,7 +191,7 @@ def normalize_policy_decision(
     policy_id = raw.get("policy_id", base["policy_id"])
     if policy_id not in allowed:
         issues.append("policy_id_invalid")
-        policy_id = base["policy_id"]
+        return base, issues
     base["policy_id"] = str(policy_id)
 
     base["reason"] = str(raw.get("reason", base["reason"])).strip()[:180]
