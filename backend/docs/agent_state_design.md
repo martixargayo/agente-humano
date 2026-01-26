@@ -27,41 +27,82 @@
 
 ## “Por qué” (rationale por cambio)
 
-### Belief gating por flags críticos
+### Pytest siempre importable desde raíz
 
-- **Problema observado**: si el extractor de `world_diff` falla, cambios en señales clave podían quedar sin update de belief, dejando el estado stale.
-- **Invariante**: cambios en señales críticas de world state deben disparar actualización de belief aunque no haya `world_diff`.
-- **Cambio implementado**: se añade un chequeo directo de flags críticos en `has_belief_evidence_delta` para forzar `True` cuando cambian.
-- **Tradeoffs**: se puede actualizar más a menudo (ligero costo de latencia), pero se evita drift silencioso.
-- **Cómo se observa en producción**: disminuyen los casos con cambios de flags sin actualización de belief en métricas de “belief_update_skipped”.
-- **Qué test lo cubre**: se cubre indirectamente por los tests de normalización + gating existentes; no aplica un test unitario específico aún.
+- **Problema observable**: `pytest -q` fallaba con `ModuleNotFoundError` al importar `negotiation` en un checkout limpio.
+- **Invariante**: los tests deben correr desde la raíz sin `PYTHONPATH` manual ni dependencias del IDE.
+- **Cambio**: se añade `pytest.ini` con `pythonpath = backend` y se refuerza con `backend/tests/conftest.py` para insertar el root de `backend` en `sys.path`.
+- **Por qué esta solución y no otra**: evitar cambios en imports de tests (`backend.negotiation`) reduce acoplamiento y mantiene el import root claro.
+- **Riesgos**: doble configuración podría ocultar errores de packaging si se mueve la estructura del repo.
+- **Mitigación**: keep configuración mínima y explícita; fallo inmediato si falta `backend` en el repo.
+- **Cómo lo medimos**: `pytest -q` desde raíz y `pytest -q backend/tests/test_state_normalization.py`.
+- **Tests**: `pytest -q`.
 
-### Estabilidad de razones top-K (tie-break determinista)
+### Belief gating por flags críticos + tono
 
-- **Problema observado**: orden por score puro produce churn entre razones con scores similares, causando cambios no deterministas.
-- **Invariante**: para scores empatados, el orden de razones debe ser determinista.
-- **Cambio implementado**: se añade un orden de prioridad fijo como tie-break en el sorting de razones.
-- **Tradeoffs**: prioriza señales “core” en empates, lo cual puede sesgar levemente el top-K pero mejora estabilidad.
-- **Cómo se observa en producción**: se reduce el churn en `belief.reasons` entre turnos con scores cercanos.
-- **Qué test lo cubre**: no aplica test unitario directo; la estabilidad se valida en regresiones de salida.
+- **Problema observable**: si `world_diff` llega vacío, cambios en señales críticas o de tono no disparaban update de belief, dejando el estado stale.
+- **Invariante**: cambios en flags críticos y tono deben disparar actualización aunque `world_diff` sea vacío.
+- **Cambio**: se valida explícitamente el delta de flags críticos y el cambio de `tone_signal` en `has_belief_evidence_delta`.
+- **Por qué esta solución y no otra**: es un chequeo determinista y local, sin depender del extractor de diffs.
+- **Riesgos**: se dispara update con más frecuencia (coste de tokens/latencia).
+- **Mitigación**: updates siguen sujetos a normalización y a los límites de cambio por turno.
+- **Cómo lo medimos**: disminución de `belief_update_skipped` cuando cambian flags o tono.
+- **Tests**: `test_has_belief_evidence_delta_triggers_on_critical_flag_change`, `test_has_belief_evidence_delta_triggers_on_tone_change`.
+
+### Compatibilidad con pydantic en modelos de belief
+
+- **Problema observable**: la importación de `belief_state_updater` fallaba en runtime al evaluar `conlist(..., max_items=...)`.
+- **Invariante**: los modelos pydantic deben instanciarse sin errores de firma en el entorno de ejecución.
+- **Cambio**: se reemplaza `max_items` por `max_length` en los `conlist` de los modelos internos.
+- **Por qué esta solución y no otra**: mantiene la misma restricción de tamaño y evita condicionales por versión.
+- **Riesgos**: en entornos con pydantic v1 podría requerir compatibilidad adicional.
+- **Mitigación**: cubrir la importación en tests para detectar regresiones.
+- **Cómo lo medimos**: `pytest -q` importa `belief_state_updater` sin excepciones.
+- **Tests**: `test_has_belief_evidence_delta_triggers_on_critical_flag_change`, `test_belief_reasons_tiebreak_is_deterministic`.
+
+### Estabilidad de razones top-K (tie-break determinista total)
+
+- **Problema observable**: empates de score generaban orden no determinista entre razones.
+- **Invariante**: a igualdad de score y prioridad, el orden debe ser estable entre runtimes.
+- **Cambio**: se añade un tercer criterio determinista (`str(key)`) en el sorting de razones.
+- **Por qué esta solución y no otra**: mantiene el orden estable sin reestructurar los modelos ni añadir persistencia externa.
+- **Riesgos**: keys lexicográficas podrían sesgar el top-K en empates exactos.
+- **Mitigación**: la prioridad explícita sigue dominando; el tercer criterio solo actúa en empates reales.
+- **Cómo lo medimos**: menor churn en `belief.reasons` cuando el score es idéntico.
+- **Tests**: `test_belief_reasons_tiebreak_is_deterministic`.
 
 ### Normalización robusta de `policy_attempts`
 
-- **Problema observado**: valores como `"3"` se descartaban, perdiendo conteos reales.
-- **Invariante**: `policy_attempts` debe aceptar enteros y strings numéricos de forma segura.
-- **Cambio implementado**: coerción a `int` con captura de errores y emisión de issues por key inválida.
-- **Tradeoffs**: añade validaciones por elemento; coste mínimo y mejora de compatibilidad.
-- **Cómo se observa en producción**: menos resets de intentos por payloads legacy.
-- **Qué test lo cubre**: cubierto por los tests de normalización existentes; no aplica un caso dedicado aún.
+- **Problema observable**: strings numéricos como `"3"` se descartaban, perdiendo intentos reales.
+- **Invariante**: `policy_attempts` acepta enteros y strings numéricos; valores inválidos generan issue.
+- **Cambio**: coerción a `int` por key con reporte de issues.
+- **Por qué esta solución y no otra**: evita romper payloads legacy sin cambiar el schema público.
+- **Riesgos**: entradas no numéricas podrían colarse si no se reportan.
+- **Mitigación**: issues explícitos por key inválida y exclusión del mapa normalizado.
+- **Cómo lo medimos**: reducción de resets de `policy_attempts` por payloads legacy.
+- **Tests**: `test_normalize_progress_policy_attempts_accepts_numeric_strings`, `test_normalize_progress_policy_attempts_reports_invalid_values`.
 
-### Tests de planner sin IDs inventadas
+### Planner gating usa outcomes por policy (IDs reales)
 
-- **Problema observado**: usar IDs inexistentes vuelve el test frágil ante cambios de catálogo.
-- **Invariante**: los tests deben usar IDs reales del catálogo.
-- **Cambio implementado**: el test usa `list_policy_ids()` para tomar IDs válidas.
-- **Tradeoffs**: acopla el test al catálogo real, pero garantiza coherencia y evita falsos negativos.
-- **Cómo se observa en producción**: tests más estables y menos flaky cuando se actualiza el catálogo.
-- **Qué test lo cubre**: `test_allowed_policy_ids_uses_outcome_per_policy`.
+- **Problema observable**: el test de gating usaba asserts legacy con IDs dinámicos, haciendo el resultado inconsistente.
+- **Invariante**: el gating por outcome debe depender de IDs reales y aislar otros filtros.
+- **Cambio**: el test usa `list_policy_ids()` y fuerza condiciones estables (sin otros gates activos).
+- **Por qué esta solución y no otra**: evita hardcodear IDs inexistentes y reduce flakiness ante cambios del catálogo.
+- **Riesgos**: acoplamiento al catálogo real puede fallar si el catálogo queda vacío.
+- **Mitigación**: assert explícito de tamaño mínimo antes de continuar.
+- **Cómo lo medimos**: el test falla si la lógica de gating por outcome se rompe.
+- **Tests**: `test_allowed_policy_ids_uses_outcome_per_policy`.
+
+### Invariante temporal executed vs chosen (source of truth)
+
+- **Problema observable**: si no persistimos `last_policy_executed` al final del turno, el outcome puede evaluarse en el turno equivocado.
+- **Invariante**: lo ejecutado en turno *t-1* es la única fuente de verdad para evaluar outcome en *t*.
+- **Cambio**: `run_negotiation_agent` persiste siempre `state.last_policy_executed = new_policy_state` tras normalización.
+- **Por qué esta solución y no otra**: evita inferencias indirectas sobre el ejecutado y mantiene consistencia temporal.
+- **Riesgos**: si el executor devuelve un policy inválido, podríamos persistir datos inconsistentes.
+- **Mitigación**: normalización estricta y issues registrados en `debug_trace`.
+- **Cómo lo medimos**: coherencia en `debug_trace` y métricas de `policy_last_outcome` turno a turno.
+- **Tests**: `test_update_progress_state_tracks_policy_last_outcome`.
 
 ## Changelog técnico (deprecaciones y migración)
 

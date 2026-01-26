@@ -3,6 +3,8 @@ import os
 
 import pytest
 
+os.environ.setdefault("OPENAI_API_KEY", "test")
+
 from negotiation.schemas import (
     default_belief_state,
     default_policy_decision,
@@ -106,6 +108,41 @@ def test_update_progress_state_tracks_policy_last_outcome():
     assert progress["policy_last_outcome"].get("rapport_build") == "good"
 
 
+def test_has_belief_evidence_delta_triggers_on_critical_flag_change():
+    from negotiation.belief_state_updater import has_belief_evidence_delta
+
+    prev = default_world_state()
+    cur = default_world_state()
+    world_diff = {}
+    user_message = ""
+
+    cur["deadline_claimed"] = True
+    assert has_belief_evidence_delta(world_diff, user_message, prev, cur) is True
+
+
+def test_has_belief_evidence_delta_triggers_on_tone_change():
+    from negotiation.belief_state_updater import has_belief_evidence_delta
+
+    prev = default_world_state()
+    cur = default_world_state()
+
+    cur["tone_signal"] = "tense"
+    assert has_belief_evidence_delta({}, "", prev, cur) is True
+
+
+def test_belief_reasons_tiebreak_is_deterministic():
+    from negotiation.belief_state_updater import _BeliefReasonModel, _BeliefStateModel
+
+    reasons = {
+        "b_reason": _BeliefReasonModel(weight=0.5, confidence=0.5, evidence=""),
+        "a_reason": _BeliefReasonModel(weight=0.5, confidence=0.5, evidence=""),
+    }
+
+    limited = _BeliefStateModel._limit_reasons(reasons)
+
+    assert list(limited.keys()) == ["a_reason", "b_reason"]
+
+
 def test_allowed_policy_ids_uses_outcome_per_policy():
     os.environ.setdefault("OPENAI_API_KEY", "test")
     from negotiation import policy_planner
@@ -114,6 +151,8 @@ def test_allowed_policy_ids_uses_outcome_per_policy():
 
     world = default_world_state()
     belief = default_belief_state()
+    belief["dynamics"]["interaction_health"] = "stable"
+    world["price_mentioned"] = False
     progress = default_progress_state()
     ids = policy_planner.list_policy_ids()
     assert len(ids) >= 2
@@ -125,3 +164,17 @@ def test_allowed_policy_ids_uses_outcome_per_policy():
 
     assert p1 not in allowed
     assert p2 in allowed
+
+
+def test_normalize_progress_policy_attempts_accepts_numeric_strings():
+    progress, issues = normalize_progress_state({"policy_attempts": {"rapport_build": "3"}})
+
+    assert progress["policy_attempts"]["rapport_build"] == 3
+    assert not any("policy_attempts_invalid_value" in issue for issue in issues)
+
+
+def test_normalize_progress_policy_attempts_reports_invalid_values():
+    progress, issues = normalize_progress_state({"policy_attempts": {"rapport_build": "abc"}})
+
+    assert "policy_attempts_invalid_value:rapport_build" in issues
+    assert "rapport_build" not in progress["policy_attempts"]
