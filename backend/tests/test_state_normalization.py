@@ -17,6 +17,9 @@ from negotiation.validation import (
 )
 
 
+os.environ.setdefault("OPENAI_API_KEY", "test")
+
+
 def test_normalize_world_state_missing_tone_non_strict():
     import negotiation.validation as validation
 
@@ -141,6 +144,25 @@ def test_belief_reasons_tiebreak_is_deterministic_with_real_keys():
     assert list(limited.keys()) == ["docs_signal", "tone_signal"]
 
 
+def test_belief_reasons_limit_to_top_six():
+    from negotiation.belief_state_updater import _BeliefReasonModel, _BeliefStateModel
+
+    reasons = {
+        "price_signal": _BeliefReasonModel(weight=0.9, confidence=0.9, evidence="x"),
+        "deadline_signal": _BeliefReasonModel(weight=0.8, confidence=0.8, evidence="x"),
+        "other_buyer_signal": _BeliefReasonModel(weight=0.7, confidence=0.7, evidence="x"),
+        "concession_signal": _BeliefReasonModel(weight=0.6, confidence=0.6, evidence="x"),
+        "docs_signal": _BeliefReasonModel(weight=0.5, confidence=0.5, evidence="x"),
+        "tone_signal": _BeliefReasonModel(weight=0.4, confidence=0.4, evidence="x"),
+        "extra_signal": _BeliefReasonModel(weight=0.3, confidence=0.3, evidence="x"),
+    }
+
+    limited = _BeliefStateModel._limit_reasons(reasons)
+
+    assert len(limited) == 6
+    assert "extra_signal" not in limited
+
+
 def test_temporal_invariant_last_policy_executed_is_persisted(monkeypatch):
     from negotiation.negotiation_graph import AgentDeps, run_negotiation_agent
     from negotiation.schemas import default_belief_state, default_policy_decision
@@ -196,6 +218,73 @@ def test_allowed_policy_ids_uses_outcome_per_policy():
 
     assert p1 not in allowed
     assert p2 in allowed
+
+
+def test_allowed_policy_ids_blocks_after_neutral_outcome():
+    os.environ.setdefault("OPENAI_API_KEY", "test")
+    from negotiation import policy_planner
+
+    importlib.reload(policy_planner)
+
+    world = default_world_state()
+    belief = default_belief_state()
+    progress = default_progress_state()
+    ids = policy_planner.list_policy_ids()
+    assert ids
+    target_policy = ids[0]
+    progress["policy_attempts"] = {target_policy: 3}
+    progress["policy_last_outcome"] = {target_policy: "neutral"}
+
+    allowed = policy_planner.allowed_policy_ids(world, belief, progress)
+
+    assert target_policy not in allowed
+
+
+def test_plan_policy_empty_catalog_falls_back_with_clear_error(monkeypatch):
+    os.environ.setdefault("OPENAI_API_KEY", "test")
+    from negotiation import policy_planner
+
+    importlib.reload(policy_planner)
+
+    monkeypatch.setattr(policy_planner, "list_policy_ids", lambda: [])
+    monkeypatch.setattr(policy_planner, "policy_catalog_text", lambda: "")
+
+    decision, meta = policy_planner.plan_policy(
+        world_state=default_world_state(),
+        belief_state=default_belief_state(),
+        progress_state=default_progress_state(),
+        objective="obj",
+        constraints="",
+        recent_context="",
+    )
+
+    assert meta["planner_failed"] is True
+    assert meta["planner_error"] == "policy_catalog_empty"
+    assert meta["planner_fallback_used"] is True
+    assert decision["policy_id"] == "rapport_build"
+
+
+def test_plan_policy_allowed_empty_falls_back_with_clear_error(monkeypatch):
+    os.environ.setdefault("OPENAI_API_KEY", "test")
+    from negotiation import policy_planner
+
+    importlib.reload(policy_planner)
+
+    monkeypatch.setattr(policy_planner, "_allowed_policy_ids", lambda *a, **k: [])
+
+    decision, meta = policy_planner.plan_policy(
+        world_state=default_world_state(),
+        belief_state=default_belief_state(),
+        progress_state=default_progress_state(),
+        objective="obj",
+        constraints="",
+        recent_context="",
+    )
+
+    assert meta["planner_failed"] is True
+    assert meta["planner_error"] == "allowed_empty"
+    assert meta["planner_fallback_used"] is True
+    assert decision["policy_id"] == "rapport_build"
 
 
 def test_normalize_progress_policy_attempts_accepts_numeric_strings():

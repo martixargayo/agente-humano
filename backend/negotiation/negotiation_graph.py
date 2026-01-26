@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Any, Callable, List, Tuple
+from typing import Any, Callable, List, Optional, Tuple
 
 from dotenv import load_dotenv
 from typing_extensions import TypedDict
@@ -120,6 +120,7 @@ executor_llm = ChatOpenAI(
 PlanFn = Callable[..., Tuple[PolicyDecision, dict]]
 BeliefFn = Callable[..., Tuple[BeliefState, dict]]
 ExecuteFn = Callable[..., str]
+PreExecuteHook = Callable[["NegotiationTurn"], None]
 
 
 @dataclass(frozen=True)
@@ -127,6 +128,7 @@ class AgentDeps:
     plan_policy: PlanFn
     update_belief_state: BeliefFn
     execute: ExecuteFn
+    pre_execute_hook: Optional[PreExecuteHook] = None
 
 
 def _default_execute(messages: Any) -> str:
@@ -336,6 +338,10 @@ def executor_node(state: NegotiationTurn) -> NegotiationTurn:
 
     objective = state.get("objective") or ""
     constraints = state.get("constraints") or ""
+
+    # Hook opcional para tests / overrides controlados (paper-grade DI).
+    if deps.pre_execute_hook:
+        deps.pre_execute_hook(state)
 
     # --- Policy: fuente única ejecutada ---
     policy_decision = state.get("policy_decision") or default_policy_decision()
