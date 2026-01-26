@@ -11,7 +11,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, confloat, conlist, field_validator
 
 from prompts import BELIEF_UPDATE_SYSTEM_PROMPT, BELIEF_UPDATE_USER_PROMPT
-from .schemas import BeliefState, PolicyDecision, WorldState, default_belief_state
+from .schemas import BeliefState, PolicyDecision, ReasonKey, WorldState, default_belief_state
 from .validation import normalize_belief_state
 
 
@@ -58,18 +58,51 @@ class _BeliefToMModel(BaseModel):
 class _BeliefStateModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
     stance: _BeliefStanceModel
-    reasons: dict[str, _BeliefReasonModel] = Field(default_factory=dict)
+    reasons: dict[ReasonKey, _BeliefReasonModel] = Field(default_factory=dict)
     hypotheses: conlist(str, max_items=5) = Field(default_factory=list)
     dynamics: _BeliefDynamicsModel
     tom: _BeliefToMModel
 
     @field_validator("reasons")
     @classmethod
-    def _limit_reasons(cls, value: dict[str, _BeliefReasonModel]) -> dict[str, _BeliefReasonModel]:
+    def _limit_reasons(
+        cls, value: dict[ReasonKey, _BeliefReasonModel]
+    ) -> dict[ReasonKey, _BeliefReasonModel]:
         if not isinstance(value, dict):
             return {}
         items = list(value.items())[:6]
         return dict(items)
+
+
+_EVIDENCE_TRIGGERS = (
+    "último",
+    "final",
+    "hoy",
+    "mañana",
+    "otro comprador",
+    "reservado",
+    "me lo quitan",
+    "se lo llevan",
+    "rebaja",
+    "no negocio",
+    "innegociable",
+)
+
+
+def has_belief_evidence_delta(world_diff: dict, user_message: str) -> bool:
+    if world_diff:
+        return True
+    lower = (user_message or "").lower()
+    return any(token in lower for token in _EVIDENCE_TRIGGERS)
+
+
+def _clamp_step(prev: float, new: float, max_step: float = 0.15) -> float:
+    delta = new - prev
+    if delta > max_step:
+        return prev + max_step
+    if delta < -max_step:
+        return prev - max_step
+    return new
 
 
 def update_belief_state(
@@ -77,7 +110,7 @@ def update_belief_state(
     prev_world_state: WorldState,
     world_state: WorldState,
     world_diff: dict,
-    last_policy_decision: PolicyDecision | None,
+    last_policy_executed: PolicyDecision | None,
     last_assistant_message: str,
     user_message: str,
     context_snippet: str,
@@ -89,7 +122,7 @@ def update_belief_state(
         "belief_update_skipped": False,
     }
 
-    if not world_diff:
+    if not has_belief_evidence_delta(world_diff, user_message):
         meta["belief_update_skipped"] = True
         return previous, meta
 
@@ -98,7 +131,7 @@ def update_belief_state(
         prev_world_state=json.dumps(prev_world_state, ensure_ascii=False),
         world_state=json.dumps(world_state, ensure_ascii=False),
         world_diff=json.dumps(world_diff, ensure_ascii=False),
-        last_policy_decision=json.dumps(last_policy_decision or {}, ensure_ascii=False),
+        last_policy_executed=json.dumps(last_policy_executed or {}, ensure_ascii=False),
         last_assistant_message=last_assistant_message,
         user_message=user_message,
         recent_history=context_snippet,
@@ -109,6 +142,16 @@ def update_belief_state(
         result = structured_llm.invoke(messages)
         data = result.model_dump()
         normalized, issues = normalize_belief_state(data, previous)
+        normalized["stance"]["deal_feasibility"] = _clamp_step(
+            previous["stance"]["deal_feasibility"],
+            normalized["stance"]["deal_feasibility"],
+            0.15,
+        )
+        normalized["stance"]["seller_flexibility"] = _clamp_step(
+            previous["stance"]["seller_flexibility"],
+            normalized["stance"]["seller_flexibility"],
+            0.15,
+        )
         if issues:
             print(f"[belief_state_updater] Validación: {issues}")
         return normalized, meta

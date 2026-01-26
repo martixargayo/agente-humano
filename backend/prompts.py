@@ -261,6 +261,8 @@ Reglas:
 - Usa números en [0,1] para weights/confidence.
 - Actualiza de forma conservadora: si no hay evidencia nueva, mantén stance similar.
 - Cada evidencia debe anclarse en el WorldState o en citas del mensaje reciente.
+- Usa solo estas keys para reasons: price_signal, deadline_signal, other_buyer_signal,
+  concession_signal, docs_signal, tone_signal.
 - No uses razones abstractas sin ancla (“parece honesto”); al menos una razón debe
   mencionar un marcador del WorldState cuando price_mentioned o deadline_claimed sean true.
 - WorldState incluye señales observables de tono (tone_signal/tone_marker_hits);
@@ -282,8 +284,8 @@ BELIEF_UPDATE_USER_PROMPT = """
 [World diff]
 {world_diff}
 
-[Policy previa del comprador]
-{last_policy_decision}
+[Policy ejecutada del comprador]
+{last_policy_executed}
 
 [Último mensaje del comprador]
 {last_assistant_message}

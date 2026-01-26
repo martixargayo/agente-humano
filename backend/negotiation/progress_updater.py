@@ -100,7 +100,8 @@ def update_progress_state(
 
     previous_policy_id = last_policy_executed.get("policy_id", "") if last_policy_executed else ""
     if previous_policy_id:
-        progress["last_policy_outcome"] = _evaluate_outcome(
+        progress["last_executed_policy_id"] = previous_policy_id
+        progress["last_executed_policy_outcome"] = _evaluate_outcome(
             previous_policy_id,
             prev_world_state,
             world_state,
@@ -110,18 +111,24 @@ def update_progress_state(
 
     policy_id = policy_decision.get("policy_id", "")
     if policy_id:
-        progress["last_policy_id"] = policy_id
         attempts = dict(progress.get("policy_attempts", {}))
         attempts[policy_id] = attempts.get(policy_id, 0) + 1
         progress["policy_attempts"] = attempts
 
-        if prev_progress and prev_progress.get("last_policy_id") == policy_id:
+        last_chosen_policy_id = ""
+        if prev_progress:
+            last_chosen_policy_id = prev_progress.get("last_chosen_policy_id", "")
+        if last_chosen_policy_id == policy_id:
             progress["turns_in_same_mode"] = prev_progress.get("turns_in_same_mode", 0) + 1
         else:
             progress["turns_in_same_mode"] = 1
+        progress["last_chosen_policy_id"] = policy_id
 
     loop_flags = list(progress.get("loop_flags", []))
-    if progress.get("turns_in_same_mode", 0) >= 2 and progress.get("last_policy_outcome") != "good":
+    if (
+        progress.get("turns_in_same_mode", 0) >= 2
+        and progress.get("last_executed_policy_outcome") != "good"
+    ):
         if "stuck_in_policy" not in loop_flags:
             loop_flags.append("stuck_in_policy")
     progress["loop_flags"] = loop_flags
