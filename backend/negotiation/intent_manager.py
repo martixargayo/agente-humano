@@ -334,6 +334,9 @@ def maybe_retarget_steps(
     if step and step.get("target_slot") != new_target:
         meta.setdefault("reasons", []).append("retarget_step_mismatch")
         step["target_slot"] = new_target
+    if step and step.get("success_if_filled") != [new_target]:
+        meta.setdefault("reasons", []).append("retarget_success_mismatch")
+        step["success_if_filled"] = [new_target]
 
 
 def _should_advance_step(step: IntentStep, slots_delta: dict) -> bool:
@@ -642,34 +645,38 @@ def update_intent_state(
         meta["intent_decision"] = "advance"
         meta["intent_transition"] = "advance"
     else:
-        intent["step_attempts"] = intent.get("step_attempts", 0) + 1
-        pivot_reason = ""
-        if _is_vague(user_message):
-            meta["reasons"].append("vague_response")
-            pivot_reason = "vague"
-        elif step and step.get("kind") == "request_evidence" and not world_state.get(
-            "evidence_offered"
-        ):
-            pivot_reason = "no_evidence"
-
-        if intent["step_attempts"] >= intent.get("max_attempts_per_step", 2):
-            if pivot_reason:
-                prev_kind = step.get("kind", "probe_open") if step else "probe_open"
-                new_kind = choose_pivot_kind(prev_kind)
-                if step:
-                    step["kind"] = new_kind
-                intent["step_attempts"] = 0
-                meta["intent_decision"] = "pivot"
-                meta["intent_transition"] = "pivot"
-                meta["pivot_reason"] = pivot_reason
-                meta["pivot_strategy"] = _pivot_strategy_from_transition(prev_kind, new_kind)
-            else:
-                _advance_step(intent)
-                intent["step_attempts"] = 0
-                meta["intent_decision"] = "advance"
-                meta["intent_transition"] = "advance"
-        else:
+        if "steps_hydrated" in meta.get("reasons", []):
+            intent["step_attempts"] = 0
             meta["intent_decision"] = "continue"
+        else:
+            intent["step_attempts"] = intent.get("step_attempts", 0) + 1
+            pivot_reason = ""
+            if _is_vague(user_message):
+                meta["reasons"].append("vague_response")
+                pivot_reason = "vague"
+            elif step and step.get("kind") == "request_evidence" and not world_state.get(
+                "evidence_offered"
+            ):
+                pivot_reason = "no_evidence"
+
+            if intent["step_attempts"] >= intent.get("max_attempts_per_step", 2):
+                if pivot_reason:
+                    prev_kind = step.get("kind", "probe_open") if step else "probe_open"
+                    new_kind = choose_pivot_kind(prev_kind)
+                    if step:
+                        step["kind"] = new_kind
+                    intent["step_attempts"] = 0
+                    meta["intent_decision"] = "pivot"
+                    meta["intent_transition"] = "pivot"
+                    meta["pivot_reason"] = pivot_reason
+                    meta["pivot_strategy"] = _pivot_strategy_from_transition(prev_kind, new_kind)
+                else:
+                    _advance_step(intent)
+                    intent["step_attempts"] = 0
+                    meta["intent_decision"] = "advance"
+                    meta["intent_transition"] = "advance"
+            else:
+                meta["intent_decision"] = "continue"
 
     step = _current_step(intent)
     intent["next_action_hint"] = _next_action_hint(
