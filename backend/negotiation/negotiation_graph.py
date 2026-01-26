@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import os
-from typing import List, Tuple
+from dataclasses import dataclass
+from typing import Any, Callable, List, Tuple
 
 from dotenv import load_dotenv
 from typing_extensions import TypedDict
@@ -115,6 +116,31 @@ executor_llm = ChatOpenAI(
     temperature=EXECUTOR_TEMPERATURE,
 )
 
+# Tipos “paper-grade”: narrow y explícitos
+PlanFn = Callable[..., Tuple[PolicyDecision, dict]]
+BeliefFn = Callable[..., Tuple[BeliefState, dict]]
+ExecuteFn = Callable[..., str]
+
+
+@dataclass(frozen=True)
+class AgentDeps:
+    plan_policy: PlanFn
+    update_belief_state: BeliefFn
+    execute: ExecuteFn
+
+
+def _default_execute(messages: Any) -> str:
+    # Mantén la lógica real actual, pero encapsulada para injection
+    result = executor_llm.invoke(messages)
+    return getattr(result, "content", str(result))
+
+
+DEFAULT_DEPS = AgentDeps(
+    plan_policy=plan_policy,
+    update_belief_state=update_belief_state,
+    execute=_default_execute,
+)
+
 
 class NegotiationTurn(TypedDict):
     summary: str
@@ -137,6 +163,7 @@ class NegotiationTurn(TypedDict):
     allowed_policy_ids: List[str]
     planner_meta: dict
     belief_update_meta: dict
+    deps: AgentDeps
 
     response: str
 
@@ -248,9 +275,10 @@ def world_updater_node(state: NegotiationTurn) -> NegotiationTurn:
 
 
 def belief_updater_node(state: NegotiationTurn) -> NegotiationTurn:
+    deps = state.get("deps", DEFAULT_DEPS)
     prev_belief = state.get("belief_state") or default_belief_state()
     state["prev_belief_state"] = prev_belief
-    belief_state, belief_meta = update_belief_state(
+    belief_state, belief_meta = deps.update_belief_state(
         prev_belief_state=prev_belief,
         prev_world_state=state["prev_world_state"],
         world_state=state["world_state"],
@@ -266,11 +294,12 @@ def belief_updater_node(state: NegotiationTurn) -> NegotiationTurn:
 
 
 def policy_planner_node(state: NegotiationTurn) -> NegotiationTurn:
+    deps = state.get("deps", DEFAULT_DEPS)
     _ensure_objective(state)
     state["allowed_policy_ids"] = allowed_policy_ids(
         state["world_state"], state["belief_state"], state["progress_state"]
     )
-    policy_decision, planner_meta = plan_policy(
+    policy_decision, planner_meta = deps.plan_policy(
         world_state=state["world_state"],
         belief_state=state["belief_state"],
         progress_state=state["progress_state"],
@@ -297,6 +326,7 @@ def progress_updater_node(state: NegotiationTurn) -> NegotiationTurn:
 
 
 def executor_node(state: NegotiationTurn) -> NegotiationTurn:
+    deps = state.get("deps", DEFAULT_DEPS)
     _ensure_objective(state)
 
     summary_text = state.get("summary") or "Aún no hay resumen de la conversación."
@@ -416,8 +446,7 @@ Tarea:
         HumanMessage(content=executor_user),
     ]
 
-    result = executor_llm.invoke(messages)
-    full_text = (result.content or "").strip()
+    full_text = deps.execute(messages).strip()
 
     print("\n===== RAW_EXECUTOR_OUTPUT =====")
     print(full_text)
@@ -459,6 +488,7 @@ negotiation_app = workflow.compile()
 def run_negotiation_agent(
     state: SessionState,
     user_message: str,
+    deps: AgentDeps = DEFAULT_DEPS,
 ) -> Tuple[str, SessionState]:
     """
     Ejecuta un turno de negociación:
@@ -518,6 +548,7 @@ def run_negotiation_agent(
         "allowed_policy_ids": [],
         "planner_meta": {},
         "belief_update_meta": {},
+        "deps": deps,
         "response": "",
     }
 
@@ -536,7 +567,6 @@ def run_negotiation_agent(
     state.world_state = new_world_state
     state.belief_state = new_belief_state
     state.progress_state = new_progress_state
-    state.last_policy_executed = new_policy_state
 
     reply_text = new_graph_state["response"].strip()
 
@@ -581,6 +611,22 @@ def run_negotiation_agent(
             ),
         }
     )
+    # --- Persistencia ejecutada (source-of-truth) ---
+    normalized_policy, policy_issues = normalize_policy_decision(
+        new_graph_state["policy_decision"], list_policy_ids()
+    )
+    state.last_policy_executed = normalized_policy
+
+    # Opcional (pero recomendado): trazar issues para auditoría
+    if policy_issues:
+        state.debug_trace.append(
+            {
+                "type": "policy_normalization_issues",
+                "issues": policy_issues,
+                "raw": new_graph_state["policy_decision"],
+                "normalized": normalized_policy,
+            }
+        )
     save_session_state(state)
 
     return reply_text, state

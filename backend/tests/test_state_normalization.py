@@ -141,8 +141,8 @@ def test_belief_reasons_tiebreak_is_deterministic_with_real_keys():
     assert list(limited.keys()) == ["docs_signal", "tone_signal"]
 
 
-def test_temporal_invariant_last_policy_executed_is_persisted(monkeypatch):
-    from negotiation.negotiation_graph import run_negotiation_agent
+def test_temporal_invariant_last_policy_executed_is_persisted():
+    from negotiation.negotiation_graph import AgentDeps, run_negotiation_agent
     from negotiation.schemas import default_belief_state, default_policy_decision
     from state import SessionState
 
@@ -154,36 +154,17 @@ def test_temporal_invariant_last_policy_executed_is_persisted(monkeypatch):
     def fake_update_belief_state(*args, **kwargs):
         return default_belief_state(), {"belief_meta": {"mock": True}}
 
-    class _FakeLLMResult:
-        def __init__(self, content: str):
-            self.content = content
+    def fake_execute(*args, **kwargs) -> str:
+        return "ok-response"
 
-    class _FakeLLM:
-        def invoke(self, messages):
-            return _FakeLLMResult("ok-response")
-
-    monkeypatch.setattr(
-        "negotiation.negotiation_graph.plan_policy", fake_plan_policy, raising=False
-    )
-    monkeypatch.setattr(
-        "negotiation.negotiation_graph.update_belief_state",
-        fake_update_belief_state,
-        raising=False,
-    )
-    monkeypatch.setattr(
-        "negotiation.negotiation_graph.get_policy_tactics", lambda *args, **kwargs: "", raising=False
-    )
-    monkeypatch.setattr(
-        "negotiation.negotiation_graph.normalize_text",
-        lambda text, user_message: text,
-        raising=False,
-    )
-    monkeypatch.setattr(
-        "negotiation.negotiation_graph.executor_llm", _FakeLLM(), raising=False
+    deps = AgentDeps(
+        plan_policy=fake_plan_policy,
+        update_belief_state=fake_update_belief_state,
+        execute=fake_execute,
     )
 
     state = SessionState(user_id="u", session_id="s")
-    run_negotiation_agent(state, "hola")
+    run_negotiation_agent(state, "hola", deps=deps)
 
     assert state.last_policy_executed is not None
     assert state.last_policy_executed.get("policy_id") == "rapport_build"
