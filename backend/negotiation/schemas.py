@@ -2,9 +2,6 @@
 from __future__ import annotations
 
 from typing import Dict, List, Literal, TypedDict
-
-
-ToneSignal = Literal["neutral", "tense", "friendly"]
 InteractionHealth = Literal["stable", "tense", "stalled"]
 RiskPosture = Literal["low", "mid", "high"]
 PolicyOutcome = Literal["good", "neutral", "bad", ""]
@@ -20,7 +17,7 @@ class WorldState(TypedDict):
     concession_text: str
     docs_claimed: bool
     docs_types: List[str]
-    tone_signal: ToneSignal
+    tone_marker_hits: List[str]
 
 
 class BeliefReason(TypedDict):
@@ -80,7 +77,7 @@ def default_world_state() -> WorldState:
         "concession_text": "",
         "docs_claimed": False,
         "docs_types": [],
-        "tone_signal": "neutral",
+        "tone_marker_hits": [],
     }
 
 

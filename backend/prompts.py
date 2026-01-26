@@ -259,6 +259,11 @@ Reglas:
 - No uses campos extra.
 - No incluyas markdown ni explicaciones.
 - Usa números en [0,1] para weights/confidence.
+- Actualiza de forma conservadora: si no hay evidencia nueva, mantén stance similar.
+- Cada evidencia debe anclarse en el WorldState o en citas del mensaje reciente.
+- No uses razones abstractas sin ancla (“parece honesto”); al menos una razón debe
+  mencionar un marcador del WorldState cuando price_mentioned o deadline_claimed sean true.
+- La interpretación de tono va en dynamics.interaction_health, no en WorldState.
 """
 
 BELIEF_UPDATE_USER_PROMPT = """
@@ -294,6 +299,9 @@ Reglas:
 - Debes elegir un policy_id del catálogo cerrado.
 - Incluye reason (1 línea), micro_goal (1 línea), risk_posture (low/mid/high).
 - No añadas texto fuera del JSON.
+- Goal reinforcement: debes repetir internamente objetivo + constraints
+  y elegir SOLO policies compatibles con ellos.
+- Si una policy viola constraints, es inválida.
 """
 
 POLICY_PLANNER_USER_PROMPT = """
@@ -309,11 +317,17 @@ POLICY_PLANNER_USER_PROMPT = """
 [ProgressState]
 {progress_state}
 
+[Contexto reciente (2–4 turnos)]
+{recent_context}
+
 [Objective]
 {objective}
 
 [Constraints]
 {constraints}
+
+[Policies permitidas]
+{allowed_policy_ids}
 
 Devuelve SOLO JSON:
 {

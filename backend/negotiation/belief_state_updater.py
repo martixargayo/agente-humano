@@ -9,6 +9,7 @@ from langchain_openai import ChatOpenAI
 
 from prompts import BELIEF_UPDATE_SYSTEM_PROMPT, BELIEF_UPDATE_USER_PROMPT
 from .schemas import BeliefState, WorldState, default_belief_state
+from .validation import normalize_belief_state
 
 
 BELIEF_MODEL = os.getenv("BELIEF_MODEL_NAME", os.getenv("SUMMARY_MODEL_NAME", "gpt-4o-mini"))
@@ -44,7 +45,10 @@ def update_belief_state(
 
     try:
         data = json.loads(raw)
-        return data  # type: ignore[return-value]
+        normalized, issues = normalize_belief_state(data, previous)
+        if issues:
+            print(f"[belief_state_updater] Validación: {issues}")
+        return normalized
     except json.JSONDecodeError:
         print("[belief_state_updater] JSON inválido, usando estado previo.")
     except Exception as exc:
