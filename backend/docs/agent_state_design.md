@@ -97,12 +97,44 @@
 
 - **Problema observable**: si no persistimos `last_policy_executed` al final del turno, el outcome puede evaluarse en el turno equivocado.
 - **Invariante**: lo ejecutado en turno *t-1* es la única fuente de verdad para evaluar outcome en *t*.
-- **Cambio**: `run_negotiation_agent` persiste siempre `state.last_policy_executed = new_policy_state` tras normalización.
+- **Cambio**: `run_negotiation_agent` persiste siempre `state.last_policy_executed` desde `executed_policy` (fallback a `policy_decision`) tras normalización.
 - **Por qué esta solución y no otra**: evita inferencias indirectas sobre el ejecutado y mantiene consistencia temporal.
 - **Riesgos**: si el executor devuelve un policy inválido, podríamos persistir datos inconsistentes.
 - **Mitigación**: normalización estricta y issues registrados en `debug_trace`.
 - **Cómo lo medimos**: coherencia en `debug_trace` y métricas de `policy_last_outcome` turno a turno.
 - **Tests**: `test_update_progress_state_tracks_policy_last_outcome`, `test_temporal_invariant_last_policy_executed_is_persisted`.
+
+## Plantilla “Por qué de las modificaciones” (P0/P1/P2)
+
+### P0 — Executor node: una sola ejecución, DI como fuente única
+
+(1) **Problema observable**: doble ejecución del LLM y reasignación de `full_text` dentro de `executor_node`.  
+(2) **Invariante/contrato**: one call per turn, one source of truth (DI).  
+(3) **Cambio implementado (con rutas y símbolos exactos)**: `backend/negotiation/negotiation_graph.py::executor_node` usa solo `full_text = deps.execute(messages).strip()` y elimina cualquier `executor_llm.invoke(...)` local.  
+(4) **Riesgo si NO se hace**: coste doble, outputs inconsistentes y violación del contrato DI.  
+(5) **Tradeoff**: dependencia directa de DI para observabilidad; menor flexibilidad ad-hoc en el nodo.  
+(6) **Cómo se mide (comando/test exacto)**: revisión de código + `pytest -q`.  
+
+### P1 — Contrato temporal: executed_policy → last_policy_executed + trace
+
+(1) **Problema observable**: `last_policy_executed` derivaba de `policy_decision` (chosen), no de lo ejecutado real.  
+(2) **Invariante/contrato**: separar *chosen* vs *executed* y persistir lo ejecutado como fuente de verdad.  
+(3) **Cambio implementado (con rutas y símbolos exactos)**:  
+    - `backend/negotiation/negotiation_graph.py::NegotiationTurn` añade `executed_policy`.  
+    - `executor_node` fija `state["executed_policy"] = state.get("policy_decision") or default_policy_decision()` antes de `deps.execute(...)`.  
+    - `run_negotiation_agent` persiste `state.last_policy_executed` desde `executed_policy_raw` normalizado, y añade `executed_policy_*` al `debug_trace`.  
+(4) **Riesgo si NO se hace**: evaluación temporal incorrecta de outcomes y trace ambiguo.  
+(5) **Tradeoff**: un campo adicional en el grafo y una normalización extra para auditoría.  
+(6) **Cómo se mide (comando/test exacto)**: `pytest -q`.  
+
+### P2 — Evidencia de tests en el PR summary
+
+(1) **Problema observable**: “Testing: Not run” impide validar paper-grade.  
+(2) **Invariante/contrato**: todo PR paper-grade debe incluir evidencia de tests con exit 0.  
+(3) **Cambio implementado (con rutas y símbolos exactos)**: el summary del PR incluye literalmente `Testing: ✅ pytest -q`.  
+(4) **Riesgo si NO se hace**: regresiones sin detectar y revisión bloqueada.  
+(5) **Tradeoff**: coste de ejecución local/CI.  
+(6) **Cómo se mide (comando/test exacto)**: `pytest -q`.  
 
 ## Changelog técnico (deprecaciones y migración)
 

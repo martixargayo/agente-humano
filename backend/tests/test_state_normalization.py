@@ -141,7 +141,7 @@ def test_belief_reasons_tiebreak_is_deterministic_with_real_keys():
     assert list(limited.keys()) == ["docs_signal", "tone_signal"]
 
 
-def test_temporal_invariant_last_policy_executed_is_persisted():
+def test_temporal_invariant_last_policy_executed_is_persisted(monkeypatch):
     from negotiation.negotiation_graph import AgentDeps, run_negotiation_agent
     from negotiation.schemas import default_belief_state, default_policy_decision
     from state import SessionState
@@ -161,6 +161,11 @@ def test_temporal_invariant_last_policy_executed_is_persisted():
         plan_policy=fake_plan_policy,
         update_belief_state=fake_update_belief_state,
         execute=fake_execute,
+    )
+
+    monkeypatch.setattr(
+        "negotiation.negotiation_graph.normalize_text",
+        lambda raw_reply, last_user_message=None: raw_reply,
     )
 
     state = SessionState(user_id="u", session_id="s")

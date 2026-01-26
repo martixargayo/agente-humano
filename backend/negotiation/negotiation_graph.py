@@ -158,6 +158,7 @@ class NegotiationTurn(TypedDict):
     prev_belief_state: BeliefState
     progress_state: ProgressState
     policy_decision: PolicyDecision
+    executed_policy: PolicyDecision | None
     last_policy_executed: PolicyDecision | None
     last_assistant_message: str
     allowed_policy_ids: List[str]
@@ -337,6 +338,7 @@ def executor_node(state: NegotiationTurn) -> NegotiationTurn:
     constraints = state.get("constraints") or ""
 
     policy_decision = state.get("policy_decision") or default_policy_decision()
+    state["executed_policy"] = state.get("policy_decision") or default_policy_decision()
     policy_id = policy_decision.get("policy_id", "rapport_build")
     micro_goal = policy_decision.get("micro_goal", "")
     risk_posture = policy_decision.get("risk_posture", "low")
@@ -543,6 +545,7 @@ def run_negotiation_agent(
         "prev_belief_state": belief_state_input,
         "progress_state": progress_state_input,
         "policy_decision": default_policy_decision(),
+        "executed_policy": None,
         "last_policy_executed": last_policy_executed_input,
         "last_assistant_message": _last_assistant_message(state.history),
         "allowed_policy_ids": [],
@@ -560,6 +563,12 @@ def run_negotiation_agent(
     new_policy_state, policy_issues_out = normalize_policy_decision(
         new_graph_state["policy_decision"], list_policy_ids()
     )
+    executed_policy_raw = new_graph_state.get("executed_policy") or new_graph_state.get(
+        "policy_decision"
+    )
+    normalized_executed_policy, executed_policy_issues = normalize_policy_decision(
+        executed_policy_raw, list_policy_ids()
+    )
     new_progress_state, progress_issues_out = normalize_progress_state(
         new_graph_state["progress_state"]
     )
@@ -567,6 +576,7 @@ def run_negotiation_agent(
     state.world_state = new_world_state
     state.belief_state = new_belief_state
     state.progress_state = new_progress_state
+    state.last_policy_executed = normalized_executed_policy
 
     reply_text = new_graph_state["response"].strip()
 
@@ -582,6 +592,9 @@ def run_negotiation_agent(
             "belief_diff": _diff_belief_state(graph_state["belief_state"], new_belief_state),
             "allowed_policy_ids": new_graph_state.get("allowed_policy_ids", []),
             "policy_decision": new_policy_state,
+            "executed_policy_raw": executed_policy_raw,
+            "executed_policy_normalized": normalized_executed_policy,
+            "executed_policy_issues": executed_policy_issues,
             "progress_state": new_progress_state,
             "planner_meta": new_graph_state.get("planner_meta", {}),
             "belief_update_meta": new_graph_state.get("belief_update_meta", {}),
@@ -611,22 +624,6 @@ def run_negotiation_agent(
             ),
         }
     )
-    # --- Persistencia ejecutada (source-of-truth) ---
-    normalized_policy, policy_issues = normalize_policy_decision(
-        new_graph_state["policy_decision"], list_policy_ids()
-    )
-    state.last_policy_executed = normalized_policy
-
-    # Opcional (pero recomendado): trazar issues para auditoría
-    if policy_issues:
-        state.debug_trace.append(
-            {
-                "type": "policy_normalization_issues",
-                "issues": policy_issues,
-                "raw": new_graph_state["policy_decision"],
-                "normalized": normalized_policy,
-            }
-        )
     save_session_state(state)
 
     return reply_text, state
