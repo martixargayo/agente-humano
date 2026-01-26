@@ -338,10 +338,13 @@ def executor_node(state: NegotiationTurn) -> NegotiationTurn:
     constraints = state.get("constraints") or ""
 
     policy_decision = state.get("policy_decision") or default_policy_decision()
-    state["executed_policy"] = state.get("policy_decision") or default_policy_decision()
-    policy_id = policy_decision.get("policy_id", "rapport_build")
-    micro_goal = policy_decision.get("micro_goal", "")
-    risk_posture = policy_decision.get("risk_posture", "low")
+    # Fuente única: lo ejecutado en este turno (por defecto = chosen).
+    state["executed_policy"] = state.get("executed_policy") or policy_decision
+    executed = state["executed_policy"] or default_policy_decision()
+
+    policy_id = executed.get("policy_id", "rapport_build")
+    micro_goal = executed.get("micro_goal", "")
+    risk_posture = executed.get("risk_posture", "low")
 
     policy = get_policy(policy_id)
     phase_hint = policy.phase_hint if policy else None
