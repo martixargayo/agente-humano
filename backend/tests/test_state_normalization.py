@@ -115,10 +115,13 @@ def test_allowed_policy_ids_uses_outcome_per_policy():
     world = default_world_state()
     belief = default_belief_state()
     progress = default_progress_state()
-    progress["policy_attempts"] = {"rapport_build": 3, "test_credibility": 3}
-    progress["policy_last_outcome"] = {"rapport_build": "bad", "test_credibility": "good"}
+    ids = policy_planner.list_policy_ids()
+    assert len(ids) >= 2
+    p1, p2 = ids[0], ids[1]
+    progress["policy_attempts"] = {p1: 3, p2: 3}
+    progress["policy_last_outcome"] = {p1: "bad", p2: "good"}
 
     allowed = policy_planner.allowed_policy_ids(world, belief, progress)
 
-    assert "rapport_build" not in allowed
-    assert "test_credibility" in allowed
+    assert p1 not in allowed
+    assert p2 in allowed

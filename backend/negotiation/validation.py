@@ -268,7 +268,13 @@ def normalize_progress_state(raw: object) -> Tuple[ProgressState, List[str]]:
 
     attempts = raw.get("policy_attempts", {})
     if isinstance(attempts, dict):
-        base["policy_attempts"] = {str(k): int(v) for k, v in attempts.items() if isinstance(v, int)}
+        sanitized_attempts: Dict[str, int] = {}
+        for key, value in attempts.items():
+            try:
+                sanitized_attempts[str(key)] = int(value)
+            except (TypeError, ValueError):
+                issues.append(f"policy_attempts_invalid_value:{key}")
+        base["policy_attempts"] = sanitized_attempts
     else:
         issues.append("policy_attempts_invalid")
 
