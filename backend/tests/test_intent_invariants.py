@@ -209,7 +209,7 @@ def test_pivot_sets_reason_and_strategy_and_changes_kind():
         world_state=default_world_state(),
         belief_state=default_belief_state(),
         progress_state=default_progress_state(),
-        user_message="no sé",
+        user_message="vale",
         turn_count=7,
     )
     assert meta["intent_transition"] == "pivot"

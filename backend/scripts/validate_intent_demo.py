@@ -45,7 +45,7 @@ def _slots_missing(intent_state):
 def _print_turn(turn_label, state):
     trace = state.debug_trace[-1]
     intent_state = state.progress_state.get("intent_state", {})
-    intent_meta = trace.get("planner_meta", {}).get("intent_meta", {})
+    intent_meta = trace.get("planner_meta", {}).get("intent_meta") or trace.get("intent_meta") or {}
     payload = {
         "turn": turn_label,
         "meta": {
