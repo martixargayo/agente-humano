@@ -7,7 +7,7 @@ from typing import Literal
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from prompts import POLICY_PLANNER_SYSTEM_PROMPT, POLICY_PLANNER_USER_PROMPT
 from .policies import list_policy_ids, policy_catalog_text
@@ -34,9 +34,10 @@ _planner_prompt = ChatPromptTemplate.from_messages(
 
 
 class _PolicyDecisionModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     policy_id: str = ""
-    reason: str = ""
-    micro_goal: str = ""
+    reason: str = Field(default="", max_length=180)
+    micro_goal: str = Field(default="", max_length=140)
     risk_posture: Literal["low", "mid", "high"] = Field(default="low")
 
 
@@ -75,17 +76,17 @@ def _allowed_policy_ids(
         allowed |= {"deescalate_tension", "rapport_build"}
 
     if progress_state.get("turns_in_same_mode", 0) >= 2:
-        last_policy = progress_state.get("last_policy_id", "")
+        last_policy = progress_state.get("last_chosen_policy_id", "")
         if last_policy in allowed:
             allowed.remove(last_policy)
 
     if "stuck_in_policy" in progress_state.get("loop_flags", []):
-        last_policy = progress_state.get("last_policy_id", "")
+        last_policy = progress_state.get("last_chosen_policy_id", "")
         if last_policy in allowed:
             allowed.remove(last_policy)
 
     attempts = progress_state.get("policy_attempts", {})
-    last_outcome = progress_state.get("last_policy_outcome", "")
+    last_outcome = progress_state.get("last_executed_policy_outcome", "")
     for policy_id, count in attempts.items():
         if count >= 3 and last_outcome in {"bad", "neutral"}:
             allowed.discard(policy_id)
@@ -158,10 +159,7 @@ def plan_policy(
         data = result.model_dump()
         normalized, issues = normalize_policy_decision(data, allowed)
         meta["issues"] = issues
-        meta["policy_normalization_changed"] = any(
-            normalized.get(key) != data.get(key)
-            for key in ("policy_id", "reason", "micro_goal", "risk_posture")
-        )
+        meta["policy_normalization_changed"] = bool(issues)
         if issues:
             print(f"[policy_planner] Validación: {issues}")
         if issues or normalized["policy_id"] not in allowed:

@@ -47,7 +47,7 @@ class BeliefToM(TypedDict):
 
 class BeliefState(TypedDict):
     stance: BeliefStance
-    reasons: Dict[str, BeliefReason]
+    reasons: Dict["ReasonKey", BeliefReason]
     hypotheses: List[str]
     dynamics: BeliefDynamics
     tom: BeliefToM
@@ -60,9 +60,20 @@ class PolicyDecision(TypedDict):
     risk_posture: RiskPosture
 
 
+ReasonKey = Literal[
+    "price_signal",
+    "deadline_signal",
+    "other_buyer_signal",
+    "concession_signal",
+    "docs_signal",
+    "tone_signal",
+]
+
+
 class ProgressState(TypedDict):
-    last_policy_id: str
-    last_policy_outcome: PolicyOutcome
+    last_executed_policy_id: str
+    last_executed_policy_outcome: PolicyOutcome
+    last_chosen_policy_id: str
     policy_attempts: Dict[str, int]
     loop_flags: List[str]
     turns_in_same_mode: int
@@ -107,8 +118,9 @@ def default_belief_state() -> BeliefState:
 
 def default_progress_state() -> ProgressState:
     return {
-        "last_policy_id": "",
-        "last_policy_outcome": "",
+        "last_executed_policy_id": "",
+        "last_executed_policy_outcome": "",
+        "last_chosen_policy_id": "",
         "policy_attempts": {},
         "loop_flags": [],
         "turns_in_same_mode": 0,

@@ -132,7 +132,7 @@ class NegotiationTurn(TypedDict):
     prev_belief_state: BeliefState
     progress_state: ProgressState
     policy_decision: PolicyDecision
-    last_policy_decision: PolicyDecision
+    last_policy_executed: PolicyDecision | None
     last_assistant_message: str
     allowed_policy_ids: List[str]
     planner_meta: dict
@@ -255,7 +255,7 @@ def belief_updater_node(state: NegotiationTurn) -> NegotiationTurn:
         prev_world_state=state["prev_world_state"],
         world_state=state["world_state"],
         world_diff=state.get("world_diff", {}),
-        last_policy_decision=state.get("last_policy_decision"),
+        last_policy_executed=state.get("last_policy_executed"),
         last_assistant_message=state.get("last_assistant_message", ""),
         user_message=state.get("user_message", ""),
         context_snippet=state.get("recent_history_text", ""),
@@ -287,7 +287,7 @@ def progress_updater_node(state: NegotiationTurn) -> NegotiationTurn:
     state["progress_state"] = update_progress_state(
         prev_progress=state.get("progress_state"),
         policy_decision=state["policy_decision"],
-        last_policy_executed=state.get("last_policy_decision"),
+        last_policy_executed=state.get("last_policy_executed"),
         prev_world_state=state["prev_world_state"],
         world_state=state["world_state"],
         prev_belief_state=state.get("prev_belief_state"),
@@ -486,9 +486,12 @@ def run_negotiation_agent(
     world_state_input, world_issues_in = normalize_world_state(state.world_state)
     belief_state_input, belief_issues_in = normalize_belief_state(state.belief_state)
     progress_state_input, progress_issues_in = normalize_progress_state(state.progress_state)
-    policy_state_input, policy_issues_in = normalize_policy_decision(
-        state.policy_state, list_policy_ids()
-    )
+    policy_issues_in: list[str] = []
+    last_policy_executed_input = state.last_policy_executed
+    if last_policy_executed_input:
+        _, policy_issues_in = normalize_policy_decision(
+            last_policy_executed_input, list_policy_ids()
+        )
 
     graph_state: NegotiationTurn = {
         "summary": summary_text,
@@ -503,8 +506,8 @@ def run_negotiation_agent(
         "belief_state": belief_state_input,
         "prev_belief_state": belief_state_input,
         "progress_state": progress_state_input,
-        "policy_decision": policy_state_input,
-        "last_policy_decision": state.last_policy_executed or {},
+        "policy_decision": default_policy_decision(),
+        "last_policy_executed": last_policy_executed_input,
         "last_assistant_message": _last_assistant_message(state.history),
         "allowed_policy_ids": [],
         "planner_meta": {},
@@ -526,7 +529,6 @@ def run_negotiation_agent(
 
     state.world_state = new_world_state
     state.belief_state = new_belief_state
-    state.policy_state = new_policy_state
     state.progress_state = new_progress_state
     state.last_policy_executed = new_policy_state
 

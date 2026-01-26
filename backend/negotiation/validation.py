@@ -1,6 +1,7 @@
 # backend/negotiation/validation.py
 from __future__ import annotations
 
+import os
 from typing import Dict, Iterable, List, Tuple
 
 from .schemas import (
@@ -21,6 +22,15 @@ from .schemas import (
 _ALLOWED_HEALTH: set[InteractionHealth] = {"stable", "tense", "stalled"}
 _ALLOWED_RISK: set[RiskPosture] = {"low", "mid", "high"}
 _ALLOWED_TONE: set[ToneSignal] = {"neutral", "friendly", "tense"}
+_ALLOWED_REASON_KEYS = {
+    "price_signal",
+    "deadline_signal",
+    "other_buyer_signal",
+    "concession_signal",
+    "docs_signal",
+    "tone_signal",
+}
+_STRICT_NORMALIZATION = os.getenv("STRICT_NORMALIZATION") == "1"
 
 
 def _clamp(value: float, min_value: float = 0.0, max_value: float = 1.0) -> float:
@@ -65,7 +75,8 @@ def normalize_world_state(raw: object) -> Tuple[WorldState, List[str]]:
         return base, issues
     if "tone_signal" not in raw:
         issues.append("tone_signal_missing")
-        return base, issues
+        if _STRICT_NORMALIZATION:
+            return base, issues
 
     base["price_mentioned"] = bool(raw.get("price_mentioned", base["price_mentioned"]))
     price_value = raw.get("price_value", base["price_value"])
@@ -85,7 +96,7 @@ def normalize_world_state(raw: object) -> Tuple[WorldState, List[str]]:
     tone_signal = raw.get("tone_signal", base["tone_signal"])
     if tone_signal not in _ALLOWED_TONE:
         issues.append("tone_signal_invalid")
-        return base, issues
+        tone_signal = base["tone_signal"]
     base["tone_signal"] = tone_signal
 
     tone_markers = _coerce_str_list(raw.get("tone_marker_hits", []), max_items=10)
@@ -127,6 +138,9 @@ def normalize_belief_state(
             if idx >= 6:
                 issues.append("reasons_trimmed")
                 break
+            if key not in _ALLOWED_REASON_KEYS:
+                issues.append(f"reason_key_invalid:{key}")
+                continue
             if not isinstance(value, dict):
                 issues.append(f"reason_invalid:{key}")
                 continue
@@ -188,7 +202,7 @@ def normalize_policy_decision(
         issues.append("policy_decision_no_dict")
         return base, issues
 
-    policy_id = raw.get("policy_id", base["policy_id"])
+    policy_id = raw.get("policy_id", "")
     if policy_id not in allowed:
         issues.append("policy_id_invalid")
         return base, issues
@@ -213,12 +227,18 @@ def normalize_progress_state(raw: object) -> Tuple[ProgressState, List[str]]:
         issues.append("progress_state_no_dict")
         return base, issues
 
-    base["last_policy_id"] = str(raw.get("last_policy_id", base["last_policy_id"]))
-    last_outcome = raw.get("last_policy_outcome", base["last_policy_outcome"])
+    last_executed_policy_id = raw.get("last_executed_policy_id", raw.get("last_policy_id", ""))
+    base["last_executed_policy_id"] = str(
+        last_executed_policy_id or base["last_executed_policy_id"]
+    )
+    last_outcome = raw.get(
+        "last_executed_policy_outcome",
+        raw.get("last_policy_outcome", base["last_executed_policy_outcome"]),
+    )
     if last_outcome not in {"good", "neutral", "bad", ""}:
         issues.append("policy_outcome_invalid")
-        last_outcome = base["last_policy_outcome"]
-    base["last_policy_outcome"] = last_outcome
+        last_outcome = base["last_executed_policy_outcome"]
+    base["last_executed_policy_outcome"] = last_outcome
 
     attempts = raw.get("policy_attempts", {})
     if isinstance(attempts, dict):
@@ -228,5 +248,9 @@ def normalize_progress_state(raw: object) -> Tuple[ProgressState, List[str]]:
 
     base["loop_flags"] = _unique_list(_coerce_str_list(raw.get("loop_flags", [])))
     base["turns_in_same_mode"] = int(raw.get("turns_in_same_mode", base["turns_in_same_mode"]))
+    last_chosen_policy_id = raw.get("last_chosen_policy_id", raw.get("last_policy_id", ""))
+    base["last_chosen_policy_id"] = str(
+        last_chosen_policy_id or base["last_chosen_policy_id"]
+    )
 
     return base, issues
