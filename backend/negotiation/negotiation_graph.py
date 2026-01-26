@@ -337,8 +337,10 @@ def executor_node(state: NegotiationTurn) -> NegotiationTurn:
     objective = state.get("objective") or ""
     constraints = state.get("constraints") or ""
 
+    # --- Policy: fuente única ejecutada ---
     policy_decision = state.get("policy_decision") or default_policy_decision()
-    # Fuente única: lo ejecutado en este turno (por defecto = chosen).
+
+    # Si nadie la ha cambiado antes, lo ejecutado = lo elegido
     state["executed_policy"] = state.get("executed_policy") or policy_decision
     executed = state["executed_policy"] or default_policy_decision()
 
