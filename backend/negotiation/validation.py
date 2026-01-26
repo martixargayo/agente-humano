@@ -7,12 +7,16 @@ from typing import Dict, Iterable, List, Tuple
 from .schemas import (
     BeliefState,
     InteractionHealth,
+    IntentState,
+    IntentStatus,
+    IntentType,
     PolicyDecision,
     ProgressState,
     RiskPosture,
     ToneSignal,
     WorldState,
     default_belief_state,
+    default_intent_state,
     default_policy_decision,
     default_progress_state,
     default_world_state,
@@ -22,6 +26,14 @@ from .schemas import (
 _ALLOWED_HEALTH: set[InteractionHealth] = {"stable", "tense", "stalled"}
 _ALLOWED_RISK: set[RiskPosture] = {"low", "mid", "high"}
 _ALLOWED_TONE: set[ToneSignal] = {"neutral", "friendly", "tense"}
+_ALLOWED_INTENT_STATUS: set[IntentStatus] = {"inactive", "active", "succeeded", "abandoned"}
+_ALLOWED_INTENT_TYPES: set[IntentType] = {
+    "info_extract",
+    "relationship",
+    "concession",
+    "closing",
+    "credibility_check",
+}
 _ALLOWED_REASON_KEYS = {
     "price_signal",
     "deadline_signal",
@@ -280,5 +292,97 @@ def normalize_progress_state(raw: object) -> Tuple[ProgressState, List[str]]:
 
     base["loop_flags"] = _unique_list(_coerce_str_list(raw.get("loop_flags", [])))
     base["turns_in_same_mode"] = int(raw.get("turns_in_same_mode", base["turns_in_same_mode"]))
+    base["intent_state"], intent_issues = normalize_intent_state(raw.get("intent_state", {}))
+    issues.extend(intent_issues)
+
+    return base, issues
+
+
+def _normalize_slots(raw: object) -> Tuple[dict, List[str]]:
+    issues: List[str] = []
+    slots = {
+        "slots_required": [],
+        "slots_optional": [],
+        "slots_filled": {},
+    }
+    if not isinstance(raw, dict):
+        issues.append("intent_slots_invalid")
+        return slots, issues
+
+    slots["slots_required"] = _unique_list(_coerce_str_list(raw.get("slots_required", [])))
+    slots["slots_optional"] = _unique_list(_coerce_str_list(raw.get("slots_optional", [])))
+
+    filled_raw = raw.get("slots_filled", {})
+    if isinstance(filled_raw, dict):
+        filled: Dict[str, dict] = {}
+        for key, value in filled_raw.items():
+            if not isinstance(value, dict):
+                issues.append(f"intent_slot_invalid:{key}")
+                continue
+            filled[str(key)] = {
+                "value": value.get("value"),
+                "evidence": str(value.get("evidence", "")).strip(),
+                "confidence": _clamp(_coerce_float(value.get("confidence", 0.5), 0.5)),
+            }
+        slots["slots_filled"] = filled
+    else:
+        issues.append("intent_slots_filled_invalid")
+
+    return slots, issues
+
+
+def normalize_intent_state(raw: object) -> Tuple[IntentState, List[str]]:
+    base = default_intent_state()
+    issues: List[str] = []
+    if not isinstance(raw, dict):
+        issues.append("intent_state_no_dict")
+        return base, issues
+
+    status = raw.get("status", base["status"])
+    if status not in _ALLOWED_INTENT_STATUS:
+        issues.append("intent_status_invalid")
+        status = base["status"]
+    base["status"] = status
+
+    intent_type = raw.get("intent_type", base["intent_type"])
+    if intent_type not in _ALLOWED_INTENT_TYPES:
+        issues.append("intent_type_invalid")
+        intent_type = base["intent_type"]
+    base["intent_type"] = intent_type
+
+    base["intent_goal"] = str(raw.get("intent_goal", base["intent_goal"])).strip()
+    base["steps"] = _coerce_str_list(raw.get("steps", []), max_items=5)
+    base["step_idx"] = int(raw.get("step_idx", base["step_idx"]))
+    base["step_attempts"] = int(raw.get("step_attempts", base["step_attempts"]))
+    base["max_attempts_per_step"] = max(
+        1, int(raw.get("max_attempts_per_step", base["max_attempts_per_step"]))
+    )
+    base["success_criteria"] = _unique_list(
+        _coerce_str_list(raw.get("success_criteria", []), max_items=5)
+    )
+
+    slots, slot_issues = _normalize_slots(raw.get("slots", {}))
+    base["slots"] = slots
+    issues.extend(slot_issues)
+
+    base["confidence"] = _clamp(_coerce_float(raw.get("confidence", base["confidence"]),
+                                              base["confidence"]))
+    base["created_turn"] = int(raw.get("created_turn", base["created_turn"]))
+    base["last_turn"] = int(raw.get("last_turn", base["last_turn"]))
+    base["continue_until"] = str(raw.get("continue_until", base["continue_until"])).strip()
+    base["abandon_reasons"] = _unique_list(_coerce_str_list(raw.get("abandon_reasons", [])))
+    base["last_observation"] = str(raw.get("last_observation", base["last_observation"])).strip()
+    base["next_action_hint"] = str(raw.get("next_action_hint", base["next_action_hint"])).strip()
+
+    if base["status"] == "active":
+        if not base["steps"]:
+            issues.append("intent_steps_missing")
+        if base["steps"]:
+            max_idx = len(base["steps"]) - 1
+            if base["step_idx"] < 0 or base["step_idx"] > max_idx:
+                issues.append("intent_step_idx_invalid")
+                base["step_idx"] = min(max(base["step_idx"], 0), max_idx)
+        else:
+            base["step_idx"] = 0
 
     return base, issues
