@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import threading
 from dataclasses import dataclass
 from typing import Any, Callable, List, Optional, Tuple
 
@@ -100,13 +101,21 @@ def _load_negotiation_rag_index():
         return None
 
 
+_RAG_INDEX_LOCK = threading.Lock()
 _NEGOTIATION_RAG_INDEX = None
 
 
 def get_negotiation_rag_index():
     global _NEGOTIATION_RAG_INDEX
-    if _NEGOTIATION_RAG_INDEX is None:
-        _NEGOTIATION_RAG_INDEX = _load_negotiation_rag_index()
+    # Fast path (sin lock) si ya está inicializado.
+    if _NEGOTIATION_RAG_INDEX is not None:
+        return _NEGOTIATION_RAG_INDEX
+
+    # Slow path con lock para evitar doble init concurrente.
+    with _RAG_INDEX_LOCK:
+        if _NEGOTIATION_RAG_INDEX is None:
+            _NEGOTIATION_RAG_INDEX = _load_negotiation_rag_index()
+
     return _NEGOTIATION_RAG_INDEX
 
 # ---- Modelo principal (executor) ----
