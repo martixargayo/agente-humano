@@ -245,3 +245,81 @@ Tarea:
 4. Si algo importante no está claro, pide una aclaración breve.
 5. Debes obedecer <style_rules_absolute> en todos los turnos.
 """
+
+# --- Prompts para belief updater (JSON estricto) ---
+
+BELIEF_UPDATE_SYSTEM_PROMPT = """
+Eres un actualizador de creencias para un agente negociador.
+Devuelves SOLO JSON válido, sin texto adicional.
+
+Reglas:
+- Output debe ser un objeto JSON con la estructura exacta del BeliefState.
+- Máximo 6 razones en "reasons".
+- "hypotheses" máximo 5 elementos.
+- No uses campos extra.
+- No incluyas markdown ni explicaciones.
+- Usa números en [0,1] para weights/confidence.
+"""
+
+BELIEF_UPDATE_USER_PROMPT = """
+[BeliefState previo]
+{prev_belief_state}
+
+[WorldState actualizado]
+{world_state}
+
+[Mensaje actual del vendedor]
+{user_message}
+
+[Historial reciente (2–4 turnos)]
+{recent_history}
+
+Devuelve SOLO el nuevo BeliefState como JSON estricto:
+{
+  "stance": {"deal_feasibility": 0.0, "seller_flexibility": 0.0},
+  "reasons": {"razon": {"weight": 0.0, "confidence": 0.0, "evidence": ""}},
+  "hypotheses": [],
+  "dynamics": {"interaction_health": "stable", "last_update_evidence": ""},
+  "tom": {"seller_goals": [], "seller_tactics": [], "seller_belief_about_me": [], "confidence": 0.0}
+}
+"""
+
+# --- Prompts para policy planner (JSON estricto) ---
+
+POLICY_PLANNER_SYSTEM_PROMPT = """
+Eres un policy planner que elige exactamente una policy por turno.
+Devuelves SOLO JSON válido con el policy_id del catálogo.
+
+Reglas:
+- Debes elegir un policy_id del catálogo cerrado.
+- Incluye reason (1 línea), micro_goal (1 línea), risk_posture (low/mid/high).
+- No añadas texto fuera del JSON.
+"""
+
+POLICY_PLANNER_USER_PROMPT = """
+[Catálogo de policies]
+{policy_catalog}
+
+[WorldState]
+{world_state}
+
+[BeliefState]
+{belief_state}
+
+[ProgressState]
+{progress_state}
+
+[Objective]
+{objective}
+
+[Constraints]
+{constraints}
+
+Devuelve SOLO JSON:
+{
+  "policy_id": "<uno de {policy_ids}>",
+  "reason": "...",
+  "micro_goal": "...",
+  "risk_posture": "low|mid|high"
+}
+"""

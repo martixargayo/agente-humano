@@ -30,6 +30,13 @@ class SessionState:
     # Historial corto: últimos N turnos (ventana recortada)
     history: List[Message] = field(default_factory=list)
 
+    # ---- NUEVO: estado explícito de negociación ----
+    world_state: Dict = field(default_factory=dict)
+    belief_state: Dict = field(default_factory=dict)
+    policy_state: Dict = field(default_factory=dict)
+    progress_state: Dict = field(default_factory=dict)
+    debug_trace: List[Dict] = field(default_factory=list)
+
     # ---- NUEVO: estado de negociación / planificación ----
     # Objetivo interno del agente (comprador)
     negotiation_objective: str = ""
