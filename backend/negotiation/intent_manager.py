@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Tuple
+from dataclasses import dataclass
+from typing import List, Tuple
 
 from .schemas import (
     BeliefState,
@@ -9,6 +10,7 @@ from .schemas import (
     IntentState,
     IntentStep,
     ProgressState,
+    StepKind,
     WorldState,
     default_intent_state,
 )
@@ -24,6 +26,13 @@ _VAGUE_MARKERS = [
     "quizá",
     "tal vez",
 ]
+
+
+@dataclass(frozen=True)
+class MultiTurnScore:
+    should_start: bool
+    score: int
+    reasons: List[str]
 
 
 def _is_vague(message: str) -> bool:
@@ -89,6 +98,7 @@ def build_steps(intent_type: str, missing: list[str]) -> list[IntentStep]:
     return [
         {"kind": "probe_open", "target_slot": target, "success_if_filled": [target]},
         {"kind": "probe_narrow", "target_slot": target, "success_if_filled": [target]},
+        {"kind": "request_evidence", "target_slot": target, "success_if_filled": [target]},
         {"kind": "trade_incentive", "target_slot": target, "success_if_filled": [target]},
         {"kind": "pressure_soft", "target_slot": target, "success_if_filled": [target]},
     ]
@@ -122,7 +132,9 @@ def _extract_slots(world_state: WorldState, user_message: str) -> dict:
 
     if world_state.get("other_buyer_claimed"):
         slots["other_buyer"] = _slot_entry("claimed", evidence, 0.5)
-        slots["other_buyer_details"] = _slot_entry("claimed", evidence, 0.4)
+        other_buyer_text = world_state.get("other_buyer_text", "").strip()
+        detail = other_buyer_text or "claimed"
+        slots["other_buyer_details"] = _slot_entry(detail, evidence, 0.4)
 
     if world_state.get("concession_made"):
         slots["concession"] = _slot_entry(world_state.get("concession_text", ""), evidence, 0.6)
@@ -178,13 +190,13 @@ def _world_has_multiple_open_factors(world_state: WorldState) -> bool:
     return sum(1 for signal in signals if signal) >= 2
 
 
-def _should_require_multi_turn(
+def score_multi_turn_start(
     intent_type: str,
     slots_missing: list[str],
     world_state: WorldState,
     belief_state: BeliefState,
     user_message: str,
-) -> tuple[bool, int, list[str]]:
+) -> MultiTurnScore:
     score = 0
     reasons: list[str] = []
 
@@ -211,7 +223,7 @@ def _should_require_multi_turn(
         score += 1
         reasons.append("priority_intent_with_missing")
 
-    return score >= 3, score, reasons
+    return MultiTurnScore(should_start=(score >= 3), score=score, reasons=reasons)
 
 
 def _commitment_level(intent_type: str, slots_missing: list[str], belief_state: BeliefState) -> str:
@@ -242,6 +254,57 @@ def _next_action_hint(step_kind: str, target_slot: str, slots_missing: list[str]
     return "Mantener un avance gradual."
 
 
+def _pivot_strategy_from_kind(step_kind: str) -> str:
+    mapping = {
+        "probe_open": "open",
+        "probe_narrow": "narrow",
+        "request_evidence": "evidence",
+        "trade_incentive": "incentive",
+        "pressure_soft": "soft_pressure",
+        "close_next": "narrow",
+    }
+    return mapping.get(step_kind, "open")
+
+
+def choose_pivot_kind(current_kind: StepKind) -> StepKind:
+    order: list[StepKind] = [
+        "probe_open",
+        "probe_narrow",
+        "request_evidence",
+        "trade_incentive",
+        "pressure_soft",
+    ]
+    if current_kind in order:
+        idx = order.index(current_kind)
+        return order[min(idx + 1, len(order) - 1)]
+    return order[0]
+
+
+def maybe_retarget_steps(
+    intent: IntentState,
+    world_state: WorldState,
+    user_message: str,
+    meta: dict,
+) -> None:
+    del world_state, user_message
+    step = _current_step(intent)
+    if not step:
+        return
+    target = step.get("target_slot", "")
+    if not target:
+        return
+    if target not in intent.get("slots", {}).get("slots_filled", {}):
+        return
+    missing = _slots_missing(intent)
+    if not missing:
+        return
+    new_target = missing[0]
+    intent["steps"] = build_steps(intent.get("intent_type", "info_extract"), missing)
+    intent["step_idx"] = 0
+    intent["step_attempts"] = 0
+    meta["intent_transition"] = f"retarget:{new_target}"
+
+
 def _should_advance_step(step: IntentStep, slots_delta: dict) -> bool:
     return any(slot in slots_delta for slot in step.get("success_if_filled", []))
 
@@ -250,11 +313,22 @@ def evaluate_success(
     intent: IntentState,
     world_state: WorldState,
     belief_state: BeliefState,
+    meta: dict,
 ) -> tuple[bool, list[str]]:
     reasons: list[str] = []
     criteria = intent.get("success_criteria", [])
     if not criteria:
         return False, []
+
+    known = {
+        "slots_required_complete",
+        "firm_price_detected",
+        "evidence_offered",
+    }
+    for criterion in criteria:
+        if criterion not in known:
+            meta.setdefault("reasons", []).append(f"unknown_success_criterion:{criterion}")
+            return False, []
 
     if "slots_required_complete" in criteria:
         if _slots_missing(intent) == []:
@@ -312,6 +386,7 @@ def update_intent_state(
         "commitment_level": "soft",
         "intent_transition": "none",
         "pivot_reason": "",
+        "pivot_strategy": "",
         "success_reasons": [],
     }
 
@@ -325,17 +400,17 @@ def update_intent_state(
         intent["slots"] = {
             "slots_required": required,
             "slots_optional": optional,
-            "slots_filled": {},
+            "slots_filled": _extract_slots(world_state, user_message),
         }
-        initial_filled = _extract_slots(world_state, user_message)
-        intent["slots"]["slots_filled"] = initial_filled
         slots_missing = _slots_missing(intent)
-        should_start, score, reasons = _should_require_multi_turn(
+        score = score_multi_turn_start(
             intent_type, slots_missing, world_state, belief_state, user_message
         )
-        meta["reasons"].extend(reasons)
-        meta["reasons"].append(f"multi_turn_score:{score}")
-        if should_start:
+        meta["reasons"].extend(score.reasons)
+        meta["reasons"].append(f"multi_turn_score:{score.score}")
+        meta["commitment_level"] = _commitment_level(intent_type, slots_missing, belief_state)
+
+        if score.should_start:
             intent["status"] = "active"
             intent["steps"] = build_steps(intent_type, slots_missing)
             intent["step_idx"] = 0
@@ -358,9 +433,7 @@ def update_intent_state(
             intent = default_intent_state()
             intent["last_turn"] = turn_count
             meta["intent_decision"] = "inactive"
-        meta["commitment_level"] = _commitment_level(
-            intent.get("intent_type", "info_extract"), slots_missing, belief_state
-        )
+
         meta["intent_new"] = deepcopy(intent)
         intent_hint = _build_intent_hint(intent, slots_missing, meta["commitment_level"])
         return intent, meta, intent_hint
@@ -374,7 +447,9 @@ def update_intent_state(
     intent["slots"]["slots_filled"] = slots_filled
 
     slots_missing = _slots_missing(intent)
-    commitment = _commitment_level(intent.get("intent_type", "info_extract"), slots_missing, belief_state)
+    commitment = _commitment_level(
+        intent.get("intent_type", "info_extract"), slots_missing, belief_state
+    )
     meta["commitment_level"] = commitment
 
     replan_to = _should_replan(intent, world_state)
@@ -415,7 +490,11 @@ def update_intent_state(
         intent_hint = _build_intent_hint(intent, slots_missing, commitment)
         return intent, meta, intent_hint
 
-    succeeded, success_reasons = evaluate_success(intent, world_state, belief_state)
+    maybe_retarget_steps(intent, world_state, user_message, meta)
+    retargeted = meta.get("intent_transition", "").startswith("retarget:")
+    slots_missing = _slots_missing(intent)
+
+    succeeded, success_reasons = evaluate_success(intent, world_state, belief_state, meta)
     if succeeded:
         intent["status"] = "succeeded"
         intent["next_action_hint"] = ""
@@ -468,25 +547,37 @@ def update_intent_state(
 
     step = _current_step(intent)
 
-    if step and _should_advance_step(step, meta["slots_filled_delta"]):
+    if retargeted:
+        intent["step_attempts"] = 0
+        meta["intent_decision"] = "retarget"
+    elif step and _should_advance_step(step, meta["slots_filled_delta"]):
         _advance_step(intent)
         intent["step_attempts"] = 0
         meta["intent_decision"] = "advance"
     else:
         intent["step_attempts"] = intent.get("step_attempts", 0) + 1
+        pivot_reason = ""
         if _is_vague(user_message):
             meta["reasons"].append("vague_response")
-            if intent["step_attempts"] >= intent.get("max_attempts_per_step", 2):
-                _advance_step(intent)
+            pivot_reason = "vague"
+        elif step and step.get("kind") == "request_evidence" and not world_state.get(
+            "evidence_offered"
+        ):
+            pivot_reason = "no_evidence"
+
+        if intent["step_attempts"] >= intent.get("max_attempts_per_step", 2):
+            if pivot_reason:
+                new_kind = choose_pivot_kind(step.get("kind", "probe_open") if step else "probe_open")
+                if step:
+                    step["kind"] = new_kind
                 intent["step_attempts"] = 0
                 meta["intent_decision"] = "pivot"
-                meta["pivot_reason"] = "vague_response"
+                meta["pivot_reason"] = pivot_reason
+                meta["pivot_strategy"] = _pivot_strategy_from_kind(new_kind)
             else:
-                meta["intent_decision"] = "continue"
-        elif intent["step_attempts"] >= intent.get("max_attempts_per_step", 2):
-            _advance_step(intent)
-            intent["step_attempts"] = 0
-            meta["intent_decision"] = "advance"
+                _advance_step(intent)
+                intent["step_attempts"] = 0
+                meta["intent_decision"] = "advance"
         else:
             meta["intent_decision"] = "continue"
 

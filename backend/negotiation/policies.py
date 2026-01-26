@@ -14,6 +14,7 @@ class Policy:
     rag_query_template: str
     phase_hint: str | None = None
     capabilities: Set[str] | None = None
+    guards: Set[str] | None = None
 
 
 POLICIES: List[Policy] = [
@@ -27,6 +28,7 @@ POLICIES: List[Policy] = [
         ),
         phase_hint="1",
         capabilities={"probe_open"},
+        guards={"safe_when_tense"},
     ),
     Policy(
         policy_id="info_extract_critical",
@@ -38,6 +40,7 @@ POLICIES: List[Policy] = [
         ),
         phase_hint="2",
         capabilities={"probe_open", "probe_narrow"},
+        guards={"avoid_price_numbers", "safe_when_tense"},
     ),
     Policy(
         policy_id="test_credibility",
@@ -49,6 +52,7 @@ POLICIES: List[Policy] = [
         ),
         phase_hint="2",
         capabilities={"request_evidence", "probe_narrow"},
+        guards=set(),
     ),
     Policy(
         policy_id="delay_price_discussion",
@@ -60,6 +64,7 @@ POLICIES: List[Policy] = [
         ),
         phase_hint="2",
         capabilities={"probe_open"},
+        guards={"avoid_price_numbers"},
     ),
     Policy(
         policy_id="challenge_anchor_indirect",
@@ -71,6 +76,7 @@ POLICIES: List[Policy] = [
         ),
         phase_hint="4",
         capabilities={"pressure_soft"},
+        guards=set(),
     ),
     Policy(
         policy_id="tradeoff_offer",
@@ -82,6 +88,7 @@ POLICIES: List[Policy] = [
         ),
         phase_hint="4",
         capabilities={"trade_incentive"},
+        guards=set(),
     ),
     Policy(
         policy_id="hold_position",
@@ -93,6 +100,7 @@ POLICIES: List[Policy] = [
         ),
         phase_hint="4",
         capabilities={"pressure_soft", "close_next"},
+        guards=set(),
     ),
     Policy(
         policy_id="deescalate_tension",
@@ -104,6 +112,7 @@ POLICIES: List[Policy] = [
         ),
         phase_hint="1",
         capabilities={"pressure_soft", "probe_open"},
+        guards={"safe_when_tense"},
     ),
     Policy(
         policy_id="close_with_conditions",
@@ -115,6 +124,7 @@ POLICIES: List[Policy] = [
         ),
         phase_hint="5",
         capabilities={"close_next"},
+        guards={"requires_slot_complete"},
     ),
 ]
 

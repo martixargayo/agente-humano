@@ -420,6 +420,7 @@ Riesgo: {risk_posture}
     target_slot = intent_hint.get("target_slot", "")
     next_action_hint = intent_hint.get("next_action_hint", "")
     slots_missing = intent_hint.get("slots_missing", [])
+    commitment_level = intent_hint.get("commitment_level", "")
 
     executor_system = f"""
 {BASE_PERSONALITY_PROMPT}
@@ -458,11 +459,14 @@ Directrices adicionales:
 - {posture_instructions.get(risk_posture, posture_instructions["low"])}
 - {phase_line}
 - Intención activa: {intent_goal}
-- Paso actual: {step_kind}
+- Step: {step_kind}
 - Slot objetivo: {target_slot}
 - Siguiente foco: {next_action_hint}
 - Slots pendientes: {slots_missing}
-- Regla: ejecuta SOLO el paso actual y no cierres todo en un turno.
+- Compromiso: {commitment_level}
+- Regla: ejecuta SOLO el step actual.
+- Regla: tu ÚNICA pregunta debe estar orientada al {target_slot}.
+- Regla: no preguntes por otros slots.
 
 Manual táctico de RAG para esta policy:
 {techniques_text}

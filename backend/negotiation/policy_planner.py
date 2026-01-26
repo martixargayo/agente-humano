@@ -81,6 +81,23 @@ def _allowed_policy_ids(
         }
         allowed |= {"deescalate_tension", "rapport_build"}
 
+    required_guards: set[str] = set()
+    if health in {"tense", "stalled"}:
+        required_guards.add("safe_when_tense")
+
+    def _guard_violation(policy_id: str) -> bool:
+        policy = next((item for item in POLICIES if item.policy_id == policy_id), None)
+        if not policy or not policy.guards:
+            if required_guards:
+                return True
+            return False
+        guards = policy.guards or set()
+        if required_guards and not required_guards.issubset(guards):
+            return True
+        if "avoid_price_numbers" in guards and world_state.get("price_mentioned"):
+            return True
+        return False
+
     if progress_state.get("turns_in_same_mode", 0) >= 2:
         last_policy = progress_state.get("last_chosen_policy_id", "")
         if last_policy in allowed:
@@ -99,6 +116,8 @@ def _allowed_policy_ids(
 
     if world_state.get("price_mentioned"):
         allowed.discard("delay_price_discussion")
+
+    allowed = {policy_id for policy_id in allowed if not _guard_violation(policy_id)}
 
     if not allowed:
         return list_policy_ids()
@@ -163,6 +182,16 @@ def apply_intent_constraints(
     preferred = _preferred_policy_ids(intent_hint)
     if not intent_hint:
         return allowed, preferred, meta
+    if intent_hint.get("slots_missing") and intent_hint.get("slots_missing") != []:
+        allowed = [
+            policy_id
+            for policy_id in allowed
+            if not (
+                (policy := next((item for item in POLICIES if item.policy_id == policy_id), None))
+                and policy.guards
+                and "requires_slot_complete" in policy.guards
+            )
+        ]
     commitment = intent_hint.get("commitment_level")
     if commitment == "hard" and preferred:
         forced = [policy_id for policy_id in preferred if policy_id in allowed]
@@ -175,8 +204,9 @@ def apply_intent_constraints(
     if commitment == "soft" and preferred:
         intersection = [policy_id for policy_id in preferred if policy_id in allowed]
         if intersection:
-            meta["planner_mode"] = "intent_preferred"
-            return allowed, preferred, meta
+            rest = [policy_id for policy_id in allowed if policy_id not in intersection]
+            meta["planner_mode"] = "intent_soft_ranked"
+            return intersection + rest, preferred, meta
         meta["planner_mode"] = "intent_preferred"
     return allowed, preferred, meta
 
@@ -201,6 +231,7 @@ def plan_policy(
         "issues": [],
         "planner_mode": intent_meta.get("planner_mode", ""),
         "intent_preferred_policy_ids": preferred,
+        "allowed_policy_ids": allowed,
     }
 
     if not policy_ids:
