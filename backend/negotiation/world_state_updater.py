@@ -142,6 +142,7 @@ def update_world_state(prev_world: WorldState | None, user_message: str) -> Worl
     base = default_world_state()
     if prev_world:
         base.update(prev_world)
+    base.pop("tone_signal", None)
 
     text = _normalize_text(user_message)
     lower = text.lower()
@@ -175,12 +176,15 @@ def update_world_state(prev_world: WorldState | None, user_message: str) -> Worl
         base["docs_claimed"] = True
         base["docs_types"] = _merge_list(base["docs_types"], docs_found)
 
-    tone_signal = "neutral"
-    if any(marker in lower for marker in _TENSE_MARKERS):
-        tone_signal = "tense"
-    elif any(marker in lower for marker in _FRIENDLY_MARKERS):
-        tone_signal = "friendly"
-    base["tone_signal"] = tone_signal
+    tone_hits: List[str] = []
+    for marker in _TENSE_MARKERS:
+        if marker in lower:
+            tone_hits.append(f"tense:{marker}")
+    for marker in _FRIENDLY_MARKERS:
+        if marker in lower:
+            tone_hits.append(f"friendly:{marker}")
+    if tone_hits:
+        base["tone_marker_hits"] = _merge_list(base["tone_marker_hits"], tone_hits)
 
     return base
 

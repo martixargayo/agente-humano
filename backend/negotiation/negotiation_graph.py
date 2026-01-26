@@ -19,7 +19,8 @@ from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
 
 from .belief_state_updater import update_belief_state
-from .policies import get_policy
+from .context_utils import build_context_snippet
+from .policies import get_policy, list_policy_ids
 from .policy_planner import plan_policy
 from .progress_updater import update_progress_state
 from .schemas import (
@@ -31,6 +32,12 @@ from .schemas import (
     default_policy_decision,
     default_progress_state,
     default_world_state,
+)
+from .validation import (
+    normalize_belief_state,
+    normalize_policy_decision,
+    normalize_progress_state,
+    normalize_world_state,
 )
 from .world_state_updater import update_world_state
 
@@ -147,10 +154,6 @@ def _format_messages_as_text(messages: List[Message]) -> str:
     return "\n".join(lines).strip() or "(sin mensajes previos relevantes)"
 
 
-def _format_recent_history(messages: List[Message], max_messages: int = 4) -> str:
-    return _format_messages_as_text(messages[-max_messages:])
-
-
 # ---- RAG táctico por policy ----
 
 
@@ -231,6 +234,7 @@ def policy_planner_node(state: NegotiationTurn) -> NegotiationTurn:
         progress_state=state["progress_state"],
         objective=state["objective"],
         constraints=state.get("constraints", ""),
+        recent_context=state.get("recent_history_text", ""),
     )
     return state
 
@@ -239,6 +243,8 @@ def progress_updater_node(state: NegotiationTurn) -> NegotiationTurn:
     state["progress_state"] = update_progress_state(
         prev_progress=state.get("progress_state"),
         policy_decision=state["policy_decision"],
+        world_state=state["world_state"],
+        belief_state=state["belief_state"],
     )
     return state
 
@@ -420,7 +426,7 @@ def run_negotiation_agent(
 
     summary_text = state.summary or "Aún no hay resumen de la conversación."
     history_text = _format_messages_as_text(state.history)
-    recent_history_text = _format_recent_history(state.history)
+    recent_history_text = build_context_snippet(state.history, state.summary)
 
     objective = state.negotiation_objective or ""
     constraints = (
@@ -437,20 +443,24 @@ def run_negotiation_agent(
         "user_message": user_message,
         "objective": objective,
         "constraints": constraints,
-        "world_state": state.world_state or default_world_state(),
-        "belief_state": state.belief_state or default_belief_state(),
-        "progress_state": state.progress_state or default_progress_state(),
-        "policy_decision": state.policy_state or default_policy_decision(),
+        "world_state": normalize_world_state(state.world_state)[0],
+        "belief_state": normalize_belief_state(state.belief_state)[0],
+        "progress_state": normalize_progress_state(state.progress_state)[0],
+        "policy_decision": normalize_policy_decision(
+            state.policy_state, list_policy_ids()
+        )[0],
         "response": "",
     }
 
     new_graph_state = negotiation_app.invoke(graph_state)
 
     state.negotiation_objective = new_graph_state["objective"]
-    state.world_state = new_graph_state["world_state"]
-    state.belief_state = new_graph_state["belief_state"]
-    state.policy_state = new_graph_state["policy_decision"]
-    state.progress_state = new_graph_state["progress_state"]
+    state.world_state = normalize_world_state(new_graph_state["world_state"])[0]
+    state.belief_state = normalize_belief_state(new_graph_state["belief_state"])[0]
+    state.policy_state = normalize_policy_decision(
+        new_graph_state["policy_decision"], list_policy_ids()
+    )[0]
+    state.progress_state = normalize_progress_state(new_graph_state["progress_state"])[0]
 
     reply_text = new_graph_state["response"].strip()
 
