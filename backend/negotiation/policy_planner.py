@@ -16,6 +16,7 @@ from .schemas import (
     PolicyDecision,
     ProgressState,
     WorldState,
+    default_policy_decision,
 )
 from .validation import normalize_policy_decision
 
@@ -63,7 +64,11 @@ def _allowed_policy_ids(
     belief_state: BeliefState,
     progress_state: ProgressState,
 ) -> list[str]:
-    allowed = set(list_policy_ids())
+    policy_ids = list_policy_ids()
+    if not policy_ids:
+        return []
+
+    allowed = set(policy_ids)
     health = belief_state.get("dynamics", {}).get("interaction_health", "stable")
 
     if health == "tense":
@@ -132,7 +137,7 @@ def plan_policy(
     constraints: str,
     recent_context: str,
 ) -> tuple[PolicyDecision, dict]:
-    catalog_text = policy_catalog_text()
+    policy_ids = list_policy_ids()
     allowed = _allowed_policy_ids(world_state, belief_state, progress_state)
     meta = {
         "planner_failed": False,
@@ -142,6 +147,21 @@ def plan_policy(
         "issues": [],
     }
 
+    if not policy_ids:
+        meta["planner_failed"] = True
+        meta["planner_error"] = "policy_catalog_empty"
+        meta["planner_fallback_used"] = True
+        meta["issues"].append("policy_catalog_empty")
+        return default_policy_decision(), meta
+
+    if not allowed:
+        meta["planner_failed"] = True
+        meta["planner_error"] = "allowed_empty"
+        meta["planner_fallback_used"] = True
+        meta["issues"].append("allowed_empty")
+        return default_policy_decision(), meta
+
+    catalog_text = policy_catalog_text()
     messages = _planner_prompt.format_messages(
         policy_catalog=catalog_text,
         world_state=json.dumps(world_state, ensure_ascii=False),
