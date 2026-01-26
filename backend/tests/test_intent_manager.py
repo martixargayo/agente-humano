@@ -45,6 +45,14 @@ def test_intent_does_not_start_when_one_turn_sufficient():
     assert meta["intent_decision"] == "inactive"
 
 
+def test_build_steps_missing_empty_returns_close_next():
+    steps = intent_manager.build_steps("info_extract", [])
+    assert steps
+    assert steps[0]["kind"] == "close_next"
+    assert steps[0]["target_slot"] == ""
+    assert steps[0]["success_if_filled"] == []
+
+
 def test_step_advances_only_when_target_slot_progresses():
     world = default_world_state()
     world["evidence_offered"] = True

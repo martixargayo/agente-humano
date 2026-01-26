@@ -94,7 +94,17 @@ def build_intent_contract(
 
 
 def build_steps(intent_type: str, missing: list[str]) -> list[IntentStep]:
-    target = missing[0] if missing else "confirm_close"
+    # P0: missing vacío debe producir un plan válido (sin slot fantasma)
+    if not missing:
+        return [
+            {
+                "kind": "close_next",
+                "target_slot": "",
+                "success_if_filled": [],
+            }
+        ]
+
+    target = missing[0]
     return [
         {"kind": "probe_open", "target_slot": target, "success_if_filled": [target]},
         {"kind": "probe_narrow", "target_slot": target, "success_if_filled": [target]},
@@ -384,6 +394,18 @@ def _current_step(intent: IntentState) -> IntentStep | None:
     return intent["steps"][step_idx]
 
 
+def _normalize_slots_filled_sources(intent: IntentState) -> None:
+    """
+    P0 migration: legacy states may have IntentSlot without 'source'.
+    This normalizes them in-place to keep runtime/schema consistent.
+    """
+    slots = intent.get("slots") or {}
+    slots_filled = slots.get("slots_filled") or {}
+    for _k, payload in list(slots_filled.items()):
+        if isinstance(payload, dict) and "source" not in payload:
+            payload["source"] = "legacy"
+
+
 def _ensure_steps_hydrated(
     intent: IntentState,
     world_state: WorldState,
@@ -434,6 +456,7 @@ def update_intent_state(
     turn_count: int,
 ) -> Tuple[IntentState, dict, dict]:
     intent = deepcopy(prev_intent or default_intent_state())
+    _normalize_slots_filled_sources(intent)
     meta = {
         "intent_prev": deepcopy(intent),
         "intent_new": {},
