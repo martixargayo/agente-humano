@@ -21,7 +21,7 @@ from langchain_core.documents import Document
 from .belief_state_updater import update_belief_state
 from .context_utils import build_context_snippet
 from .policies import get_policy, list_policy_ids
-from .policy_planner import plan_policy
+from .policy_planner import allowed_policy_ids, plan_policy
 from .progress_updater import update_progress_state
 from .schemas import (
     BeliefState,
@@ -39,7 +39,7 @@ from .validation import (
     normalize_progress_state,
     normalize_world_state,
 )
-from .world_state_updater import update_world_state
+from .world_state_updater import diff_world_state, update_world_state
 
 
 load_dotenv()
@@ -126,9 +126,15 @@ class NegotiationTurn(TypedDict):
     constraints: str
 
     world_state: WorldState
+    prev_world_state: WorldState
+    world_diff: dict
     belief_state: BeliefState
+    prev_belief_state: BeliefState
     progress_state: ProgressState
     policy_decision: PolicyDecision
+    last_policy_decision: PolicyDecision
+    last_assistant_message: str
+    allowed_policy_ids: List[str]
 
     response: str
 
@@ -152,6 +158,28 @@ def _format_messages_as_text(messages: List[Message]) -> str:
         label = "Vendedor" if role == "user" else "Comprador"
         lines.append(f"{label}: {msg['content']}")
     return "\n".join(lines).strip() or "(sin mensajes previos relevantes)"
+
+
+def _last_assistant_message(messages: List[Message]) -> str:
+    for msg in reversed(messages):
+        if msg.get("role") == "assistant":
+            return msg.get("content", "")
+    return ""
+
+
+def _diff_belief_state(prev: BeliefState, new: BeliefState) -> dict:
+    diff: dict = {}
+    if prev.get("stance") != new.get("stance"):
+        diff["stance"] = {"before": prev.get("stance"), "after": new.get("stance")}
+    if prev.get("dynamics") != new.get("dynamics"):
+        diff["dynamics"] = {"before": prev.get("dynamics"), "after": new.get("dynamics")}
+    if prev.get("reasons") != new.get("reasons"):
+        diff["reasons"] = {"before": prev.get("reasons"), "after": new.get("reasons")}
+    if prev.get("hypotheses") != new.get("hypotheses"):
+        diff["hypotheses"] = {"before": prev.get("hypotheses"), "after": new.get("hypotheses")}
+    if prev.get("tom") != new.get("tom"):
+        diff["tom"] = {"before": prev.get("tom"), "after": new.get("tom")}
+    return diff
 
 
 # ---- RAG táctico por policy ----
@@ -211,15 +239,22 @@ Objetivo: recuperar tácticas concretas para ejecutar esta policy.
 
 def world_updater_node(state: NegotiationTurn) -> NegotiationTurn:
     prev_world = state.get("world_state") or default_world_state()
+    state["prev_world_state"] = prev_world
     state["world_state"] = update_world_state(prev_world, state.get("user_message", ""))
+    state["world_diff"] = diff_world_state(prev_world, state["world_state"])
     return state
 
 
 def belief_updater_node(state: NegotiationTurn) -> NegotiationTurn:
     prev_belief = state.get("belief_state") or default_belief_state()
+    state["prev_belief_state"] = prev_belief
     state["belief_state"] = update_belief_state(
         prev_belief_state=prev_belief,
+        prev_world_state=state["prev_world_state"],
         world_state=state["world_state"],
+        world_diff=state.get("world_diff", {}),
+        last_policy_decision=state.get("last_policy_decision"),
+        last_assistant_message=state.get("last_assistant_message", ""),
         user_message=state.get("user_message", ""),
         context_snippet=state.get("recent_history_text", ""),
     )
@@ -228,6 +263,9 @@ def belief_updater_node(state: NegotiationTurn) -> NegotiationTurn:
 
 def policy_planner_node(state: NegotiationTurn) -> NegotiationTurn:
     _ensure_objective(state)
+    state["allowed_policy_ids"] = allowed_policy_ids(
+        state["world_state"], state["belief_state"], state["progress_state"]
+    )
     state["policy_decision"] = plan_policy(
         world_state=state["world_state"],
         belief_state=state["belief_state"],
@@ -243,7 +281,9 @@ def progress_updater_node(state: NegotiationTurn) -> NegotiationTurn:
     state["progress_state"] = update_progress_state(
         prev_progress=state.get("progress_state"),
         policy_decision=state["policy_decision"],
+        prev_world_state=state["prev_world_state"],
         world_state=state["world_state"],
+        prev_belief_state=state.get("prev_belief_state"),
         belief_state=state["belief_state"],
     )
     return state
@@ -436,6 +476,13 @@ def run_negotiation_agent(
         "- Evitar revelar el límite de 10k explícitamente."
     )
 
+    world_state_input, world_issues_in = normalize_world_state(state.world_state)
+    belief_state_input, belief_issues_in = normalize_belief_state(state.belief_state)
+    progress_state_input, progress_issues_in = normalize_progress_state(state.progress_state)
+    policy_state_input, policy_issues_in = normalize_policy_decision(
+        state.policy_state, list_policy_ids()
+    )
+
     graph_state: NegotiationTurn = {
         "summary": summary_text,
         "history_text": history_text,
@@ -443,28 +490,64 @@ def run_negotiation_agent(
         "user_message": user_message,
         "objective": objective,
         "constraints": constraints,
-        "world_state": normalize_world_state(state.world_state)[0],
-        "belief_state": normalize_belief_state(state.belief_state)[0],
-        "progress_state": normalize_progress_state(state.progress_state)[0],
-        "policy_decision": normalize_policy_decision(
-            state.policy_state, list_policy_ids()
-        )[0],
+        "world_state": world_state_input,
+        "prev_world_state": world_state_input,
+        "world_diff": {},
+        "belief_state": belief_state_input,
+        "prev_belief_state": belief_state_input,
+        "progress_state": progress_state_input,
+        "policy_decision": policy_state_input,
+        "last_policy_decision": policy_state_input,
+        "last_assistant_message": _last_assistant_message(state.history),
+        "allowed_policy_ids": [],
         "response": "",
     }
 
     new_graph_state = negotiation_app.invoke(graph_state)
 
     state.negotiation_objective = new_graph_state["objective"]
-    state.world_state = normalize_world_state(new_graph_state["world_state"])[0]
-    state.belief_state = normalize_belief_state(new_graph_state["belief_state"])[0]
-    state.policy_state = normalize_policy_decision(
+    new_world_state, world_issues_out = normalize_world_state(new_graph_state["world_state"])
+    new_belief_state, belief_issues_out = normalize_belief_state(new_graph_state["belief_state"])
+    new_policy_state, policy_issues_out = normalize_policy_decision(
         new_graph_state["policy_decision"], list_policy_ids()
-    )[0]
-    state.progress_state = normalize_progress_state(new_graph_state["progress_state"])[0]
+    )
+    new_progress_state, progress_issues_out = normalize_progress_state(
+        new_graph_state["progress_state"]
+    )
+
+    state.world_state = new_world_state
+    state.belief_state = new_belief_state
+    state.policy_state = new_policy_state
+    state.progress_state = new_progress_state
 
     reply_text = new_graph_state["response"].strip()
 
     add_message(state, role="assistant", content=reply_text)
+    state.debug_trace.append(
+        {
+            "turn": state.turn_count,
+            "world_prev": graph_state["world_state"],
+            "world_new": new_world_state,
+            "world_diff": new_graph_state.get("world_diff", {}),
+            "belief_prev": graph_state["belief_state"],
+            "belief_new": new_belief_state,
+            "belief_diff": _diff_belief_state(graph_state["belief_state"], new_belief_state),
+            "allowed_policy_ids": new_graph_state.get("allowed_policy_ids", []),
+            "policy_decision": new_policy_state,
+            "progress_state": new_progress_state,
+            "validation_issues": {
+                "world_in": world_issues_in,
+                "belief_in": belief_issues_in,
+                "policy_in": policy_issues_in,
+                "progress_in": progress_issues_in,
+                "world_out": world_issues_out,
+                "belief_out": belief_issues_out,
+                "policy_out": policy_issues_out,
+                "progress_out": progress_issues_out,
+            },
+            "fallback_used": new_graph_state.get("policy_decision") != new_policy_state,
+        }
+    )
     save_session_state(state)
 
     return reply_text, state

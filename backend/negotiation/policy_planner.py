@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import json
 import os
+from typing import Literal
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
+from pydantic import BaseModel, Field
 
 from prompts import POLICY_PLANNER_SYSTEM_PROMPT, POLICY_PLANNER_USER_PROMPT
 from .policies import list_policy_ids, policy_catalog_text
@@ -30,6 +32,13 @@ _planner_prompt = ChatPromptTemplate.from_messages(
         ("user", POLICY_PLANNER_USER_PROMPT),
     ]
 )
+
+
+class _PolicyDecisionModel(BaseModel):
+    policy_id: str = ""
+    reason: str = ""
+    micro_goal: str = ""
+    risk_posture: Literal["low", "mid", "high"] = Field(default="low")
 
 
 def _fallback_policy(belief_state: BeliefState) -> PolicyDecision:
@@ -91,6 +100,14 @@ def _allowed_policy_ids(
     return sorted(allowed)
 
 
+def allowed_policy_ids(
+    world_state: WorldState,
+    belief_state: BeliefState,
+    progress_state: ProgressState,
+) -> list[str]:
+    return _allowed_policy_ids(world_state, belief_state, progress_state)
+
+
 def _repair_micro_goal(policy_id: str, micro_goal: str) -> str:
     if policy_id == "delay_price_discussion":
         forbidden = ["precio", "€", "euros", "cifra", "10.000", "10000"]
@@ -115,32 +132,27 @@ def plan_policy(
     constraints: str,
     recent_context: str,
 ) -> PolicyDecision:
-    policy_ids = list_policy_ids()
     catalog_text = policy_catalog_text()
-    allowed_policy_ids = _allowed_policy_ids(world_state, belief_state, progress_state)
+    allowed = _allowed_policy_ids(world_state, belief_state, progress_state)
 
     messages = _planner_prompt.format_messages(
         policy_catalog=catalog_text,
-        policy_ids=policy_ids,
         world_state=json.dumps(world_state, ensure_ascii=False),
         belief_state=json.dumps(belief_state, ensure_ascii=False),
         progress_state=json.dumps(progress_state, ensure_ascii=False),
         recent_context=recent_context,
         objective=objective,
         constraints=constraints,
-        allowed_policy_ids=allowed_policy_ids,
+        allowed_policy_ids=allowed,
     )
 
-    result = _planner_llm.invoke(messages)
-    raw = (result.content or "").strip()
-
     try:
-        data = json.loads(raw)
-        normalized, issues = normalize_policy_decision(data, policy_ids)
+        structured_llm = _planner_llm.with_structured_output(_PolicyDecisionModel)
+        result = structured_llm.invoke(messages)
+        data = result.model_dump()
+        normalized, issues = normalize_policy_decision(data, allowed)
         if issues:
             print(f"[policy_planner] Validación: {issues}")
-        if normalized["policy_id"] not in allowed_policy_ids:
-            raise ValueError("policy_id bloqueada por gating")
         normalized["micro_goal"] = _repair_micro_goal(
             normalized["policy_id"], normalized["micro_goal"]
         )

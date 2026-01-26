@@ -138,11 +138,22 @@ def _merge_list(existing: List[str], new_items: List[str]) -> List[str]:
     return merged
 
 
+def _derive_tone_signal(tone_hits: List[str]) -> str:
+    if not tone_hits:
+        return "neutral"
+    has_friendly = any(hit.startswith("friendly:") for hit in tone_hits)
+    has_tense = any(hit.startswith("tense:") for hit in tone_hits)
+    if has_friendly and not has_tense:
+        return "friendly"
+    if has_tense and not has_friendly:
+        return "tense"
+    return "neutral"
+
+
 def update_world_state(prev_world: WorldState | None, user_message: str) -> WorldState:
     base = default_world_state()
     if prev_world:
         base.update(prev_world)
-    base.pop("tone_signal", None)
 
     text = _normalize_text(user_message)
     lower = text.lower()
@@ -185,6 +196,8 @@ def update_world_state(prev_world: WorldState | None, user_message: str) -> Worl
             tone_hits.append(f"friendly:{marker}")
     if tone_hits:
         base["tone_marker_hits"] = _merge_list(base["tone_marker_hits"], tone_hits)
+
+    base["tone_signal"] = _derive_tone_signal(base.get("tone_marker_hits", []))
 
     return base
 

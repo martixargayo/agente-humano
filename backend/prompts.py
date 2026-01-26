@@ -263,15 +263,30 @@ Reglas:
 - Cada evidencia debe anclarse en el WorldState o en citas del mensaje reciente.
 - No uses razones abstractas sin ancla (“parece honesto”); al menos una razón debe
   mencionar un marcador del WorldState cuando price_mentioned o deadline_claimed sean true.
-- La interpretación de tono va en dynamics.interaction_health, no en WorldState.
+- WorldState incluye señales observables de tono (tone_signal/tone_marker_hits);
+  la interpretación final va en dynamics.interaction_health.
+- Solo cambia stance si puedes citar evidencia del world_diff o una frase del vendedor.
+- Si world_diff es pequeño o vacío, el update debe ser pequeño.
 """
 
 BELIEF_UPDATE_USER_PROMPT = """
 [BeliefState previo]
 {prev_belief_state}
 
+[WorldState previo]
+{prev_world_state}
+
 [WorldState actualizado]
 {world_state}
+
+[World diff]
+{world_diff}
+
+[Policy previa del comprador]
+{last_policy_decision}
+
+[Último mensaje del comprador]
+{last_assistant_message}
 
 [Mensaje actual del vendedor]
 {user_message}
@@ -331,7 +346,7 @@ POLICY_PLANNER_USER_PROMPT = """
 
 Devuelve SOLO JSON:
 {
-  "policy_id": "<uno de {policy_ids}>",
+  "policy_id": "<uno de {allowed_policy_ids}>",
   "reason": "...",
   "micro_goal": "...",
   "risk_posture": "low|mid|high"

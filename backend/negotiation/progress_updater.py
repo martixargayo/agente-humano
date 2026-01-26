@@ -2,49 +2,73 @@
 from __future__ import annotations
 
 from .schemas import BeliefState, PolicyDecision, ProgressState, WorldState, default_progress_state
+from .world_state_updater import diff_world_state
+
+
+def _has_info_delta(world_diff: dict) -> bool:
+    info_keys = {
+        "docs_claimed",
+        "docs_types",
+        "deadline_claimed",
+        "deadline_text",
+        "other_buyer_claimed",
+        "concession_made",
+        "concession_text",
+        "price_mentioned",
+        "price_value",
+    }
+    return any(key in world_diff for key in info_keys)
 
 
 def _evaluate_outcome(
     policy_id: str,
+    prev_world_state: WorldState,
     world_state: WorldState,
+    prev_belief_state: BeliefState | None,
     belief_state: BeliefState,
 ) -> str:
     if not policy_id:
         return "neutral"
 
     health = belief_state.get("dynamics", {}).get("interaction_health", "stable")
+    prev_health = (
+        prev_belief_state.get("dynamics", {}).get("interaction_health", "stable")
+        if prev_belief_state
+        else "stable"
+    )
+    world_diff = diff_world_state(prev_world_state, world_state)
 
     if policy_id == "info_extract_critical":
-        if world_state.get("docs_claimed") or world_state.get("deadline_claimed"):
+        if _has_info_delta(world_diff):
             return "good"
-        if world_state.get("price_mentioned"):
-            return "neutral"
         return "neutral"
 
     if policy_id == "delay_price_discussion":
-        if world_state.get("price_mentioned"):
+        if world_state.get("price_mentioned") and not prev_world_state.get("price_mentioned"):
             return "bad"
-        return "good"
+        if _has_info_delta(world_diff):
+            return "good"
+        return "neutral"
 
     if policy_id == "deescalate_tension":
-        if health == "stable":
+        if health == "stable" and prev_health != "stable":
             return "good"
         if health == "tense":
             return "bad"
         return "neutral"
 
     if policy_id == "rapport_build":
-        if health == "stable":
+        if health == "stable" and prev_health != "stable":
             return "good"
         return "neutral"
 
     if policy_id == "test_credibility":
-        if world_state.get("other_buyer_claimed") or world_state.get("deadline_claimed"):
+        if _has_info_delta(world_diff):
             return "good"
         return "neutral"
 
     if policy_id in {"tradeoff_offer", "hold_position"}:
-        if world_state.get("concession_made"):
+        if world_state.get("concession_made") and not prev_world_state.get("concession_made"):
             return "good"
         return "neutral"
 
@@ -54,7 +78,7 @@ def _evaluate_outcome(
         return "neutral"
 
     if policy_id == "close_with_conditions":
-        if world_state.get("concession_made"):
+        if world_state.get("concession_made") and not prev_world_state.get("concession_made"):
             return "good"
         return "neutral"
 
@@ -64,7 +88,9 @@ def _evaluate_outcome(
 def update_progress_state(
     prev_progress: ProgressState | None,
     policy_decision: PolicyDecision,
+    prev_world_state: WorldState,
     world_state: WorldState,
+    prev_belief_state: BeliefState | None,
     belief_state: BeliefState,
 ) -> ProgressState:
     progress = default_progress_state()
@@ -74,7 +100,11 @@ def update_progress_state(
     previous_policy_id = prev_progress.get("last_policy_id", "") if prev_progress else ""
     if previous_policy_id:
         progress["last_policy_outcome"] = _evaluate_outcome(
-            previous_policy_id, world_state, belief_state
+            previous_policy_id,
+            prev_world_state,
+            world_state,
+            prev_belief_state,
+            belief_state,
         )
 
     policy_id = policy_decision.get("policy_id", "")

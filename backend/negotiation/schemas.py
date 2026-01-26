@@ -5,6 +5,7 @@ from typing import Dict, List, Literal, TypedDict
 InteractionHealth = Literal["stable", "tense", "stalled"]
 RiskPosture = Literal["low", "mid", "high"]
 PolicyOutcome = Literal["good", "neutral", "bad", ""]
+ToneSignal = Literal["neutral", "friendly", "tense"]
 
 
 class WorldState(TypedDict):
@@ -17,6 +18,7 @@ class WorldState(TypedDict):
     concession_text: str
     docs_claimed: bool
     docs_types: List[str]
+    tone_signal: ToneSignal
     tone_marker_hits: List[str]
 
 
@@ -77,6 +79,7 @@ def default_world_state() -> WorldState:
         "concession_text": "",
         "docs_claimed": False,
         "docs_types": [],
+        "tone_signal": "neutral",
         "tone_marker_hits": [],
     }
 
