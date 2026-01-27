@@ -130,6 +130,26 @@ def test_has_belief_evidence_delta_triggers_on_tone_change():
     assert has_belief_evidence_delta({}, prev, cur) is True
 
 
+def test_has_belief_evidence_delta_does_not_use_user_text():
+    from negotiation.belief_state_updater import has_belief_evidence_delta
+
+    prev = default_world_state()
+    cur = default_world_state()
+    extractor_meta = {"decisions": {"should_update_beliefs": False}}
+
+    assert has_belief_evidence_delta({}, prev, cur, extractor_meta) is False
+
+
+def test_has_belief_evidence_delta_respects_decision_flag():
+    from negotiation.belief_state_updater import has_belief_evidence_delta
+
+    prev = default_world_state()
+    cur = default_world_state()
+    extractor_meta = {"decisions": {"should_update_beliefs": True}}
+
+    assert has_belief_evidence_delta({}, prev, cur, extractor_meta) is True
+
+
 def test_belief_reasons_tiebreak_is_deterministic_with_real_keys():
     from negotiation.belief_state_updater import _BeliefReasonModel, _BeliefStateModel
 

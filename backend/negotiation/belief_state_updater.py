@@ -96,6 +96,11 @@ _CRITICAL_FLAGS = (
     "docs_claimed",
     "concession_made",
     "message_is_vague",
+    "batna_claimed",
+    "urgency_claimed",
+    "min_price_claimed",
+    "price_firm",
+    "evidence_offered",
 )
 
 
@@ -105,17 +110,22 @@ def has_belief_evidence_delta(
     world: WorldState,
     extractor_meta: dict | None = None,
 ) -> bool:
-    decisions = (extractor_meta or {}).get("decisions", {})
-    if decisions.get("should_update_beliefs"):
+    """
+    Gate determinista para decidir si vale la pena ejecutar belief updater (coste alto).
+    P0.1: NO dependemos del texto del usuario.
+    """
+    decisions = (extractor_meta or {}).get("decisions", {}) or {}
+    if decisions.get("should_update_beliefs") is True:
         return True
     if world_diff:
         return True
-    if any(world.get(key) != prev_world.get(key) for key in _CRITICAL_FLAGS):
-        return True
+    for key in _CRITICAL_FLAGS:
+        if world.get(key) != prev_world.get(key):
+            return True
     if world.get("tone_signal") != prev_world.get("tone_signal"):
         return True
-    prev_hits = set(prev_world.get("tone_marker_hits", []))
-    new_hits = set(world.get("tone_marker_hits", [])) - prev_hits
+    prev_hits = set(prev_world.get("tone_marker_hits", []) or [])
+    new_hits = set(world.get("tone_marker_hits", []) or []) - prev_hits
     if new_hits:
         return True
     return False
@@ -149,7 +159,10 @@ def update_belief_state(
     }
 
     if not has_belief_evidence_delta(
-        world_diff, prev_world_state, world_state, extractor_meta
+        world_diff=world_diff,
+        prev_world=prev_world_state,
+        world=world_state,
+        extractor_meta=extractor_meta,
     ):
         meta["belief_update_skipped"] = True
         return previous, meta
