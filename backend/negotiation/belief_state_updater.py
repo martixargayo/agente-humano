@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 
 from langchain_core.prompts import ChatPromptTemplate
@@ -25,6 +26,7 @@ BELIEF_MODEL = os.getenv("BELIEF_MODEL_NAME", os.getenv("SUMMARY_MODEL_NAME", "g
 BELIEF_TEMPERATURE = float(os.getenv("BELIEF_TEMPERATURE", "0.0"))
 
 _belief_llm = ChatOpenAI(model=BELIEF_MODEL, temperature=BELIEF_TEMPERATURE)
+logger = logging.getLogger(__name__)
 
 _belief_prompt = ChatPromptTemplate.from_messages(
     [
@@ -199,10 +201,10 @@ def update_belief_state(
             0.15,
         )
         if issues:
-            print(f"[belief_state_updater] Validación: {issues}")
+            logger.warning("belief_state_updater_validation_issues=%s", issues)
         return normalized, meta
     except Exception as exc:
-        print(f"[belief_state_updater] Error inesperado: {exc}")
+        logger.warning("belief_state_updater_unexpected_error=%s", exc)
         meta["belief_update_failed"] = True
         meta["belief_update_error"] = str(exc)
     return previous, meta

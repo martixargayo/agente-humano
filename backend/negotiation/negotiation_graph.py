@@ -1,6 +1,7 @@
 # backend/negotiation/negotiation_graph.py
 from __future__ import annotations
 
+import logging
 import os
 import threading
 from dataclasses import dataclass
@@ -47,6 +48,7 @@ from .world_state_updater import diff_world_state, update_world_state
 
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 # ---- Configuración RAG para técnicas de negociación por policy ----
 
@@ -62,7 +64,7 @@ RAG_DIR = os.getenv("NEGOTIATION_RAG_DIR", DEFAULT_RAG_DIR)
 
 def _load_negotiation_rag_index():
     if not os.path.isdir(RAG_DIR):
-        print(f"[RAG] Directorio no encontrado: {RAG_DIR}. Usaré fallback simple.")
+        logger.warning("rag_dir_not_found=%s", RAG_DIR)
         return None
 
     docs: List[Document] = []
@@ -87,19 +89,19 @@ def _load_negotiation_rag_index():
                 )
             )
         except Exception as exc:
-            print(f"[RAG] Error leyendo {path}: {exc}")
+            logger.warning("rag_read_error path=%s error=%s", path, exc)
 
     if not docs:
-        print(f"[RAG] No se encontraron documentos de técnicas en {RAG_DIR}.")
+        logger.warning("rag_docs_not_found dir=%s", RAG_DIR)
         return None
 
     try:
         embeddings = OpenAIEmbeddings(model=EMBEDDINGS_MODEL)
         vs = FAISS.from_documents(docs, embeddings)
-        print(f"[RAG] Index de negociación cargado con {len(docs)} documentos.")
+        logger.info("rag_index_loaded count=%s", len(docs))
         return vs
     except Exception as exc:
-        print(f"[RAG] Error creando el índice FAISS: {exc}")
+        logger.warning("rag_index_error=%s", exc)
         return None
 
 
@@ -270,10 +272,13 @@ Objetivo: recuperar tácticas concretas para ejecutar esta policy.
                 f"[RAG VACÍO] No se encontraron tácticas específicas para {policy_id}."
             )
 
-        print("\n[RAG] Policy:", policy_id)
-        for d in docs:
-            print("  - Doc:", d.metadata.get("filename"), "| policy_hint:", d.metadata.get("policy_hint"))
-        print("----------\n", flush=True)
+        logger.info("rag_policy=%s", policy_id)
+        for doc in docs:
+            logger.info(
+                "rag_doc filename=%s policy_hint=%s",
+                doc.metadata.get("filename"),
+                doc.metadata.get("policy_hint"),
+            )
 
         snippets: List[str] = []
         for d in docs:
@@ -284,7 +289,7 @@ Objetivo: recuperar tácticas concretas para ejecutar esta policy.
         return header + joined
 
     except Exception as exc:
-        print(f"[RAG] Error durante la búsqueda de tácticas: {exc}")
+        logger.warning("rag_search_error=%s", exc)
         return (
             f"[RAG ERROR] No se pudieron recuperar tácticas para {policy_id}."
         )
@@ -375,6 +380,7 @@ def policy_planner_node(state: NegotiationTurn) -> NegotiationTurn:
     )
     planner_meta["intent_meta"] = state.get("intent_meta", {})
     planner_meta["phase_meta"] = state.get("phase_meta", {})
+    planner_meta["phase_state"] = state.get("progress_state", {}).get("phase_state", {})
     state["policy_decision"] = policy_decision
     state["planner_meta"] = planner_meta
     return state
@@ -546,15 +552,11 @@ Tarea:
 
     full_text = deps.execute(messages).strip()
 
-    print("\n===== RAW_EXECUTOR_OUTPUT =====")
-    print(full_text)
-    print("===== END_RAW_EXECUTOR_OUTPUT =====\n", flush=True)
+    logger.info("raw_executor_output=%s", full_text)
 
     normalized_response = normalize_text(full_text, user_message)
 
-    print("\n===== NORMALIZED_EXECUTOR_OUTPUT =====")
-    print(normalized_response)
-    print("===== END_NORMALIZED_EXECUTOR_OUTPUT =====\n", flush=True)
+    logger.info("normalized_executor_output=%s", normalized_response)
 
     state["response"] = normalized_response
     return state

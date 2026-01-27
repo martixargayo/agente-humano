@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from typing import Literal
 
@@ -27,6 +28,7 @@ PLANNER_MODEL = os.getenv("POLICY_PLANNER_MODEL_NAME", os.getenv("SUMMARY_MODEL_
 PLANNER_TEMPERATURE = float(os.getenv("POLICY_PLANNER_TEMPERATURE", "0.0"))
 
 _planner_llm = ChatOpenAI(model=PLANNER_MODEL, temperature=PLANNER_TEMPERATURE)
+logger = logging.getLogger(__name__)
 
 _planner_prompt = ChatPromptTemplate.from_messages(
     [
@@ -97,12 +99,15 @@ def repair_policy_by_phase(
     current_phase: str,
     preferred_ids: list[str] | None,
     commitment_level: str | None,
+    policy_attempts: dict[str, int] | None,
 ) -> tuple[str, dict]:
+    attempts = policy_attempts or {}
     meta = {
         "phase_repair_used": False,
         "phase_repair_from": chosen_id,
         "phase_repair_to": chosen_id,
         "phase_repair_mode": "",
+        "phase_repair_attempts_blocked": [],
     }
     if commitment_level == "hard":
         meta["phase_repair_mode"] = "disabled_intent_hard"
@@ -127,10 +132,16 @@ def repair_policy_by_phase(
     best = None
     best_bonus = chosen_bonus
     for policy_id in scope:
+        if attempts.get(policy_id, 0) >= 3:
+            continue
         bonus = _phase_bonus(policy_catalog.get(policy_id, []), current_phase)
         if bonus > best_bonus:
             best_bonus = bonus
             best = policy_id
+
+    meta["phase_repair_attempts_blocked"] = [
+        policy_id for policy_id in scope if attempts.get(policy_id, 0) >= 3
+    ][:5]
 
     if best and best_bonus >= 2:
         meta["phase_repair_used"] = True
@@ -346,6 +357,7 @@ def plan_policy(
             current_phase,
             preferred,
             commitment,
+            policy_attempts=progress_state.get("policy_attempts", {}),
         )
         if decision_id and decision_id != decision.get("policy_id"):
             decision["policy_id"] = decision_id
@@ -399,7 +411,7 @@ def plan_policy(
         meta["issues"] = issues
         meta["policy_normalization_changed"] = bool(issues)
         if issues:
-            print(f"[policy_planner] Validación: {issues}")
+            logger.warning("policy_planner_validation_issues=%s", issues)
         if issues or normalized["policy_id"] not in allowed:
             meta["planner_fallback_used"] = True
             return _apply_phase_bias(_fallback_policy(belief_state)), meta
@@ -407,11 +419,11 @@ def plan_policy(
             normalized["policy_id"], normalized["micro_goal"]
         )
         if _violates_constraints(normalized["micro_goal"], constraints):
-            print("[policy_planner] Micro-objetivo viola constraints, reparando.")
+            logger.warning("policy_planner_constraints_violation_repair=True")
             normalized["micro_goal"] = "Mantener confidencial el límite y avanzar con cautela."
         return _apply_phase_bias(normalized), meta
     except Exception as exc:
-        print(f"[policy_planner] Output inválido, usando fallback: {exc}")
+        logger.warning("policy_planner_invalid_output_fallback=%s", exc)
         meta["planner_failed"] = True
         meta["planner_error"] = str(exc)
         meta["planner_fallback_used"] = True

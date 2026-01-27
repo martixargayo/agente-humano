@@ -34,7 +34,7 @@ def test_phase_hysteresis_holds_on_low_confidence():
             "confidence": 0.6,
             "reasons": ["world:price_mentioned"],
         }
-        current = _apply_hysteresis(current, proposed, turn_count=turn)
+        current, _ = _apply_hysteresis(current, proposed, turn_count=turn)
 
     assert current["phase"] == "opening"
     assert current["last_updated_turn"] == 6
@@ -87,6 +87,7 @@ def test_repair_policy_by_phase_prefers_bonus_two():
         current_phase="opening",
         preferred_ids=["open_policy"],
         commitment_level="soft",
+        policy_attempts=None,
     )
 
     assert meta["phase_repair_used"] is True
@@ -106,6 +107,7 @@ def test_repair_policy_by_phase_skips_on_hard_commitment():
         current_phase="opening",
         preferred_ids=["open_policy"],
         commitment_level="hard",
+        policy_attempts=None,
     )
 
     assert meta["phase_repair_used"] is False
@@ -125,8 +127,28 @@ def test_repair_policy_by_phase_pref_no_intersection():
         current_phase="opening",
         preferred_ids=["missing_policy"],
         commitment_level="soft",
+        policy_attempts=None,
     )
 
     assert meta["phase_repair_used"] is False
     assert meta["phase_repair_mode"] == "preferred_no_intersection"
+    assert chosen == "close_policy"
+
+
+def test_repair_policy_by_phase_respects_attempt_budget():
+    policy_catalog = {
+        "open_policy": ["opening"],
+        "close_policy": ["closing"],
+    }
+    chosen, meta = repair_policy_by_phase(
+        chosen_id="close_policy",
+        allowed_ids=["close_policy", "open_policy"],
+        policy_catalog=policy_catalog,
+        current_phase="opening",
+        preferred_ids=["open_policy"],
+        commitment_level="soft",
+        policy_attempts={"open_policy": 3},
+    )
+
+    assert meta["phase_repair_used"] is False
     assert chosen == "close_policy"

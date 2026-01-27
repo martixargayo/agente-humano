@@ -220,26 +220,57 @@ def _normalize_reasons(reasons: list[Any]) -> list[str]:
     return normalized[:8]
 
 
+def _normalize_signals(signals: list[Any]) -> list[dict]:
+    out: list[dict] = []
+    for signal in signals or []:
+        if not isinstance(signal, dict):
+            continue
+        source = str(signal.get("source", "")).strip()
+        if source not in {"world", "belief", "intent", "history"}:
+            continue
+        key = str(signal.get("key", "")).strip()[:48]
+        val = str(signal.get("value", "")).strip()[:120]
+        if not key or not val:
+            continue
+        out.append({"source": source, "key": key, "value": val})
+        if len(out) >= 8:
+            break
+    return out
+
+
+def _truncate_history(text: str, max_chars: int = 1200) -> str:
+    trimmed = (text or "").strip()
+    if len(trimmed) <= max_chars:
+        return trimmed
+    return trimmed[-max_chars:]
+
+
 def _apply_hysteresis(
     prev_state: PhaseState,
     proposed: dict,
     turn_count: int,
-) -> PhaseState:
+) -> tuple[PhaseState, dict]:
     prev_phase: NegotiationPhase = prev_state.get("phase", "opening")
     prev_conf = float(prev_state.get("confidence", 0.6) or 0.6)
     new_phase = proposed.get("phase", prev_phase)
     new_conf = float(proposed.get("confidence", prev_conf) or prev_conf)
 
     threshold = _transition_threshold(prev_phase, new_phase)
+    meta = {
+        "threshold": threshold,
+        "attempted_change": new_phase != prev_phase,
+        "held": False,
+    }
     if new_phase != prev_phase and new_conf < threshold:
         proposed["phase"] = prev_phase
         proposed["confidence"] = max(prev_conf, new_conf) * 0.97
         reasons = list(proposed.get("reasons") or [])
         proposed["reasons"] = (["history:hysteresis_hold"] + reasons)[:8]
+        meta["held"] = True
 
     proposed["last_updated_turn"] = turn_count
     normalized, _ = normalize_phase_state(proposed)
-    return normalized
+    return normalized, meta
 
 
 def update_phase_state(
@@ -252,6 +283,8 @@ def update_phase_state(
     turn_count: int,
 ) -> tuple[PhaseState, dict]:
     prev = prev_phase_state or default_progress_state()["phase_state"]
+    history_text = recent_history_text or ""
+    truncated_history = _truncate_history(history_text)
     meta: dict = {
         "phase_update_used": False,
         "phase_update_reason": "",
@@ -263,6 +296,12 @@ def update_phase_state(
         "phase_confidence_after": float(prev.get("confidence", 0.6) or 0.6),
         "phase_hard_override_used": False,
         "phase_llm_confidence": None,
+        "phase_llm_phase_proposed": None,
+        "phase_transition_attempted": False,
+        "phase_threshold_used": None,
+        "phase_hysteresis_held": False,
+        "phase_history_chars": len(history_text),
+        "phase_history_chars_used": len(truncated_history),
     }
 
     forced, forced_reasons = _hard_phase_override(
@@ -271,7 +310,10 @@ def update_phase_state(
     if forced is not None:
         proposed = dict(prev)
         proposed["phase"] = forced
-        proposed["confidence"] = max(float(prev.get("confidence", 0.6) or 0.6), 0.7)
+        floor = 0.85
+        if forced == "recovery":
+            floor = 0.90
+        proposed["confidence"] = max(float(prev.get("confidence", 0.6) or 0.6), floor)
         proposed["reasons"] = (forced_reasons + ["history:hard_override"])[:8]
         proposed["last_updated_turn"] = turn_count
         normalized, issues = normalize_phase_state(proposed)
@@ -282,6 +324,12 @@ def update_phase_state(
         meta["phase_confidence_after"] = normalized["confidence"]
         meta["phase_changed"] = meta["phase_before"] != meta["phase_after"]
         meta["phase_issues"] = issues
+        meta["phase_llm_confidence"] = None
+        meta["phase_threshold_used"] = None
+        meta["phase_transition_attempted"] = (
+            meta["phase_before"] != meta["phase_after"]
+        )
+        meta["phase_hysteresis_held"] = False
         return normalized, meta
 
     should, why = _should_update_phase(
@@ -299,7 +347,7 @@ def update_phase_state(
         world_diff=json.dumps(world_diff, ensure_ascii=False),
         belief_compact=json.dumps(_compact_belief(belief_state), ensure_ascii=False),
         intent_compact=json.dumps(_compact_intent(intent_state), ensure_ascii=False),
-        recent_history=recent_history_text or "",
+        recent_history=truncated_history,
     )
 
     try:
@@ -307,11 +355,16 @@ def update_phase_state(
         result = structured.invoke(messages)
         proposed = result.model_dump()
         meta["phase_update_used"] = True
+        meta["phase_llm_phase_proposed"] = proposed.get("phase")
         meta["phase_llm_confidence"] = float(proposed.get("confidence", 0.0) or 0.0)
 
         proposed["reasons"] = _normalize_reasons(proposed.get("reasons") or [])
+        proposed["signals"] = _normalize_signals(proposed.get("signals") or [])
 
-        normalized = _apply_hysteresis(prev, proposed, turn_count)
+        normalized, hyst = _apply_hysteresis(prev, proposed, turn_count)
+        meta["phase_threshold_used"] = hyst["threshold"]
+        meta["phase_transition_attempted"] = hyst["attempted_change"]
+        meta["phase_hysteresis_held"] = hyst["held"]
         meta["phase_after"] = normalized["phase"]
         meta["phase_confidence_after"] = normalized["confidence"]
         meta["phase_changed"] = meta["phase_before"] != meta["phase_after"]
@@ -322,4 +375,3 @@ def update_phase_state(
         meta["phase_after"] = prev.get("phase", "opening")
         meta["phase_confidence_after"] = float(prev.get("confidence", 0.6) or 0.6)
         return prev, meta
-
