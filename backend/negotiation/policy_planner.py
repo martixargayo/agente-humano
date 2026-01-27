@@ -326,6 +326,7 @@ def plan_policy(
     belief_state: BeliefState,
     progress_state: ProgressState,
     intent_hint: dict | None,
+    precedence: dict | None,
     objective: str,
     constraints: str,
     recent_context: str,
@@ -333,6 +334,22 @@ def plan_policy(
     policy_ids = list_policy_ids()
     allowed = _allowed_policy_ids(world_state, belief_state, progress_state)
     allowed, preferred, intent_meta = apply_intent_constraints(allowed, intent_hint)
+    prec = precedence or {}
+    min_tags = set(prec.get("min_policy_tags") or [])
+    block_tags = set(prec.get("block_policy_tags") or [])
+
+    def _policy_tags(policy_id: str) -> set[str]:
+        policy = _POLICY_BY_ID.get(policy_id)
+        return set(getattr(policy, "tags", []) or [])
+
+    if min_tags:
+        allowed = [policy_id for policy_id in allowed if min_tags.issubset(_policy_tags(policy_id))]
+    if block_tags:
+        allowed = [
+            policy_id
+            for policy_id in allowed
+            if _policy_tags(policy_id).isdisjoint(block_tags)
+        ]
     current_phase = (progress_state.get("phase_state") or {}).get("phase", "opening")
     phase_catalog = {policy.policy_id: policy.phase_hints for policy in POLICIES}
     commitment = (intent_hint or {}).get("commitment_level")
@@ -347,6 +364,10 @@ def plan_policy(
         "allowed_policy_ids": allowed,
         "current_phase": current_phase,
         "phase_candidates": _phase_candidates(allowed, current_phase),
+        "precedence_mode": prec.get("mode"),
+        "precedence_reason": prec.get("reason"),
+        "precedence_min_tags": list(min_tags),
+        "precedence_block_tags": list(block_tags),
     }
 
     def _apply_phase_bias(decision: PolicyDecision) -> PolicyDecision:

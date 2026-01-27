@@ -52,6 +52,7 @@ def test_phase_hard_override_price_firm():
         intent_state=default_intent_state(),
         recent_history_text="",
         turn_count=3,
+        precedence=None,
     )
 
     assert phase["phase"] == "closing"
@@ -69,6 +70,7 @@ def test_phase_budget_gate_skips_without_signals():
         intent_state=None,
         recent_history_text="",
         turn_count=3,
+        precedence=None,
     )
 
     assert phase["phase"] == prev["phase"]

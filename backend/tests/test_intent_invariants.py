@@ -58,6 +58,7 @@ def test_meta_contract_keys_always_present():
         progress_state=default_progress_state(),
         user_message="no sé",
         turn_count=1,
+        precedence=None,
     )
     assert META_KEYS.issubset(meta.keys())
     assert meta["reasons"] is not None
@@ -74,6 +75,7 @@ def test_active_intent_hint_matches_current_step():
         progress_state=default_progress_state(),
         user_message="sigo pensando",
         turn_count=2,
+        precedence=None,
     )
     step = updated["steps"][updated["step_idx"]]
     assert updated["status"] == "active"
@@ -108,6 +110,7 @@ def test_hydration_legacy_string_steps_sets_steps_hydrated_and_valid_step():
         progress_state=default_progress_state(),
         user_message="no sé",
         turn_count=3,
+        precedence=None,
     )
     assert "steps_hydrated" in meta["reasons"]
     assert updated["steps"]
@@ -136,6 +139,7 @@ def test_hydration_empty_steps_missing_empty_produces_close_next():
         progress_state=default_progress_state(),
         user_message="ok",
         turn_count=4,
+        precedence=None,
     )
     assert "steps_hydrated" in meta["reasons"]
     assert updated["step_idx"] == 0
@@ -168,6 +172,7 @@ def test_retarget_guardrail_forces_step0_target_and_success_if_filled(monkeypatc
         progress_state=default_progress_state(),
         user_message="vale",
         turn_count=5,
+        precedence=None,
     )
     assert meta["intent_transition"] == "retarget"
     assert meta["retarget_slot"] == "seller_urgency_reason"
@@ -189,6 +194,7 @@ def test_replan_sets_transition_and_replan_to_closing():
         progress_state=default_progress_state(),
         user_message="precio firme",
         turn_count=6,
+        precedence=None,
     )
     assert meta["intent_transition"] == "replan"
     assert meta["replan_to"] == "closing"
@@ -211,6 +217,7 @@ def test_pivot_sets_reason_and_strategy_and_changes_kind():
         progress_state=default_progress_state(),
         user_message="vale",
         turn_count=7,
+        precedence=None,
     )
     assert meta["intent_transition"] == "pivot"
     assert meta["pivot_reason"]

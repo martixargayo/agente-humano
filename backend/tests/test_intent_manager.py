@@ -17,6 +17,7 @@ def test_intent_starts_when_requires_multi_turn():
         progress_state=progress,
         user_message="depende, ya veremos",
         turn_count=1,
+        precedence=None,
     )
 
     assert intent["status"] == "active"
@@ -40,6 +41,7 @@ def test_intent_does_not_start_when_one_turn_sufficient():
         progress_state=progress,
         user_message="precio 9000",
         turn_count=2,
+        precedence=None,
     )
 
     assert updated["status"] == "inactive"
@@ -92,6 +94,7 @@ def test_step_advances_only_when_target_slot_progresses():
         progress_state=progress,
         user_message="tengo factura",
         turn_count=2,
+        precedence=None,
     )
 
     assert updated["status"] == "active"
@@ -133,6 +136,7 @@ def test_intent_succeeds_when_slots_complete():
         progress_state=progress,
         user_message="precio fijo 9500",
         turn_count=3,
+        precedence=None,
     )
 
     assert updated["status"] == "succeeded"
@@ -170,6 +174,7 @@ def test_intent_abandons_on_hard_trigger():
         progress_state=progress,
         user_message="",
         turn_count=4,
+        precedence=None,
     )
 
     assert updated["status"] == "abandoned"
@@ -274,6 +279,7 @@ def test_vague_response_triggers_pivot_sequence():
         progress_state=progress,
         user_message="no sé",
         turn_count=2,
+        precedence=None,
     )
 
     assert updated["step_idx"] == 0
@@ -286,6 +292,7 @@ def test_vague_response_triggers_pivot_sequence():
         progress_state=progress,
         user_message="depende",
         turn_count=3,
+        precedence=None,
     )
 
     assert updated["step_idx"] == 0
@@ -308,6 +315,7 @@ def test_multi_turn_scoring_single_impl():
         progress_state=progress,
         user_message="depende",
         turn_count=1,
+        precedence=None,
     )
 
     assert any(reason.startswith("multi_turn_score:") for reason in meta["reasons"])
@@ -350,6 +358,7 @@ def test_slot_switch_retargets_next_missing():
         progress_state=progress,
         user_message="Mi primo ya lo quiere.",
         turn_count=2,
+        precedence=None,
     )
 
     assert meta["intent_transition"] == "retarget"
@@ -407,6 +416,7 @@ def test_retarget_guardrail_forces_step0_target(monkeypatch):
         progress_state=progress,
         user_message="Tengo otra opción.",
         turn_count=2,
+        precedence=None,
     )
 
     assert meta["intent_transition"] == "retarget"
@@ -430,6 +440,7 @@ def test_other_buyer_details_has_text():
         progress_state=progress,
         user_message="depende",
         turn_count=1,
+        precedence=None,
     )
 
     details = intent["slots"]["slots_filled"]["other_buyer_details"]["value"]
@@ -475,6 +486,7 @@ def test_pivot_kind_progression():
         progress_state=progress,
         user_message="no sé",
         turn_count=2,
+        precedence=None,
     )
 
     assert meta["intent_decision"] == "pivot"
@@ -487,6 +499,7 @@ def test_pivot_kind_progression():
         progress_state=progress,
         user_message="depende",
         turn_count=3,
+        precedence=None,
     )
 
     assert meta["intent_decision"] == "pivot"
@@ -524,6 +537,7 @@ def test_replan_transition_when_price_firm_detected():
         progress_state=progress,
         user_message="precio fijo",
         turn_count=5,
+        precedence=None,
     )
 
     assert updated["status"] == "active"
@@ -563,6 +577,7 @@ def test_unknown_success_criterion_fails():
         progress_state=progress,
         user_message="depende",
         turn_count=2,
+        precedence=None,
     )
 
     assert updated["status"] == "active"
@@ -594,6 +609,7 @@ def test_hydrates_legacy_steps_with_unknown_targets():
         progress_state=progress,
         user_message="depende",
         turn_count=2,
+        precedence=None,
     )
 
     assert updated["status"] == "active"
@@ -624,6 +640,7 @@ def test_hydration_missing_empty_does_not_break_hint():
         progress_state=progress,
         user_message="ok",
         turn_count=2,
+        precedence=None,
     )
 
     assert updated["status"] == "active"

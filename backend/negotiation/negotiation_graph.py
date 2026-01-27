@@ -25,6 +25,7 @@ from .belief_state_updater import update_belief_state
 from .context_utils import build_context_snippet
 from .intent_manager import update_intent_state
 from .phase_state_updater import update_phase_state
+from .precedence import compute_precedence
 from .policies import get_policy, list_policy_ids
 from .policy_planner import allowed_policy_ids, plan_policy
 from .progress_updater import update_progress_state
@@ -191,6 +192,7 @@ class NegotiationTurn(TypedDict):
     phase_meta: dict
     belief_update_meta: dict
     extractor_meta: dict
+    precedence: dict
     deps: AgentDeps
 
     response: str
@@ -341,10 +343,28 @@ def intent_manager_node(state: NegotiationTurn) -> NegotiationTurn:
         progress_state=state["progress_state"],
         user_message=state.get("user_message", ""),
         turn_count=state.get("turn_count", 0),
+        precedence=state.get("precedence"),
     )
     state["progress_state"]["intent_state"] = intent_state
     state["intent_hint"] = intent_hint
     state["intent_meta"] = intent_meta
+    return state
+
+
+def precedence_node(state: NegotiationTurn) -> NegotiationTurn:
+    prec = compute_precedence(
+        world=state["world_state"],
+        belief=state["belief_state"],
+        intent=state.get("progress_state", {}).get("intent_state"),
+    )
+    state["precedence"] = {
+        "mode": prec.mode,
+        "reason": prec.reason,
+        "min_policy_tags": list(prec.min_policy_tags),
+        "block_policy_tags": list(prec.block_policy_tags),
+        "phase_floor": prec.phase_floor,
+        "allow_closing": prec.allow_closing,
+    }
     return state
 
 
@@ -357,6 +377,7 @@ def phase_updater_node(state: NegotiationTurn) -> NegotiationTurn:
         intent_state=state.get("progress_state", {}).get("intent_state"),
         recent_history_text=state.get("recent_history_text", "") or "",
         turn_count=state.get("turn_count", 0),
+        precedence=state.get("precedence"),
     )
     state["progress_state"]["phase_state"] = phase_state
     state["phase_meta"] = phase_meta
@@ -374,6 +395,7 @@ def policy_planner_node(state: NegotiationTurn) -> NegotiationTurn:
         belief_state=state["belief_state"],
         progress_state=state["progress_state"],
         intent_hint=state.get("intent_hint"),
+        precedence=state.get("precedence"),
         objective=state["objective"],
         constraints=state.get("constraints", ""),
         recent_context=state.get("recent_history_text", ""),
@@ -450,6 +472,10 @@ Riesgo: {risk_posture}
         "high": "Sé más firme y directo, sin agresividad.",
     }
 
+    prec = state.get("precedence", {}) or {}
+    prec_mode = prec.get("mode", "unknown")
+    prec_reason = prec.get("reason", "n/a")
+    precedence_line = f"Control precedence: {prec_mode} ({prec_reason})."
     phase_context_line = f"Current phase: {phase} (conf {phase_confidence})."
     phase_reasons_line = f"Phase reasons: {phase_reasons}."
     policy_phase_line = f"Policy phase hints: {policy_phase_hints}."
@@ -496,6 +522,7 @@ Directrices adicionales:
 - Tu intención actual es la policy "{policy_id}".
 - Tu micro-objetivo inmediato: {micro_goal}
 - {posture_instructions.get(risk_posture, posture_instructions["low"])}
+- {precedence_line}
 - {phase_context_line}
 - {phase_reasons_line}
 - {policy_phase_line}
@@ -569,6 +596,7 @@ workflow = StateGraph(NegotiationTurn)
 workflow.add_node("world_updater", world_updater_node)
 workflow.add_node("intent_manager", intent_manager_node)
 workflow.add_node("belief_updater", belief_updater_node)
+workflow.add_node("precedence", precedence_node)
 workflow.add_node("phase_updater", phase_updater_node)
 workflow.add_node("policy_planner", policy_planner_node)
 workflow.add_node("progress_updater", progress_updater_node)
@@ -577,7 +605,8 @@ workflow.add_node("executor", executor_node)
 workflow.add_edge(START, "world_updater")
 workflow.add_edge("world_updater", "intent_manager")
 workflow.add_edge("intent_manager", "belief_updater")
-workflow.add_edge("belief_updater", "phase_updater")
+workflow.add_edge("belief_updater", "precedence")
+workflow.add_edge("precedence", "phase_updater")
 workflow.add_edge("phase_updater", "policy_planner")
 workflow.add_edge("policy_planner", "progress_updater")
 workflow.add_edge("progress_updater", "executor")
@@ -657,6 +686,7 @@ def run_negotiation_agent(
         "phase_meta": {},
         "belief_update_meta": {},
         "extractor_meta": {},
+        "precedence": {},
         "turn_count": state.turn_count,
         "deps": deps,
         "response": "",
