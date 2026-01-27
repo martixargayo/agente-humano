@@ -8,12 +8,17 @@ from typing import Dict, List, Literal, Tuple, TypedDict
 
 # ---- Tipos básicos ----
 
-Role = Literal["user", "assistant"]
+Role = Literal["user", "assistant", "system", "tool"]
 
 
-class Message(TypedDict):
+class HistoryItem(TypedDict, total=False):
     role: Role
     content: str
+    name: str
+    synthetic: bool
+
+
+Message = HistoryItem
 
 
 class ExitOption(TypedDict):
@@ -25,6 +30,14 @@ class ExitOption(TypedDict):
 SessionKey = Tuple[str, str]
 
 
+def default_exit_option() -> ExitOption:
+    return {
+        "label": "Coche hermana",
+        "total_cost": 0.0,
+        "notes": "",
+    }
+
+
 @dataclass
 class SessionState:
     user_id: str
@@ -34,7 +47,7 @@ class SessionState:
     summary: str = ""
 
     # Historial corto: últimos N turnos (ventana recortada)
-    history: List[Message] = field(default_factory=list)
+    history: List[HistoryItem] = field(default_factory=list)
 
     # ---- NUEVO: estado explícito de negociación ----
     world_state: Dict = field(default_factory=dict)
@@ -61,7 +74,7 @@ class SessionState:
     sister_option_price: float = 8000.0      # coche hermana
     sister_option_repairs: float = 2000.0    # reparaciones esperadas
     max_total_cost: float = 10000.0          # legacy read-only (backfill)
-    exit_option: Dict = field(default_factory=dict)
+    exit_option: ExitOption = field(default_factory=default_exit_option)
 
     # Info auxiliar
     turn_count: int = 0
@@ -77,14 +90,6 @@ SESSIONS: Dict[SessionKey, SessionState] = {}
 # Aquí solo documentamos que son "parámetros de diseño".
 DEFAULT_CONTEXT_LIMIT_TURNS: int = 12        # a partir de cuántos turnos totales empezamos a resumir
 DEFAULT_KEEP_LAST_TURNS: int = 4            # cuántos turnos recientes guardamos "enteros"
-
-
-def default_exit_option() -> ExitOption:
-    return {
-        "label": "Coche hermana",
-        "total_cost": 0.0,
-        "notes": "",
-    }
 
 
 def normalize_exit_option(
@@ -145,10 +150,11 @@ def ensure_exit_option(state: SessionState) -> Tuple[ExitOption, List[str]]:
 
 
 def derive_max_total_cost(exit_option: ExitOption, margin: float = 0.0) -> Tuple[float, str]:
+    margin = max(0.0, float(margin))
     total_cost = float(exit_option.get("total_cost", 0.0) or 0.0)
     if total_cost <= 0:
         return 0.0, ""
-    max_total_cost = total_cost * (1.0 + float(margin))
+    max_total_cost = total_cost * (1.0 + margin)
     rule_note = "(derivado de alternativa de salida)" if margin == 0 else (
         f"(derivado de alternativa de salida +{margin:.0%})"
     )

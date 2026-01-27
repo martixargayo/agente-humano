@@ -134,30 +134,26 @@ SUMMARY_SYSTEM_PROMPT = """
 Tu tarea es condensar la conversación hasta ahora en un estado interno minimalista.
 NO debes generar un resumen narrativo ni texto libre: solo un objeto JSON válido.
 
-El estado interno sirve como notas mentales de Daniel.
+El estado interno sirve como notas mentales del agente.
 No refleja estilo, tono ni forma de hablar. Solo contenido útil.
 
 Áreas que debe cubrir el estado:
-1. Datos personales del usuario.
-2. Estado emocional del usuario.
-3. Temas abiertos o pendientes.
-4. Conclusiones o percepciones importantes.
-5. Directrices para continuar (solo contenido, nunca estilo).
-6. Objetivos a medio/largo plazo.
-7. Planes y estrategias activas.
-8. Estado de negociación o decisión si aplica.
+1. Hechos relevantes.
+2. Preguntas abiertas.
+3. Límites, restricciones o condiciones.
+4. Señales del vendedor.
+5. Señales del comprador.
+6. Decisiones tomadas hasta ahora.
 
 Formato estricto:
 - Objeto JSON con claves:
-  "personal_details",
-  "emotional_state",
-  "open_topics",
-  "conclusions",
-  "continuation_notes",
-  "long_term_objectives",
-  "plans_and_strategies",
-  "negotiation_state"
-- Secciones no aplicables: "".
+  "facts",
+  "open_questions",
+  "constraints_limits",
+  "seller_signals",
+  "buyer_signals",
+  "decisions"
+- Cada clave es una lista (vacía si no aplica).
 - No añadas nada fuera del JSON.
 - Sin comentarios.
 - Sin comillas simples.
@@ -166,7 +162,7 @@ Formato estricto:
 
 <style_protection>
 IMPORTANTE:
-Las reglas de estilo, tono y concisión de Daniel NO deben aparecer, 
+Las reglas de estilo, tono y concisión del agente NO deben aparecer,
 mencionarse, resumirse, alterarse ni interpretarse en el estado interno.
 El summary solo captura contenido, nunca estilo.
 </style_protection>
@@ -188,29 +184,23 @@ Usando la información anterior, genera un NUEVO estado interno en formato JSON.
 Debes devolver EXCLUSIVAMENTE un objeto JSON con esta estructura:
 
 {
-  "personal_details": "",
-  "emotional_state": "",
-  "open_topics": "",
-  "conclusions": "",
-  "continuation_notes": "",
-  "long_term_objectives": "",
-  "plans_and_strategies": "",
-  "negotiation_state": ""
+  "facts": [],
+  "open_questions": [],
+  "constraints_limits": [],
+  "seller_signals": [],
+  "buyer_signals": [],
+  "decisions": []
 }
 
 Reglas:
 - Integra el contenido previo (existing_summary) con el nuevo bloque (new_block).
-- Si la conversación tiene forma de negociación / proceso por fases,
-  utiliza especialmente:
-  - "long_term_objectives" para capturar qué se quiere lograr a medio/largo plazo.
-  - "plans_and_strategies" para describir el plan o sub-estrategias activas.
-  - "negotiation_state" para el estado actual de la negociación, ofertas, bloqueos, etc.
-- Si no aplica negociación, esos campos pueden ser más generales o vacíos.
+- Cada clave debe ser una lista (vacía si no aplica).
 - No añadas texto fuera del JSON.
 - No expliques lo que haces.
 - No uses comillas simples.
 - No añadas comentarios ni campos extra.
-- Rellena cada campo con texto plano conciso y relevante.
+- No añadas claves adicionales.
+- Rellena cada lista con elementos breves y relevantes.
 
 No incluyas nada relacionado con estilo, tono, concisión,
 forma de hablar o recomendaciones discursivas.

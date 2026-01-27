@@ -91,9 +91,19 @@ def _format_messages_as_text(messages: List[Message]) -> str:
     """
     lines: List[str] = []
     for msg in messages:
-        role = msg["role"]
-        label = "Usuario" if role == "user" else "Agente"
-        lines.append(f"{label}: {msg['content']}")
+        role = msg.get("role", "assistant")
+        content = (msg.get("content") or "").strip()
+        if not content:
+            continue
+
+        if role == "user":
+            label = "Usuario"
+        elif role == "assistant":
+            label = "Agente"
+        else:
+            label = str(role).upper()
+
+        lines.append(f"{label}: {content}")
     return "\n".join(lines).strip() or "(sin mensajes previos relevantes)"
 
 
@@ -102,7 +112,7 @@ def _user_turn_indices(history: List[Message]) -> List[int]:
     Devuelve los índices en history donde empieza cada turno de usuario.
     (Un turno empieza cuando hay un mensaje con role == 'user').
     """
-    return [i for i, m in enumerate(history) if m["role"] == "user"]
+    return [i for i, m in enumerate(history) if m.get("role") == "user"]
 
 
 def _should_summarize(history: List[Message]) -> bool:
@@ -238,4 +248,3 @@ def run_agent(
 
     # 7) Devolver al usuario la versión ya normalizada
     return reply_text, state
-

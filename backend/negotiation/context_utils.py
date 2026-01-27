@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import hashlib
-from typing import Any, Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
+import json
+from typing import Any, Callable, List, Tuple, TYPE_CHECKING
 
 from state import Message
 
@@ -12,19 +13,29 @@ if TYPE_CHECKING:
 
 def _is_real_user(msg: Message) -> bool:
     # Preparado para futuro: msg.get("synthetic", False)
-    return msg.get("role") == "user"
+    return msg.get("role") == "user" and not msg.get("synthetic", False)
 
 def _format_messages_as_text(messages: List[Message]) -> str:
     lines: List[str] = []
     for msg in messages:
-        role = msg["role"]
-        label = "Vendedor" if role == "user" else "Comprador"
-        lines.append(f"{label}: {msg['content']}")
+        role = msg.get("role", "assistant")
+        content = (msg.get("content") or "").strip()
+        if not content:
+            continue
+
+        if role == "user":
+            label = "Vendedor"
+        elif role == "assistant":
+            label = "Comprador"
+        else:
+            label = str(role).upper()
+
+        lines.append(f"{label}: {content}")
     return "\n".join(lines).strip() or "(sin mensajes previos relevantes)"
 
 
 def _user_turn_indices(history: List[Message]) -> List[int]:
-    return [i for i, m in enumerate(history) if m["role"] == "user"]
+    return [i for i, m in enumerate(history) if _is_real_user(m)]
 
 
 def slice_last_user_turns(messages: List[Message], keep_last_n_turns: int) -> List[Message]:
@@ -38,44 +49,73 @@ def slice_last_user_turns(messages: List[Message], keep_last_n_turns: int) -> Li
 
 
 def _clean_summary_text(summary: str | None) -> str:
-    if not summary:
+    s = (summary or "").strip()
+    if not s:
         return ""
-    trimmed_summary = summary.strip()
-    if not trimmed_summary or "Aún no hay resumen" in trimmed_summary:
+    if _try_parse_summary_json(s) is None:
         return ""
-    return trimmed_summary
+    return s
 
 
-_REQUIRED_SUMMARY_HEADINGS = (
-    "Facts:",
-    "Open questions:",
-    "Constraints & limits:",
-    "Seller signals:",
-    "Buyer signals:",
-    "Decisions so far:",
+_REQUIRED_SUMMARY_KEYS = (
+    "facts",
+    "open_questions",
+    "constraints_limits",
+    "seller_signals",
+    "buyer_signals",
+    "decisions",
 )
 
 
-def _summary_has_required_structure(text: str) -> bool:
-    lower = text.lower()
-    return all(h.lower() in lower for h in _REQUIRED_SUMMARY_HEADINGS)
+def _try_parse_summary_json(text: str) -> dict | None:
+    text = (text or "").strip()
+    if not text:
+        return None
+    try:
+        obj = json.loads(text)
+    except Exception:
+        return None
+    if not isinstance(obj, dict):
+        return None
+    for k in _REQUIRED_SUMMARY_KEYS:
+        if k not in obj:
+            return None
+    return obj
+
+
+def _canonicalize_summary_json(obj: dict) -> str:
+    # Canonical JSON para estabilidad en diffs/evals/logs
+    return json.dumps(obj, ensure_ascii=False, sort_keys=True, indent=2)
 
 
 def safe_merge_summary(existing: str, candidate: str) -> str:
-    existing = (existing or "").strip()
-    candidate = (candidate or "").strip()
+    existing_obj = _try_parse_summary_json(existing)
+    cand_obj = _try_parse_summary_json(candidate)
 
-    if not candidate:
-        return existing
+    # Candidate válido → reemplazo canonical
+    if cand_obj is not None:
+        return _canonicalize_summary_json(cand_obj)
 
-    # Si el candidato no trae la estructura mínima, NO lo aceptamos como reemplazo total.
-    if not _summary_has_required_structure(candidate):
-        if not existing:
-            # si no hay existing, aceptamos candidate pero marcamos fallback
-            return f"[SUMMARY_FALLBACK_NO_STRUCTURE]\n{candidate}".strip()
-        return (existing + "\n\n[APPEND_UNSTRUCTURED]\n" + candidate).strip()
+    # Candidate inválido → preservar existing si era válido (y auditar)
+    if existing_obj is not None:
+        existing_obj.setdefault("_unstructured_candidates", [])
+        snippet = (candidate or "").strip()
+        if snippet:
+            existing_obj["_unstructured_candidates"].append(snippet[:1200])
+        return _canonicalize_summary_json(existing_obj)
 
-    return candidate
+    # Ambos inválidos → fallback JSON estable (NO headings)
+    raw = (candidate or "").strip()
+    return _canonicalize_summary_json({
+        "facts": [],
+        "open_questions": [],
+        "constraints_limits": [],
+        "seller_signals": [],
+        "buyer_signals": [],
+        "decisions": [],
+        "_summary_fallback_invalid": True,
+        "_raw_candidate": raw[:1200],
+    })
 
 
 def build_memory_context(
@@ -197,9 +237,9 @@ def build_context_snippet(
         return "(sin mensajes previos relevantes)"
 
     filtered_messages = (
-        [msg for msg in messages if msg.get("role") == "user"]
+        [msg for msg in messages if _is_real_user(msg)]
         if seller_only
-        else list(messages)
+        else [msg for msg in messages if (msg.get("content") or "").strip()]
     )
     if not filtered_messages:
         return "(sin mensajes previos relevantes)"
@@ -215,11 +255,10 @@ def build_context_snippet(
         snippet_text = _format_messages_as_text(filtered_messages[start_idx:])
 
     prefix = ""
-    if summary:
-        trimmed_summary = summary.strip()
-        if trimmed_summary and "Aún no hay resumen" not in trimmed_summary:
-            trimmed_summary = trimmed_summary[:240]
-            prefix = f"Resumen breve: {trimmed_summary}\n"
+    trimmed_summary = _clean_summary_text(summary)
+    if trimmed_summary:
+        trimmed_summary = trimmed_summary[:240]
+        prefix = f"Resumen breve: {trimmed_summary}\n"
 
     combined = f"{prefix}{snippet_text}".strip()
     if len(combined) > max_chars:
