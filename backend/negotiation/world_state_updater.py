@@ -218,7 +218,8 @@ def _derive_tone_signal(tone_hits: List[str]) -> str:
 
 def _legacy_regex_update(prev_world: WorldState, user_message: str) -> WorldState:
     base = default_world_state()
-    base.update(prev_world)
+    if prev_world:
+        base.update(prev_world)
 
     text = _normalize_text(user_message)
     lower = text.lower()
@@ -297,18 +298,36 @@ def _legacy_regex_update(prev_world: WorldState, user_message: str) -> WorldStat
 
 def _should_call_llm_extractor(user_message: str, prev_world: WorldState) -> bool:
     text = (user_message or "").strip()
-    if not text or len(text) <= 3:
+    if len(text) <= 3:
         return False
     if any(ch.isdigit() for ch in text):
         return True
-    lower = text.lower()
-    if "€" in text or "euros" in lower or "eur" in lower or "mil" in lower:
+    if "€" in text or "$" in text:
         return True
-    if any(word in lower for word in ["hoy", "mañana", "semana", "mes", "urg", "prisa"]):
+    if len(text) >= 40:
         return True
     if prev_world.get("other_buyer_claimed") or prev_world.get("deadline_claimed"):
         return True
     return False
+
+
+def _coerce_recent_history(recent_history: list[dict] | str | None) -> list[dict]:
+    if not recent_history:
+        return []
+    if isinstance(recent_history, str):
+        txt = recent_history.strip()
+        if not txt:
+            return []
+        return [{"role": "system", "content": txt}]
+    out: list[dict] = []
+    for item in recent_history:
+        if not isinstance(item, dict):
+            continue
+        role = item.get("role")
+        content = item.get("content")
+        if role in {"user", "assistant", "system"} and isinstance(content, str) and content.strip():
+            out.append({"role": role, "content": content})
+    return out[-8:]
 
 
 def update_world_state(
@@ -321,9 +340,7 @@ def update_world_state(
     if prev_world:
         base.update(prev_world)
 
-    if isinstance(recent_history, str):
-        recent_history = [{"role": "context", "content": recent_history}]
-    recent_history = recent_history or []
+    recent_history = _coerce_recent_history(recent_history)
     belief_state = belief_state or {}
     use_llm = os.getenv("USE_LLM_EXTRACTOR", "true").lower() in {"1", "true", "yes"}
     use_legacy = os.getenv("USE_LEGACY_MATCHERS", "true").lower() in {"1", "true", "yes"}

@@ -78,6 +78,21 @@ def test_update_world_state_rejects_illegal_patch_key(monkeypatch):
         update_world_state(default_world_state(), "precio 9000")
 
 
+def test_validate_extractor_output_rejects_belief_patch_in_p0():
+    from negotiation.llm_state_extractor import validate_extractor_output
+
+    out = {
+        "world_patch": {},
+        "belief_patch": {"stance": {"deal_feasibility": 0.1}},
+        "field_evidence": {},
+        "decisions": {"should_update_beliefs": False},
+        "reasons": ["x"],
+        "schema_version": "world_v1",
+    }
+    with pytest.raises(AssertionError, match="extractor_belief_patch_not_allowed_p0"):
+        validate_extractor_output(out)
+
+
 def test_intent_replan_uses_llm_patch(monkeypatch):
     monkeypatch.setenv("USE_LLM_EXTRACTOR", "1")
     monkeypatch.setenv("USE_LEGACY_MATCHERS", "0")

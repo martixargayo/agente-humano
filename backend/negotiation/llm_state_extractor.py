@@ -17,7 +17,8 @@ class ExtractorOutput(TypedDict):
 
 
 ALLOWED_WORLD_KEYS = set(WorldState.__annotations__.keys())
-ALLOWED_BELIEF_KEYS = set(BeliefState.__annotations__.keys())
+# P0.1: extractor NO puede modificar BeliefState directamente.
+ALLOWED_BELIEF_KEYS: set[str] = set()
 CRITICAL_EVIDENCE_FIELDS = {
     "price_mentioned",
     "price_value",
@@ -39,9 +40,9 @@ def _validate_patch_keys(world_patch: Dict[str, Any], belief_patch: Dict[str, An
     for key in world_patch.keys():
         if key not in ALLOWED_WORLD_KEYS:
             raise AssertionError(f"extractor_illegal_world_key:{key}")
-    for key in belief_patch.keys():
-        if key not in ALLOWED_BELIEF_KEYS:
-            raise AssertionError(f"extractor_illegal_belief_key:{key}")
+    # P0.1: belief_patch debe estar vacío
+    if belief_patch:
+        raise AssertionError("extractor_belief_patch_not_allowed_p0")
 
 
 def _validate_field_evidence(
@@ -102,12 +103,25 @@ def extract_state_patch_llm(
 
 
 def build_extractor_meta(output: ExtractorOutput) -> dict:
+    field_evidence = output.get("field_evidence", {}) or {}
+    world_patch = output.get("world_patch", {}) or {}
+    decisions = output.get("decisions", {}) or {}
     return {
         "extractor_output": output,
         "extractor_used": True,
         "extractor_reasons": output.get("reasons", []),
-        "extractor_world_patch_keys": sorted(output.get("world_patch", {}).keys()),
-        "extractor_confidence_summary": _summarize_confidence(output.get("field_evidence", {})),
-        "decisions": output.get("decisions", {}),
-        "world_patch": output.get("world_patch", {}),
+        "extractor_world_patch_keys": sorted(world_patch.keys()),
+        "extractor_confidence_summary": _summarize_confidence(field_evidence),
+        "extractor_counts": {
+            "patched_fields": len(world_patch),
+            "evidence_fields": len(
+                [
+                    key
+                    for key, payload in field_evidence.items()
+                    if isinstance(payload, dict) and str(payload.get("evidence", "")).strip()
+                ]
+            ),
+        },
+        "decisions": decisions,
+        "world_patch": world_patch,
     }
