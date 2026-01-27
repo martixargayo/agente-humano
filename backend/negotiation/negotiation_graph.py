@@ -23,6 +23,7 @@ from langchain_core.documents import Document
 from .belief_state_updater import update_belief_state
 from .context_utils import build_context_snippet
 from .intent_manager import update_intent_state
+from .phase_state_updater import update_phase_state
 from .policies import get_policy, list_policy_ids
 from .policy_planner import allowed_policy_ids, plan_policy
 from .progress_updater import update_progress_state
@@ -320,17 +321,10 @@ def belief_updater_node(state: NegotiationTurn) -> NegotiationTurn:
         last_assistant_message=state.get("last_assistant_message", ""),
         user_message=state.get("user_message", ""),
         context_snippet=state.get("recent_history_text", ""),
-        prev_phase_state=state.get("progress_state", {}).get("phase_state"),
-        intent_state=state.get("progress_state", {}).get("intent_state"),
-        recent_history_text=state.get("recent_history_text", ""),
-        turn_count=state.get("turn_count", 0),
         extractor_meta=state.get("extractor_meta", {}),
     )
     state["belief_state"] = belief_state
     state["belief_update_meta"] = belief_meta
-    if belief_meta.get("phase_state"):
-        state["progress_state"]["phase_state"] = belief_meta["phase_state"]
-    state["phase_meta"] = belief_meta.get("phase_meta", {})
     return state
 
 
@@ -346,6 +340,21 @@ def intent_manager_node(state: NegotiationTurn) -> NegotiationTurn:
     state["progress_state"]["intent_state"] = intent_state
     state["intent_hint"] = intent_hint
     state["intent_meta"] = intent_meta
+    return state
+
+
+def phase_updater_node(state: NegotiationTurn) -> NegotiationTurn:
+    phase_state, phase_meta = update_phase_state(
+        prev_phase_state=state.get("progress_state", {}).get("phase_state"),
+        world_state=state["world_state"],
+        world_diff=state.get("world_diff", {}),
+        belief_state=state["belief_state"],
+        intent_state=state.get("progress_state", {}).get("intent_state"),
+        recent_history_text=state.get("recent_history_text", "") or "",
+        turn_count=state.get("turn_count", 0),
+    )
+    state["progress_state"]["phase_state"] = phase_state
+    state["phase_meta"] = phase_meta
     return state
 
 
@@ -414,6 +423,8 @@ def executor_node(state: NegotiationTurn) -> NegotiationTurn:
     phase = phase_state.get("phase", "opening")
     phase_confidence = phase_state.get("confidence", 0.6)
     phase_reasons = phase_state.get("reasons", [])
+    policy = get_policy(policy_id)
+    policy_phase_hints = (policy.phase_hints if policy else [])
 
     rag_context = f"""
 Resumen: {summary_text}
@@ -433,8 +444,9 @@ Riesgo: {risk_posture}
         "high": "Sé más firme y directo, sin agresividad.",
     }
 
-    phase_line = f"Phase: {phase} (conf {phase_confidence})."
+    phase_context_line = f"Current phase: {phase} (conf {phase_confidence})."
     phase_reasons_line = f"Phase reasons: {phase_reasons}."
+    policy_phase_line = f"Policy phase hints: {policy_phase_hints}."
     intent_hint = state.get("intent_hint", {}) or {}
     intent_goal = intent_hint.get("intent_goal", "")
     step_kind = intent_hint.get("step_kind", "")
@@ -478,8 +490,9 @@ Directrices adicionales:
 - Tu intención actual es la policy "{policy_id}".
 - Tu micro-objetivo inmediato: {micro_goal}
 - {posture_instructions.get(risk_posture, posture_instructions["low"])}
-- {phase_line}
+- {phase_context_line}
 - {phase_reasons_line}
+- {policy_phase_line}
 - Intención activa: {intent_goal}
 - Paso actual: {step_kind}
 - Slot objetivo: {target_slot}
@@ -552,16 +565,18 @@ Tarea:
 workflow = StateGraph(NegotiationTurn)
 
 workflow.add_node("world_updater", world_updater_node)
-workflow.add_node("belief_updater", belief_updater_node)
 workflow.add_node("intent_manager", intent_manager_node)
+workflow.add_node("belief_updater", belief_updater_node)
+workflow.add_node("phase_updater", phase_updater_node)
 workflow.add_node("policy_planner", policy_planner_node)
 workflow.add_node("progress_updater", progress_updater_node)
 workflow.add_node("executor", executor_node)
 
 workflow.add_edge(START, "world_updater")
-workflow.add_edge("world_updater", "belief_updater")
-workflow.add_edge("belief_updater", "intent_manager")
-workflow.add_edge("intent_manager", "policy_planner")
+workflow.add_edge("world_updater", "intent_manager")
+workflow.add_edge("intent_manager", "belief_updater")
+workflow.add_edge("belief_updater", "phase_updater")
+workflow.add_edge("phase_updater", "policy_planner")
 workflow.add_edge("policy_planner", "progress_updater")
 workflow.add_edge("progress_updater", "executor")
 workflow.add_edge("executor", END)

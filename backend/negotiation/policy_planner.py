@@ -95,24 +95,44 @@ def repair_policy_by_phase(
     allowed_ids: list[str],
     policy_catalog: dict[str, list[str]],
     current_phase: str,
+    preferred_ids: list[str] | None,
+    commitment_level: str | None,
 ) -> tuple[str, dict]:
     meta = {
         "phase_repair_used": False,
         "phase_repair_from": chosen_id,
         "phase_repair_to": chosen_id,
+        "phase_repair_mode": "",
     }
+    if commitment_level == "hard":
+        meta["phase_repair_mode"] = "disabled_intent_hard"
+        return chosen_id, meta
+
+    scope = allowed_ids
+    if preferred_ids:
+        intersection = [policy_id for policy_id in preferred_ids if policy_id in allowed_ids]
+        if intersection:
+            scope = intersection
+            meta["phase_repair_mode"] = "preferred_intersection"
+        else:
+            meta["phase_repair_mode"] = "preferred_no_intersection"
+            return chosen_id, meta
+    else:
+        meta["phase_repair_mode"] = "allowed_scope"
+
     chosen_bonus = _phase_bonus(policy_catalog.get(chosen_id, []), current_phase)
     if chosen_bonus >= 1:
         return chosen_id, meta
 
     best = None
-    for policy_id in allowed_ids:
+    best_bonus = chosen_bonus
+    for policy_id in scope:
         bonus = _phase_bonus(policy_catalog.get(policy_id, []), current_phase)
-        if bonus >= 2:
+        if bonus > best_bonus:
+            best_bonus = bonus
             best = policy_id
-            break
 
-    if best:
+    if best and best_bonus >= 2:
         meta["phase_repair_used"] = True
         meta["phase_repair_to"] = best
         return best, meta
@@ -304,6 +324,7 @@ def plan_policy(
     allowed, preferred, intent_meta = apply_intent_constraints(allowed, intent_hint)
     current_phase = (progress_state.get("phase_state") or {}).get("phase", "opening")
     phase_catalog = {policy.policy_id: policy.phase_hints for policy in POLICIES}
+    commitment = (intent_hint or {}).get("commitment_level")
     meta = {
         "planner_failed": False,
         "planner_error": "",
@@ -323,6 +344,8 @@ def plan_policy(
             allowed,
             phase_catalog,
             current_phase,
+            preferred,
+            commitment,
         )
         if decision_id and decision_id != decision.get("policy_id"):
             decision["policy_id"] = decision_id
