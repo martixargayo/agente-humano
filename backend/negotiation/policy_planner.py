@@ -168,6 +168,69 @@ def _fallback_policy(belief_state: BeliefState) -> PolicyDecision:
     }
 
 
+def _fallback_by_precedence(
+    precedence: dict | None,
+    belief_state: BeliefState,
+) -> PolicyDecision:
+    mode = (precedence or {}).get("mode")
+
+    if mode == "recovery_guard":
+        return {
+            "policy_id": "deescalate_tension",
+            "reason": "Precedence recovery_guard: priorizar desescalada.",
+            "micro_goal": "Bajar tensión antes de continuar con precio.",
+            "risk_posture": "low",
+        }
+    if mode == "discovery":
+        return {
+            "policy_id": "test_credibility",
+            "reason": "Precedence discovery: contrastar claims antes de avanzar.",
+            "micro_goal": "Pedir detalle verificable sobre la afirmación.",
+            "risk_posture": "low",
+        }
+    if mode == "closing_push":
+        return {
+            "policy_id": "close_with_conditions",
+            "reason": "Precedence closing_push: intentar cierre con condiciones.",
+            "micro_goal": "Aterrizar condiciones y siguiente paso.",
+            "risk_posture": "mid",
+        }
+    return _fallback_policy(belief_state)
+
+
+def apply_precedence_constraints(
+    allowed: list[str],
+    precedence: dict | None,
+) -> tuple[list[str], dict]:
+    prec = precedence or {}
+    min_tags = set(prec.get("min_policy_tags") or [])
+    block_tags = set(prec.get("block_policy_tags") or [])
+
+    def _tags(policy_id: str) -> set[str]:
+        policy = _POLICY_BY_ID.get(policy_id)
+        raw = getattr(policy, "tags", None) if policy else None
+        return set(raw or set())
+
+    filtered = allowed
+    if min_tags:
+        filtered = [policy_id for policy_id in filtered if min_tags.issubset(_tags(policy_id))]
+    if block_tags:
+        filtered = [
+            policy_id for policy_id in filtered if _tags(policy_id).isdisjoint(block_tags)
+        ]
+
+    meta = {
+        "precedence_mode": prec.get("mode"),
+        "precedence_reason": prec.get("reason"),
+        "precedence_min_tags": sorted(min_tags),
+        "precedence_block_tags": sorted(block_tags),
+        "precedence_filtered_out": [policy_id for policy_id in allowed if policy_id not in filtered][
+            :12
+        ],
+    }
+    return filtered, meta
+
+
 def _allowed_policy_ids(
     world_state: WorldState,
     belief_state: BeliefState,
@@ -302,12 +365,12 @@ def apply_intent_constraints(
     commitment = intent_hint.get("commitment_level")
     if commitment == "hard" and preferred:
         forced = [policy_id for policy_id in preferred if policy_id in allowed]
+        meta["planner_mode"] = "intent_forced"
         if forced:
-            meta["planner_mode"] = "intent_forced"
             return forced, preferred, meta
         meta["planner_error"] = "intent_policy_unavailable"
         meta["planner_fallback_used"] = True
-        return allowed, preferred, meta
+        return [], preferred, meta
     if commitment == "soft" and preferred:
         intersection = [policy_id for policy_id in preferred if policy_id in allowed]
         if intersection:
@@ -333,23 +396,9 @@ def plan_policy(
 ) -> tuple[PolicyDecision, dict]:
     policy_ids = list_policy_ids()
     allowed = _allowed_policy_ids(world_state, belief_state, progress_state)
+    allowed, prec_meta = apply_precedence_constraints(allowed, precedence)
     allowed, preferred, intent_meta = apply_intent_constraints(allowed, intent_hint)
     prec = precedence or {}
-    min_tags = set(prec.get("min_policy_tags") or [])
-    block_tags = set(prec.get("block_policy_tags") or [])
-
-    def _policy_tags(policy_id: str) -> set[str]:
-        policy = _POLICY_BY_ID.get(policy_id)
-        return set(getattr(policy, "tags", []) or [])
-
-    if min_tags:
-        allowed = [policy_id for policy_id in allowed if min_tags.issubset(_policy_tags(policy_id))]
-    if block_tags:
-        allowed = [
-            policy_id
-            for policy_id in allowed
-            if _policy_tags(policy_id).isdisjoint(block_tags)
-        ]
     current_phase = (progress_state.get("phase_state") or {}).get("phase", "opening")
     phase_catalog = {policy.policy_id: policy.phase_hints for policy in POLICIES}
     commitment = (intent_hint or {}).get("commitment_level")
@@ -364,11 +413,8 @@ def plan_policy(
         "allowed_policy_ids": allowed,
         "current_phase": current_phase,
         "phase_candidates": _phase_candidates(allowed, current_phase),
-        "precedence_mode": prec.get("mode"),
-        "precedence_reason": prec.get("reason"),
-        "precedence_min_tags": list(min_tags),
-        "precedence_block_tags": list(block_tags),
     }
+    meta.update(prec_meta)
 
     def _apply_phase_bias(decision: PolicyDecision) -> PolicyDecision:
         decision_id, repair_meta = repair_policy_by_phase(
@@ -395,6 +441,13 @@ def plan_policy(
         meta["planner_fallback_used"] = True
         meta["issues"].append("policy_catalog_empty")
         return _apply_phase_bias(default_policy_decision()), meta
+
+    if intent_meta.get("planner_mode") == "intent_forced" and not allowed:
+        meta["planner_failed"] = True
+        meta["planner_error"] = "intent_forced_blocked_by_precedence"
+        meta["planner_fallback_used"] = True
+        meta["issues"].append("intent_forced_blocked_by_precedence")
+        return _apply_phase_bias(_fallback_by_precedence(precedence, belief_state)), meta
 
     if intent_meta.get("planner_error"):
         meta["planner_failed"] = True

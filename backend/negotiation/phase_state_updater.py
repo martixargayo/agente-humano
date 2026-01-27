@@ -350,18 +350,15 @@ def update_phase_state(
         meta["phase_hard_override_used"] = True
         meta["phase_update_reason"] = "hard_override"
         meta["phase_update_used"] = False
-        meta["phase_after"] = normalized["phase"]
-        meta["phase_confidence_after"] = normalized["confidence"]
-        meta["phase_changed"] = meta["phase_before"] != meta["phase_after"]
         meta["phase_issues"] = issues
         meta["phase_llm_confidence"] = None
         meta["phase_threshold_used"] = None
-        meta["phase_transition_attempted"] = (
-            meta["phase_before"] != meta["phase_after"]
-        )
         meta["phase_hysteresis_held"] = False
         normalized = _apply_precedence(normalized, meta, phase_floor, allow_closing)
         _sync_phase_meta(meta, normalized)
+        meta["phase_transition_attempted"] = (
+            meta["phase_before"] != meta["phase_after"]
+        )
         return normalized, meta
 
     should, why = _should_update_phase(
@@ -369,9 +366,8 @@ def update_phase_state(
     )
     meta["phase_update_reason"] = why
     if not should:
-        meta["phase_after"] = prev.get("phase", "opening")
-        meta["phase_confidence_after"] = float(prev.get("confidence", 0.6) or 0.6)
-        normalized = _apply_precedence(prev, meta, phase_floor, allow_closing)
+        normalized = prev
+        normalized = _apply_precedence(normalized, meta, phase_floor, allow_closing)
         _sync_phase_meta(meta, normalized)
         return normalized, meta
 
@@ -399,17 +395,13 @@ def update_phase_state(
         meta["phase_threshold_used"] = hyst["threshold"]
         meta["phase_transition_attempted"] = hyst["attempted_change"]
         meta["phase_hysteresis_held"] = hyst["held"]
-        meta["phase_after"] = normalized["phase"]
-        meta["phase_confidence_after"] = normalized["confidence"]
-        meta["phase_changed"] = meta["phase_before"] != meta["phase_after"]
         normalized = _apply_precedence(normalized, meta, phase_floor, allow_closing)
         _sync_phase_meta(meta, normalized)
         return normalized, meta
     except Exception as exc:
         meta["phase_update_failed"] = True
         meta["phase_update_error"] = str(exc)
-        meta["phase_after"] = prev.get("phase", "opening")
-        meta["phase_confidence_after"] = float(prev.get("confidence", 0.6) or 0.6)
-        normalized = _apply_precedence(prev, meta, phase_floor, allow_closing)
+        normalized = prev
+        normalized = _apply_precedence(normalized, meta, phase_floor, allow_closing)
         _sync_phase_meta(meta, normalized)
         return normalized, meta

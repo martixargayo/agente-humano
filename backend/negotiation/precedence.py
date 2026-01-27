@@ -28,12 +28,15 @@ def compute_precedence(
     belief: dict,
     intent: dict | None,
 ) -> PrecedenceResult:
+    def _normalized_reason(mode: Mode, reason_key: str) -> str:
+        return f"precedence:{mode} | precedence_reason:{reason_key}"
+
     health = (belief.get("dynamics") or {}).get("interaction_health", "stable")
 
     if health in {"tense", "stalled"}:
         return PrecedenceResult(
             mode="recovery_guard",
-            reason=f"belief:health_{health}",
+            reason=_normalized_reason("recovery_guard", f"belief:health_{health}"),
             min_policy_tags=("safe_when_tense", "deescalation"),
             block_policy_tags=("aggressive",),
             phase_floor="recovery",
@@ -43,27 +46,26 @@ def compute_precedence(
     if world.get("other_buyer_claimed") or world.get("deadline_claimed"):
         return PrecedenceResult(
             mode="discovery",
-            reason="world:credibility_signal",
+            reason=_normalized_reason("discovery", "world:credibility_signal"),
             min_policy_tags=("credibility_check",),
         )
 
     if world.get("price_firm") is True:
         closing_ok = bool(
-            world.get("docs_claimed")
-            or world.get("concession_made")
+            world.get("concession_made")
             or (intent and intent.get("intent_type") == "closing")
         )
         if closing_ok:
             return PrecedenceResult(
                 mode="closing_push",
-                reason="world:price_firm",
+                reason=_normalized_reason("closing_push", "world:price_firm"),
                 min_policy_tags=("closing",),
                 phase_floor="closing",
                 allow_closing=True,
             )
         return PrecedenceResult(
             mode="bargaining",
-            reason="world:price_firm_without_requirements",
+            reason=_normalized_reason("bargaining", "world:price_firm_without_requirements"),
             min_policy_tags=("bargaining",),
             allow_closing=False,
         )
@@ -71,8 +73,11 @@ def compute_precedence(
     if world.get("price_mentioned") and world.get("concession_made"):
         return PrecedenceResult(
             mode="bargaining",
-            reason="world:concession_made",
+            reason=_normalized_reason("bargaining", "world:concession_made"),
             min_policy_tags=("bargaining",),
         )
 
-    return PrecedenceResult(mode="opening_or_other", reason="history:default")
+    return PrecedenceResult(
+        mode="opening_or_other",
+        reason=_normalized_reason("opening_or_other", "history:default"),
+    )

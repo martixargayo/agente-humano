@@ -65,10 +65,10 @@ def test_compute_precedence_price_firm_without_requirements():
     assert prec.allow_closing is False
 
 
-def test_compute_precedence_price_firm_with_docs():
+def test_compute_precedence_price_firm_with_concession():
     world = default_world_state()
     world["price_firm"] = True
-    world["docs_claimed"] = True
+    world["concession_made"] = True
 
     prec = compute_precedence(world=world, belief=default_belief_state(), intent=None)
 
