@@ -444,6 +444,7 @@ def update_intent_state(
     progress_state: ProgressState,
     user_message: str,
     turn_count: int,
+    precedence: dict | None,
 ) -> Tuple[IntentState, dict, dict]:
     intent = deepcopy(prev_intent or default_intent_state())
     _normalize_slots_filled_sources(intent)
@@ -461,6 +462,8 @@ def update_intent_state(
         "slots_filled_delta": {},
         "commitment_level": "soft",
     }
+
+    prec = precedence or {}
 
     if intent.get("status") != "active":
         intent_type = _intent_type_for_context(world_state, belief_state)
@@ -509,6 +512,15 @@ def update_intent_state(
         meta["intent_new"] = deepcopy(intent)
         intent_hint = _build_intent_hint(intent, slots_missing, meta["commitment_level"])
         return intent, meta, intent_hint
+
+    if prec.get("mode") == "recovery_guard":
+        if intent.get("status") == "active" and intent.get("intent_type") not in {"relationship"}:
+            intent["status"] = "paused"
+            meta["intent_transition"] = "pause"
+            meta["reasons"] = (meta.get("reasons", []) + ["precedence:recovery_guard"])[:8]
+            meta["intent_new"] = deepcopy(intent)
+            intent_hint = _build_intent_hint(intent, _slots_missing(intent), "soft")
+            return intent, meta, intent_hint
 
     intent = _ensure_steps_hydrated(intent, world_state, belief_state, meta)
 

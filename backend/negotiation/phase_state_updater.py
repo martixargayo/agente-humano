@@ -273,6 +273,32 @@ def _apply_hysteresis(
     return normalized, meta
 
 
+def _apply_precedence(
+    normalized: PhaseState,
+    meta: dict,
+    phase_floor: str | None,
+    allow_closing: bool,
+) -> PhaseState:
+    if phase_floor and normalized.get("phase") != phase_floor:
+        meta["phase_precedence_forced"] = True
+        normalized["phase"] = phase_floor
+        normalized["reasons"] = (["precedence:phase_floor"] + normalized.get("reasons", []))[:8]
+
+    if not allow_closing and normalized.get("phase") == "closing":
+        meta["phase_precedence_blocked_closing"] = True
+        normalized["phase"] = "bargaining"
+        normalized["reasons"] = (
+            ["precedence:block_closing"] + normalized.get("reasons", [])
+        )[:8]
+    return normalized
+
+
+def _sync_phase_meta(meta: dict, normalized: PhaseState) -> None:
+    meta["phase_after"] = normalized.get("phase", "opening")
+    meta["phase_confidence_after"] = float(normalized.get("confidence", 0.6) or 0.6)
+    meta["phase_changed"] = meta.get("phase_before") != meta["phase_after"]
+
+
 def update_phase_state(
     prev_phase_state: PhaseState | None,
     world_state: WorldState,
@@ -281,10 +307,14 @@ def update_phase_state(
     intent_state: IntentState | None,
     recent_history_text: str,
     turn_count: int,
+    precedence: dict | None,
 ) -> tuple[PhaseState, dict]:
     prev = prev_phase_state or default_progress_state()["phase_state"]
     history_text = recent_history_text or ""
     truncated_history = _truncate_history(history_text)
+    prec = precedence or {}
+    phase_floor = prec.get("phase_floor")
+    allow_closing = prec.get("allow_closing", True)
     meta: dict = {
         "phase_update_used": False,
         "phase_update_reason": "",
@@ -330,6 +360,8 @@ def update_phase_state(
             meta["phase_before"] != meta["phase_after"]
         )
         meta["phase_hysteresis_held"] = False
+        normalized = _apply_precedence(normalized, meta, phase_floor, allow_closing)
+        _sync_phase_meta(meta, normalized)
         return normalized, meta
 
     should, why = _should_update_phase(
@@ -339,7 +371,9 @@ def update_phase_state(
     if not should:
         meta["phase_after"] = prev.get("phase", "opening")
         meta["phase_confidence_after"] = float(prev.get("confidence", 0.6) or 0.6)
-        return prev, meta
+        normalized = _apply_precedence(prev, meta, phase_floor, allow_closing)
+        _sync_phase_meta(meta, normalized)
+        return normalized, meta
 
     messages = _phase_prompt.format_messages(
         prev_phase_state=json.dumps(prev, ensure_ascii=False),
@@ -368,10 +402,14 @@ def update_phase_state(
         meta["phase_after"] = normalized["phase"]
         meta["phase_confidence_after"] = normalized["confidence"]
         meta["phase_changed"] = meta["phase_before"] != meta["phase_after"]
+        normalized = _apply_precedence(normalized, meta, phase_floor, allow_closing)
+        _sync_phase_meta(meta, normalized)
         return normalized, meta
     except Exception as exc:
         meta["phase_update_failed"] = True
         meta["phase_update_error"] = str(exc)
         meta["phase_after"] = prev.get("phase", "opening")
         meta["phase_confidence_after"] = float(prev.get("confidence", 0.6) or 0.6)
-        return prev, meta
+        normalized = _apply_precedence(prev, meta, phase_floor, allow_closing)
+        _sync_phase_meta(meta, normalized)
+        return normalized, meta

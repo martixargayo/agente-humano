@@ -6,7 +6,7 @@ InteractionHealth = Literal["stable", "tense", "stalled"]
 RiskPosture = Literal["low", "mid", "high"]
 PolicyOutcome = Literal["good", "neutral", "bad", ""]
 ToneSignal = Literal["neutral", "friendly", "tense"]
-IntentStatus = Literal["inactive", "active", "succeeded", "abandoned"]
+IntentStatus = Literal["inactive", "active", "succeeded", "abandoned", "paused"]
 IntentType = Literal[
     "info_extract",
     "relationship",

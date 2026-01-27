@@ -17,6 +17,7 @@ class Policy:
     phase_hints: List[NegotiationPhase]
     capabilities: Set[str] | None = None
     guards: Set[str] | None = None
+    tags: Set[str] | None = None
 
 
 POLICIES: List[Policy] = [
@@ -31,6 +32,7 @@ POLICIES: List[Policy] = [
         phase_hints=["opening", "recovery"],
         capabilities={"probe_open"},
         guards={"safe_when_tense", "avoid_mentioning_own_numbers"},
+        tags={"deescalation", "safe_when_tense"},
     ),
     Policy(
         policy_id="info_extract_critical",
@@ -43,6 +45,7 @@ POLICIES: List[Policy] = [
         phase_hints=["discovery", "opening"],
         capabilities={"probe_open", "probe_narrow"},
         guards={"avoid_mentioning_own_numbers", "safe_when_tense"},
+        tags={"credibility_check", "bargaining"},
     ),
     Policy(
         policy_id="test_credibility",
@@ -55,6 +58,7 @@ POLICIES: List[Policy] = [
         phase_hints=["discovery", "opening"],
         capabilities={"request_evidence", "probe_narrow"},
         guards={"safe_when_tense", "avoid_mentioning_own_numbers"},
+        tags={"credibility_check"},
     ),
     Policy(
         policy_id="delay_price_discussion",
@@ -67,6 +71,7 @@ POLICIES: List[Policy] = [
         phase_hints=["discovery", "opening"],
         capabilities={"probe_open"},
         guards={"avoid_mentioning_own_numbers", "requires_price_not_mentioned"},
+        tags={"bargaining"},
     ),
     Policy(
         policy_id="challenge_anchor_indirect",
@@ -79,6 +84,7 @@ POLICIES: List[Policy] = [
         phase_hints=["bargaining", "closing"],
         capabilities={"pressure_soft"},
         guards={"avoid_mentioning_own_numbers"},
+        tags={"bargaining", "aggressive"},
     ),
     Policy(
         policy_id="tradeoff_offer",
@@ -91,6 +97,7 @@ POLICIES: List[Policy] = [
         phase_hints=["bargaining", "closing"],
         capabilities={"trade_incentive"},
         guards={"avoid_mentioning_own_numbers"},
+        tags={"bargaining"},
     ),
     Policy(
         policy_id="hold_position",
@@ -103,6 +110,7 @@ POLICIES: List[Policy] = [
         phase_hints=["bargaining", "closing"],
         capabilities={"pressure_soft", "close_next"},
         guards={"avoid_mentioning_own_numbers"},
+        tags={"bargaining", "aggressive"},
     ),
     Policy(
         policy_id="deescalate_tension",
@@ -115,6 +123,7 @@ POLICIES: List[Policy] = [
         phase_hints=["recovery"],
         capabilities={"pressure_soft", "probe_open"},
         guards={"safe_when_tense", "avoid_mentioning_own_numbers"},
+        tags={"deescalation", "safe_when_tense"},
     ),
     Policy(
         policy_id="close_with_conditions",
@@ -127,6 +136,7 @@ POLICIES: List[Policy] = [
         phase_hints=["closing"],
         capabilities={"close_next"},
         guards={"requires_slot_complete", "avoid_mentioning_own_numbers"},
+        tags={"closing", "aggressive"},
     ),
 ]
 

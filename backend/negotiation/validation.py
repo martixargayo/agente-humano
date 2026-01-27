@@ -28,7 +28,13 @@ from .schemas import (
 _ALLOWED_HEALTH: set[InteractionHealth] = {"stable", "tense", "stalled"}
 _ALLOWED_RISK: set[RiskPosture] = {"low", "mid", "high"}
 _ALLOWED_TONE: set[ToneSignal] = {"neutral", "friendly", "tense"}
-_ALLOWED_INTENT_STATUS: set[IntentStatus] = {"inactive", "active", "succeeded", "abandoned"}
+_ALLOWED_INTENT_STATUS: set[IntentStatus] = {
+    "inactive",
+    "active",
+    "succeeded",
+    "abandoned",
+    "paused",
+}
 _ALLOWED_INTENT_TYPES: set[IntentType] = {
     "info_extract",
     "relationship",
