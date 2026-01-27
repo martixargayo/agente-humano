@@ -96,6 +96,11 @@ def test_intent_forced_blocked_by_precedence_fallback():
     )
 
     assert meta["planner_error"] == "intent_forced_blocked_by_precedence"
+    assert meta["intent_preferred_blocked_by_precedence"] is True
+    assert meta["allowed_policy_ids_base"]
+    assert "allowed_policy_ids_after_precedence" in meta
+    assert "allowed_policy_ids_after_intent" in meta
+    assert meta["precedence_filtered_out"]
     assert decision["policy_id"] == "deescalate_tension"
 
 
@@ -109,7 +114,7 @@ def test_phase_hard_override_respects_precedence_block():
     phase, meta = update_phase_state(
         prev_phase_state=prev_phase,
         world_state=world_state,
-        world_diff={"price_firm": True},
+        world_diff={"price_firm": {"before": False, "after": True}},
         belief_state=belief_state,
         intent_state=None,
         recent_history_text="",

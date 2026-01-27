@@ -232,7 +232,7 @@ def test_planner_hard_no_forced_sets_fallback():
 
     constrained, _preferred, meta = apply_intent_constraints(allowed, intent_hint)
 
-    assert constrained == allowed
+    assert constrained == []
     assert meta["planner_error"] == "intent_policy_unavailable"
     assert meta["planner_fallback_used"] is True
 

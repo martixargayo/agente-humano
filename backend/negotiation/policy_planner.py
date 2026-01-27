@@ -357,7 +357,7 @@ def apply_intent_constraints(
             policy_id
             for policy_id in allowed
             if not (
-                (policy := next((item for item in POLICIES if item.policy_id == policy_id), None))
+                (policy := _POLICY_BY_ID.get(policy_id))
                 and policy.guards
                 and "requires_slot_complete" in policy.guards
             )
@@ -395,9 +395,9 @@ def plan_policy(
     recent_context: str,
 ) -> tuple[PolicyDecision, dict]:
     policy_ids = list_policy_ids()
-    allowed = _allowed_policy_ids(world_state, belief_state, progress_state)
-    allowed, prec_meta = apply_precedence_constraints(allowed, precedence)
-    allowed, preferred, intent_meta = apply_intent_constraints(allowed, intent_hint)
+    allowed_base = _allowed_policy_ids(world_state, belief_state, progress_state)
+    allowed_prec, prec_meta = apply_precedence_constraints(allowed_base, precedence)
+    allowed_final, preferred, intent_meta = apply_intent_constraints(allowed_prec, intent_hint)
     prec = precedence or {}
     current_phase = (progress_state.get("phase_state") or {}).get("phase", "opening")
     phase_catalog = {policy.policy_id: policy.phase_hints for policy in POLICIES}
@@ -410,16 +410,29 @@ def plan_policy(
         "issues": [],
         "planner_mode": intent_meta.get("planner_mode", ""),
         "intent_preferred_policy_ids": preferred,
-        "allowed_policy_ids": allowed,
+        "allowed_policy_ids": allowed_final,
+        "allowed_policy_ids_base": allowed_base,
+        "allowed_policy_ids_after_precedence": allowed_prec,
+        "allowed_policy_ids_after_intent": allowed_final,
         "current_phase": current_phase,
-        "phase_candidates": _phase_candidates(allowed, current_phase),
+        "phase_candidates": _phase_candidates(allowed_final, current_phase),
     }
     meta.update(prec_meta)
+
+    preferred_set = set(preferred or [])
+    base_set = set(allowed_base or [])
+    prec_set = set(allowed_prec or [])
+    blocked_by_precedence = bool(
+        preferred_set
+        and (preferred_set & base_set)
+        and not (preferred_set & prec_set)
+    )
+    meta["intent_preferred_blocked_by_precedence"] = blocked_by_precedence
 
     def _apply_phase_bias(decision: PolicyDecision) -> PolicyDecision:
         decision_id, repair_meta = repair_policy_by_phase(
             decision.get("policy_id", ""),
-            allowed,
+            allowed_final,
             phase_catalog,
             current_phase,
             preferred,
@@ -442,12 +455,18 @@ def plan_policy(
         meta["issues"].append("policy_catalog_empty")
         return _apply_phase_bias(default_policy_decision()), meta
 
-    if intent_meta.get("planner_mode") == "intent_forced" and not allowed:
+    if meta.get("planner_mode") == "intent_forced" and not allowed_final:
         meta["planner_failed"] = True
-        meta["planner_error"] = "intent_forced_blocked_by_precedence"
         meta["planner_fallback_used"] = True
-        meta["issues"].append("intent_forced_blocked_by_precedence")
-        return _apply_phase_bias(_fallback_by_precedence(precedence, belief_state)), meta
+
+        if blocked_by_precedence:
+            meta["planner_error"] = "intent_forced_blocked_by_precedence"
+            meta["issues"].append("intent_forced_blocked_by_precedence")
+            return _apply_phase_bias(_fallback_by_precedence(precedence, belief_state)), meta
+
+        meta["planner_error"] = intent_meta.get("planner_error") or "intent_forced_unavailable"
+        meta["issues"].append(meta["planner_error"])
+        return _apply_phase_bias(_fallback_policy(belief_state)), meta
 
     if intent_meta.get("planner_error"):
         meta["planner_failed"] = True
@@ -456,12 +475,12 @@ def plan_policy(
         meta["issues"].append(intent_meta["planner_error"])
         return _apply_phase_bias(_fallback_policy(belief_state)), meta
 
-    if not allowed:
+    if not allowed_final:
         meta["planner_failed"] = True
         meta["planner_error"] = "allowed_empty"
         meta["planner_fallback_used"] = True
         meta["issues"].append("allowed_empty")
-        return _apply_phase_bias(default_policy_decision()), meta
+        return _apply_phase_bias(_fallback_by_precedence(precedence, belief_state)), meta
 
     catalog_text = policy_catalog_text()
     messages = _planner_prompt.format_messages(
@@ -472,7 +491,7 @@ def plan_policy(
         recent_context=recent_context,
         objective=objective,
         constraints=constraints,
-        allowed_policy_ids=allowed,
+        allowed_policy_ids=allowed_final,
         intent_hint=json.dumps(intent_hint or {}, ensure_ascii=False),
         preferred_policy_ids=preferred,
     )
@@ -481,12 +500,12 @@ def plan_policy(
         structured_llm = _planner_llm.with_structured_output(_PolicyDecisionModel)
         result = structured_llm.invoke(messages)
         data = result.model_dump()
-        normalized, issues = normalize_policy_decision(data, allowed)
+        normalized, issues = normalize_policy_decision(data, allowed_final)
         meta["issues"] = issues
         meta["policy_normalization_changed"] = bool(issues)
         if issues:
             logger.warning("policy_planner_validation_issues=%s", issues)
-        if issues or normalized["policy_id"] not in allowed:
+        if issues or normalized["policy_id"] not in allowed_final:
             meta["planner_fallback_used"] = True
             return _apply_phase_bias(_fallback_policy(belief_state)), meta
         normalized["micro_goal"] = _repair_micro_goal(
