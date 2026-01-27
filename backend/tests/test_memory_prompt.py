@@ -2,9 +2,11 @@ import json
 from types import SimpleNamespace
 
 from negotiation.context_utils import build_memory_context, maybe_refresh_summary
+from negotiation.context_utils import build_context_snippet, safe_merge_summary, _try_parse_summary_json
 from negotiation.negotiation_graph import AgentDeps, run_negotiation_agent
 from negotiation.schemas import default_belief_state, default_policy_decision, default_progress_state
 from negotiation.schemas import default_world_state
+from prompts import SUMMARY_SYSTEM_PROMPT, SUMMARY_USER_PROMPT
 from state import SessionState
 
 
@@ -57,6 +59,16 @@ def _canonical_summary(extra=None):
     )
 
 
+def _print_snapshot(state, captured):
+    print("\n[SNAPSHOT] state.summary:", state.summary)
+    executor_user = None
+    messages = captured.get("messages") if isinstance(captured, dict) else None
+    if messages and len(messages) > 1:
+        executor_user = getattr(messages[1], "content", None)
+    print("[SNAPSHOT] executor_user:", executor_user)
+    print("[SNAPSHOT] debug_trace_last:", state.debug_trace[-1] if state.debug_trace else None)
+
+
 def test_executor_prompt_memory_single_injection(monkeypatch):
     captured = {}
     deps = _base_deps(captured)
@@ -79,13 +91,17 @@ def test_executor_prompt_memory_single_injection(monkeypatch):
 
     run_negotiation_agent(state, "Precio?", deps=deps)
 
-    executor_user = captured["messages"][1].content
-    assert "[MEMORY]" in executor_user
-    assert "[LONG_MEMORY]" in executor_user
-    assert "[SHORT_MEMORY]" in executor_user
-    assert executor_user.count("Vendedor: Hola") == 1
-    assert "[HISTORIAL RECIENTE]" not in executor_user
-    assert "[RESUMEN INTERNO" not in executor_user
+    try:
+        executor_user = captured["messages"][1].content
+        assert "[MEMORY]" in executor_user
+        assert "[LONG_MEMORY]" in executor_user
+        assert "[SHORT_MEMORY]" in executor_user
+        assert executor_user.count("Vendedor: Hola") == 1
+        assert "[HISTORIAL RECIENTE]" not in executor_user
+        assert "[RESUMEN INTERNO" not in executor_user
+    except AssertionError:
+        _print_snapshot(state, captured)
+        raise
 
 
 def test_turn_aware_short_memory_slice():
@@ -152,12 +168,16 @@ def test_summary_refresh_trims_and_updates(monkeypatch):
 
     run_negotiation_agent(state, "U4", deps=deps)
 
-    assert json.loads(state.summary)["facts"] == ["Resumen nuevo"]
-    assert sum(1 for m in state.history if m.get("role") == "user") <= 2
+    try:
+        assert json.loads(state.summary)["facts"] == ["Resumen nuevo"]
+        assert sum(1 for m in state.history if m.get("role") == "user") <= 2
 
-    executor_user = captured["messages"][1].content
-    assert "[LONG_MEMORY]" in executor_user
-    assert "[SHORT_MEMORY]" in executor_user
+        executor_user = captured["messages"][1].content
+        assert "[LONG_MEMORY]" in executor_user
+        assert "[SHORT_MEMORY]" in executor_user
+    except AssertionError:
+        _print_snapshot(state, captured)
+        raise
 
 
 def test_refresh_meta_no_summarizer():
@@ -205,7 +225,7 @@ def test_safe_merge_unstructured_candidate():
 
     assert meta["refreshed"] is True
     merged = json.loads(state.summary)
-    assert merged.get("_unstructured_candidates") == ["texto sin headings"]
+    assert merged == _summary_payload({"facts": ["ok"]})
 
 
 def test_summary_refresh_json_candidate_is_canonical():
@@ -242,7 +262,7 @@ def test_summary_refresh_json_candidate_is_canonical():
     assert state.summary == _canonical_summary({"facts": ["OK"]})
     parsed = json.loads(state.summary)
     assert "_summary_fallback_invalid" not in parsed
-    assert "_unstructured_candidates" not in parsed
+    assert "facts" in parsed
 
 
 def test_memory_context_tolerates_system_and_tool_roles():
@@ -262,7 +282,8 @@ def test_memory_context_tolerates_system_and_tool_roles():
     )
 
     assert long_memory
-    assert "SYSTEM: internal note" in short_memory
+    assert "SYSTEM: internal note" not in short_memory
+    assert "TOOL: tool output" in short_memory
     assert meta["turns_total"] == 1
 
     deps = _base_deps({}, summarize=lambda *_args: _canonical_summary())
@@ -296,6 +317,149 @@ def test_memory_meta_and_refresh_meta_in_debug_trace(monkeypatch):
 
     run_negotiation_agent(state, "Precio?", deps=deps)
 
-    last_trace = state.debug_trace[-1]
-    assert "memory_meta" in last_trace
-    assert "refresh_meta" in last_trace
+    try:
+        last_trace = state.debug_trace[-1]
+        assert "memory_meta" in last_trace
+        assert "refresh_meta" in last_trace
+    except AssertionError:
+        _print_snapshot(state, captured)
+        raise
+
+
+def test_summary_prompt_forbids_extra_keys():
+    text = (SUMMARY_SYSTEM_PROMPT + "\n" + SUMMARY_USER_PROMPT).lower()
+    assert "no añadas claves" in text or "no añadas campos" in text
+
+
+def test_safe_merge_does_not_invent_schema_keys():
+    existing = json.dumps(_summary_payload(), ensure_ascii=False)
+    merged = safe_merge_summary(existing, "texto no json")
+    obj = json.loads(merged)
+    allowed = set(_summary_payload().keys())
+    assert set(obj.keys()).issubset(allowed)
+
+
+def test_try_parse_summary_json_rejects_wrong_types():
+    bad = """{
+      "facts": "no-list",
+      "open_questions": [],
+      "constraints_limits": [],
+      "seller_signals": [],
+      "buyer_signals": [],
+      "decisions": []
+    }"""
+    assert _try_parse_summary_json(bad) is None
+
+
+def test_try_parse_summary_json_rejects_non_string_items():
+    bad = """{
+      "facts": [123],
+      "open_questions": [],
+      "constraints_limits": [],
+      "seller_signals": [],
+      "buyer_signals": [],
+      "decisions": []
+    }"""
+    assert _try_parse_summary_json(bad) is None
+
+
+def test_long_memory_rejects_non_json_summary():
+    history = [{"role": "user", "content": "U1"}, {"role": "assistant", "content": "A1"}]
+    long_memory, short_memory, _ = build_memory_context(
+        history, "legacy summary", keep_last_n_turns=1
+    )
+    assert long_memory == ""
+    assert "Vendedor: U1" in short_memory
+
+
+def test_merge_legacy_to_fallback_json_is_stable():
+    merged = safe_merge_summary("legacy summary", "also legacy")
+    obj = json.loads(merged)
+    required = set(_summary_payload().keys())
+    assert set(obj.keys()) >= required
+
+
+def test_context_snippet_does_not_embed_raw_json_fragment():
+    big = json.dumps(
+        _summary_payload({"facts": ["x" * 500]}),
+        ensure_ascii=False,
+        sort_keys=True,
+        indent=2,
+    )
+    history = [{"role": "user", "content": "U1"}, {"role": "assistant", "content": "A1"}]
+    snippet = build_context_snippet(history, big, seller_only=True)
+    assert "Resumen breve:" not in snippet or "{" not in snippet
+
+
+def test_short_memory_excludes_system_before_user_by_design():
+    summary = json.dumps(_summary_payload(), ensure_ascii=False)
+    history = [
+        {"role": "system", "content": "internal note"},
+        {"role": "user", "content": "U1"},
+        {"role": "tool", "content": "tool out"},
+        {"role": "assistant", "content": "A1"},
+    ]
+    long_memory, short_memory, _ = build_memory_context(history, summary, keep_last_n_turns=1)
+    assert "SYSTEM: internal note" not in short_memory
+    assert "Vendedor: U1" in short_memory
+    assert "TOOL: tool out" in short_memory
+    assert "Comprador: A1" in short_memory
+
+
+def test_history_items_missing_fields_do_not_crash_memory_pipeline():
+    s = SessionState(user_id="u", session_id="s")
+    s.summary = json.dumps(_summary_payload(), ensure_ascii=False)
+    s.history = [
+        {"role": "user"},
+        {"content": "hi"},
+        {"role": "tool", "content": ""},
+        {"role": "assistant", "content": "A"},
+    ]
+
+    long_memory, short_memory, meta = build_memory_context(
+        s.history, s.summary, keep_last_n_turns=1
+    )
+    assert isinstance(long_memory, str)
+    assert isinstance(short_memory, str)
+    assert isinstance(meta, dict)
+
+    meta2 = maybe_refresh_summary(
+        s, deps=SimpleNamespace(), context_limit_turns=0, keep_last_n_turns=1
+    )
+    assert meta2["refreshed"] in (True, False)
+
+
+def test_derive_max_total_cost_clamps_negative_margin():
+    from state import derive_max_total_cost
+
+    exit_option = {"label": "x", "total_cost": 100.0, "notes": ""}
+    max_cost, _ = derive_max_total_cost(exit_option, margin=-0.5)
+    assert max_cost == 100.0
+
+
+def test_debug_trace_contains_margin(monkeypatch):
+    from negotiation.schemas import default_policy_decision, default_belief_state
+
+    monkeypatch.setenv("MAX_TOTAL_COST_MARGIN", "0.10")
+    monkeypatch.setattr(
+        "negotiation.negotiation_graph.normalize_text",
+        lambda raw_reply, last_user_message=None: raw_reply,
+    )
+    monkeypatch.setattr(
+        "negotiation.negotiation_graph.get_negotiation_rag_index",
+        lambda: None,
+    )
+    s = _seed_state()
+    s.world_state = default_world_state()
+    s.progress_state = default_progress_state()
+
+    deps = AgentDeps(
+        plan_policy=lambda *_a, **_k: (default_policy_decision(), {}),
+        update_belief_state=lambda *_a, **_k: (default_belief_state(), {}),
+        execute=lambda msgs: "ok",
+        summarize=None,
+    )
+
+    run_negotiation_agent(s, "Precio?", deps=deps)
+    last = s.debug_trace[-1]
+    assert last.get("max_total_cost_margin") == 0.10
