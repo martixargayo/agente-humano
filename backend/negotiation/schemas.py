@@ -23,6 +23,7 @@ StepKind = Literal[
     "pressure_soft",
     "close_next",
 ]
+NegotiationPhase = Literal["opening", "discovery", "bargaining", "closing", "recovery"]
 
 
 class IntentSlot(TypedDict):
@@ -142,6 +143,13 @@ class IntentHint(TypedDict):
     commitment_level: CommitmentLevel
 
 
+class PhaseState(TypedDict):
+    phase: NegotiationPhase
+    confidence: float
+    reasons: List[str]
+    last_updated_turn: int
+
+
 ReasonKey = Literal[
     "price_signal",
     "deadline_signal",
@@ -161,6 +169,7 @@ class ProgressState(TypedDict):
     loop_flags: List[str]
     turns_in_same_mode: int
     intent_state: IntentState
+    phase_state: PhaseState
 
 
 def default_world_state() -> WorldState:
@@ -224,6 +233,12 @@ def default_progress_state() -> ProgressState:
         "loop_flags": [],
         "turns_in_same_mode": 0,
         "intent_state": default_intent_state(),
+        "phase_state": {
+            "phase": "opening",
+            "confidence": 0.6,
+            "reasons": [],
+            "last_updated_turn": 0,
+        },
     }
 
 

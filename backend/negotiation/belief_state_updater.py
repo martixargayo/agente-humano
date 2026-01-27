@@ -10,9 +10,23 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, confloat, conlist, field_validator
 
-from prompts import BELIEF_UPDATE_SYSTEM_PROMPT, BELIEF_UPDATE_USER_PROMPT
-from .schemas import BeliefState, PolicyDecision, ReasonKey, WorldState, default_belief_state
-from .validation import normalize_belief_state
+from prompts import (
+    BELIEF_UPDATE_SYSTEM_PROMPT,
+    BELIEF_UPDATE_USER_PROMPT,
+    PHASE_UPDATE_SYSTEM_PROMPT,
+    PHASE_UPDATE_USER_PROMPT,
+)
+from .schemas import (
+    BeliefState,
+    IntentState,
+    PhaseState,
+    PolicyDecision,
+    ReasonKey,
+    WorldState,
+    default_belief_state,
+    default_progress_state,
+)
+from .validation import normalize_belief_state, normalize_phase_state
 
 
 BELIEF_MODEL = os.getenv("BELIEF_MODEL_NAME", os.getenv("SUMMARY_MODEL_NAME", "gpt-4o-mini"))
@@ -24,6 +38,13 @@ _belief_prompt = ChatPromptTemplate.from_messages(
     [
         ("system", BELIEF_UPDATE_SYSTEM_PROMPT),
         ("user", BELIEF_UPDATE_USER_PROMPT),
+    ]
+)
+
+_phase_prompt = ChatPromptTemplate.from_messages(
+    [
+        ("system", PHASE_UPDATE_SYSTEM_PROMPT),
+        ("user", PHASE_UPDATE_USER_PROMPT),
     ]
 )
 
@@ -89,6 +110,17 @@ class _BeliefStateModel(BaseModel):
         return dict(items[:6])
 
 
+class _PhaseDecisionModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    phase: Literal["opening", "discovery", "bargaining", "closing", "recovery"]
+    confidence: confloat(ge=0.0, le=1.0) = 0.6
+    reasons: conlist(str, max_length=8) = Field(default_factory=list)
+    alternatives: conlist(
+        Literal["opening", "discovery", "bargaining", "closing", "recovery"],
+        max_length=3,
+    ) = Field(default_factory=list)
+
+
 _CRITICAL_FLAGS = (
     "price_mentioned",
     "deadline_claimed",
@@ -140,6 +172,66 @@ def _clamp_step(prev: float, new: float, max_step: float = 0.15) -> float:
     return new
 
 
+def _apply_phase_hysteresis(
+    prev_phase_state: PhaseState,
+    proposed: dict,
+    turn_count: int,
+) -> PhaseState:
+    prev_phase = prev_phase_state.get("phase", "opening")
+    prev_conf = float(prev_phase_state.get("confidence", 0.6))
+    new_phase = proposed.get("phase", prev_phase)
+    new_conf = float(proposed.get("confidence", prev_conf))
+
+    if new_phase != prev_phase and new_conf < 0.75:
+        proposed["phase"] = prev_phase
+        proposed["confidence"] = max(prev_conf, new_conf) * 0.95
+        reasons = proposed.get("reasons") or []
+        proposed["reasons"] = ["hysteresis_hold"] + reasons[:7]
+
+    proposed["last_updated_turn"] = turn_count
+    normalized, _issues = normalize_phase_state(proposed)
+    return normalized
+
+
+def _update_phase_state_llm(
+    prev_phase_state: PhaseState,
+    world_state: WorldState,
+    world_diff: dict,
+    belief_state: BeliefState,
+    intent_state: IntentState | None,
+    recent_history_text: str,
+    turn_count: int,
+) -> tuple[PhaseState, dict]:
+    meta = {"phase_update_used": False, "phase_update_reason": "", "phase_update_failed": False}
+    strong = bool(world_diff) or belief_state.get("dynamics", {}).get("interaction_health") in {
+        "tense",
+        "stalled",
+    }
+    if not strong and (turn_count - int(prev_phase_state.get("last_updated_turn", 0)) < 2):
+        meta["phase_update_reason"] = "phase_skip_budget"
+        return prev_phase_state, meta
+
+    messages = _phase_prompt.format_messages(
+        prev_phase_state=json.dumps(prev_phase_state, ensure_ascii=False),
+        world_state=json.dumps(world_state, ensure_ascii=False),
+        world_diff=json.dumps(world_diff, ensure_ascii=False),
+        belief_state=json.dumps(belief_state, ensure_ascii=False),
+        intent_state=json.dumps(intent_state or {}, ensure_ascii=False),
+        recent_history=recent_history_text,
+    )
+
+    try:
+        structured_llm = _belief_llm.with_structured_output(_PhaseDecisionModel)
+        result = structured_llm.invoke(messages)
+        proposed = result.model_dump()
+        meta["phase_update_used"] = True
+        return _apply_phase_hysteresis(prev_phase_state, proposed, turn_count), meta
+    except Exception as exc:
+        meta["phase_update_failed"] = True
+        meta["phase_update_error"] = str(exc)
+        return prev_phase_state, meta
+
+
 def update_belief_state(
     prev_belief_state: BeliefState | None,
     prev_world_state: WorldState,
@@ -149,6 +241,10 @@ def update_belief_state(
     last_assistant_message: str,
     user_message: str,
     context_snippet: str,
+    prev_phase_state: PhaseState | None = None,
+    intent_state: IntentState | None = None,
+    recent_history_text: str | None = None,
+    turn_count: int = 0,
     extractor_meta: dict | None = None,
 ) -> tuple[BeliefState, dict]:
     previous = prev_belief_state or default_belief_state()
@@ -165,6 +261,17 @@ def update_belief_state(
         extractor_meta=extractor_meta,
     ):
         meta["belief_update_skipped"] = True
+        phase_state, phase_meta = _update_phase_state_llm(
+            prev_phase_state or default_progress_state()["phase_state"],
+            world_state,
+            world_diff,
+            previous,
+            intent_state,
+            recent_history_text or context_snippet,
+            turn_count,
+        )
+        meta["phase_state"] = phase_state
+        meta["phase_meta"] = phase_meta
         return previous, meta
 
     messages = _belief_prompt.format_messages(
@@ -195,10 +302,32 @@ def update_belief_state(
         )
         if issues:
             print(f"[belief_state_updater] Validación: {issues}")
+        phase_state, phase_meta = _update_phase_state_llm(
+            prev_phase_state or default_progress_state()["phase_state"],
+            world_state,
+            world_diff,
+            normalized,
+            intent_state,
+            recent_history_text or context_snippet,
+            turn_count,
+        )
+        meta["phase_state"] = phase_state
+        meta["phase_meta"] = phase_meta
         return normalized, meta
     except Exception as exc:
         print(f"[belief_state_updater] Error inesperado: {exc}")
         meta["belief_update_failed"] = True
         meta["belief_update_error"] = str(exc)
 
+    phase_state, phase_meta = _update_phase_state_llm(
+        prev_phase_state or default_progress_state()["phase_state"],
+        world_state,
+        world_diff,
+        previous,
+        intent_state,
+        recent_history_text or context_snippet,
+        turn_count,
+    )
+    meta["phase_state"] = phase_state
+    meta["phase_meta"] = phase_meta
     return previous, meta

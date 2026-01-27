@@ -320,3 +320,22 @@ def test_normalize_progress_policy_attempts_reports_invalid_values():
 
     assert "policy_attempts_invalid_value:rapport_build" in issues
     assert "rapport_build" not in progress["policy_attempts"]
+
+
+def test_normalize_progress_phase_state_clamps_and_dedupes():
+    progress, issues = normalize_progress_state(
+        {
+            "phase_state": {
+                "phase": "invalid",
+                "confidence": 2.5,
+                "reasons": ["a", "a", "b"],
+                "last_updated_turn": -3,
+            }
+        }
+    )
+
+    assert "phase_invalid" in issues
+    assert progress["phase_state"]["phase"] == "opening"
+    assert progress["phase_state"]["confidence"] == 1.0
+    assert progress["phase_state"]["reasons"] == ["a", "b"]
+    assert progress["phase_state"]["last_updated_turn"] == 0

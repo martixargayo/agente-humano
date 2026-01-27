@@ -14,6 +14,7 @@ from .policies import POLICIES, list_policy_ids, policy_catalog_text
 from .schemas import (
     BeliefState,
     IntentHint,
+    NegotiationPhase,
     PolicyDecision,
     ProgressState,
     WorldState,
@@ -41,6 +42,82 @@ class _PolicyDecisionModel(BaseModel):
     reason: str = Field(default="", max_length=180)
     micro_goal: str = Field(default="", max_length=140)
     risk_posture: Literal["low", "mid", "high"] = Field(default="low")
+
+
+_PHASE_ORDER: list[NegotiationPhase] = ["opening", "discovery", "bargaining", "closing"]
+_PHASE_INDEX: dict[NegotiationPhase, int] = {phase: idx for idx, phase in enumerate(_PHASE_ORDER)}
+_POLICY_BY_ID = {policy.policy_id: policy for policy in POLICIES}
+
+
+def _phase_bonus(policy_phases: list[str], current_phase: str) -> int:
+    if not policy_phases:
+        return 0
+    if current_phase == "recovery":
+        if "recovery" in policy_phases:
+            return 3
+        return 0
+    if current_phase in policy_phases:
+        return 2
+    if "recovery" in policy_phases:
+        return 1
+    if current_phase in _PHASE_INDEX:
+        cur_i = _PHASE_INDEX[current_phase]  # type: ignore[index]
+        for phase in policy_phases:
+            if phase in _PHASE_INDEX and abs(_PHASE_INDEX[phase] - cur_i) == 1:
+                return 1
+    return 0
+
+
+def _phase_candidates(
+    allowed_ids: list[str],
+    current_phase: str,
+    limit: int = 5,
+) -> list[dict]:
+    candidates: list[dict] = []
+    for policy_id in allowed_ids:
+        policy = _POLICY_BY_ID.get(policy_id)
+        policy_phases = policy.phase_hints if policy else []
+        candidates.append(
+            {
+                "policy_id": policy_id,
+                "phase_bonus": _phase_bonus(policy_phases, current_phase),
+                "phase_hints": policy_phases,
+            }
+        )
+    candidates.sort(
+        key=lambda item: (-(item["phase_bonus"]), item["policy_id"])
+    )
+    return candidates[:limit]
+
+
+def repair_policy_by_phase(
+    chosen_id: str,
+    allowed_ids: list[str],
+    policy_catalog: dict[str, list[str]],
+    current_phase: str,
+) -> tuple[str, dict]:
+    meta = {
+        "phase_repair_used": False,
+        "phase_repair_from": chosen_id,
+        "phase_repair_to": chosen_id,
+    }
+    chosen_bonus = _phase_bonus(policy_catalog.get(chosen_id, []), current_phase)
+    if chosen_bonus >= 1:
+        return chosen_id, meta
+
+    best = None
+    for policy_id in allowed_ids:
+        bonus = _phase_bonus(policy_catalog.get(policy_id, []), current_phase)
+        if bonus >= 2:
+            best = policy_id
+            break
+
+    if best:
+        meta["phase_repair_used"] = True
+        meta["phase_repair_to"] = best
+        return best, meta
+
+    return chosen_id, meta
 
 
 def _fallback_policy(belief_state: BeliefState) -> PolicyDecision:
@@ -225,6 +302,8 @@ def plan_policy(
     policy_ids = list_policy_ids()
     allowed = _allowed_policy_ids(world_state, belief_state, progress_state)
     allowed, preferred, intent_meta = apply_intent_constraints(allowed, intent_hint)
+    current_phase = (progress_state.get("phase_state") or {}).get("phase", "opening")
+    phase_catalog = {policy.policy_id: policy.phase_hints for policy in POLICIES}
     meta = {
         "planner_failed": False,
         "planner_error": "",
@@ -234,28 +313,46 @@ def plan_policy(
         "planner_mode": intent_meta.get("planner_mode", ""),
         "intent_preferred_policy_ids": preferred,
         "allowed_policy_ids": allowed,
+        "current_phase": current_phase,
+        "phase_candidates": _phase_candidates(allowed, current_phase),
     }
+
+    def _apply_phase_bias(decision: PolicyDecision) -> PolicyDecision:
+        decision_id, repair_meta = repair_policy_by_phase(
+            decision.get("policy_id", ""),
+            allowed,
+            phase_catalog,
+            current_phase,
+        )
+        if decision_id and decision_id != decision.get("policy_id"):
+            decision["policy_id"] = decision_id
+        meta.update(repair_meta)
+        meta["phase_bonus"] = _phase_bonus(
+            phase_catalog.get(decision.get("policy_id", ""), []),
+            current_phase,
+        )
+        return decision
 
     if not policy_ids:
         meta["planner_failed"] = True
         meta["planner_error"] = "policy_catalog_empty"
         meta["planner_fallback_used"] = True
         meta["issues"].append("policy_catalog_empty")
-        return default_policy_decision(), meta
+        return _apply_phase_bias(default_policy_decision()), meta
 
     if intent_meta.get("planner_error"):
         meta["planner_failed"] = True
         meta["planner_error"] = intent_meta["planner_error"]
         meta["planner_fallback_used"] = True
         meta["issues"].append(intent_meta["planner_error"])
-        return _fallback_policy(belief_state), meta
+        return _apply_phase_bias(_fallback_policy(belief_state)), meta
 
     if not allowed:
         meta["planner_failed"] = True
         meta["planner_error"] = "allowed_empty"
         meta["planner_fallback_used"] = True
         meta["issues"].append("allowed_empty")
-        return default_policy_decision(), meta
+        return _apply_phase_bias(default_policy_decision()), meta
 
     catalog_text = policy_catalog_text()
     messages = _planner_prompt.format_messages(
@@ -282,17 +379,17 @@ def plan_policy(
             print(f"[policy_planner] Validación: {issues}")
         if issues or normalized["policy_id"] not in allowed:
             meta["planner_fallback_used"] = True
-            return _fallback_policy(belief_state), meta
+            return _apply_phase_bias(_fallback_policy(belief_state)), meta
         normalized["micro_goal"] = _repair_micro_goal(
             normalized["policy_id"], normalized["micro_goal"]
         )
         if _violates_constraints(normalized["micro_goal"], constraints):
             print("[policy_planner] Micro-objetivo viola constraints, reparando.")
             normalized["micro_goal"] = "Mantener confidencial el límite y avanzar con cautela."
-        return normalized, meta
+        return _apply_phase_bias(normalized), meta
     except Exception as exc:
         print(f"[policy_planner] Output inválido, usando fallback: {exc}")
         meta["planner_failed"] = True
         meta["planner_error"] = str(exc)
         meta["planner_fallback_used"] = True
-        return _fallback_policy(belief_state), meta
+        return _apply_phase_bias(_fallback_policy(belief_state)), meta

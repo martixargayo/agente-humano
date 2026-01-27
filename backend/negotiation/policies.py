@@ -4,6 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Set
 
+from .schemas import NegotiationPhase
+
 
 @dataclass(frozen=True)
 class Policy:
@@ -12,7 +14,7 @@ class Policy:
     primary_when: str
     hard_constraints: str
     rag_query_template: str
-    phase_hint: str | None = None
+    phase_hints: List[NegotiationPhase]
     capabilities: Set[str] | None = None
     guards: Set[str] | None = None
 
@@ -26,7 +28,7 @@ POLICIES: List[Policy] = [
         rag_query_template=(
             "Tácticas para generar rapport sin perder objetivo en una negociación presencial."
         ),
-        phase_hint="1",
+        phase_hints=["opening", "recovery"],
         capabilities={"probe_open"},
         guards={"safe_when_tense", "avoid_mentioning_own_numbers"},
     ),
@@ -38,7 +40,7 @@ POLICIES: List[Policy] = [
         rag_query_template=(
             "Preguntas y técnicas para descubrir información crítica sin sonar interrogatorio."
         ),
-        phase_hint="2",
+        phase_hints=["discovery", "opening"],
         capabilities={"probe_open", "probe_narrow"},
         guards={"avoid_mentioning_own_numbers", "safe_when_tense"},
     ),
@@ -50,7 +52,7 @@ POLICIES: List[Policy] = [
         rag_query_template=(
             "Cómo contrastar credibilidad con preguntas indirectas y señales suaves."
         ),
-        phase_hint="2",
+        phase_hints=["discovery", "opening"],
         capabilities={"request_evidence", "probe_narrow"},
         guards={"safe_when_tense", "avoid_mentioning_own_numbers"},
     ),
@@ -62,7 +64,7 @@ POLICIES: List[Policy] = [
         rag_query_template=(
             "Tácticas para aplazar precio y reconducir a información o valor."
         ),
-        phase_hint="2",
+        phase_hints=["discovery", "opening"],
         capabilities={"probe_open"},
         guards={"avoid_mentioning_own_numbers", "requires_price_not_mentioned"},
     ),
@@ -74,7 +76,7 @@ POLICIES: List[Policy] = [
         rag_query_template=(
             "Formas indirectas de desafiar un precio alto y abrir espacio."
         ),
-        phase_hint="4",
+        phase_hints=["bargaining", "closing"],
         capabilities={"pressure_soft"},
         guards={"avoid_mentioning_own_numbers"},
     ),
@@ -86,7 +88,7 @@ POLICIES: List[Policy] = [
         rag_query_template=(
             "Cómo formular trade-offs claros que mantengan control del valor."
         ),
-        phase_hint="4",
+        phase_hints=["bargaining", "closing"],
         capabilities={"trade_incentive"},
         guards={"avoid_mentioning_own_numbers"},
     ),
@@ -98,7 +100,7 @@ POLICIES: List[Policy] = [
         rag_query_template=(
             "Frases breves para mantener posición y seguir negociando."
         ),
-        phase_hint="4",
+        phase_hints=["bargaining", "closing"],
         capabilities={"pressure_soft", "close_next"},
         guards={"avoid_mentioning_own_numbers"},
     ),
@@ -110,7 +112,7 @@ POLICIES: List[Policy] = [
         rag_query_template=(
             "Tácticas de desescalada en negociación presencial sin ceder de más."
         ),
-        phase_hint="1",
+        phase_hints=["recovery"],
         capabilities={"pressure_soft", "probe_open"},
         guards={"safe_when_tense", "avoid_mentioning_own_numbers"},
     ),
@@ -122,7 +124,7 @@ POLICIES: List[Policy] = [
         rag_query_template=(
             "Guía para cerrar condiciones claras y confirmar acuerdo." 
         ),
-        phase_hint="5",
+        phase_hints=["closing"],
         capabilities={"close_next"},
         guards={"requires_slot_complete", "avoid_mentioning_own_numbers"},
     ),
@@ -136,8 +138,10 @@ def list_policy_ids() -> List[str]:
 def policy_catalog_text() -> str:
     lines = []
     for policy in POLICIES:
+        phase_hints = ",".join(policy.phase_hints)
         lines.append(
-            f"- {policy.policy_id}: {policy.description} | Cuándo: {policy.primary_when}"
+            f"- {policy.policy_id}: {policy.description} | Cuándo: {policy.primary_when} | "
+            f"Fases: {phase_hints}"
         )
     return "\n".join(lines)
 
