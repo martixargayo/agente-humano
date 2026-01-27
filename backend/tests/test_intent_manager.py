@@ -7,6 +7,7 @@ from negotiation.schemas import default_world_state
 
 def test_intent_starts_when_requires_multi_turn():
     world = default_world_state()
+    world["message_is_vague"] = True
     belief = default_belief_state()
     progress = default_progress_state()
     intent, meta, hint = update_intent_state(
@@ -233,6 +234,7 @@ def test_planner_hard_no_forced_sets_fallback():
 
 def test_vague_response_triggers_pivot_sequence():
     world = default_world_state()
+    world["message_is_vague"] = True
     belief = default_belief_state()
     progress = default_progress_state()
     intent = default_intent_state()
@@ -417,6 +419,7 @@ def test_other_buyer_details_has_text():
     world = default_world_state()
     world["other_buyer_claimed"] = True
     world["other_buyer_text"] = "Tengo otro comprador que ofrece 9.500€ esta semana."
+    world["message_is_vague"] = True
     belief = default_belief_state()
     progress = default_progress_state()
 
@@ -442,6 +445,7 @@ def test_other_buyer_details_has_text():
 
 def test_pivot_kind_progression():
     world = default_world_state()
+    world["message_is_vague"] = True
     belief = default_belief_state()
     progress = default_progress_state()
     intent = default_intent_state()

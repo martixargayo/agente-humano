@@ -186,6 +186,7 @@ class NegotiationTurn(TypedDict):
     allowed_policy_ids: List[str]
     planner_meta: dict
     belief_update_meta: dict
+    extractor_meta: dict
     deps: AgentDeps
 
     response: str
@@ -293,7 +294,14 @@ Objetivo: recuperar tácticas concretas para ejecutar esta policy.
 def world_updater_node(state: NegotiationTurn) -> NegotiationTurn:
     prev_world = state.get("world_state") or default_world_state()
     state["prev_world_state"] = prev_world
-    state["world_state"] = update_world_state(prev_world, state.get("user_message", ""))
+    world_state, extractor_meta = update_world_state(
+        prev_world,
+        state.get("user_message", ""),
+        recent_history=state.get("recent_history_text", ""),
+        belief_state=state.get("belief_state") or {},
+    )
+    state["world_state"] = world_state
+    state["extractor_meta"] = extractor_meta
     state["world_diff"] = diff_world_state(prev_world, state["world_state"])
     return state
 
@@ -311,6 +319,7 @@ def belief_updater_node(state: NegotiationTurn) -> NegotiationTurn:
         last_assistant_message=state.get("last_assistant_message", ""),
         user_message=state.get("user_message", ""),
         context_snippet=state.get("recent_history_text", ""),
+        extractor_meta=state.get("extractor_meta", {}),
     )
     state["belief_state"] = belief_state
     state["belief_update_meta"] = belief_meta
@@ -616,6 +625,7 @@ def run_negotiation_agent(
         "allowed_policy_ids": [],
         "planner_meta": {},
         "belief_update_meta": {},
+        "extractor_meta": {},
         "turn_count": state.turn_count,
         "deps": deps,
         "response": "",
@@ -693,6 +703,18 @@ def run_negotiation_agent(
             ).get("commitment_level", ""),
             "planner_meta": new_graph_state.get("planner_meta", {}),
             "belief_update_meta": new_graph_state.get("belief_update_meta", {}),
+            "extractor_used": new_graph_state.get("extractor_meta", {}).get(
+                "extractor_used", False
+            ),
+            "extractor_reasons": new_graph_state.get("extractor_meta", {}).get(
+                "extractor_reasons", []
+            ),
+            "extractor_world_patch_keys": new_graph_state.get("extractor_meta", {}).get(
+                "extractor_world_patch_keys", []
+            ),
+            "extractor_confidence_summary": new_graph_state.get("extractor_meta", {}).get(
+                "extractor_confidence_summary", {"min": 0.0, "avg": 0.0}
+            ),
             "validation_issues": {
                 "world_in": world_issues_in,
                 "belief_in": belief_issues_in,

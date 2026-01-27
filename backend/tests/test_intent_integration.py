@@ -33,10 +33,10 @@ def _fake_deps(captured):
 def _queue_world_states(monkeypatch, world_states):
     queue = list(world_states)
 
-    def fake_update_world_state(_prev_world, _user_message):
+    def fake_update_world_state(_prev_world, _user_message, **_kwargs):
         if queue:
-            return queue.pop(0)
-        return default_world_state()
+            return queue.pop(0), {"extractor_used": False}
+        return default_world_state(), {"extractor_used": False}
 
     monkeypatch.setattr(
         "negotiation.negotiation_graph.update_world_state",
@@ -57,6 +57,7 @@ def test_integration_info_extract_retarget_path(monkeypatch):
     )
 
     world_turn1 = default_world_state()
+    world_turn1["message_is_vague"] = True
     world_turn2 = default_world_state()
     world_turn2.update({"batna_claimed": True, "batna_text": "Otra oferta"})
     world_turn3 = default_world_state()

@@ -115,10 +115,9 @@ def test_has_belief_evidence_delta_triggers_on_critical_flag_change():
     prev = default_world_state()
     cur = default_world_state()
     world_diff = {}
-    user_message = ""
 
     cur["deadline_claimed"] = True
-    assert has_belief_evidence_delta(world_diff, user_message, prev, cur) is True
+    assert has_belief_evidence_delta(world_diff, prev, cur) is True
 
 
 def test_has_belief_evidence_delta_triggers_on_tone_change():
@@ -128,7 +127,7 @@ def test_has_belief_evidence_delta_triggers_on_tone_change():
     cur = default_world_state()
 
     cur["tone_signal"] = "tense"
-    assert has_belief_evidence_delta({}, "", prev, cur) is True
+    assert has_belief_evidence_delta({}, prev, cur) is True
 
 
 def test_belief_reasons_tiebreak_is_deterministic_with_real_keys():

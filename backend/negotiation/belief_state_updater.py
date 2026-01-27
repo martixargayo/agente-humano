@@ -89,35 +89,25 @@ class _BeliefStateModel(BaseModel):
         return dict(items[:6])
 
 
-_EVIDENCE_TRIGGERS = (
-    "último",
-    "final",
-    "hoy",
-    "mañana",
-    "otro comprador",
-    "reservado",
-    "me lo quitan",
-    "se lo llevan",
-    "rebaja",
-    "no negocio",
-    "innegociable",
-)
-
 _CRITICAL_FLAGS = (
     "price_mentioned",
     "deadline_claimed",
     "other_buyer_claimed",
     "docs_claimed",
     "concession_made",
+    "message_is_vague",
 )
 
 
 def has_belief_evidence_delta(
     world_diff: dict,
-    user_message: str,
     prev_world: WorldState,
     world: WorldState,
+    extractor_meta: dict | None = None,
 ) -> bool:
+    decisions = (extractor_meta or {}).get("decisions", {})
+    if decisions.get("should_update_beliefs"):
+        return True
     if world_diff:
         return True
     if any(world.get(key) != prev_world.get(key) for key in _CRITICAL_FLAGS):
@@ -128,8 +118,7 @@ def has_belief_evidence_delta(
     new_hits = set(world.get("tone_marker_hits", [])) - prev_hits
     if new_hits:
         return True
-    lower = (user_message or "").lower()
-    return any(token in lower for token in _EVIDENCE_TRIGGERS)
+    return False
 
 
 def _clamp_step(prev: float, new: float, max_step: float = 0.15) -> float:
@@ -150,6 +139,7 @@ def update_belief_state(
     last_assistant_message: str,
     user_message: str,
     context_snippet: str,
+    extractor_meta: dict | None = None,
 ) -> tuple[BeliefState, dict]:
     previous = prev_belief_state or default_belief_state()
     meta = {
@@ -158,7 +148,9 @@ def update_belief_state(
         "belief_update_skipped": False,
     }
 
-    if not has_belief_evidence_delta(world_diff, user_message, prev_world_state, world_state):
+    if not has_belief_evidence_delta(
+        world_diff, prev_world_state, world_state, extractor_meta
+    ):
         meta["belief_update_skipped"] = True
         return previous, meta
 

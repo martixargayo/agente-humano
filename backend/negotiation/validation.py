@@ -123,6 +123,7 @@ def normalize_world_state(raw: object) -> Tuple[WorldState, List[str]]:
     base["price_firm_text"] = str(raw.get("price_firm_text", base["price_firm_text"])).strip()
     base["evidence_offered"] = bool(raw.get("evidence_offered", base["evidence_offered"]))
     base["evidence_text"] = str(raw.get("evidence_text", base["evidence_text"])).strip()
+    base["message_is_vague"] = bool(raw.get("message_is_vague", base["message_is_vague"]))
 
     tone_signal = raw.get("tone_signal", base["tone_signal"])
     if tone_signal not in _ALLOWED_TONE:
