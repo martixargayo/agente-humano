@@ -203,6 +203,11 @@ def maybe_refresh_summary(
     prefix_hash = hashlib.sha256(new_block.encode("utf-8")).hexdigest()[:10]
 
     raw_candidate = summarize_fn(existing_summary, new_block)
+    candidate_obj = _try_parse_summary_json(raw_candidate)
+    existing_obj = _try_parse_summary_json(existing_summary)
+    candidate_invalid = candidate_obj is None and bool((raw_candidate or "").strip())
+    merge_used_existing = candidate_invalid and existing_obj is not None
+
     session.summary = safe_merge_summary(existing_summary, raw_candidate)
 
     # recorta el historial a la ventana de turns vivos
@@ -220,6 +225,8 @@ def maybe_refresh_summary(
         "chars_summary_before": chars_before,
         "chars_summary_after": chars_after,
         "prefix_hash": prefix_hash,
+        "candidate_invalid": candidate_invalid,
+        "merge_used_existing": merge_used_existing,
         "reason": "summarized",
     }
 

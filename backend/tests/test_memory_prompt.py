@@ -326,6 +326,25 @@ def test_memory_meta_and_refresh_meta_in_debug_trace(monkeypatch):
         raise
 
 
+def test_smoke_run_negotiation_agent_without_normalize_patch(monkeypatch):
+    monkeypatch.setattr("negotiation.negotiation_graph.get_negotiation_rag_index", lambda: None)
+    monkeypatch.setattr(
+        "normalizer.normalizer_llm",
+        SimpleNamespace(invoke=lambda *_args, **_kwargs: SimpleNamespace(content="ok")),
+    )
+
+    captured = {}
+    deps = _base_deps(captured)
+
+    state = _seed_state()
+    state.summary = _canonical_summary({"facts": ["OK"]})
+    state.history = [{"role": "user", "content": "Hola"}]
+
+    run_negotiation_agent(state, "Precio?", deps=deps)
+
+    assert state.debug_trace, "Debe dejar rastro en debug_trace"
+
+
 def test_summary_prompt_forbids_extra_keys():
     text = (SUMMARY_SYSTEM_PROMPT + "\n" + SUMMARY_USER_PROMPT).lower()
     assert "no añadas claves" in text or "no añadas campos" in text
@@ -463,3 +482,72 @@ def test_debug_trace_contains_margin(monkeypatch):
     run_negotiation_agent(s, "Precio?", deps=deps)
     last = s.debug_trace[-1]
     assert last.get("max_total_cost_margin") == 0.10
+
+
+def test_refresh_meta_reports_invalid_json_candidate():
+    def fake_summarize(_existing, _block):
+        return json.dumps(
+            {
+                "facts": ["ok", 1],
+                "open_questions": [],
+                "constraints_limits": [],
+                "seller_signals": [],
+                "buyer_signals": [],
+                "decisions": [],
+            },
+            ensure_ascii=False,
+        )
+
+    deps = _base_deps({}, summarize=fake_summarize)
+    state = _seed_state()
+    state.summary = _canonical_summary({"facts": ["prev"]})
+    state.history = [{"role": "user", "content": "U1"}, {"role": "assistant", "content": "A1"}]
+
+    meta = maybe_refresh_summary(state, deps=deps, context_limit_turns=0, keep_last_n_turns=1)
+
+    assert meta["refreshed"] is True
+    assert meta.get("merge_used_existing") is True
+    assert meta.get("candidate_invalid") is True
+
+
+def test_canonicalization_normalizes_spacing_and_order():
+    candidate = (
+        '{"open_questions":[],"facts":["OK"],"constraints_limits":[],'
+        '"seller_signals":[],"buyer_signals":[],"decisions":[]}'
+    )
+    merged = safe_merge_summary("", candidate)
+    assert merged == _canonical_summary({"facts": ["OK"]})
+
+
+def test_slice_when_keep_exceeds_turns_excludes_prefix_before_first_user():
+    history = [
+        {"role": "system", "content": "S"},
+        {"role": "tool", "content": "T"},
+        {"role": "user", "content": "U1"},
+        {"role": "assistant", "content": "A1"},
+    ]
+    _, short_memory, _ = build_memory_context(history, _canonical_summary(), keep_last_n_turns=99)
+    assert "SYSTEM: S" not in short_memory
+    assert "TOOL: T" not in short_memory
+    assert "Vendedor: U1" in short_memory
+
+
+def test_context_snippet_summary_is_not_json_like():
+    big = json.dumps(
+        _summary_payload({"facts": ["x" * 200]}),
+        ensure_ascii=False,
+        sort_keys=True,
+        indent=2,
+    )
+    history = [{"role": "user", "content": "U1"}, {"role": "assistant", "content": "A1"}]
+    snippet = build_context_snippet(history, big, seller_only=True)
+
+    if "Resumen breve:" in snippet:
+        forbidden = ["{", "}", "\"", "[", "]"]
+        assert all(ch not in snippet for ch in forbidden), snippet
+
+
+def test_safe_merge_fallback_is_exact_schema_only():
+    merged = safe_merge_summary("bad", "worse")
+    obj = json.loads(merged)
+    assert obj == _summary_payload()
