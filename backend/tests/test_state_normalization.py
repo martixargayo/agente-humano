@@ -307,7 +307,7 @@ def test_plan_policy_allowed_empty_falls_back_with_clear_error(monkeypatch):
     assert meta["planner_failed"] is True
     assert meta["planner_error"] == "allowed_empty"
     assert meta["planner_fallback_used"] is True
-    assert decision["policy_id"] == "rapport_build"
+    assert decision["policy_id"] == "info_extract_critical"
 
 
 def test_normalize_progress_policy_attempts_accepts_numeric_strings():
