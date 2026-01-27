@@ -1,4 +1,6 @@
-from negotiation.context_utils import build_memory_context
+from types import SimpleNamespace
+
+from negotiation.context_utils import build_memory_context, maybe_refresh_summary
 from negotiation.negotiation_graph import AgentDeps, run_negotiation_agent
 from negotiation.schemas import default_belief_state, default_policy_decision, default_progress_state
 from negotiation.schemas import default_world_state
@@ -78,7 +80,7 @@ def test_turn_aware_short_memory_slice():
         {"role": "assistant", "content": "A6"},
     ]
 
-    _, short_memory = build_memory_context(
+    _, short_memory, _ = build_memory_context(
         history,
         summary=None,
         keep_last_n_turns=2,
@@ -123,9 +125,85 @@ def test_summary_refresh_trims_and_updates(monkeypatch):
 
     run_negotiation_agent(state, "U4", deps=deps)
 
-    assert state.summary == "RESUMEN NUEVO"
+    assert "RESUMEN NUEVO" in state.summary
     assert sum(1 for m in state.history if m.get("role") == "user") <= 2
 
     executor_user = captured["messages"][1].content
     assert "[LONG_MEMORY]" in executor_user
     assert "[SHORT_MEMORY]" in executor_user
+
+
+def test_refresh_meta_no_summarizer():
+    state = _seed_state()
+    state.history = [
+        {"role": "user", "content": "U1"},
+        {"role": "assistant", "content": "A1"},
+        {"role": "user", "content": "U2"},
+        {"role": "assistant", "content": "A2"},
+    ]
+
+    deps = SimpleNamespace()
+
+    meta = maybe_refresh_summary(
+        state,
+        deps=deps,
+        context_limit_turns=1,
+        keep_last_n_turns=1,
+    )
+
+    assert meta["reason"] == "no_summarizer"
+    assert meta["refreshed"] is False
+
+
+def test_safe_merge_unstructured_candidate():
+    def fake_summarize(existing_summary, new_block):
+        return "texto sin headings"
+
+    deps = _base_deps({}, summarize=fake_summarize)
+    state = _seed_state()
+    state.summary = (
+        "Facts:\n- ok\nOpen questions:\n-?\nConstraints & limits:\n- ok\n"
+        "Seller signals:\n- ok\nBuyer signals:\n- ok\nDecisions so far:\n- ok"
+    )
+    state.history = [
+        {"role": "user", "content": "U1"},
+        {"role": "assistant", "content": "A1"},
+        {"role": "user", "content": "U2"},
+        {"role": "assistant", "content": "A2"},
+    ]
+
+    meta = maybe_refresh_summary(
+        state,
+        deps=deps,
+        context_limit_turns=1,
+        keep_last_n_turns=1,
+    )
+
+    assert meta["refreshed"] is True
+    assert "[APPEND_UNSTRUCTURED]" in state.summary
+
+
+def test_memory_meta_and_refresh_meta_in_debug_trace(monkeypatch):
+    captured = {}
+    deps = _base_deps(captured)
+
+    monkeypatch.setattr(
+        "negotiation.negotiation_graph.normalize_text",
+        lambda raw_reply, last_user_message=None: raw_reply,
+    )
+    monkeypatch.setattr(
+        "negotiation.negotiation_graph.get_negotiation_rag_index",
+        lambda: None,
+    )
+
+    state = _seed_state()
+    state.history = [
+        {"role": "user", "content": "Hola"},
+        {"role": "assistant", "content": "Hola, encantado."},
+    ]
+
+    run_negotiation_agent(state, "Precio?", deps=deps)
+
+    last_trace = state.debug_trace[-1]
+    assert "memory_meta" in last_trace
+    assert "refresh_meta" in last_trace
