@@ -10,7 +10,9 @@ from .schemas import (
     IntentState,
     IntentStatus,
     IntentType,
+    NegotiationPhase,
     PolicyDecision,
+    PhaseState,
     ProgressState,
     RiskPosture,
     ToneSignal,
@@ -33,6 +35,13 @@ _ALLOWED_INTENT_TYPES: set[IntentType] = {
     "concession",
     "closing",
     "credibility_check",
+}
+_ALLOWED_PHASES: set[NegotiationPhase] = {
+    "opening",
+    "discovery",
+    "bargaining",
+    "closing",
+    "recovery",
 }
 _ALLOWED_REASON_KEYS = {
     "price_signal",
@@ -314,6 +323,38 @@ def normalize_progress_state(raw: object) -> Tuple[ProgressState, List[str]]:
     base["turns_in_same_mode"] = int(raw.get("turns_in_same_mode", base["turns_in_same_mode"]))
     base["intent_state"], intent_issues = normalize_intent_state(raw.get("intent_state", {}))
     issues.extend(intent_issues)
+    base["phase_state"], phase_issues = normalize_phase_state(raw.get("phase_state", {}))
+    issues.extend(phase_issues)
+
+    return base, issues
+
+
+def normalize_phase_state(raw: object) -> Tuple[PhaseState, List[str]]:
+    base = default_progress_state()["phase_state"]
+    issues: List[str] = []
+    if not isinstance(raw, dict):
+        issues.append("phase_state_no_dict")
+        return base, issues
+
+    phase = raw.get("phase", base["phase"])
+    if phase not in _ALLOWED_PHASES:
+        issues.append("phase_invalid")
+        phase = "opening"
+    base["phase"] = phase
+
+    base["confidence"] = _clamp(
+        _coerce_float(raw.get("confidence", base["confidence"]), base["confidence"])
+    )
+
+    reasons = _unique_list(_coerce_str_list(raw.get("reasons", []), max_items=8), max_items=8)
+    base["reasons"] = reasons
+
+    last_updated_turn = raw.get("last_updated_turn", base["last_updated_turn"])
+    try:
+        base["last_updated_turn"] = max(0, int(last_updated_turn))
+    except (TypeError, ValueError):
+        issues.append("phase_last_updated_invalid")
+        base["last_updated_turn"] = 0
 
     return base, issues
 

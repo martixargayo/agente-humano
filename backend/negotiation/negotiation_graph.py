@@ -185,6 +185,7 @@ class NegotiationTurn(TypedDict):
     last_assistant_message: str
     allowed_policy_ids: List[str]
     planner_meta: dict
+    phase_meta: dict
     belief_update_meta: dict
     extractor_meta: dict
     deps: AgentDeps
@@ -319,10 +320,17 @@ def belief_updater_node(state: NegotiationTurn) -> NegotiationTurn:
         last_assistant_message=state.get("last_assistant_message", ""),
         user_message=state.get("user_message", ""),
         context_snippet=state.get("recent_history_text", ""),
+        prev_phase_state=state.get("progress_state", {}).get("phase_state"),
+        intent_state=state.get("progress_state", {}).get("intent_state"),
+        recent_history_text=state.get("recent_history_text", ""),
+        turn_count=state.get("turn_count", 0),
         extractor_meta=state.get("extractor_meta", {}),
     )
     state["belief_state"] = belief_state
     state["belief_update_meta"] = belief_meta
+    if belief_meta.get("phase_state"):
+        state["progress_state"]["phase_state"] = belief_meta["phase_state"]
+    state["phase_meta"] = belief_meta.get("phase_meta", {})
     return state
 
 
@@ -357,6 +365,7 @@ def policy_planner_node(state: NegotiationTurn) -> NegotiationTurn:
         recent_context=state.get("recent_history_text", ""),
     )
     planner_meta["intent_meta"] = state.get("intent_meta", {})
+    planner_meta["phase_meta"] = state.get("phase_meta", {})
     state["policy_decision"] = policy_decision
     state["planner_meta"] = planner_meta
     return state
@@ -401,8 +410,10 @@ def executor_node(state: NegotiationTurn) -> NegotiationTurn:
     micro_goal = executed.get("micro_goal", "")
     risk_posture = executed.get("risk_posture", "low")
 
-    policy = get_policy(policy_id)
-    phase_hint = policy.phase_hint if policy else None
+    phase_state = state.get("progress_state", {}).get("phase_state", {})
+    phase = phase_state.get("phase", "opening")
+    phase_confidence = phase_state.get("confidence", 0.6)
+    phase_reasons = phase_state.get("reasons", [])
 
     rag_context = f"""
 Resumen: {summary_text}
@@ -422,7 +433,8 @@ Riesgo: {risk_posture}
         "high": "Sé más firme y directo, sin agresividad.",
     }
 
-    phase_line = f"Phase hint: {phase_hint}." if phase_hint else ""
+    phase_line = f"Phase: {phase} (conf {phase_confidence})."
+    phase_reasons_line = f"Phase reasons: {phase_reasons}."
     intent_hint = state.get("intent_hint", {}) or {}
     intent_goal = intent_hint.get("intent_goal", "")
     step_kind = intent_hint.get("step_kind", "")
@@ -467,6 +479,7 @@ Directrices adicionales:
 - Tu micro-objetivo inmediato: {micro_goal}
 - {posture_instructions.get(risk_posture, posture_instructions["low"])}
 - {phase_line}
+- {phase_reasons_line}
 - Intención activa: {intent_goal}
 - Paso actual: {step_kind}
 - Slot objetivo: {target_slot}
@@ -624,6 +637,7 @@ def run_negotiation_agent(
         "last_assistant_message": _last_assistant_message(state.history),
         "allowed_policy_ids": [],
         "planner_meta": {},
+        "phase_meta": {},
         "belief_update_meta": {},
         "extractor_meta": {},
         "turn_count": state.turn_count,
@@ -703,6 +717,8 @@ def run_negotiation_agent(
             ).get("commitment_level", ""),
             "planner_meta": new_graph_state.get("planner_meta", {}),
             "belief_update_meta": new_graph_state.get("belief_update_meta", {}),
+            "phase_state": new_graph_state.get("progress_state", {}).get("phase_state", {}),
+            "phase_meta": new_graph_state.get("planner_meta", {}).get("phase_meta", {}),
             "extractor_used": new_graph_state.get("extractor_meta", {}).get(
                 "extractor_used", False
             ),

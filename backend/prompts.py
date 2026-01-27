@@ -306,6 +306,48 @@ Devuelve SOLO el nuevo BeliefState como JSON estricto:
 }
 """
 
+# --- Prompts para Phase classifier (JSON estricto) ---
+
+PHASE_UPDATE_SYSTEM_PROMPT = """
+Eres un clasificador de fase en una negociación.
+Devuelves SOLO JSON válido y estricto, sin texto adicional.
+
+Reglas:
+- Output debe ser un objeto JSON con la estructura exacta del PhaseDecision.
+- "phase" debe ser una de: opening, discovery, bargaining, closing, recovery.
+- "reasons" debe referirse a señales presentes en world/belief/intent/history, sin inventar.
+- Si es ambiguo, usa confidence baja.
+- No añadas campos extra ni markdown.
+"""
+
+PHASE_UPDATE_USER_PROMPT = """
+[PhaseState previo]
+{prev_phase_state}
+
+[WorldState]
+{world_state}
+
+[World diff]
+{world_diff}
+
+[BeliefState]
+{belief_state}
+
+[IntentState]
+{intent_state}
+
+[Historial reciente (máx 8 turnos)]
+{recent_history}
+
+Devuelve SOLO JSON:
+{
+  "phase": "opening|discovery|bargaining|closing|recovery",
+  "confidence": 0.0,
+  "reasons": ["..."],
+  "alternatives": ["opening"]
+}
+"""
+
 # --- Prompts para policy planner (JSON estricto) ---
 
 POLICY_PLANNER_SYSTEM_PROMPT = """
