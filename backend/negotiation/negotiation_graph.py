@@ -23,6 +23,8 @@ from state import (
     save_session_state,
     DEFAULT_CONTEXT_LIMIT_TURNS,
     DEFAULT_KEEP_LAST_TURNS,
+    derive_max_total_cost,
+    ensure_exit_option,
 )
 
 from langchain_openai import OpenAIEmbeddings
@@ -216,6 +218,8 @@ class NegotiationTurn(TypedDict):
     recent_history_text: str
     long_memory: str
     short_memory: str
+    memory_meta: dict
+    refresh_meta: dict
     user_message: str
     turn_count: int
 
@@ -266,26 +270,6 @@ def _format_messages_as_text(messages: List[Message]) -> str:
         label = "Vendedor" if role == "user" else "Comprador"
         lines.append(f"{label}: {msg['content']}")
     return "\n".join(lines).strip() or "(sin mensajes previos relevantes)"
-
-
-def _resolve_exit_option(state: SessionState) -> dict:
-    exit_option = state.exit_option or {}
-    total_cost = exit_option.get("total_cost")
-    if not isinstance(total_cost, (int, float)) or total_cost <= 0:
-        total_cost = state.sister_option_price + state.sister_option_repairs
-        exit_option = {
-            "label": exit_option.get("label") or "Coche hermana",
-            "total_cost": total_cost,
-            "notes": "backfill_from_legacy",
-        }
-        state.exit_option = exit_option
-    return exit_option
-
-
-def derive_max_total_cost(exit_option: dict) -> Tuple[float, str]:
-    total_cost = float(exit_option.get("total_cost", 0.0) or 0.0)
-    rule_note = "(derivado de alternativa de salida)" if total_cost > 0 else ""
-    return total_cost, rule_note
 
 
 def _last_assistant_message(messages: List[Message]) -> str:
@@ -708,14 +692,14 @@ def run_negotiation_agent(
 
     add_message(state, role="user", content=user_message)
 
-    maybe_refresh_summary(
+    refresh_meta = maybe_refresh_summary(
         state,
         deps=deps,
         context_limit_turns=DEFAULT_CONTEXT_LIMIT_TURNS,
         keep_last_n_turns=DEFAULT_KEEP_LAST_TURNS,
     )
 
-    long_memory, short_memory = build_memory_context(
+    long_memory, short_memory, memory_meta = build_memory_context(
         state.history,
         state.summary,
         keep_last_n_turns=DEFAULT_KEEP_LAST_TURNS,
@@ -725,8 +709,8 @@ def run_negotiation_agent(
     recent_history_text = build_context_snippet(state.history, state.summary, seller_only=True)
 
     objective = state.negotiation_objective or ""
-    exit_option = _resolve_exit_option(state)
-    max_total_cost, rule_note = derive_max_total_cost(exit_option)
+    exit_option, exit_issues = ensure_exit_option(state)
+    max_total_cost, rule_note = derive_max_total_cost(exit_option, margin=0.0)
     constraints = (
         "- Evitar revelar el límite explícitamente salvo necesidad táctica.\n"
         f"- Alternativa de salida: {exit_option['label']}.\n"
@@ -756,6 +740,8 @@ def run_negotiation_agent(
         "recent_history_text": recent_history_text,
         "long_memory": long_memory,
         "short_memory": short_memory,
+        "memory_meta": memory_meta,
+        "refresh_meta": refresh_meta,
         "user_message": user_message,
         "objective": objective,
         "constraints": constraints,
@@ -870,6 +856,9 @@ def run_negotiation_agent(
             "extractor_confidence_summary": new_graph_state.get("extractor_meta", {}).get(
                 "extractor_confidence_summary", {"min": 0.0, "avg": 0.0}
             ),
+            "memory_meta": new_graph_state.get("memory_meta", {}),
+            "refresh_meta": new_graph_state.get("refresh_meta", {}),
+            "exit_issues": exit_issues,
             "validation_issues": {
                 "world_in": world_issues_in,
                 "belief_in": belief_issues_in,
