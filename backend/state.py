@@ -55,6 +55,7 @@ class SessionState:
     sister_option_price: float = 8000.0      # coche hermana
     sister_option_repairs: float = 2000.0    # reparaciones esperadas
     max_total_cost: float = 10000.0          # umbral mental (8k + 2k)
+    exit_option: Dict = field(default_factory=dict)
 
     # Info auxiliar
     turn_count: int = 0

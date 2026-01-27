@@ -10,19 +10,32 @@ from typing import Any, Callable, List, Optional, Tuple
 from dotenv import load_dotenv
 from typing_extensions import TypedDict
 from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, START, END
 
 from normalizer import normalize_text
-from prompts import BASE_PERSONALITY_PROMPT
-from state import SessionState, Message, add_message, save_session_state
+from prompts import BASE_PERSONALITY_PROMPT, SUMMARY_SYSTEM_PROMPT, SUMMARY_USER_PROMPT
+from state import (
+    SessionState,
+    Message,
+    add_message,
+    save_session_state,
+    DEFAULT_CONTEXT_LIMIT_TURNS,
+    DEFAULT_KEEP_LAST_TURNS,
+)
 
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
 
 from .belief_state_updater import update_belief_state
-from .context_utils import build_context_snippet
+from .context_utils import (
+    build_context_snippet,
+    build_memory_context,
+    format_memory_block,
+    maybe_refresh_summary,
+)
 from .intent_manager import update_intent_state
 from .phase_state_updater import update_phase_state
 from .precedence import compute_precedence
@@ -137,10 +150,31 @@ executor_llm = ChatOpenAI(
     temperature=EXECUTOR_TEMPERATURE,
 )
 
+# ---- Modelo de resumen ----
+
+SUMMARY_MODEL = os.getenv(
+    "SUMMARY_MODEL_NAME",
+    os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini"),
+)
+SUMMARY_TEMPERATURE = float(os.getenv("SUMMARY_TEMPERATURE", "0.2"))
+
+summary_llm = ChatOpenAI(
+    model=SUMMARY_MODEL,
+    temperature=SUMMARY_TEMPERATURE,
+)
+
+summary_prompt = ChatPromptTemplate.from_messages(
+    [
+        ("system", SUMMARY_SYSTEM_PROMPT),
+        ("user", SUMMARY_USER_PROMPT),
+    ]
+)
+
 # Tipos “paper-grade”: narrow y explícitos
 PlanFn = Callable[..., Tuple[PolicyDecision, dict]]
 BeliefFn = Callable[..., Tuple[BeliefState, dict]]
 ExecuteFn = Callable[..., str]
+SummarizeFn = Callable[[str, str], str]
 PreExecuteHook = Callable[["NegotiationTurn"], None]
 
 
@@ -149,6 +183,7 @@ class AgentDeps:
     plan_policy: PlanFn
     update_belief_state: BeliefFn
     execute: ExecuteFn
+    summarize: Optional[SummarizeFn] = None
     pre_execute_hook: Optional[PreExecuteHook] = None
 
 
@@ -158,10 +193,20 @@ def _default_execute(messages: Any) -> str:
     return getattr(result, "content", str(result))
 
 
+def _default_summarize(existing_summary: str, new_block: str) -> str:
+    messages = summary_prompt.format_messages(
+        existing_summary=existing_summary,
+        new_block=new_block,
+    )
+    result = summary_llm.invoke(messages)
+    return getattr(result, "content", str(result)).strip()
+
+
 DEFAULT_DEPS = AgentDeps(
     plan_policy=plan_policy,
     update_belief_state=update_belief_state,
     execute=_default_execute,
+    summarize=_default_summarize,
 )
 
 
@@ -169,11 +214,15 @@ class NegotiationTurn(TypedDict):
     summary: str
     history_text: str
     recent_history_text: str
+    long_memory: str
+    short_memory: str
     user_message: str
     turn_count: int
 
     objective: str
     constraints: str
+    exit_option: dict
+    max_total_cost: float
 
     world_state: WorldState
     prev_world_state: WorldState
@@ -217,6 +266,26 @@ def _format_messages_as_text(messages: List[Message]) -> str:
         label = "Vendedor" if role == "user" else "Comprador"
         lines.append(f"{label}: {msg['content']}")
     return "\n".join(lines).strip() or "(sin mensajes previos relevantes)"
+
+
+def _resolve_exit_option(state: SessionState) -> dict:
+    exit_option = state.exit_option or {}
+    total_cost = exit_option.get("total_cost")
+    if not isinstance(total_cost, (int, float)) or total_cost <= 0:
+        total_cost = state.sister_option_price + state.sister_option_repairs
+        exit_option = {
+            "label": exit_option.get("label") or "Coche hermana",
+            "total_cost": total_cost,
+            "notes": "backfill_from_legacy",
+        }
+        state.exit_option = exit_option
+    return exit_option
+
+
+def derive_max_total_cost(exit_option: dict) -> Tuple[float, str]:
+    total_cost = float(exit_option.get("total_cost", 0.0) or 0.0)
+    rule_note = "(derivado de alternativa de salida)" if total_cost > 0 else ""
+    return total_cost, rule_note
 
 
 def _last_assistant_message(messages: List[Message]) -> str:
@@ -427,6 +496,9 @@ def executor_node(state: NegotiationTurn) -> NegotiationTurn:
 
     summary_text = state.get("summary") or "Aún no hay resumen de la conversación."
     history_text = state.get("history_text") or "(sin historial reciente)"
+    long_memory = state.get("long_memory") or ""
+    short_memory = state.get("short_memory") or ""
+    memory_block = format_memory_block(long_memory, short_memory)
     user_message = state.get("user_message") or ""
 
     objective = state.get("objective") or ""
@@ -487,6 +559,8 @@ Riesgo: {risk_posture}
     slots_missing = intent_hint.get("slots_missing", [])
     commitment_level = intent_hint.get("commitment_level", "")
 
+    exit_option = state.get("exit_option") or {}
+    max_total_cost = state.get("max_total_cost") or exit_option.get("total_cost", 0.0)
     executor_system = f"""
 {BASE_PERSONALITY_PROMPT}
 
@@ -508,12 +582,12 @@ Reglas de escena:
 
 <role_context>
 Contexto personal interno:
-- Tienes una alternativa segura: un coche del mismo año que te ofrecería tu hermana.
-- Ese coche cuesta 8.000€, pero necesitaría al menos 2.000€ de arreglos, por lo que serían 10.000€ en total.
+- Tienes una alternativa segura: {exit_option.get("label", "una alternativa de salida")}.
+- Ese coche cuesta {float(exit_option.get("total_cost", 0.0)):.0f}€ en total.
 - Preferirías evitar esa opción si encuentras algo mejor aquí.
 
 Límites y objetivos:
-- Tu límite mental es no superar 10.000€ de coste total con este coche
+- Tu límite mental es no superar {float(max_total_cost):.0f}€ de coste total con este coche
   (precio + posibles arreglos/sorpresas).
 - Quieres conseguir un acuerdo que esté por debajo de ese umbral.
 - Quieres que la negociación sea cordial y razonable, sin conflicto.
@@ -548,28 +622,25 @@ Reglas de estilo para tus respuestas al vendedor:
 """
 
     executor_user = f"""
-[RESUMEN INTERNO DE LA SESIÓN]
-{summary_text}
+[MEMORY]
+{memory_block}
 
-[HISTORIAL RECIENTE]
-{history_text}
-
-[OBJETIVO INTERNO DE LA NEGOCIACIÓN]
+[OBJETIVO INTERNO]
 {objective}
 
 [CONSTRAINTS INTERNOS]
 {constraints}
 
-[POLICY DECISION]
+[DECISIÓN OPERATIVA]
 {policy_decision}
 
 [MENSAJE ACTUAL DEL VENDEDOR]
 {user_message}
 
 Tarea:
-1. Responde como Daniel-comprador al vendedor, cumpliendo la policy actual.
-2. Sé humano, estratégico y colaborativo.
-3. No digas que sigues un plan ni hables de "policies".
+1) Responde como Daniel-comprador al vendedor, cumpliendo la policy actual.
+2) Sé humano, estratégico y colaborativo.
+3) No digas que sigues un plan ni hables de "policies".
 """
 
     messages = [
@@ -637,16 +708,30 @@ def run_negotiation_agent(
 
     add_message(state, role="user", content=user_message)
 
-    summary_text = state.summary or "Aún no hay resumen de la conversación."
+    maybe_refresh_summary(
+        state,
+        deps=deps,
+        context_limit_turns=DEFAULT_CONTEXT_LIMIT_TURNS,
+        keep_last_n_turns=DEFAULT_KEEP_LAST_TURNS,
+    )
+
+    long_memory, short_memory = build_memory_context(
+        state.history,
+        state.summary,
+        keep_last_n_turns=DEFAULT_KEEP_LAST_TURNS,
+    )
+    summary_text = long_memory or "Aún no hay resumen de la conversación."
     history_text = _format_messages_as_text(state.history)
     recent_history_text = build_context_snippet(state.history, state.summary, seller_only=True)
 
     objective = state.negotiation_objective or ""
+    exit_option = _resolve_exit_option(state)
+    max_total_cost, rule_note = derive_max_total_cost(exit_option)
     constraints = (
-        "- Límite total 10.000€ (precio + arreglos).\n"
-        f"- Alternativa hermana: {state.sister_option_price:.0f}€ + "
-        f"{state.sister_option_repairs:.0f}€ arreglos.\n"
-        "- Evitar revelar el límite de 10k explícitamente."
+        "- Evitar revelar el límite explícitamente salvo necesidad táctica.\n"
+        f"- Alternativa de salida: {exit_option['label']}.\n"
+        f"- Coste total alternativa: {exit_option['total_cost']:.0f}€.\n"
+        f"- Máximo coste total aceptable derivado: ≤ {max_total_cost:.0f}€ {rule_note}.\n"
     )
 
     world_state_input, world_issues_in = normalize_world_state(state.world_state)
@@ -669,9 +754,13 @@ def run_negotiation_agent(
         "summary": summary_text,
         "history_text": history_text,
         "recent_history_text": recent_history_text,
+        "long_memory": long_memory,
+        "short_memory": short_memory,
         "user_message": user_message,
         "objective": objective,
         "constraints": constraints,
+        "exit_option": exit_option,
+        "max_total_cost": max_total_cost,
         "world_state": world_state_input,
         "prev_world_state": world_state_input,
         "world_diff": {},
