@@ -45,7 +45,7 @@ POLICIES: List[Policy] = [
         phase_hints=["discovery", "opening"],
         capabilities={"probe_open", "probe_narrow"},
         guards={"avoid_mentioning_own_numbers", "safe_when_tense"},
-        tags={"credibility_check", "bargaining"},
+        tags={"bargaining"},
     ),
     Policy(
         policy_id="test_credibility",
@@ -136,7 +136,7 @@ POLICIES: List[Policy] = [
         phase_hints=["closing"],
         capabilities={"close_next"},
         guards={"requires_slot_complete", "avoid_mentioning_own_numbers"},
-        tags={"closing", "aggressive"},
+        tags={"closing"},
     ),
 ]
 

@@ -594,22 +594,24 @@ Tarea:
 workflow = StateGraph(NegotiationTurn)
 
 workflow.add_node("world_updater", world_updater_node)
-workflow.add_node("intent_manager", intent_manager_node)
 workflow.add_node("belief_updater", belief_updater_node)
 workflow.add_node("precedence", precedence_node)
+workflow.add_node("intent_manager", intent_manager_node)
 workflow.add_node("phase_updater", phase_updater_node)
 workflow.add_node("policy_planner", policy_planner_node)
 workflow.add_node("progress_updater", progress_updater_node)
 workflow.add_node("executor", executor_node)
 
 workflow.add_edge(START, "world_updater")
-workflow.add_edge("world_updater", "intent_manager")
-workflow.add_edge("intent_manager", "belief_updater")
+
+workflow.add_edge("world_updater", "belief_updater")
 workflow.add_edge("belief_updater", "precedence")
-workflow.add_edge("precedence", "phase_updater")
+workflow.add_edge("precedence", "intent_manager")
+workflow.add_edge("intent_manager", "phase_updater")
 workflow.add_edge("phase_updater", "policy_planner")
 workflow.add_edge("policy_planner", "progress_updater")
 workflow.add_edge("progress_updater", "executor")
+
 workflow.add_edge("executor", END)
 
 negotiation_app = workflow.compile()
@@ -627,7 +629,8 @@ def run_negotiation_agent(
     Ejecuta un turno de negociación:
     - Añade el mensaje del vendedor al historial.
     - Construye el estado para LangGraph.
-    - Pasa por world_updater + belief_updater + policy_planner + executor.
+    - Pasa por world_updater + belief_updater + precedence + intent_manager +
+      phase_updater + policy_planner + progress_updater + executor.
     - Guarda estados persistentes en SessionState.
     - Añade la respuesta del comprador al historial.
     """
