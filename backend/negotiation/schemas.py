@@ -86,6 +86,7 @@ class WorldState(TypedDict):
     price_firm_text: str
     evidence_offered: bool
     evidence_text: str
+    message_is_vague: bool
     tone_signal: ToneSignal
     tone_marker_hits: List[str]
 
@@ -186,6 +187,7 @@ def default_world_state() -> WorldState:
         "price_firm_text": "",
         "evidence_offered": False,
         "evidence_text": "",
+        "message_is_vague": False,
         "tone_signal": "neutral",
         "tone_marker_hits": [],
     }

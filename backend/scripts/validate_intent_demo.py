@@ -76,10 +76,10 @@ def _print_turn(turn_label, state):
 def _queue_world_states(world_states):
     queue = list(world_states)
 
-    def fake_update_world_state(_prev_world, _user_message):
+    def fake_update_world_state(_prev_world, _user_message, **_kwargs):
         if queue:
-            return queue.pop(0)
-        return default_world_state()
+            return queue.pop(0), {"extractor_used": False}
+        return default_world_state(), {"extractor_used": False}
 
     negotiation_graph.update_world_state = fake_update_world_state
     negotiation_graph.get_negotiation_rag_index = lambda: None

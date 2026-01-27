@@ -2,9 +2,15 @@
 from __future__ import annotations
 
 import re
-from typing import List
+import os
+from typing import List, Tuple
 
 from .schemas import WorldState, default_world_state
+from .llm_state_extractor import (
+    build_extractor_meta,
+    extract_state_patch_llm,
+    validate_extractor_output,
+)
 
 
 _PRICE_KEYWORDS = [
@@ -210,10 +216,9 @@ def _derive_tone_signal(tone_hits: List[str]) -> str:
     return "neutral"
 
 
-def update_world_state(prev_world: WorldState | None, user_message: str) -> WorldState:
+def _legacy_regex_update(prev_world: WorldState, user_message: str) -> WorldState:
     base = default_world_state()
-    if prev_world:
-        base.update(prev_world)
+    base.update(prev_world)
 
     text = _normalize_text(user_message)
     lower = text.lower()
@@ -288,6 +293,70 @@ def update_world_state(prev_world: WorldState | None, user_message: str) -> Worl
     base["tone_signal"] = _derive_tone_signal(base.get("tone_marker_hits", []))
 
     return base
+
+
+def _should_call_llm_extractor(user_message: str, prev_world: WorldState) -> bool:
+    text = (user_message or "").strip()
+    if not text or len(text) <= 3:
+        return False
+    if any(ch.isdigit() for ch in text):
+        return True
+    lower = text.lower()
+    if "€" in text or "euros" in lower or "eur" in lower or "mil" in lower:
+        return True
+    if any(word in lower for word in ["hoy", "mañana", "semana", "mes", "urg", "prisa"]):
+        return True
+    if prev_world.get("other_buyer_claimed") or prev_world.get("deadline_claimed"):
+        return True
+    return False
+
+
+def update_world_state(
+    prev_world: WorldState | None,
+    user_message: str,
+    recent_history: list[dict] | str | None = None,
+    belief_state: dict | None = None,
+) -> Tuple[WorldState, dict]:
+    base = default_world_state()
+    if prev_world:
+        base.update(prev_world)
+
+    if isinstance(recent_history, str):
+        recent_history = [{"role": "context", "content": recent_history}]
+    recent_history = recent_history or []
+    belief_state = belief_state or {}
+    use_llm = os.getenv("USE_LLM_EXTRACTOR", "true").lower() in {"1", "true", "yes"}
+    use_legacy = os.getenv("USE_LEGACY_MATCHERS", "true").lower() in {"1", "true", "yes"}
+
+    if use_llm and _should_call_llm_extractor(user_message, base):
+        output = extract_state_patch_llm(base, belief_state, user_message, recent_history)
+        decisions = output.get("decisions", {})
+        patch = dict(output.get("world_patch", {}))
+        if "message_is_vague" in decisions and "message_is_vague" not in patch:
+            patch["message_is_vague"] = bool(decisions.get("message_is_vague"))
+        output = {**output, "world_patch": patch}
+        validate_extractor_output(output)
+        world = dict(base)
+        for key, value in patch.items():
+            world[key] = value
+        meta = build_extractor_meta(output)
+        return world, meta
+
+    if use_legacy:
+        world = _legacy_regex_update(base, user_message)
+        return world, {
+            "extractor_used": False,
+            "extractor_reasons": ["legacy_fallback"],
+            "extractor_world_patch_keys": [],
+            "extractor_confidence_summary": {"min": 0.0, "avg": 0.0},
+        }
+
+    return base, {
+        "extractor_used": False,
+        "extractor_reasons": ["skipped"],
+        "extractor_world_patch_keys": [],
+        "extractor_confidence_summary": {"min": 0.0, "avg": 0.0},
+    }
 
 
 def diff_world_state(prev: WorldState, new: WorldState) -> dict:

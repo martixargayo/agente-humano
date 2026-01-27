@@ -16,18 +16,6 @@ from .schemas import (
 )
 
 
-_VAGUE_MARKERS = [
-    "depende",
-    "ya veremos",
-    "más adelante",
-    "no sé",
-    "no lo sé",
-    "lo normal",
-    "quizá",
-    "tal vez",
-]
-
-
 @dataclass(frozen=True)
 class MultiTurnScore:
     should_start: bool
@@ -35,9 +23,8 @@ class MultiTurnScore:
     reasons: List[str]
 
 
-def _is_vague(message: str) -> bool:
-    lowered = (message or "").lower()
-    return any(marker in lowered for marker in _VAGUE_MARKERS)
+def _message_is_vague(world_state: WorldState) -> bool:
+    return bool(world_state.get("message_is_vague"))
 
 
 def _intent_type_for_context(world_state: WorldState, belief_state: BeliefState) -> str:
@@ -227,7 +214,7 @@ def score_multi_turn_start(
         score += 1
         reasons.append("slots_missing=1")
 
-    if _is_vague(user_message):
+    if _message_is_vague(world_state):
         score += 2
         reasons.append("vague_response")
 
@@ -651,7 +638,7 @@ def update_intent_state(
         else:
             intent["step_attempts"] = intent.get("step_attempts", 0) + 1
             pivot_reason = ""
-            if _is_vague(user_message):
+            if _message_is_vague(world_state):
                 meta["reasons"].append("vague_response")
                 pivot_reason = "vague"
             elif step and step.get("kind") == "request_evidence" and not world_state.get(
