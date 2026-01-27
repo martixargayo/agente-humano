@@ -42,8 +42,10 @@ def slice_last_user_turns(messages: List[Message], keep_last_n_turns: int) -> Li
     if not messages or keep_last_n_turns <= 0:
         return []
     user_starts = [i for i, m in enumerate(messages) if _is_real_user(m)]
+    if not user_starts:
+        return []
     if len(user_starts) <= keep_last_n_turns:
-        return messages[:]
+        return messages[user_starts[0]:]
     start_idx = user_starts[-keep_last_n_turns]
     return messages[start_idx:]
 
@@ -80,6 +82,11 @@ def _try_parse_summary_json(text: str) -> dict | None:
     for k in _REQUIRED_SUMMARY_KEYS:
         if k not in obj:
             return None
+        value = obj.get(k)
+        if not isinstance(value, list):
+            return None
+        if any(not isinstance(item, str) for item in value):
+            return None
     return obj
 
 
@@ -96,16 +103,11 @@ def safe_merge_summary(existing: str, candidate: str) -> str:
     if cand_obj is not None:
         return _canonicalize_summary_json(cand_obj)
 
-    # Candidate inválido → preservar existing si era válido (y auditar)
+    # Candidate inválido → preservar existing si era válido
     if existing_obj is not None:
-        existing_obj.setdefault("_unstructured_candidates", [])
-        snippet = (candidate or "").strip()
-        if snippet:
-            existing_obj["_unstructured_candidates"].append(snippet[:1200])
         return _canonicalize_summary_json(existing_obj)
 
-    # Ambos inválidos → fallback JSON estable (NO headings)
-    raw = (candidate or "").strip()
+    # Ambos inválidos → fallback JSON estable
     return _canonicalize_summary_json({
         "facts": [],
         "open_questions": [],
@@ -113,8 +115,6 @@ def safe_merge_summary(existing: str, candidate: str) -> str:
         "seller_signals": [],
         "buyer_signals": [],
         "decisions": [],
-        "_summary_fallback_invalid": True,
-        "_raw_candidate": raw[:1200],
     })
 
 
@@ -203,6 +203,11 @@ def maybe_refresh_summary(
     prefix_hash = hashlib.sha256(new_block.encode("utf-8")).hexdigest()[:10]
 
     raw_candidate = summarize_fn(existing_summary, new_block)
+    candidate_obj = _try_parse_summary_json(raw_candidate)
+    existing_obj = _try_parse_summary_json(existing_summary)
+    candidate_invalid = candidate_obj is None and bool((raw_candidate or "").strip())
+    merge_used_existing = candidate_invalid and existing_obj is not None
+
     session.summary = safe_merge_summary(existing_summary, raw_candidate)
 
     # recorta el historial a la ventana de turns vivos
@@ -220,6 +225,8 @@ def maybe_refresh_summary(
         "chars_summary_before": chars_before,
         "chars_summary_after": chars_after,
         "prefix_hash": prefix_hash,
+        "candidate_invalid": candidate_invalid,
+        "merge_used_existing": merge_used_existing,
         "reason": "summarized",
     }
 
@@ -257,8 +264,16 @@ def build_context_snippet(
     prefix = ""
     trimmed_summary = _clean_summary_text(summary)
     if trimmed_summary:
-        trimmed_summary = trimmed_summary[:240]
-        prefix = f"Resumen breve: {trimmed_summary}\n"
+        summary_obj = _try_parse_summary_json(trimmed_summary)
+        if summary_obj:
+            parts = []
+            for key in _REQUIRED_SUMMARY_KEYS:
+                items = summary_obj.get(key) or []
+                if items:
+                    snippet_items = "; ".join(items[:2])
+                    parts.append(f"{key}: {snippet_items}")
+            if parts:
+                prefix = f"Resumen breve: {' | '.join(parts)[:240]}\n"
 
     combined = f"{prefix}{snippet_text}".strip()
     if len(combined) > max_chars:
