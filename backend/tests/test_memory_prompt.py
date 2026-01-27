@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 
 from negotiation.context_utils import build_memory_context, maybe_refresh_summary
@@ -33,6 +34,29 @@ def _seed_state() -> SessionState:
     return state
 
 
+def _summary_payload(extra=None):
+    payload = {
+        "facts": [],
+        "open_questions": [],
+        "constraints_limits": [],
+        "seller_signals": [],
+        "buyer_signals": [],
+        "decisions": [],
+    }
+    if extra:
+        payload.update(extra)
+    return payload
+
+
+def _canonical_summary(extra=None):
+    return json.dumps(
+        _summary_payload(extra),
+        ensure_ascii=False,
+        sort_keys=True,
+        indent=2,
+    )
+
+
 def test_executor_prompt_memory_single_injection(monkeypatch):
     captured = {}
     deps = _base_deps(captured)
@@ -47,7 +71,7 @@ def test_executor_prompt_memory_single_injection(monkeypatch):
     )
 
     state = _seed_state()
-    state.summary = "Resumen antiguo"
+    state.summary = _canonical_summary({"facts": ["Resumen antiguo"]})
     state.history = [
         {"role": "user", "content": "Hola"},
         {"role": "assistant", "content": "Hola, encantado."},
@@ -98,7 +122,10 @@ def test_summary_refresh_trims_and_updates(monkeypatch):
     captured = {}
 
     def fake_summarize(existing_summary, new_block):
-        return "RESUMEN NUEVO"
+        return json.dumps(
+            _summary_payload({"facts": ["Resumen nuevo"]}),
+            ensure_ascii=False,
+        )
 
     deps = _base_deps(captured, summarize=fake_summarize)
 
@@ -125,7 +152,7 @@ def test_summary_refresh_trims_and_updates(monkeypatch):
 
     run_negotiation_agent(state, "U4", deps=deps)
 
-    assert "RESUMEN NUEVO" in state.summary
+    assert json.loads(state.summary)["facts"] == ["Resumen nuevo"]
     assert sum(1 for m in state.history if m.get("role") == "user") <= 2
 
     executor_user = captured["messages"][1].content
@@ -161,10 +188,7 @@ def test_safe_merge_unstructured_candidate():
 
     deps = _base_deps({}, summarize=fake_summarize)
     state = _seed_state()
-    state.summary = (
-        "Facts:\n- ok\nOpen questions:\n-?\nConstraints & limits:\n- ok\n"
-        "Seller signals:\n- ok\nBuyer signals:\n- ok\nDecisions so far:\n- ok"
-    )
+    state.summary = _canonical_summary({"facts": ["ok"]})
     state.history = [
         {"role": "user", "content": "U1"},
         {"role": "assistant", "content": "A1"},
@@ -180,7 +204,75 @@ def test_safe_merge_unstructured_candidate():
     )
 
     assert meta["refreshed"] is True
-    assert "[APPEND_UNSTRUCTURED]" in state.summary
+    merged = json.loads(state.summary)
+    assert merged.get("_unstructured_candidates") == ["texto sin headings"]
+
+
+def test_summary_refresh_json_candidate_is_canonical():
+    def fake_summarize(existing_summary, new_block):
+        return json.dumps(
+            {
+                "decisions": [],
+                "buyer_signals": [],
+                "seller_signals": [],
+                "constraints_limits": [],
+                "open_questions": [],
+                "facts": ["OK"],
+            },
+            ensure_ascii=False,
+        )
+
+    deps = _base_deps({}, summarize=fake_summarize)
+    state = _seed_state()
+    state.history = [
+        {"role": "user", "content": "U1"},
+        {"role": "assistant", "content": "A1"},
+        {"role": "user", "content": "U2"},
+        {"role": "assistant", "content": "A2"},
+    ]
+
+    meta = maybe_refresh_summary(
+        state,
+        deps=deps,
+        context_limit_turns=1,
+        keep_last_n_turns=1,
+    )
+
+    assert meta["refreshed"] is True
+    assert state.summary == _canonical_summary({"facts": ["OK"]})
+    parsed = json.loads(state.summary)
+    assert "_summary_fallback_invalid" not in parsed
+    assert "_unstructured_candidates" not in parsed
+
+
+def test_memory_context_tolerates_system_and_tool_roles():
+    state = _seed_state()
+    state.summary = _canonical_summary({"facts": ["OK"]})
+    state.history = [
+        {"role": "system", "content": "internal note"},
+        {"role": "user", "content": "U1"},
+        {"role": "tool", "content": "tool output"},
+        {"role": "assistant", "content": "A1"},
+    ]
+
+    long_memory, short_memory, meta = build_memory_context(
+        state.history,
+        state.summary,
+        keep_last_n_turns=1,
+    )
+
+    assert long_memory
+    assert "SYSTEM: internal note" in short_memory
+    assert meta["turns_total"] == 1
+
+    deps = _base_deps({}, summarize=lambda *_args: _canonical_summary())
+    meta_refresh = maybe_refresh_summary(
+        state,
+        deps=deps,
+        context_limit_turns=0,
+        keep_last_n_turns=1,
+    )
+    assert meta_refresh["refreshed"] is True
 
 
 def test_memory_meta_and_refresh_meta_in_debug_trace(monkeypatch):

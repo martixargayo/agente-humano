@@ -266,9 +266,19 @@ def _ensure_objective(state: NegotiationTurn) -> None:
 def _format_messages_as_text(messages: List[Message]) -> str:
     lines: List[str] = []
     for msg in messages:
-        role = msg["role"]
-        label = "Vendedor" if role == "user" else "Comprador"
-        lines.append(f"{label}: {msg['content']}")
+        role = msg.get("role", "assistant")
+        content = (msg.get("content") or "").strip()
+        if not content:
+            continue
+
+        if role == "user":
+            label = "Vendedor"
+        elif role == "assistant":
+            label = "Comprador"
+        else:
+            label = str(role).upper()
+
+        lines.append(f"{label}: {content}")
     return "\n".join(lines).strip() or "(sin mensajes previos relevantes)"
 
 
@@ -710,7 +720,8 @@ def run_negotiation_agent(
 
     objective = state.negotiation_objective or ""
     exit_option, exit_issues = ensure_exit_option(state)
-    max_total_cost, rule_note = derive_max_total_cost(exit_option, margin=0.0)
+    margin = float(os.getenv("MAX_TOTAL_COST_MARGIN", "0.0") or 0.0)
+    max_total_cost, rule_note = derive_max_total_cost(exit_option, margin=margin)
     constraints = (
         "- Evitar revelar el límite explícitamente salvo necesidad táctica.\n"
         f"- Alternativa de salida: {exit_option['label']}.\n"
@@ -859,6 +870,7 @@ def run_negotiation_agent(
             "memory_meta": new_graph_state.get("memory_meta", {}),
             "refresh_meta": new_graph_state.get("refresh_meta", {}),
             "exit_issues": exit_issues,
+            "max_total_cost_margin": margin,
             "validation_issues": {
                 "world_in": world_issues_in,
                 "belief_in": belief_issues_in,
