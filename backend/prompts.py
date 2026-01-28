@@ -347,11 +347,12 @@ Devuelves SOLO JSON válido con el policy_id del catálogo.
 Reglas:
 - Debes elegir un policy_id del catálogo cerrado.
 - Incluye reason (1 línea), micro_goal (1 línea), risk_posture (low/mid/high).
-- Incluye why_short (1 línea) y inputs_used (lista breve de señales usadas).
+- Incluye why_short (1 línea) y inputs_used (lista breve de claves exactas usadas).
 - No añadas texto fuera del JSON.
 - Goal reinforcement: debes repetir internamente objetivo + constraints
   y elegir SOLO policies compatibles con ellos.
 - Si una policy viola constraints, es inválida.
+- inputs_used debe contener SOLO claves presentes en WorldState/BeliefState/IntentHint.
 """
 
 POLICY_PLANNER_USER_PROMPT = """
@@ -392,6 +393,6 @@ Devuelve SOLO JSON:
   "micro_goal": "...",
   "risk_posture": "low|mid|high",
   "why_short": "...",
-  "inputs_used": ["signal_a", "signal_b"]
+  "inputs_used": ["price_mentioned", "interaction_health"]
 }
 """

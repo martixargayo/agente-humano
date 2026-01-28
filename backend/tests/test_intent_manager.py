@@ -12,6 +12,7 @@ def test_intent_starts_when_requires_multi_turn():
     progress = default_progress_state()
     intent, meta, hint = update_intent_state(
         prev_intent=default_intent_state(),
+        prev_world_state=default_world_state(),
         world_state=world,
         belief_state=belief,
         progress_state=progress,
@@ -37,6 +38,7 @@ def test_intent_does_not_start_when_one_turn_sufficient(monkeypatch):
 
     updated, meta, _hint = update_intent_state(
         prev_intent=default_intent_state(),
+        prev_world_state=default_world_state(),
         world_state=world,
         belief_state=belief,
         progress_state=progress,
@@ -90,6 +92,7 @@ def test_step_advances_only_when_target_slot_progresses():
 
     updated, meta, _hint = update_intent_state(
         prev_intent=intent,
+        prev_world_state=default_world_state(),
         world_state=world,
         belief_state=belief,
         progress_state=progress,
@@ -132,6 +135,7 @@ def test_intent_succeeds_when_slots_complete():
 
     updated, meta, hint = update_intent_state(
         prev_intent=intent,
+        prev_world_state=default_world_state(),
         world_state=world,
         belief_state=belief,
         progress_state=progress,
@@ -170,6 +174,7 @@ def test_intent_abandons_on_hard_trigger():
 
     updated, meta, _hint = update_intent_state(
         prev_intent=intent,
+        prev_world_state=default_world_state(),
         world_state=world,
         belief_state=belief,
         progress_state=progress,
@@ -275,6 +280,7 @@ def test_vague_response_triggers_pivot_sequence():
 
     updated, meta, hint = update_intent_state(
         prev_intent=intent,
+        prev_world_state=default_world_state(),
         world_state=world,
         belief_state=belief,
         progress_state=progress,
@@ -288,6 +294,7 @@ def test_vague_response_triggers_pivot_sequence():
 
     updated, meta, hint = update_intent_state(
         prev_intent=updated,
+        prev_world_state=default_world_state(),
         world_state=world,
         belief_state=belief,
         progress_state=progress,
@@ -311,6 +318,7 @@ def test_multi_turn_scoring_single_impl():
 
     _, meta, _ = update_intent_state(
         prev_intent=default_intent_state(),
+        prev_world_state=default_world_state(),
         world_state=world,
         belief_state=belief,
         progress_state=progress,
@@ -354,6 +362,7 @@ def test_slot_switch_retargets_next_missing():
 
     updated, meta, hint = update_intent_state(
         prev_intent=intent,
+        prev_world_state=default_world_state(),
         world_state=world,
         belief_state=belief,
         progress_state=progress,
@@ -412,6 +421,7 @@ def test_retarget_guardrail_forces_step0_target(monkeypatch):
 
     updated, meta, hint = update_intent_state(
         prev_intent=intent,
+        prev_world_state=default_world_state(),
         world_state=world,
         belief_state=belief,
         progress_state=progress,
@@ -436,6 +446,7 @@ def test_other_buyer_details_has_text():
 
     intent, _meta, _hint = update_intent_state(
         prev_intent=default_intent_state(),
+        prev_world_state=default_world_state(),
         world_state=world,
         belief_state=belief,
         progress_state=progress,
@@ -482,6 +493,7 @@ def test_pivot_kind_progression():
 
     updated, meta, hint = update_intent_state(
         prev_intent=intent,
+        prev_world_state=default_world_state(),
         world_state=world,
         belief_state=belief,
         progress_state=progress,
@@ -495,6 +507,7 @@ def test_pivot_kind_progression():
 
     updated, meta, hint = update_intent_state(
         prev_intent=updated,
+        prev_world_state=default_world_state(),
         world_state=world,
         belief_state=belief,
         progress_state=progress,
@@ -545,6 +558,7 @@ def test_replan_transition_when_price_firm_detected():
 
     updated, meta, _hint = update_intent_state(
         prev_intent=intent,
+        prev_world_state=default_world_state(),
         world_state=world,
         belief_state=belief,
         progress_state=progress,
@@ -585,6 +599,7 @@ def test_unknown_success_criterion_fails():
 
     updated, meta, _hint = update_intent_state(
         prev_intent=intent,
+        prev_world_state=default_world_state(),
         world_state=world,
         belief_state=belief,
         progress_state=progress,
@@ -617,6 +632,7 @@ def test_hydrates_legacy_steps_with_unknown_targets():
 
     updated, meta, hint = update_intent_state(
         prev_intent=intent,
+        prev_world_state=default_world_state(),
         world_state=world,
         belief_state=belief,
         progress_state=progress,
@@ -648,6 +664,7 @@ def test_hydration_missing_empty_does_not_break_hint():
 
     updated, meta, hint = update_intent_state(
         prev_intent=intent,
+        prev_world_state=default_world_state(),
         world_state=world,
         belief_state=belief,
         progress_state=progress,
@@ -686,6 +703,7 @@ def test_intent_abandons_after_no_progress(monkeypatch):
 
     updated, _meta, _hint = update_intent_state(
         prev_intent=intent,
+        prev_world_state=default_world_state(),
         world_state=world,
         belief_state=belief,
         progress_state=progress,
@@ -695,6 +713,7 @@ def test_intent_abandons_after_no_progress(monkeypatch):
     )
     updated, meta, _hint = update_intent_state(
         prev_intent=updated,
+        prev_world_state=default_world_state(),
         world_state=world,
         belief_state=belief,
         progress_state=progress,
@@ -746,6 +765,7 @@ def test_firmness_requires_confident_evidence_for_replan(monkeypatch):
 
     updated, meta, _hint = update_intent_state(
         prev_intent=intent,
+        prev_world_state=default_world_state(),
         world_state=world,
         belief_state=belief,
         progress_state=progress,

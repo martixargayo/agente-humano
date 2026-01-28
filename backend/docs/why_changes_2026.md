@@ -1,0 +1,26 @@
+# WHY: Cambios 2026 en negociación (robustez y verificabilidad)
+
+## Problema
+- Falsos positivos: flags activados sin evidencia real y confusiones entre plazo vs urgencia.
+- Intents “pegadas”: progreso aparente sin evidencia nueva, loops y replans abruptos.
+- Guardrails frágiles: validadores que disparaban por números irrelevantes (km/año/cv).
+- Policies sin contrato ejecutable: required_inputs ambiguos y planner sin trazabilidad.
+
+## Cambio
+- **Evidencia por field + recency bias**: EvidenceItem ahora incluye field/polarity/span; se deduplica por clave semántica y los flags se derivan por campo con sesgo a la evidencia más reciente.
+- **Observación vs derivado**: se guarda `world_observations` con señales crudas y `world_derived` con flags consumibles; los campos legacy se mantienen pero se recalculan desde evidencia.
+- **Calibración por tipo**: umbrales diferenciados por PRICE/FIRMNESS/DEADLINE/URGENCY con defaults ajustables vía env.
+- **Progreso real en intents**: progreso por delta de slots o evidencia nueva del target_slot; replan a cierre solo con precio + firmeza fuerte.
+- **Planner con contrato y trazabilidad**: required_inputs tipados, inputs_used validado contra keys existentes y prompt reforzado.
+- **Validator contextual**: números solo cuentan si están en contexto de precio; reparación revalida y cae a fallback seguro si persiste.
+
+## Impacto
+- Menos replans bruscos y menos loops por “progreso fantasma”.
+- Guardrails con enforcement real sin falsos positivos por números irrelevantes.
+- Planner más trazable y consistente con contractos de policy.
+
+## Tradeoffs
+- Mayor complejidad y más tests, pero comportamiento más verificable y explicable.
+
+## Compatibilidad
+- Consumers legacy intactos: se mantienen los campos de WorldState; ahora se derivan desde evidencia.
