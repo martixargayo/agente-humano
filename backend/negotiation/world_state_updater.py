@@ -665,6 +665,20 @@ def _legacy_regex_update(prev_world: WorldState, user_message: str) -> WorldStat
 
     base["tone_signal"] = _derive_tone_signal(base.get("tone_marker_hits", []))
     base["tone_confidence"] = 0.2 if base["tone_signal"] == "neutral" else 0.6
+    if tone_hits:
+        _append_evidence(
+            evidence_items,
+            _make_evidence(
+                "TONE",
+                "tone_signal",
+                text,
+                base["tone_signal"],
+                "regex",
+                float(os.getenv("CONF_TONE_REGEX", "0.45")),
+                turn_idx,
+            ),
+            window_turns,
+        )
     if conflict_hits:
         _append_evidence(
             evidence_items,
@@ -732,6 +746,7 @@ def _derive_flags_from_evidence(
 
     observed = world.get("world_observations", {}).get("raw_fields", {})
     defaults = default_world_state()
+    tone_min = float(os.getenv("CONF_TONE_MIN", "0.45"))
     derived: dict[str, Any] = {
         "price_mentioned": False,
         "price_value": None,
@@ -758,8 +773,8 @@ def _derive_flags_from_evidence(
         "evidence_text": "",
         "batna_claimed": False,
         "batna_text": "",
-        "tone_signal": defaults["tone_signal"],
-        "tone_confidence": defaults["tone_confidence"],
+        "tone_signal": world.get("tone_signal", defaults["tone_signal"]),
+        "tone_confidence": float(world.get("tone_confidence", defaults["tone_confidence"]) or 0.0),
     }
 
     def _pick_best(field: str, conf_min: float) -> EvidenceItem | None:
@@ -846,11 +861,11 @@ def _derive_flags_from_evidence(
         derived["batna_claimed"] = True
         derived["batna_text"] = str(best_batna.get("text", derived["batna_text"]))
 
-    best_tone = _pick_best("tone_signal", confidence_min)
+    best_tone = _pick_best("tone_signal", tone_min)
     if best_tone:
         derived["tone_signal"] = str(best_tone.get("value", derived["tone_signal"]))
         derived["tone_confidence"] = max(
-            float(world.get("tone_confidence", 0.0)), float(best_tone.get("confidence", 0.0))
+            float(derived.get("tone_confidence", 0.0)), float(best_tone.get("confidence", 0.0))
         )
 
     world.update(derived)
@@ -919,9 +934,14 @@ def update_world_state(
                 )
             )
         if llm_evidence or generated_items:
-            world["evidence_items"] = (
-                list(base.get("evidence_items", [])) + llm_evidence + generated_items
-            )
+            window_turns = int(os.getenv("DEDUP_EVIDENCE_WINDOW_TURNS", "3"))
+            items: list[EvidenceItem] = list(base.get("evidence_items", []) or [])
+            for item in llm_evidence or []:
+                if isinstance(item, dict):
+                    _append_evidence(items, item, window_turns)
+            for item in generated_items:
+                _append_evidence(items, item, window_turns)
+            world["evidence_items"] = items
             world["world_state_meta"]["last_update_source"] = "llm"
         meta = build_extractor_meta(output)
         world = _derive_flags_from_evidence(world, confidence_min)

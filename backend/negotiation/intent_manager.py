@@ -487,7 +487,32 @@ def _evidence_delta_for_slot(prev_world: WorldState, world: WorldState, slot: st
         "seller_urgency_reason": {"urgency_reason", "urgency_claimed"},
     }
     fields = slot_to_fields.get(slot, set())
-    return any(prev_world.get(field) != world.get(field) for field in fields)
+    if not fields:
+        return False
+
+    def _key(item: dict) -> tuple:
+        return (
+            item.get("type"),
+            item.get("field"),
+            item.get("polarity", "affirm"),
+            str(item.get("value")),
+            item.get("source"),
+            (item.get("text") or "").strip()[:60].lower(),
+        )
+
+    prev = {
+        _key(item)
+        for item in (prev_world.get("evidence_items", []) or [])
+        if isinstance(item, dict) and item.get("field") in fields
+    }
+    for item in (world.get("evidence_items", []) or []):
+        if not isinstance(item, dict):
+            continue
+        if item.get("field") not in fields:
+            continue
+        if _key(item) not in prev:
+            return True
+    return False
 
 
 def update_intent_state(
