@@ -107,7 +107,24 @@ def test_integration_replan_to_closing(monkeypatch):
     )
 
     world_turn = default_world_state()
-    world_turn.update({"price_firm": True, "price_firm_text": "Precio firme"})
+    world_turn.update(
+        {
+            "price_firm_text": "Precio firme",
+            "price_mentioned": True,
+            "price_value": 9500,
+            "evidence_items": [
+                {
+                    "type": "FIRMNESS",
+                    "text": "Precio firme",
+                    "value": None,
+                    "source": "regex",
+                    "confidence": 0.8,
+                    "turn_idx": 1,
+                    "raw": None,
+                }
+            ],
+        }
+    )
     _queue_world_states(monkeypatch, [world_turn])
 
     state = SessionState(user_id="u2", session_id="s2")

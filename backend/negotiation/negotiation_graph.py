@@ -44,6 +44,7 @@ from .precedence import compute_precedence
 from .policies import get_policy, list_policy_ids
 from .policy_planner import allowed_policy_ids, plan_policy
 from .progress_updater import update_progress_state
+from .response_validator import validate_and_repair
 from .schemas import (
     BeliefState,
     PolicyDecision,
@@ -225,6 +226,7 @@ class NegotiationTurn(TypedDict):
 
     objective: str
     constraints: str
+    constraints_struct: dict
     exit_option: dict
     max_total_cost: float
 
@@ -371,6 +373,7 @@ def world_updater_node(state: NegotiationTurn) -> NegotiationTurn:
         state.get("user_message", ""),
         recent_history=state.get("recent_history_text", ""),
         belief_state=state.get("belief_state") or {},
+        turn_count=state.get("turn_count"),
     )
     state["world_state"] = world_state
     state["extractor_meta"] = extractor_meta
@@ -461,6 +464,7 @@ def policy_planner_node(state: NegotiationTurn) -> NegotiationTurn:
         precedence=state.get("precedence"),
         objective=state["objective"],
         constraints=state.get("constraints", ""),
+        constraints_struct=state.get("constraints_struct", {}),
         recent_context=state.get("recent_history_text", ""),
     )
     planner_meta["intent_meta"] = state.get("intent_meta", {})
@@ -519,6 +523,9 @@ def executor_node(state: NegotiationTurn) -> NegotiationTurn:
     phase_reasons = phase_state.get("reasons", [])
     policy = get_policy(policy_id)
     policy_phase_hints = (policy.phase_hints if policy else [])
+    policy_target_slots = policy.target_slots if policy else []
+    policy_expected_effects = policy.expected_effects if policy else []
+    policy_failure_modes = policy.failure_modes if policy else []
 
     rag_context = f"""
 Resumen: {summary_text}
@@ -545,6 +552,9 @@ Riesgo: {risk_posture}
     phase_context_line = f"Current phase: {phase} (conf {phase_confidence})."
     phase_reasons_line = f"Phase reasons: {phase_reasons}."
     policy_phase_line = f"Policy phase hints: {policy_phase_hints}."
+    policy_targets_line = f"Policy target slots: {policy_target_slots}."
+    policy_effects_line = f"Expected effects: {policy_expected_effects}."
+    policy_failures_line = f"Failure modes: {policy_failure_modes}."
     intent_hint = state.get("intent_hint", {}) or {}
     intent_goal = intent_hint.get("intent_goal", "")
     step_kind = intent_hint.get("step_kind", "")
@@ -594,6 +604,9 @@ Directrices adicionales:
 - {phase_context_line}
 - {phase_reasons_line}
 - {policy_phase_line}
+- {policy_targets_line}
+- {policy_effects_line}
+- {policy_failures_line}
 - Intención activa: {intent_goal}
 - Paso actual: {step_kind}
 - Slot objetivo: {target_slot}
@@ -650,7 +663,16 @@ Tarea:
 
     logger.info("normalized_executor_output=%s", normalized_response)
 
-    state["response"] = normalized_response
+    constraints_struct = state.get("constraints_struct", {})
+    repaired_response, violations = validate_and_repair(
+        normalized_response,
+        constraints_struct,
+        executed,
+        state.get("world_state", {}),
+    )
+    if violations:
+        logger.info("executor_response_repaired=%s violations=%s", repaired_response, violations)
+    state["response"] = repaired_response
     return state
 
 
@@ -728,6 +750,12 @@ def run_negotiation_agent(
         f"- Coste total alternativa: {exit_option['total_cost']:.0f}€.\n"
         f"- Máximo coste total aceptable derivado: ≤ {max_total_cost:.0f}€ {rule_note}.\n"
     )
+    constraints_struct = {
+        "max_total_cost": max_total_cost,
+        "avoid_reveal_own_numbers": True,
+        "respect_batna": True,
+        "max_total_cost_margin": margin,
+    }
 
     world_state_input, world_issues_in = normalize_world_state(state.world_state)
     belief_state_input, belief_issues_in = normalize_belief_state(state.belief_state)
@@ -756,6 +784,7 @@ def run_negotiation_agent(
         "user_message": user_message,
         "objective": objective,
         "constraints": constraints,
+        "constraints_struct": constraints_struct,
         "exit_option": exit_option,
         "max_total_cost": max_total_cost,
         "world_state": world_state_input,

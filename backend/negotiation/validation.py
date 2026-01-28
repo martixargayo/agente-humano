@@ -114,6 +114,16 @@ def normalize_world_state(raw: object) -> Tuple[WorldState, List[str]]:
 
     base["deadline_claimed"] = bool(raw.get("deadline_claimed", base["deadline_claimed"]))
     base["deadline_text"] = str(raw.get("deadline_text", base["deadline_text"])).strip()
+    deadline_days = raw.get("deadline_days", base["deadline_days"])
+    if deadline_days is None:
+        base["deadline_days"] = None
+    else:
+        try:
+            base["deadline_days"] = int(deadline_days)
+        except (TypeError, ValueError):
+            issues.append("deadline_days_invalid")
+            base["deadline_days"] = None
+    base["deadline_kind"] = str(raw.get("deadline_kind", base["deadline_kind"])).strip() or "unknown"
     base["other_buyer_claimed"] = bool(raw.get("other_buyer_claimed", base["other_buyer_claimed"]))
     base["other_buyer_text"] = str(raw.get("other_buyer_text", base["other_buyer_text"])).strip()
     other_offer = raw.get("other_buyer_offer_price", base["other_buyer_offer_price"])
@@ -132,6 +142,7 @@ def normalize_world_state(raw: object) -> Tuple[WorldState, List[str]]:
     base["batna_text"] = str(raw.get("batna_text", base["batna_text"])).strip()
     base["urgency_claimed"] = bool(raw.get("urgency_claimed", base["urgency_claimed"]))
     base["urgency_text"] = str(raw.get("urgency_text", base["urgency_text"])).strip()
+    base["urgency_reason"] = str(raw.get("urgency_reason", base["urgency_reason"])).strip()
     base["min_price_claimed"] = bool(raw.get("min_price_claimed", base["min_price_claimed"]))
     base["min_price_text"] = str(raw.get("min_price_text", base["min_price_text"])).strip()
     base["price_firm"] = bool(raw.get("price_firm", base["price_firm"]))
@@ -145,9 +156,55 @@ def normalize_world_state(raw: object) -> Tuple[WorldState, List[str]]:
         issues.append("tone_signal_invalid")
         tone_signal = base["tone_signal"]
     base["tone_signal"] = tone_signal
+    base["tone_confidence"] = _clamp(
+        _coerce_float(raw.get("tone_confidence", base["tone_confidence"]), base["tone_confidence"])
+    )
 
     tone_markers = _coerce_str_list(raw.get("tone_marker_hits", []), max_items=10)
     base["tone_marker_hits"] = _unique_list(tone_markers, max_items=10)
+    conflict_markers = _coerce_str_list(raw.get("conflict_markers", []), max_items=10)
+    base["conflict_markers"] = _unique_list(conflict_markers, max_items=10)
+
+    evidence_items = raw.get("evidence_items", [])
+    if isinstance(evidence_items, list):
+        cleaned = []
+        for item in evidence_items:
+            if not isinstance(item, dict):
+                continue
+            cleaned.append(item)
+            if len(cleaned) >= 50:
+                break
+        base["evidence_items"] = cleaned
+    else:
+        issues.append("evidence_items_invalid")
+
+    world_state_meta = raw.get("world_state_meta", {})
+    if isinstance(world_state_meta, dict):
+        meta = dict(base["world_state_meta"])
+        meta["last_update_source"] = str(
+            world_state_meta.get("last_update_source", meta["last_update_source"])
+        )
+        meta["evidence_confidence_min"] = _clamp(
+            _coerce_float(
+                world_state_meta.get("evidence_confidence_min", meta["evidence_confidence_min"]),
+                meta["evidence_confidence_min"],
+            )
+        )
+        meta["updated_fields"] = _unique_list(
+            _coerce_str_list(world_state_meta.get("updated_fields", [])), max_items=40
+        )
+        turn_idx = world_state_meta.get("turn_idx", meta.get("turn_idx"))
+        if turn_idx is None:
+            meta["turn_idx"] = None
+        else:
+            try:
+                meta["turn_idx"] = int(turn_idx)
+            except (TypeError, ValueError):
+                issues.append("world_state_meta_turn_idx_invalid")
+                meta["turn_idx"] = None
+        base["world_state_meta"] = meta
+    else:
+        issues.append("world_state_meta_invalid")
 
     return base, issues
 
@@ -266,6 +323,8 @@ def normalize_policy_decision(
 
     base["reason"] = str(raw.get("reason", base["reason"])).strip()[:180]
     base["micro_goal"] = str(raw.get("micro_goal", base["micro_goal"])).strip()[:140]
+    base["why_short"] = str(raw.get("why_short", base["why_short"])).strip()[:140]
+    base["inputs_used"] = _unique_list(_coerce_str_list(raw.get("inputs_used", [])), max_items=8)
 
     risk_posture = raw.get("risk_posture", base["risk_posture"])
     if risk_posture not in _ALLOWED_RISK:
@@ -491,6 +550,11 @@ def normalize_intent_state(raw: object) -> Tuple[IntentState, List[str]]:
 
     base["confidence"] = _clamp(_coerce_float(raw.get("confidence", base["confidence"]),
                                               base["confidence"]))
+    base["no_progress_turns"] = int(raw.get("no_progress_turns", base["no_progress_turns"]))
+    base["slot_fill_count"] = int(raw.get("slot_fill_count", base["slot_fill_count"]))
+    base["slot_fill_count_recent"] = int(
+        raw.get("slot_fill_count_recent", base["slot_fill_count_recent"])
+    )
     base["created_turn"] = int(raw.get("created_turn", base["created_turn"]))
     base["last_turn"] = int(raw.get("last_turn", base["last_turn"]))
     base["continue_until"] = str(raw.get("continue_until", base["continue_until"])).strip()

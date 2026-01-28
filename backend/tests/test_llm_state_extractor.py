@@ -106,14 +106,32 @@ def test_intent_replan_uses_llm_patch(monkeypatch):
 
     def fake_extract(_prev_world, _prev_belief, _user_message, _recent_history):
         return {
-            "world_patch": {"price_firm": True, "price_firm_text": "Precio firme."},
+            "world_patch": {
+                "price_firm": True,
+                "price_firm_text": "Precio firme.",
+                "price_mentioned": True,
+                "price_value": 9000.0,
+            },
             "belief_patch": {},
             "field_evidence": {
                 "price_firm": {"evidence": "Precio firme.", "confidence": 0.8},
+                "price_mentioned": {"evidence": "Precio firme.", "confidence": 0.8},
+                "price_value": {"evidence": "Precio firme.", "confidence": 0.8},
             },
             "decisions": {"should_update_beliefs": True},
             "reasons": ["firm_price"],
             "schema_version": "world_v1",
+            "evidence_items": [
+                {
+                    "type": "FIRMNESS",
+                    "text": "Precio firme.",
+                    "value": None,
+                    "source": "llm",
+                    "confidence": 0.8,
+                    "turn_idx": 1,
+                    "raw": None,
+                }
+            ],
         }
 
     monkeypatch.setattr(

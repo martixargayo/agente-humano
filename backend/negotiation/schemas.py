@@ -1,11 +1,25 @@
 # backend/negotiation/schemas.py
 from __future__ import annotations
 
-from typing import Dict, List, Literal, Set, TypedDict
+from typing import Any, Dict, List, Literal, Set, TypedDict
 InteractionHealth = Literal["stable", "tense", "stalled"]
 RiskPosture = Literal["low", "mid", "high"]
 PolicyOutcome = Literal["good", "neutral", "bad", ""]
 ToneSignal = Literal["neutral", "friendly", "tense"]
+EvidenceType = Literal[
+    "PRICE",
+    "DEADLINE",
+    "URGENCY",
+    "OTHER_BUYER",
+    "CONCESSION",
+    "DOCS",
+    "MIN_PRICE",
+    "FIRMNESS",
+    "EVIDENCE_DOC",
+    "BATNA",
+    "TONE",
+]
+EvidenceSource = Literal["regex", "llm", "manual"]
 IntentStatus = Literal["inactive", "active", "succeeded", "abandoned", "paused"]
 IntentType = Literal[
     "info_extract",
@@ -56,6 +70,9 @@ class IntentState(TypedDict):
     success_criteria: List[str]
     slots: IntentSlots
     confidence: float
+    no_progress_turns: int
+    slot_fill_count: int
+    slot_fill_count_recent: int
     created_turn: int
     last_turn: int
     continue_until: str
@@ -69,6 +86,8 @@ class WorldState(TypedDict):
     price_value: float | None
     deadline_claimed: bool
     deadline_text: str
+    deadline_days: int | None
+    deadline_kind: str
     other_buyer_claimed: bool
     other_buyer_text: str
     other_buyer_offer_price: float | None
@@ -81,6 +100,7 @@ class WorldState(TypedDict):
     batna_text: str
     urgency_claimed: bool
     urgency_text: str
+    urgency_reason: str
     min_price_claimed: bool
     min_price_text: str
     price_firm: bool
@@ -89,7 +109,28 @@ class WorldState(TypedDict):
     evidence_text: str
     message_is_vague: bool
     tone_signal: ToneSignal
+    tone_confidence: float
     tone_marker_hits: List[str]
+    conflict_markers: List[str]
+    evidence_items: List["EvidenceItem"]
+    world_state_meta: "WorldStateMeta"
+
+
+class EvidenceItem(TypedDict):
+    type: EvidenceType
+    text: str
+    value: Any | None
+    source: EvidenceSource
+    confidence: float
+    turn_idx: int | None
+    raw: Dict[str, Any] | None
+
+
+class WorldStateMeta(TypedDict):
+    last_update_source: Literal["regex", "llm", "mixed"]
+    evidence_confidence_min: float
+    updated_fields: List[str]
+    turn_idx: int | None
 
 
 class BeliefReason(TypedDict):
@@ -129,6 +170,8 @@ class PolicyDecision(TypedDict):
     micro_goal: str
     risk_posture: RiskPosture
     capabilities: Set[str] | None
+    why_short: str
+    inputs_used: List[str]
 
 
 class IntentHint(TypedDict):
@@ -178,6 +221,8 @@ def default_world_state() -> WorldState:
         "price_value": None,
         "deadline_claimed": False,
         "deadline_text": "",
+        "deadline_days": None,
+        "deadline_kind": "unknown",
         "other_buyer_claimed": False,
         "other_buyer_text": "",
         "other_buyer_offer_price": None,
@@ -190,6 +235,7 @@ def default_world_state() -> WorldState:
         "batna_text": "",
         "urgency_claimed": False,
         "urgency_text": "",
+        "urgency_reason": "",
         "min_price_claimed": False,
         "min_price_text": "",
         "price_firm": False,
@@ -198,7 +244,16 @@ def default_world_state() -> WorldState:
         "evidence_text": "",
         "message_is_vague": False,
         "tone_signal": "neutral",
+        "tone_confidence": 0.0,
         "tone_marker_hits": [],
+        "conflict_markers": [],
+        "evidence_items": [],
+        "world_state_meta": {
+            "last_update_source": "regex",
+            "evidence_confidence_min": 0.6,
+            "updated_fields": [],
+            "turn_idx": None,
+        },
     }
 
 
@@ -258,6 +313,9 @@ def default_intent_state() -> IntentState:
             "slots_filled": {},
         },
         "confidence": 0.0,
+        "no_progress_turns": 0,
+        "slot_fill_count": 0,
+        "slot_fill_count_recent": 0,
         "created_turn": 0,
         "last_turn": 0,
         "continue_until": "",
@@ -274,4 +332,6 @@ def default_policy_decision() -> PolicyDecision:
         "micro_goal": "Mantener tono cordial y abrir espacio para información útil.",
         "risk_posture": "low",
         "capabilities": None,
+        "why_short": "",
+        "inputs_used": [],
     }
