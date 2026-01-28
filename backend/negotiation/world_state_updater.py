@@ -26,7 +26,19 @@ _PRICE_KEYWORDS = [
     "última",
     "rebajo",
     "descuento",
+    "negociable",
 ]
+
+CONF = {
+    "PRICE_NUMERIC": float(os.getenv("CONF_PRICE_NUMERIC", "0.80")),
+    "PRICE_KEYWORD": float(os.getenv("CONF_PRICE_KEYWORD", "0.45")),
+    "FIRMNESS_STRONG": float(os.getenv("CONF_FIRMNESS_STRONG", "0.80")),
+    "FIRMNESS_WEAK": float(os.getenv("CONF_FIRMNESS_WEAK", "0.45")),
+    "DEADLINE_STRONG": float(os.getenv("CONF_DEADLINE_STRONG", "0.70")),
+    "DEADLINE_WEAK": float(os.getenv("CONF_DEADLINE_WEAK", "0.50")),
+    "URGENCY_STRONG": float(os.getenv("CONF_URGENCY_STRONG", "0.70")),
+    "URGENCY_WEAK": float(os.getenv("CONF_URGENCY_WEAK", "0.40")),
+}
 
 _DEADLINE_PATTERNS = [
     r"\bhoy\b",
@@ -34,10 +46,9 @@ _DEADLINE_PATTERNS = [
     r"\besta semana\b",
     r"\beste finde\b",
     r"\bantes de\b",
-    r"\bme urge\b",
-    r"\burg(e|encia)\b",
-    r"\bprisa\b",
-    r"\bya\b",
+    r"\bpara el\b",
+    r"\ben \d+ días\b",
+    r"\ben \d+ semanas\b",
 ]
 
 _TIMING_PATTERNS = [
@@ -70,13 +81,12 @@ _BATNA_PATTERNS = [
     r"me lo compra mi primo",
 ]
 
-_URGENCY_PATTERNS = [
-    r"lo necesito",
+_URGENCY_PATTERNS_STRONG = [
     r"me urge",
-    r"me urge",
+    r"tengo prisa",
+    r"necesito vender ya",
+    r"necesito el dinero",
     r"me viene la reforma",
-    r"antes del",
-    r"antes de",
 ]
 
 _MIN_PRICE_PATTERNS = [
@@ -133,6 +143,92 @@ def _normalize_text(text: str) -> str:
     return re.sub(r"\s+", " ", text.strip())
 
 
+def _normalize_short(text: str) -> str:
+    cleaned = re.sub(r"[^\w\s€]", "", text.lower())
+    return re.sub(r"\s+", " ", cleaned).strip()[:80]
+
+
+def _bucket_phrase(text: str) -> str:
+    lowered = text.lower()
+    if "no negociable" in lowered or "precio fijo" in lowered or "precio cerrado" in lowered:
+        return "firm_strong"
+    if "no negocio" in lowered:
+        return "firm_weak"
+    return _normalize_short(text)
+
+
+def _infer_field(item: EvidenceItem) -> str:
+    if item.get("field"):
+        return str(item.get("field"))
+    evidence_type = item.get("type")
+    if evidence_type == "PRICE":
+        return "price_value" if item.get("value") is not None else "price_mentioned"
+    if evidence_type == "DEADLINE":
+        return "deadline_days"
+    if evidence_type == "FIRMNESS":
+        return "price_firm"
+    if evidence_type == "URGENCY":
+        return "urgency_claimed"
+    if evidence_type == "OTHER_BUYER":
+        return "other_buyer_claimed"
+    if evidence_type == "DOCS":
+        return "docs_claimed"
+    if evidence_type == "BATNA":
+        return "batna_claimed"
+    if evidence_type == "CONCESSION":
+        return "concession_made"
+    if evidence_type == "MIN_PRICE":
+        return "min_price_claimed"
+    if evidence_type == "EVIDENCE_DOC":
+        return "evidence_offered"
+    if evidence_type == "TONE":
+        return "tone_signal"
+    return ""
+
+
+_FIELD_TO_TYPE: dict[str, str] = {
+    "price_value": "PRICE",
+    "price_mentioned": "PRICE",
+    "deadline_days": "DEADLINE",
+    "deadline_claimed": "DEADLINE",
+    "deadline_text": "DEADLINE",
+    "urgency_claimed": "URGENCY",
+    "urgency_reason": "URGENCY",
+    "price_firm": "FIRMNESS",
+    "other_buyer_claimed": "OTHER_BUYER",
+    "docs_claimed": "DOCS",
+    "docs_types": "DOCS",
+    "batna_claimed": "BATNA",
+    "min_price_claimed": "MIN_PRICE",
+    "evidence_offered": "EVIDENCE_DOC",
+    "concession_made": "CONCESSION",
+    "tone_signal": "TONE",
+}
+
+
+def _evidence_key(item: EvidenceItem) -> tuple:
+    evidence_type = item.get("type")
+    field = item.get("field") or _infer_field(item)
+    polarity = item.get("polarity", "affirm")
+    source = item.get("source")
+    value = item.get("value")
+    if evidence_type == "PRICE" and isinstance(value, (int, float)):
+        return (evidence_type, field, int(round(float(value), -1)), polarity, source)
+    if evidence_type == "DEADLINE":
+        return (evidence_type, field, str(value), polarity, source)
+    if evidence_type == "FIRMNESS":
+        bucket = _bucket_phrase(item.get("text", ""))
+        return (evidence_type, field, bucket, polarity, source)
+    return (
+        evidence_type,
+        field,
+        _normalize_short(item.get("text", "")),
+        str(value),
+        polarity,
+        source,
+    )
+
+
 def _extract_sentence(text: str, match_span: tuple[int, int]) -> str:
     sentences = re.split(r"(?<=[.!?])\s+", text)
     for sentence in sentences:
@@ -186,6 +282,27 @@ def _extract_price(text: str) -> float | None:
     return None
 
 
+def _extract_price_match(text: str) -> tuple[float | None, tuple[int, int] | None, dict | None]:
+    patterns = [
+        r"(\d{1,3}(?:[\.,\s]\d{3})+)(?:\s?€|\s?euros|\s?eur)?",
+        r"(\d+(?:[\.,]\d+)?)(?:\s?€|\s?euros|\s?eur)",
+        r"(\d+(?:[\.,]\d+)?)\s?(k|mil)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if not match:
+            continue
+        raw = match.group(1)
+        suffix = match.group(2) if match.lastindex and match.lastindex >= 2 else ""
+        value = _parse_number(raw)
+        if value is None:
+            continue
+        if suffix.lower() in {"k", "mil"}:
+            value *= 1000
+        return value, match.span(), {"match": "numeric", "raw": raw}
+    return None, None, None
+
+
 def _detect_keywords(text: str, patterns: List[str]) -> re.Match | None:
     for pattern in patterns:
         match = re.search(pattern, text, flags=re.IGNORECASE)
@@ -223,20 +340,26 @@ def _estimate_deadline_days(text: str) -> int | None:
 
 def _make_evidence(
     evidence_type: str,
+    field: str,
     text: str,
     value: Any,
     source: str,
     confidence: float,
     turn_idx: int | None,
+    polarity: str = "affirm",
+    span: tuple[int, int] | None = None,
     raw: dict | None = None,
 ) -> EvidenceItem:
     return {
         "type": evidence_type,
+        "field": field,
+        "polarity": polarity,
         "text": text.strip(),
         "value": value,
         "source": source,
         "confidence": float(confidence),
         "turn_idx": turn_idx,
+        "span": span,
         "raw": raw or None,
     }
 
@@ -246,23 +369,13 @@ def _dedupe_evidence(
     new_item: EvidenceItem,
     window_turns: int,
 ) -> bool:
-    new_key = (
-        new_item.get("type"),
-        (new_item.get("text") or "").lower(),
-        str(new_item.get("value")),
-        new_item.get("source"),
-    )
+    new_key = _evidence_key(new_item)
     turn_idx = new_item.get("turn_idx")
     for item in reversed(evidence_items[-50:]):
         if window_turns and turn_idx is not None and item.get("turn_idx") is not None:
             if abs(turn_idx - int(item["turn_idx"])) > window_turns:
                 continue
-        item_key = (
-            item.get("type"),
-            (item.get("text") or "").lower(),
-            str(item.get("value")),
-            item.get("source"),
-        )
+        item_key = _evidence_key(item)
         if item_key == new_key:
             return True
     return False
@@ -275,6 +388,10 @@ def _append_evidence(
 ) -> None:
     if not item.get("text"):
         return
+    if not item.get("field"):
+        item["field"] = _infer_field(item)
+    if not item.get("polarity"):
+        item["polarity"] = "affirm"
     if _dedupe_evidence(evidence_items, item, window_turns):
         return
     evidence_items.append(item)
@@ -302,139 +419,211 @@ def _legacy_regex_update(prev_world: WorldState, user_message: str) -> WorldStat
     evidence_items = list(base.get("evidence_items", []))
     window_turns = int(os.getenv("DEDUP_EVIDENCE_WINDOW_TURNS", "3"))
     turn_idx = int(base.get("world_state_meta", {}).get("turn_idx", 0) or 0)
+    observed_fields: dict[str, Any] = {}
 
-    price_value = _extract_price(lower)
+    price_value, price_span, price_raw = _extract_price_match(lower)
+    has_price_context = any(keyword in lower for keyword in _PRICE_KEYWORDS)
     if price_value is not None:
-        base["price_mentioned"] = True
-        base["price_value"] = float(price_value)
-        confidence = 0.8 if any(keyword in lower for keyword in _PRICE_KEYWORDS) else 0.6
+        observed_fields["price_value"] = float(price_value)
+        confidence = CONF["PRICE_NUMERIC"] if has_price_context else CONF["PRICE_KEYWORD"]
         _append_evidence(
             evidence_items,
             _make_evidence(
                 "PRICE",
+                "price_value",
                 text,
                 float(price_value),
                 "regex",
                 confidence,
                 turn_idx,
-                raw={"match": "numeric"},
+                span=price_span,
+                raw=price_raw,
             ),
             window_turns,
         )
-    elif any(keyword in lower for keyword in _PRICE_KEYWORDS):
-        base["price_mentioned"] = True
+    elif has_price_context:
+        observed_fields["price_mentioned"] = True
         _append_evidence(
             evidence_items,
-            _make_evidence("PRICE", text, None, "regex", 0.4, turn_idx, raw={"match": "keyword"}),
+            _make_evidence(
+                "PRICE",
+                "price_mentioned",
+                text,
+                None,
+                "regex",
+                CONF["PRICE_KEYWORD"],
+                turn_idx,
+                raw={"match": "keyword"},
+            ),
             window_turns,
         )
 
     deadline_match = _detect_keywords(lower, _DEADLINE_PATTERNS)
     if deadline_match:
-        base["deadline_claimed"] = True
         deadline_text = _extract_sentence(text, deadline_match.span())
-        base["deadline_text"] = deadline_text
-        base["deadline_days"] = _estimate_deadline_days(deadline_text)
+        observed_fields["deadline_text"] = deadline_text
+        observed_fields["deadline_days"] = _estimate_deadline_days(deadline_text)
+        is_strong_deadline = bool(
+            re.search(r"\bhoy\b|\bmañana\b|en \d+ días|en \d+ semanas", lower)
+        )
+        deadline_conf = CONF["DEADLINE_STRONG"] if is_strong_deadline else CONF["DEADLINE_WEAK"]
         if any(token in lower for token in ["recoger", "entregar", "entrega"]):
-            base["deadline_kind"] = "pickup"
+            observed_fields["deadline_kind"] = "pickup"
         elif any(token in lower for token in ["pagar", "pago", "pagarlo"]):
-            base["deadline_kind"] = "payment"
+            observed_fields["deadline_kind"] = "payment"
         else:
-            base["deadline_kind"] = "decision"
+            observed_fields["deadline_kind"] = "decision"
         _append_evidence(
             evidence_items,
-            _make_evidence("DEADLINE", deadline_text, base["deadline_days"], "regex", 0.7, turn_idx),
+            _make_evidence(
+                "DEADLINE",
+                "deadline_days",
+                deadline_text,
+                observed_fields.get("deadline_days"),
+                "regex",
+                deadline_conf,
+                turn_idx,
+                span=deadline_match.span(),
+            ),
             window_turns,
         )
 
     other_buyer_match = _detect_keywords(lower, _OTHER_BUYER_PATTERNS)
     if other_buyer_match:
-        base["other_buyer_claimed"] = True
         other_buyer_text = _extract_sentence(text, other_buyer_match.span())
-        base["other_buyer_text"] = other_buyer_text
-        base["other_buyer_offer_price"] = _extract_price(base["other_buyer_text"].lower())
-        base["other_buyer_timing_text"] = _extract_timing_phrase(base["other_buyer_text"])
+        observed_fields["other_buyer_text"] = other_buyer_text
+        observed_fields["other_buyer_offer_price"] = _extract_price(other_buyer_text.lower())
+        observed_fields["other_buyer_timing_text"] = _extract_timing_phrase(other_buyer_text)
         confidence = 0.6 if "oferta" in lower or "comprador" in lower else 0.4
         _append_evidence(
             evidence_items,
             _make_evidence(
                 "OTHER_BUYER",
+                "other_buyer_claimed",
                 other_buyer_text,
                 {
-                    "offer_price": base["other_buyer_offer_price"],
-                    "timing": base["other_buyer_timing_text"],
+                    "offer_price": observed_fields.get("other_buyer_offer_price"),
+                    "timing": observed_fields.get("other_buyer_timing_text"),
                 },
                 "regex",
                 confidence,
                 turn_idx,
+                span=other_buyer_match.span(),
             ),
             window_turns,
         )
 
     batna_match = _detect_keywords(lower, _BATNA_PATTERNS)
     if batna_match:
-        base["batna_claimed"] = True
         batna_text = _extract_sentence(text, batna_match.span())
-        base["batna_text"] = batna_text
+        observed_fields["batna_text"] = batna_text
         _append_evidence(
             evidence_items,
-            _make_evidence("BATNA", batna_text, None, "regex", 0.6, turn_idx),
+            _make_evidence(
+                "BATNA", "batna_claimed", batna_text, None, "regex", 0.6, turn_idx, span=batna_match.span()
+            ),
             window_turns,
         )
 
-    urgency_match = _detect_keywords(lower, _URGENCY_PATTERNS)
+    urgency_match = _detect_keywords(lower, _URGENCY_PATTERNS_STRONG)
     if urgency_match:
-        base["urgency_claimed"] = True
         urgency_text = _extract_sentence(text, urgency_match.span())
-        base["urgency_text"] = urgency_text
-        base["urgency_reason"] = urgency_text[:120]
+        observed_fields["urgency_text"] = urgency_text
+        observed_fields["urgency_reason"] = urgency_text[:120]
         _append_evidence(
             evidence_items,
-            _make_evidence("URGENCY", urgency_text, None, "regex", 0.6, turn_idx),
+            _make_evidence(
+                "URGENCY",
+                "urgency_claimed",
+                urgency_text,
+                None,
+                "regex",
+                CONF["URGENCY_STRONG"],
+                turn_idx,
+                span=urgency_match.span(),
+            ),
             window_turns,
         )
 
     min_price_match = _detect_keywords(lower, _MIN_PRICE_PATTERNS)
     if min_price_match:
-        base["min_price_claimed"] = True
         min_price_text = _extract_sentence(text, min_price_match.span())
-        base["min_price_text"] = min_price_text
+        observed_fields["min_price_text"] = min_price_text
         _append_evidence(
             evidence_items,
-            _make_evidence("MIN_PRICE", min_price_text, None, "regex", 0.6, turn_idx),
+            _make_evidence(
+                "MIN_PRICE",
+                "min_price_claimed",
+                min_price_text,
+                None,
+                "regex",
+                0.6,
+                turn_idx,
+                span=min_price_match.span(),
+            ),
             window_turns,
         )
 
     price_firm_match = _detect_keywords(lower, _PRICE_FIRM_PATTERNS)
     if price_firm_match:
         price_firm_text = _extract_sentence(text, price_firm_match.span())
-        base["price_firm_text"] = price_firm_text
-        confidence = 0.6 if "precio" in price_firm_text.lower() else 0.4
+        observed_fields["price_firm_text"] = price_firm_text
+        has_price = "precio" in price_firm_text.lower() or has_price_context
+        has_strong_phrase = any(
+            phrase in price_firm_text.lower()
+            for phrase in ["precio fijo", "no negociable", "precio cerrado"]
+        )
+        confidence = CONF["FIRMNESS_STRONG"] if has_price and has_strong_phrase else CONF["FIRMNESS_WEAK"]
         _append_evidence(
             evidence_items,
-            _make_evidence("FIRMNESS", price_firm_text, None, "regex", confidence, turn_idx),
+            _make_evidence(
+                "FIRMNESS",
+                "price_firm",
+                price_firm_text,
+                None,
+                "regex",
+                confidence,
+                turn_idx,
+                span=price_firm_match.span(),
+            ),
             window_turns,
         )
 
     evidence_match = _detect_keywords(lower, _EVIDENCE_PATTERNS)
     if evidence_match:
-        base["evidence_offered"] = True
         evidence_text = _extract_sentence(text, evidence_match.span())
-        base["evidence_text"] = evidence_text
+        observed_fields["evidence_text"] = evidence_text
         _append_evidence(
             evidence_items,
-            _make_evidence("EVIDENCE_DOC", evidence_text, None, "regex", 0.6, turn_idx),
+            _make_evidence(
+                "EVIDENCE_DOC",
+                "evidence_offered",
+                evidence_text,
+                None,
+                "regex",
+                0.6,
+                turn_idx,
+                span=evidence_match.span(),
+            ),
             window_turns,
         )
 
     concession_match = _detect_keywords(lower, _CONCESSION_PATTERNS)
     if concession_match:
-        base["concession_made"] = True
         concession_text = _extract_sentence(text, concession_match.span())
-        base["concession_text"] = concession_text
+        observed_fields["concession_text"] = concession_text
         _append_evidence(
             evidence_items,
-            _make_evidence("CONCESSION", concession_text, None, "regex", 0.6, turn_idx),
+            _make_evidence(
+                "CONCESSION",
+                "concession_made",
+                concession_text,
+                None,
+                "regex",
+                0.6,
+                turn_idx,
+                span=concession_match.span(),
+            ),
             window_turns,
         )
 
@@ -443,11 +632,18 @@ def _legacy_regex_update(prev_world: WorldState, user_message: str) -> WorldStat
         if re.search(rf"\b{re.escape(key)}\b", lower):
             docs_found.append(label)
     if docs_found:
-        base["docs_claimed"] = True
-        base["docs_types"] = _merge_list(base["docs_types"], docs_found)
+        observed_fields["docs_types"] = _merge_list(base.get("docs_types", []), docs_found)
         _append_evidence(
             evidence_items,
-            _make_evidence("DOCS", text, docs_found, "regex", 0.6, turn_idx),
+            _make_evidence(
+                "DOCS",
+                "docs_claimed",
+                text,
+                docs_found,
+                "regex",
+                0.6,
+                turn_idx,
+            ),
             window_turns,
         )
 
@@ -472,11 +668,17 @@ def _legacy_regex_update(prev_world: WorldState, user_message: str) -> WorldStat
     if conflict_hits:
         _append_evidence(
             evidence_items,
-            _make_evidence("TONE", text, base["tone_signal"], "regex", 0.5, turn_idx),
+            _make_evidence("TONE", "tone_signal", text, base["tone_signal"], "regex", 0.5, turn_idx),
             window_turns,
         )
 
     base["evidence_items"] = evidence_items
+    if isinstance(base.get("world_observations"), dict):
+        raw_fields = base["world_observations"].get("raw_fields", {})
+        if isinstance(raw_fields, dict):
+            raw_fields.update(observed_fields)
+            base["world_observations"]["raw_fields"] = raw_fields
+        base["world_observations"]["evidence_items"] = list(evidence_items)
     return base
 
 
@@ -519,178 +721,143 @@ def _derive_flags_from_evidence(
     confidence_min: float,
 ) -> WorldState:
     items = world.get("evidence_items", [])
-    by_type: dict[str, list[EvidenceItem]] = {}
+    if not items:
+        return world
+
     for item in items:
-        by_type.setdefault(item.get("type", ""), []).append(item)
+        if not item.get("field"):
+            item["field"] = _infer_field(item)
+        if not item.get("polarity"):
+            item["polarity"] = "affirm"
 
-    manual_items: list[EvidenceItem] = []
-    if world.get("price_mentioned") and not by_type.get("PRICE"):
-        manual_items.append(
-            _make_evidence(
-                "PRICE", "", world.get("price_value"), "manual", confidence_min, None
-            )
-        )
-    if world.get("deadline_claimed") and not by_type.get("DEADLINE"):
-        manual_items.append(
-            _make_evidence(
-                "DEADLINE",
-                world.get("deadline_text", ""),
-                world.get("deadline_days"),
-                "manual",
-                confidence_min,
-                None,
-            )
-        )
-    if world.get("urgency_claimed") and not by_type.get("URGENCY"):
-        manual_items.append(
-            _make_evidence(
-                "URGENCY", world.get("urgency_text", ""), None, "manual", confidence_min, None
-            )
-        )
-    if world.get("other_buyer_claimed") and not by_type.get("OTHER_BUYER"):
-        manual_items.append(
-            _make_evidence(
-                "OTHER_BUYER",
-                world.get("other_buyer_text", ""),
-                None,
-                "manual",
-                confidence_min,
-                None,
-            )
-        )
-    if world.get("concession_made") and not by_type.get("CONCESSION"):
-        manual_items.append(
-            _make_evidence(
-                "CONCESSION",
-                world.get("concession_text", ""),
-                None,
-                "manual",
-                confidence_min,
-                None,
-            )
-        )
-    if world.get("docs_claimed") and not by_type.get("DOCS"):
-        manual_items.append(
-            _make_evidence(
-                "DOCS", "", world.get("docs_types", []), "manual", confidence_min, None
-            )
-        )
-    if world.get("min_price_claimed") and not by_type.get("MIN_PRICE"):
-        manual_items.append(
-            _make_evidence(
-                "MIN_PRICE",
-                world.get("min_price_text", ""),
-                None,
-                "manual",
-                confidence_min,
-                None,
-            )
-        )
-    if world.get("price_firm") and not by_type.get("FIRMNESS"):
-        manual_items.append(
-            _make_evidence(
-                "FIRMNESS",
-                world.get("price_firm_text", ""),
-                None,
-                "manual",
-                confidence_min,
-                None,
-            )
-        )
-    if world.get("evidence_offered") and not by_type.get("EVIDENCE_DOC"):
-        manual_items.append(
-            _make_evidence(
-                "EVIDENCE_DOC",
-                world.get("evidence_text", ""),
-                None,
-                "manual",
-                confidence_min,
-                None,
-            )
-        )
-    if world.get("batna_claimed") and not by_type.get("BATNA"):
-        manual_items.append(
-            _make_evidence(
-                "BATNA", world.get("batna_text", ""), None, "manual", confidence_min, None
-            )
-        )
-    if world.get("tone_signal") and not by_type.get("TONE"):
-        manual_items.append(
-            _make_evidence(
-                "TONE", "", world.get("tone_signal"), "manual", confidence_min, None
-            )
-        )
+    observed = world.get("world_observations", {}).get("raw_fields", {})
+    defaults = default_world_state()
+    derived: dict[str, Any] = {
+        "price_mentioned": False,
+        "price_value": None,
+        "deadline_claimed": False,
+        "deadline_text": "",
+        "deadline_days": None,
+        "deadline_kind": "unknown",
+        "urgency_claimed": False,
+        "urgency_text": "",
+        "urgency_reason": "",
+        "other_buyer_claimed": False,
+        "other_buyer_text": "",
+        "other_buyer_offer_price": None,
+        "other_buyer_timing_text": "",
+        "concession_made": False,
+        "concession_text": "",
+        "docs_claimed": False,
+        "docs_types": [],
+        "min_price_claimed": False,
+        "min_price_text": "",
+        "price_firm": False,
+        "price_firm_text": "",
+        "evidence_offered": False,
+        "evidence_text": "",
+        "batna_claimed": False,
+        "batna_text": "",
+        "tone_signal": defaults["tone_signal"],
+        "tone_confidence": defaults["tone_confidence"],
+    }
 
-    if manual_items:
-        world["evidence_items"] = list(items) + manual_items
-        items = world["evidence_items"]
-        by_type = {}
-        for item in items:
-            by_type.setdefault(item.get("type", ""), []).append(item)
-
-    if items:
-        world["price_mentioned"] = False
-        world["deadline_claimed"] = False
-        world["urgency_claimed"] = False
-        world["other_buyer_claimed"] = False
-        world["concession_made"] = False
-        world["docs_claimed"] = False
-        world["min_price_claimed"] = False
-        world["price_firm"] = False
-        world["evidence_offered"] = False
-        world["batna_claimed"] = False
-
-    def _best(item_type: str) -> EvidenceItem | None:
+    def _pick_best(field: str, conf_min: float) -> EvidenceItem | None:
         candidates = [
-            item for item in by_type.get(item_type, []) if item.get("confidence", 0.0) >= confidence_min
+            item
+            for item in items
+            if item.get("field") == field
+            and float(item.get("confidence", 0.0)) >= conf_min
+            and item.get("polarity", "affirm") == "affirm"
         ]
         if not candidates:
             return None
-        candidates.sort(key=lambda it: float(it.get("confidence", 0.0)), reverse=True)
+        candidates.sort(
+            key=lambda it: (
+                float(it.get("confidence", 0.0)),
+                int(it.get("turn_idx") or -1),
+            ),
+            reverse=True,
+        )
         return candidates[0]
 
-    if (best := _best("PRICE")):
-        world["price_mentioned"] = True
-        if best.get("value") is not None:
-            world["price_value"] = float(best["value"])
-    if (best := _best("DEADLINE")):
-        world["deadline_claimed"] = True
-        world["deadline_text"] = str(best.get("text", world.get("deadline_text", "")))
-        if best.get("value") is not None:
-            world["deadline_days"] = int(best["value"])
-        if not world.get("deadline_kind") or world.get("deadline_kind") == "unknown":
-            world["deadline_kind"] = "decision"
-    if (best := _best("URGENCY")):
-        world["urgency_claimed"] = True
-        world["urgency_text"] = str(best.get("text", world.get("urgency_text", "")))
-        world["urgency_reason"] = str(best.get("text", world.get("urgency_reason", "")))[:120]
-    if (best := _best("OTHER_BUYER")):
-        world["other_buyer_claimed"] = True
-        world["other_buyer_text"] = str(best.get("text", world.get("other_buyer_text", "")))
-    if (best := _best("CONCESSION")):
-        world["concession_made"] = True
-        world["concession_text"] = str(best.get("text", world.get("concession_text", "")))
-    if (best := _best("DOCS")):
-        world["docs_claimed"] = True
-        if best.get("value"):
-            world["docs_types"] = _merge_list(world.get("docs_types", []), list(best["value"]))
-    if (best := _best("MIN_PRICE")):
-        world["min_price_claimed"] = True
-        world["min_price_text"] = str(best.get("text", world.get("min_price_text", "")))
-    if (best := _best("FIRMNESS")):
-        world["price_firm"] = True
-        world["price_firm_text"] = str(best.get("text", world.get("price_firm_text", "")))
-    if (best := _best("EVIDENCE_DOC")):
-        world["evidence_offered"] = True
-        world["evidence_text"] = str(best.get("text", world.get("evidence_text", "")))
-    if (best := _best("BATNA")):
-        world["batna_claimed"] = True
-        world["batna_text"] = str(best.get("text", world.get("batna_text", "")))
-    if (best := _best("TONE")):
-        world["tone_signal"] = str(best.get("value", world.get("tone_signal", "neutral")))
-        world["tone_confidence"] = max(
-            float(world.get("tone_confidence", 0.0)), float(best.get("confidence", 0.0))
+    best_price_value = _pick_best("price_value", CONF["PRICE_NUMERIC"])
+    best_price_keyword = _pick_best("price_mentioned", CONF["PRICE_KEYWORD"])
+    if best_price_value or best_price_keyword:
+        derived["price_mentioned"] = True
+        if best_price_value and best_price_value.get("value") is not None:
+            derived["price_value"] = float(best_price_value["value"])
+
+    best_deadline = _pick_best("deadline_days", CONF["DEADLINE_WEAK"])
+    if best_deadline:
+        derived["deadline_claimed"] = True
+        derived["deadline_text"] = str(best_deadline.get("text", derived["deadline_text"]))
+        if best_deadline.get("value") is not None:
+            derived["deadline_days"] = int(best_deadline["value"])
+        derived["deadline_kind"] = str(observed.get("deadline_kind", derived["deadline_kind"]))
+
+    best_urgency = _pick_best("urgency_claimed", CONF["URGENCY_STRONG"])
+    if best_urgency:
+        derived["urgency_claimed"] = True
+        derived["urgency_text"] = str(best_urgency.get("text", derived["urgency_text"]))
+        derived["urgency_reason"] = str(best_urgency.get("text", derived["urgency_reason"]))[:120]
+
+    best_other = _pick_best("other_buyer_claimed", confidence_min)
+    if best_other:
+        derived["other_buyer_claimed"] = True
+        derived["other_buyer_text"] = str(best_other.get("text", derived["other_buyer_text"]))
+        if isinstance(best_other.get("value"), dict):
+            derived["other_buyer_offer_price"] = best_other["value"].get("offer_price")
+            derived["other_buyer_timing_text"] = best_other["value"].get("timing")
+        else:
+            derived["other_buyer_offer_price"] = observed.get("other_buyer_offer_price")
+            derived["other_buyer_timing_text"] = observed.get("other_buyer_timing_text")
+
+    best_concession = _pick_best("concession_made", confidence_min)
+    if best_concession:
+        derived["concession_made"] = True
+        derived["concession_text"] = str(best_concession.get("text", derived["concession_text"]))
+
+    best_docs = _pick_best("docs_claimed", confidence_min)
+    if best_docs:
+        derived["docs_claimed"] = True
+        if best_docs.get("value"):
+            derived["docs_types"] = _merge_list(derived["docs_types"], list(best_docs["value"]))
+        elif observed.get("docs_types"):
+            derived["docs_types"] = _merge_list(derived["docs_types"], list(observed["docs_types"]))
+
+    best_min_price = _pick_best("min_price_claimed", confidence_min)
+    if best_min_price:
+        derived["min_price_claimed"] = True
+        derived["min_price_text"] = str(best_min_price.get("text", derived["min_price_text"]))
+
+    best_firm = _pick_best("price_firm", CONF["FIRMNESS_STRONG"])
+    if best_firm:
+        derived["price_firm"] = True
+        derived["price_firm_text"] = str(best_firm.get("text", derived["price_firm_text"]))
+
+    best_evidence = _pick_best("evidence_offered", confidence_min)
+    if best_evidence:
+        derived["evidence_offered"] = True
+        derived["evidence_text"] = str(best_evidence.get("text", derived["evidence_text"]))
+
+    best_batna = _pick_best("batna_claimed", confidence_min)
+    if best_batna:
+        derived["batna_claimed"] = True
+        derived["batna_text"] = str(best_batna.get("text", derived["batna_text"]))
+
+    best_tone = _pick_best("tone_signal", confidence_min)
+    if best_tone:
+        derived["tone_signal"] = str(best_tone.get("value", derived["tone_signal"]))
+        derived["tone_confidence"] = max(
+            float(world.get("tone_confidence", 0.0)), float(best_tone.get("confidence", 0.0))
         )
+
+    world.update(derived)
+    world.setdefault("world_derived", {"fields": {}})
+    world["world_derived"]["fields"] = dict(derived)
+    world.setdefault("world_observations", {"raw_fields": {}, "evidence_items": []})
+    world["world_observations"]["evidence_items"] = list(items)
     return world
 
 
@@ -719,6 +886,7 @@ def update_world_state(
         decisions = output.get("decisions", {})
         patch = dict(output.get("world_patch", {}))
         llm_evidence = list(output.get("evidence_items", []))
+        field_evidence = output.get("field_evidence", {}) or {}
         if "message_is_vague" in decisions and "message_is_vague" not in patch:
             patch["message_is_vague"] = bool(decisions.get("message_is_vague"))
         output = {**output, "world_patch": patch}
@@ -726,11 +894,40 @@ def update_world_state(
         world = dict(base)
         for key, value in patch.items():
             world[key] = value
-        if llm_evidence:
-            world["evidence_items"] = list(base.get("evidence_items", [])) + llm_evidence
+        generated_items: list[EvidenceItem] = []
+        for field, payload in field_evidence.items():
+            if not isinstance(payload, dict):
+                continue
+            evidence_text = str(payload.get("evidence", "")).strip()
+            if not evidence_text:
+                continue
+            confidence = float(payload.get("confidence", confidence_min))
+            evidence_type = _FIELD_TO_TYPE.get(field, "")
+            if not evidence_type:
+                continue
+            value = patch.get(field)
+            generated_items.append(
+                _make_evidence(
+                    evidence_type,
+                    field,
+                    evidence_text,
+                    value,
+                    "llm",
+                    confidence,
+                    int(base.get("world_state_meta", {}).get("turn_idx", 0) or 0),
+                    raw={"field_evidence": payload},
+                )
+            )
+        if llm_evidence or generated_items:
+            world["evidence_items"] = (
+                list(base.get("evidence_items", [])) + llm_evidence + generated_items
+            )
             world["world_state_meta"]["last_update_source"] = "llm"
         meta = build_extractor_meta(output)
         world = _derive_flags_from_evidence(world, confidence_min)
+        world.setdefault("world_observations", {"raw_fields": {}, "evidence_items": []})
+        if isinstance(world["world_observations"].get("raw_fields"), dict):
+            world["world_observations"]["raw_fields"].update(patch)
         world["world_state_meta"]["updated_fields"] = sorted(
             [key for key in world.keys() if world.get(key) != base.get(key)]
         )

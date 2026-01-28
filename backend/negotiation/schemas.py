@@ -6,6 +6,7 @@ InteractionHealth = Literal["stable", "tense", "stalled"]
 RiskPosture = Literal["low", "mid", "high"]
 PolicyOutcome = Literal["good", "neutral", "bad", ""]
 ToneSignal = Literal["neutral", "friendly", "tense"]
+RequiredInputOp = Literal["exists", "true", "non_empty"]
 EvidenceType = Literal[
     "PRICE",
     "DEADLINE",
@@ -20,6 +21,7 @@ EvidenceType = Literal[
     "TONE",
 ]
 EvidenceSource = Literal["regex", "llm", "manual"]
+EvidencePolarity = Literal["affirm", "deny"]
 IntentStatus = Literal["inactive", "active", "succeeded", "abandoned", "paused"]
 IntentType = Literal[
     "info_extract",
@@ -113,17 +115,36 @@ class WorldState(TypedDict):
     tone_marker_hits: List[str]
     conflict_markers: List[str]
     evidence_items: List["EvidenceItem"]
+    world_observations: "WorldObservations"
+    world_derived: "WorldDerived"
     world_state_meta: "WorldStateMeta"
 
 
 class EvidenceItem(TypedDict):
     type: EvidenceType
+    field: str
+    polarity: EvidencePolarity
     text: str
     value: Any | None
     source: EvidenceSource
     confidence: float
     turn_idx: int | None
+    span: tuple[int, int] | None
     raw: Dict[str, Any] | None
+
+
+class WorldObservations(TypedDict):
+    raw_fields: Dict[str, Any]
+    evidence_items: List["EvidenceItem"]
+
+
+class WorldDerived(TypedDict):
+    fields: Dict[str, Any]
+
+
+class RequiredInput(TypedDict):
+    key: str
+    op: RequiredInputOp
 
 
 class WorldStateMeta(TypedDict):
@@ -248,6 +269,11 @@ def default_world_state() -> WorldState:
         "tone_marker_hits": [],
         "conflict_markers": [],
         "evidence_items": [],
+        "world_observations": {
+            "raw_fields": {},
+            "evidence_items": [],
+        },
+        "world_derived": {"fields": {}},
         "world_state_meta": {
             "last_update_source": "regex",
             "evidence_confidence_min": 0.6,

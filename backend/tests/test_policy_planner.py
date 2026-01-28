@@ -41,6 +41,10 @@ def test_all_policies_define_phase_hints():
 def test_all_policies_define_new_contract_fields():
     for policy in POLICIES:
         assert isinstance(policy.required_inputs, list)
+        for req in policy.required_inputs:
+            assert isinstance(req, dict)
+            assert "key" in req
+            assert "op" in req
         assert isinstance(policy.target_slots, list)
         assert isinstance(policy.expected_effects, list)
         assert isinstance(policy.failure_modes, list)
@@ -52,3 +56,11 @@ def test_policy_catalog_includes_contract_fields():
     assert "Target slots:" in catalog
     assert "Expected:" in catalog
     assert "Failure:" in catalog
+
+
+def test_delay_price_discussion_required_inputs_match_guard():
+    policy = get_policy("delay_price_discussion")
+    assert policy is not None
+    assert "requires_price_not_mentioned" in (policy.guards or set())
+    required_keys = {req.get("key") for req in policy.required_inputs}
+    assert "price_mentioned" in required_keys

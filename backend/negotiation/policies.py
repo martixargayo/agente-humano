@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Set
 
-from .schemas import NegotiationPhase
+from .schemas import NegotiationPhase, RequiredInput
 
 
 @dataclass(frozen=True)
@@ -16,7 +16,7 @@ class Policy:
     hard_constraints_rules: List[str]
     rag_query_template: str
     phase_hints: List[NegotiationPhase]
-    required_inputs: List[str]
+    required_inputs: List[RequiredInput]
     target_slots: List[str]
     expected_effects: List[str]
     failure_modes: List[str]
@@ -36,7 +36,7 @@ POLICIES: List[Policy] = [
             "Tácticas para generar rapport sin perder objetivo en una negociación presencial."
         ),
         phase_hints=["opening", "recovery"],
-        required_inputs=["tone_signal"],
+        required_inputs=[{"key": "tone_signal", "op": "exists"}],
         target_slots=["rapport_signal"],
         expected_effects=["reduces_tension", "opens_dialogue"],
         failure_modes=["seller_repeats_same_answer", "high_tension"],
@@ -72,7 +72,7 @@ POLICIES: List[Policy] = [
             "Cómo contrastar credibilidad con preguntas indirectas y señales suaves."
         ),
         phase_hints=["discovery", "opening"],
-        required_inputs=["other_buyer_claimed"],
+        required_inputs=[{"key": "other_buyer_claimed", "op": "true"}],
         target_slots=["other_buyer_details", "evidence_offered"],
         expected_effects=["seller_offers_evidence", "clarifies_other_buyer"],
         failure_modes=["seller_refuses_details", "high_tension"],
@@ -90,7 +90,7 @@ POLICIES: List[Policy] = [
             "Tácticas para aplazar precio y reconducir a información o valor."
         ),
         phase_hints=["discovery", "opening"],
-        required_inputs=["price_mentioned"],
+        required_inputs=[{"key": "price_mentioned", "op": "exists"}],
         target_slots=["docs", "seller_batna"],
         expected_effects=["shifts_to_info", "reduces_price_focus"],
         failure_modes=["seller_insists_on_price"],
@@ -108,7 +108,7 @@ POLICIES: List[Policy] = [
             "Formas indirectas de desafiar un precio alto y abrir espacio."
         ),
         phase_hints=["bargaining", "closing"],
-        required_inputs=["price_mentioned"],
+        required_inputs=[{"key": "price_mentioned", "op": "true"}],
         target_slots=["price", "concession"],
         expected_effects=["seller_considers_drop", "signals_flexibility"],
         failure_modes=["seller_hard_firmness", "high_tension"],
@@ -126,7 +126,7 @@ POLICIES: List[Policy] = [
             "Cómo formular trade-offs claros que mantengan control del valor."
         ),
         phase_hints=["bargaining", "closing"],
-        required_inputs=["price_mentioned"],
+        required_inputs=[{"key": "price_mentioned", "op": "true"}],
         target_slots=["concession", "docs"],
         expected_effects=["seller_offers_extra", "seller_moves_on_price"],
         failure_modes=["seller_rejects_tradeoff"],
@@ -144,7 +144,7 @@ POLICIES: List[Policy] = [
             "Frases breves para mantener posición y seguir negociando."
         ),
         phase_hints=["bargaining", "closing"],
-        required_inputs=["price_mentioned"],
+        required_inputs=[{"key": "price_mentioned", "op": "true"}],
         target_slots=["price", "price_firm"],
         expected_effects=["seller_acknowledges_limit", "stabilizes_terms"],
         failure_modes=["seller_escalates", "deadline_imminent"],
@@ -162,7 +162,7 @@ POLICIES: List[Policy] = [
             "Tácticas de desescalada en negociación presencial sin ceder de más."
         ),
         phase_hints=["recovery"],
-        required_inputs=["tone_signal"],
+        required_inputs=[{"key": "tone_signal", "op": "exists"}],
         target_slots=["rapport_signal"],
         expected_effects=["reduces_tension", "restores_cooperation"],
         failure_modes=["seller_hostile"],
@@ -180,7 +180,7 @@ POLICIES: List[Policy] = [
             "Guía para cerrar condiciones claras y confirmar acuerdo." 
         ),
         phase_hints=["closing"],
-        required_inputs=["price_mentioned"],
+        required_inputs=[{"key": "price_mentioned", "op": "true"}],
         target_slots=["price", "docs"],
         expected_effects=["agreement_next_step", "confirm_terms"],
         failure_modes=["price_over_limit", "missing_docs"],

@@ -404,6 +404,7 @@ def belief_updater_node(state: NegotiationTurn) -> NegotiationTurn:
 def intent_manager_node(state: NegotiationTurn) -> NegotiationTurn:
     intent_state, intent_meta, intent_hint = update_intent_state(
         prev_intent=state.get("progress_state", {}).get("intent_state"),
+        prev_world_state=state.get("prev_world_state"),
         world_state=state["world_state"],
         belief_state=state["belief_state"],
         progress_state=state["progress_state"],
@@ -664,7 +665,7 @@ Tarea:
     logger.info("normalized_executor_output=%s", normalized_response)
 
     constraints_struct = state.get("constraints_struct", {})
-    repaired_response, violations = validate_and_repair(
+    repaired_response, violations, validator_meta = validate_and_repair(
         normalized_response,
         constraints_struct,
         executed,
@@ -673,6 +674,7 @@ Tarea:
     if violations:
         logger.info("executor_response_repaired=%s violations=%s", repaired_response, violations)
     state["response"] = repaired_response
+    state["executor_validator_meta"] = validator_meta
     return state
 
 

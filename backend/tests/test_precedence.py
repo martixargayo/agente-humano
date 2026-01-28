@@ -162,6 +162,7 @@ def test_intent_pauses_under_recovery_guard():
     )
     updated, meta, _hint = update_intent_state(
         prev_intent=intent,
+        prev_world_state=default_world_state(),
         world_state=default_world_state(),
         belief_state=default_belief_state(),
         progress_state=default_progress_state(),

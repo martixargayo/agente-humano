@@ -178,6 +178,36 @@ def normalize_world_state(raw: object) -> Tuple[WorldState, List[str]]:
     else:
         issues.append("evidence_items_invalid")
 
+    observations = raw.get("world_observations", {})
+    if isinstance(observations, dict):
+        raw_fields = observations.get("raw_fields", {})
+        if isinstance(raw_fields, dict):
+            base["world_observations"]["raw_fields"] = raw_fields
+        obs_items = observations.get("evidence_items", [])
+        if isinstance(obs_items, list):
+            cleaned_obs = []
+            for item in obs_items:
+                if not isinstance(item, dict):
+                    continue
+                cleaned_obs.append(item)
+                if len(cleaned_obs) >= 50:
+                    break
+            base["world_observations"]["evidence_items"] = cleaned_obs
+        else:
+            issues.append("world_observations_items_invalid")
+    else:
+        issues.append("world_observations_invalid")
+
+    derived = raw.get("world_derived", {})
+    if isinstance(derived, dict):
+        fields = derived.get("fields", {})
+        if isinstance(fields, dict):
+            base["world_derived"]["fields"] = fields
+        else:
+            issues.append("world_derived_fields_invalid")
+    else:
+        issues.append("world_derived_invalid")
+
     world_state_meta = raw.get("world_state_meta", {})
     if isinstance(world_state_meta, dict):
         meta = dict(base["world_state_meta"])

@@ -299,9 +299,21 @@ def _required_inputs_met(policy_id: str, world_state: WorldState) -> bool:
     policy = _POLICY_BY_ID.get(policy_id)
     if not policy or not policy.required_inputs:
         return True
-    for key in policy.required_inputs:
-        if not world_state.get(key):
-            return False
+    for req in policy.required_inputs:
+        key = req.get("key", "")
+        op = req.get("op", "exists")
+        if op == "exists":
+            if key not in world_state:
+                return False
+        elif op == "true":
+            if not bool(world_state.get(key)):
+                return False
+        elif op == "non_empty":
+            value = world_state.get(key)
+            if not value:
+                return False
+            if isinstance(value, (list, dict)) and len(value) == 0:
+                return False
     return True
 
 
@@ -310,16 +322,7 @@ def _violates_hard_constraints(
     world_state: WorldState,
     constraints_struct: dict | None,
 ) -> bool:
-    policy = _POLICY_BY_ID.get(policy_id)
-    if not policy or not policy.hard_constraints_rules:
-        return False
-    rules = set(policy.hard_constraints_rules)
-    constraints = constraints_struct or {}
-    max_total = float(constraints.get("max_total_cost", 0.0) or 0.0)
-    if "respect_batna" in rules and max_total > 0:
-        price_value = world_state.get("price_value")
-        if isinstance(price_value, (int, float)) and float(price_value) > max_total:
-            return True
+    del policy_id, world_state, constraints_struct
     return False
 
 
@@ -545,6 +548,12 @@ def plan_policy(
         meta["policy_normalization_changed"] = bool(issues)
         if issues:
             logger.warning("policy_planner_validation_issues=%s", issues)
+        input_keys = set(world_state.keys()) | set(belief_state.keys()) | set((intent_hint or {}).keys())
+        invalid_inputs = [key for key in normalized.get("inputs_used", []) if key not in input_keys]
+        if invalid_inputs:
+            issues.append(f"inputs_used_invalid:{','.join(invalid_inputs)}")
+            meta["issues"] = issues
+            meta["policy_normalization_changed"] = True
         if issues or normalized["policy_id"] not in allowed_final:
             meta["planner_fallback_used"] = True
             return _apply_phase_bias(_fallback_policy(belief_state)), meta

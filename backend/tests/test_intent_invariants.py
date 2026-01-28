@@ -53,6 +53,7 @@ def _active_intent_with_step(step_kind: str, target_slot: str) -> dict:
 def test_meta_contract_keys_always_present():
     intent, meta, _hint = update_intent_state(
         prev_intent=default_intent_state(),
+        prev_world_state=default_world_state(),
         world_state=default_world_state(),
         belief_state=default_belief_state(),
         progress_state=default_progress_state(),
@@ -70,6 +71,7 @@ def test_active_intent_hint_matches_current_step():
     intent = _active_intent_with_step("probe_open", "seller_batna")
     updated, _meta, hint = update_intent_state(
         prev_intent=intent,
+        prev_world_state=default_world_state(),
         world_state=default_world_state(),
         belief_state=default_belief_state(),
         progress_state=default_progress_state(),
@@ -105,6 +107,7 @@ def test_hydration_legacy_string_steps_sets_steps_hydrated_and_valid_step():
     intent["steps"] = ["legacy"]
     updated, meta, _hint = update_intent_state(
         prev_intent=intent,
+        prev_world_state=default_world_state(),
         world_state=default_world_state(),
         belief_state=default_belief_state(),
         progress_state=default_progress_state(),
@@ -134,6 +137,7 @@ def test_hydration_empty_steps_missing_empty_produces_close_next():
     )
     updated, meta, _hint = update_intent_state(
         prev_intent=intent,
+        prev_world_state=default_world_state(),
         world_state=default_world_state(),
         belief_state=default_belief_state(),
         progress_state=default_progress_state(),
@@ -167,6 +171,7 @@ def test_retarget_guardrail_forces_step0_target_and_success_if_filled(monkeypatc
 
     updated, meta, _hint = update_intent_state(
         prev_intent=copy.deepcopy(intent),
+        prev_world_state=default_world_state(),
         world_state=default_world_state(),
         belief_state=default_belief_state(),
         progress_state=default_progress_state(),
@@ -201,6 +206,7 @@ def test_replan_sets_transition_and_replan_to_closing():
 
     updated, meta, _hint = update_intent_state(
         prev_intent=intent,
+        prev_world_state=default_world_state(),
         world_state=world_state,
         belief_state=default_belief_state(),
         progress_state=default_progress_state(),
@@ -216,6 +222,37 @@ def test_replan_sets_transition_and_replan_to_closing():
     assert updated["step_idx"] == 0
 
 
+def test_weak_firmness_does_not_replan():
+    intent = _active_intent_with_step("probe_open", "seller_batna")
+    world_state = default_world_state()
+    world_state["price_mentioned"] = True
+    world_state["price_value"] = 9200
+    world_state["evidence_items"] = [
+        {
+            "type": "FIRMNESS",
+            "text": "no negocio",
+            "value": None,
+            "source": "regex",
+            "confidence": 0.45,
+            "turn_idx": 1,
+            "raw": None,
+        }
+    ]
+
+    updated, meta, _hint = update_intent_state(
+        prev_intent=intent,
+        prev_world_state=default_world_state(),
+        world_state=world_state,
+        belief_state=default_belief_state(),
+        progress_state=default_progress_state(),
+        user_message="no negocio",
+        turn_count=6,
+        precedence=None,
+    )
+    assert meta["intent_transition"] != "replan"
+    assert updated["intent_type"] != "closing"
+
+
 def test_pivot_sets_reason_and_strategy_and_changes_kind():
     intent = _active_intent_with_step("request_evidence", "seller_batna")
     intent["step_attempts"] = 0
@@ -224,6 +261,7 @@ def test_pivot_sets_reason_and_strategy_and_changes_kind():
 
     updated, meta, _hint = update_intent_state(
         prev_intent=intent,
+        prev_world_state=default_world_state(),
         world_state=default_world_state(),
         belief_state=default_belief_state(),
         progress_state=default_progress_state(),

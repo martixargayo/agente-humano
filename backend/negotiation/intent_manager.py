@@ -459,28 +459,40 @@ def _ensure_steps_hydrated(
     return intent
 
 
-def _should_replan(intent: IntentState, world_state: WorldState) -> str | None:
+def _should_replan(
+    intent: IntentState, world_state: WorldState, precedence: dict | None
+) -> str | None:
     evidence_items = world_state.get("evidence_items", [])
-    firmness_conf = max(
-        (
-            float(item.get("confidence", 0.0))
-            for item in evidence_items
-            if item.get("type") == "FIRMNESS"
-        ),
-        default=0.0,
-    )
     threshold = float(os.getenv("INTENT_FIRMNESS_REPLAN_THRESHOLD", "0.6"))
-    if (
-        firmness_conf >= threshold
-        and world_state.get("price_mentioned")
-        and intent.get("intent_type") != "closing"
-    ):
+    strong_firmness = any(
+        item.get("type") == "FIRMNESS"
+        and (item.get("field") in {"price_firm", "", None})
+        and item.get("polarity", "affirm") == "affirm"
+        and float(item.get("confidence", 0.0)) >= threshold
+        for item in evidence_items
+    )
+    has_price_value = world_state.get("price_mentioned") and world_state.get("price_value") is not None
+    if strong_firmness and has_price_value and intent.get("intent_type") != "closing":
+        if (precedence or {}).get("mode") == "recovery_guard":
+            return "relationship"
         return "closing"
     return None
 
 
+def _evidence_delta_for_slot(prev_world: WorldState, world: WorldState, slot: str) -> bool:
+    slot_to_fields = {
+        "price": {"price_value", "price_mentioned"},
+        "docs": {"docs_claimed", "docs_types"},
+        "seller_batna": {"batna_claimed"},
+        "seller_urgency_reason": {"urgency_reason", "urgency_claimed"},
+    }
+    fields = slot_to_fields.get(slot, set())
+    return any(prev_world.get(field) != world.get(field) for field in fields)
+
+
 def update_intent_state(
     prev_intent: IntentState | None,
+    prev_world_state: WorldState | None,
     world_state: WorldState,
     belief_state: BeliefState,
     progress_state: ProgressState,
@@ -489,6 +501,7 @@ def update_intent_state(
     precedence: dict | None,
 ) -> Tuple[IntentState, dict, dict]:
     intent = deepcopy(prev_intent or default_intent_state())
+    prev_world = prev_world_state or default_world_state()
     _normalize_slots_filled_sources(intent)
     meta = {
         "intent_prev": deepcopy(intent),
@@ -585,7 +598,7 @@ def update_intent_state(
     )
     meta["commitment_level"] = commitment
 
-    replan_to = _should_replan(intent, world_state)
+    replan_to = _should_replan(intent, world_state, precedence)
     if replan_to:
         intent_type = replan_to
         required, optional, goal, success_criteria = build_intent_contract(
@@ -634,10 +647,13 @@ def update_intent_state(
     prev_filled = set(prev_slots.get("slots_filled", {}).keys())
     prev_missing_count = len(prev_required - prev_filled)
     current_missing_count = len(slots_missing)
-    if not prev_required:
-        progress_made = True
-    else:
-        progress_made = current_missing_count < prev_missing_count
+    current_step = _current_step(intent)
+    slots_delta = current_missing_count < prev_missing_count
+    target_slot = current_step["target_slot"] if current_step else ""
+    evidence_delta = bool(target_slot) and _evidence_delta_for_slot(
+        prev_world, world_state, target_slot
+    )
+    progress_made = True if not prev_required else (slots_delta or evidence_delta)
     if progress_made:
         intent["no_progress_turns"] = 0
     else:
