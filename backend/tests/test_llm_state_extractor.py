@@ -192,3 +192,41 @@ def test_intent_replan_uses_llm_patch(monkeypatch):
     assert trace["intent_transition"] == "replan"
     assert trace["planner_meta"]["intent_meta"]["replan_to"] == "closing"
     assert intent_state["intent_type"] == "closing"
+
+
+def test_llm_evidence_dedup_does_not_grow_unbounded(monkeypatch):
+    monkeypatch.setenv("USE_LLM_EXTRACTOR", "1")
+    monkeypatch.setenv("USE_LEGACY_MATCHERS", "0")
+    monkeypatch.setenv("DEDUP_EVIDENCE_WINDOW_TURNS", "3")
+
+    def fake_extract(_prev_world, _prev_belief, _user_message, _recent_history):
+        return {
+            "world_patch": {},
+            "belief_patch": {},
+            "field_evidence": {},
+            "decisions": {"should_update_beliefs": False},
+            "reasons": ["repeat_evidence"],
+            "schema_version": "world_v1",
+            "evidence_items": [
+                {
+                    "type": "PRICE",
+                    "field": "price_mentioned",
+                    "polarity": "affirm",
+                    "text": "precio 9000",
+                    "value": None,
+                    "source": "llm",
+                    "confidence": 0.7,
+                    "turn_idx": 1,
+                    "raw": None,
+                }
+            ],
+        }
+
+    monkeypatch.setattr(
+        "negotiation.world_state_updater.extract_state_patch_llm", fake_extract
+    )
+
+    world = default_world_state()
+    for turn in range(1, 6):
+        world, _meta = update_world_state(world, "precio 9000", turn_count=turn)
+    assert len(world["evidence_items"]) <= 2

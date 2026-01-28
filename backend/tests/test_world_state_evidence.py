@@ -37,3 +37,11 @@ def test_evidence_dedup_window(monkeypatch):
     first, _ = update_world_state(default_world_state(), "precio 9000", turn_count=1)
     second, _ = update_world_state(first, "precio 9000", turn_count=2)
     assert len(first["evidence_items"]) == len(second["evidence_items"])
+
+
+def test_tone_signal_not_overwritten_when_no_strong_tone_evidence(monkeypatch):
+    monkeypatch.setenv("USE_LLM_EXTRACTOR", "false")
+    monkeypatch.setenv("USE_LEGACY_MATCHERS", "true")
+    monkeypatch.setenv("EVIDENCE_CONFIDENCE_MIN", "0.6")
+    world, _meta = update_world_state(default_world_state(), "gracias, perfecto")
+    assert world["tone_signal"] == "friendly"

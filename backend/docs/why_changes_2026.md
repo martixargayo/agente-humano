@@ -14,6 +14,11 @@
 - **Planner con contrato y trazabilidad**: required_inputs tipados, inputs_used validado contra keys existentes y prompt reforzado.
 - **Validator contextual**: números solo cuentan si están en contexto de precio; reparación revalida y cae a fallback seguro si persiste.
 
+## Ajustes recientes (tono, dedupe y progreso)
+- **Tono respetando heurísticos**: el derivador ya no resetea `tone_signal`/`tone_confidence` a defaults si no hay evidencia fuerte, evitando falsos neutrales cuando el regex detecta cordialidad o tensión.
+- **Dedupe también en LLM**: la misma política de deduplicación por clave semántica aplica a evidencia generada por LLM, evitando inflar memoria y sesgos por repetición.
+- **Progreso por evidencia real**: los intents avanzan solo si hay nuevas claves de evidencia asociadas al slot, no por flips derivados debidos a umbrales o recency.
+
 ## Impacto
 - Menos replans bruscos y menos loops por “progreso fantasma”.
 - Guardrails con enforcement real sin falsos positivos por números irrelevantes.

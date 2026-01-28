@@ -149,6 +149,44 @@ def test_intent_succeeds_when_slots_complete():
     assert hint["intent_active"] is False
 
 
+def test_intent_progress_requires_new_evidence_key():
+    prev_world = default_world_state()
+    prev_world["evidence_items"] = [
+        {
+            "type": "PRICE",
+            "field": "price_mentioned",
+            "polarity": "affirm",
+            "text": "precio 9000",
+            "value": None,
+            "source": "regex",
+            "confidence": 0.7,
+            "turn_idx": 1,
+            "raw": None,
+        }
+    ]
+    world = default_world_state()
+    world["price_mentioned"] = True
+    world["evidence_items"] = list(prev_world["evidence_items"])
+
+    assert intent_manager._evidence_delta_for_slot(prev_world, world, "price") is False
+
+    world["evidence_items"].append(
+        {
+            "type": "PRICE",
+            "field": "price_mentioned",
+            "polarity": "affirm",
+            "text": "precio 9200",
+            "value": None,
+            "source": "regex",
+            "confidence": 0.7,
+            "turn_idx": 2,
+            "raw": None,
+        }
+    )
+
+    assert intent_manager._evidence_delta_for_slot(prev_world, world, "price") is True
+
+
 def test_intent_abandons_on_hard_trigger():
     world = default_world_state()
     belief = default_belief_state()
