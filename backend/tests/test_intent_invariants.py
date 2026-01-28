@@ -185,7 +185,19 @@ def test_retarget_guardrail_forces_step0_target_and_success_if_filled(monkeypatc
 def test_replan_sets_transition_and_replan_to_closing():
     intent = _active_intent_with_step("probe_open", "seller_batna")
     world_state = default_world_state()
-    world_state["price_firm"] = True
+    world_state["price_mentioned"] = True
+    world_state["price_value"] = 9200
+    world_state["evidence_items"] = [
+        {
+            "type": "FIRMNESS",
+            "text": "precio firme",
+            "value": None,
+            "source": "regex",
+            "confidence": 0.8,
+            "turn_idx": 1,
+            "raw": None,
+        }
+    ]
 
     updated, meta, _hint = update_intent_state(
         prev_intent=intent,

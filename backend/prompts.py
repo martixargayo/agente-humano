@@ -347,6 +347,7 @@ Devuelves SOLO JSON válido con el policy_id del catálogo.
 Reglas:
 - Debes elegir un policy_id del catálogo cerrado.
 - Incluye reason (1 línea), micro_goal (1 línea), risk_posture (low/mid/high).
+- Incluye why_short (1 línea) y inputs_used (lista breve de señales usadas).
 - No añadas texto fuera del JSON.
 - Goal reinforcement: debes repetir internamente objetivo + constraints
   y elegir SOLO policies compatibles con ellos.
@@ -389,6 +390,8 @@ Devuelve SOLO JSON:
   "policy_id": "<uno de {allowed_policy_ids}>",
   "reason": "...",
   "micro_goal": "...",
-  "risk_posture": "low|mid|high"
+  "risk_posture": "low|mid|high",
+  "why_short": "...",
+  "inputs_used": ["signal_a", "signal_b"]
 }
 """

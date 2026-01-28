@@ -44,6 +44,8 @@ class _PolicyDecisionModel(BaseModel):
     reason: str = Field(default="", max_length=180)
     micro_goal: str = Field(default="", max_length=140)
     risk_posture: Literal["low", "mid", "high"] = Field(default="low")
+    why_short: str = Field(default="", max_length=140)
+    inputs_used: list[str] = Field(default_factory=list, max_length=8)
 
 
 _PHASE_ORDER: list[NegotiationPhase] = ["opening", "discovery", "bargaining", "closing"]
@@ -293,6 +295,34 @@ def _allowed_policy_ids(
     return sorted(allowed)
 
 
+def _required_inputs_met(policy_id: str, world_state: WorldState) -> bool:
+    policy = _POLICY_BY_ID.get(policy_id)
+    if not policy or not policy.required_inputs:
+        return True
+    for key in policy.required_inputs:
+        if not world_state.get(key):
+            return False
+    return True
+
+
+def _violates_hard_constraints(
+    policy_id: str,
+    world_state: WorldState,
+    constraints_struct: dict | None,
+) -> bool:
+    policy = _POLICY_BY_ID.get(policy_id)
+    if not policy or not policy.hard_constraints_rules:
+        return False
+    rules = set(policy.hard_constraints_rules)
+    constraints = constraints_struct or {}
+    max_total = float(constraints.get("max_total_cost", 0.0) or 0.0)
+    if "respect_batna" in rules and max_total > 0:
+        price_value = world_state.get("price_value")
+        if isinstance(price_value, (int, float)) and float(price_value) > max_total:
+            return True
+    return False
+
+
 def allowed_policy_ids(
     world_state: WorldState,
     belief_state: BeliefState,
@@ -392,12 +422,21 @@ def plan_policy(
     precedence: dict | None,
     objective: str,
     constraints: str,
-    recent_context: str,
+    constraints_struct: dict | None = None,
+    recent_context: str = "",
 ) -> tuple[PolicyDecision, dict]:
     policy_ids = list_policy_ids()
     allowed_base = _allowed_policy_ids(world_state, belief_state, progress_state)
     allowed_prec, prec_meta = apply_precedence_constraints(allowed_base, precedence)
     allowed_final, preferred, intent_meta = apply_intent_constraints(allowed_prec, intent_hint)
+    required_filtered = [pid for pid in allowed_final if _required_inputs_met(pid, world_state)]
+    if required_filtered:
+        allowed_final = required_filtered
+    allowed_final = [
+        pid
+        for pid in allowed_final
+        if not _violates_hard_constraints(pid, world_state, constraints_struct)
+    ]
     prec = precedence or {}
     current_phase = (progress_state.get("phase_state") or {}).get("phase", "opening")
     phase_catalog = {policy.policy_id: policy.phase_hints for policy in POLICIES}
@@ -414,6 +453,7 @@ def plan_policy(
         "allowed_policy_ids_base": allowed_base,
         "allowed_policy_ids_after_precedence": allowed_prec,
         "allowed_policy_ids_after_intent": allowed_final,
+        "allowed_policy_ids_after_required_inputs": required_filtered,
         "current_phase": current_phase,
         "phase_candidates": _phase_candidates(allowed_final, current_phase),
     }

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import os
 from dataclasses import dataclass
 from typing import List, Tuple
 
@@ -197,6 +198,14 @@ def _world_has_multiple_open_factors(world_state: WorldState) -> bool:
     return sum(1 for signal in signals if signal) >= 2
 
 
+def _signal_quality(world_state: WorldState) -> float:
+    evidence_items = world_state.get("evidence_items", []) or []
+    if not evidence_items:
+        return 0.0
+    confidences = [float(item.get("confidence", 0.0)) for item in evidence_items]
+    return sum(confidences) / max(len(confidences), 1)
+
+
 def score_multi_turn_start(
     intent_type: str,
     slots_missing: list[str],
@@ -204,33 +213,52 @@ def score_multi_turn_start(
     belief_state: BeliefState,
     user_message: str,
 ) -> MultiTurnScore:
-    score = 0
+    del user_message
     reasons: list[str] = []
 
-    if len(slots_missing) >= 2:
-        score += 2
-        reasons.append("slots_missing>=2")
-    elif len(slots_missing) == 1:
-        score += 1
-        reasons.append("slots_missing=1")
+    slots_missing_count = len(slots_missing)
+    open_factors = sum(
+        1 for signal in [
+            world_state.get("price_mentioned"),
+            world_state.get("docs_claimed"),
+            world_state.get("deadline_claimed"),
+            world_state.get("other_buyer_claimed"),
+            world_state.get("batna_claimed"),
+            world_state.get("urgency_claimed"),
+            world_state.get("min_price_claimed"),
+            world_state.get("price_firm"),
+            world_state.get("evidence_offered"),
+        ] if signal
+    )
+    signal_quality = _signal_quality(world_state)
 
-    if _message_is_vague(world_state):
-        score += 2
-        reasons.append("vague_response")
+    benefit = (
+        float(os.getenv("INTENT_WEIGHT_SLOTS", "0.6")) * slots_missing_count
+        + float(os.getenv("INTENT_WEIGHT_OPEN_FACTORS", "0.3")) * open_factors
+        + float(os.getenv("INTENT_WEIGHT_UNCERTAINTY", "0.4")) * (1.0 - signal_quality)
+    )
 
-    if _world_has_multiple_open_factors(world_state):
-        score += 1
-        reasons.append("multiple_open_factors")
+    tension = 1.0 if belief_state.get("dynamics", {}).get("interaction_health") in {
+        "tense",
+        "stalled",
+    } else 0.0
+    urgency_pressure = 1.0 if world_state.get("deadline_days") in {0, 1, 2} else 0.0
+    cost = (
+        float(os.getenv("INTENT_COST_TENSION", "0.7")) * tension
+        + float(os.getenv("INTENT_COST_REPEAT", "0.4")) * (1.0 if slots_missing_count <= 1 else 0.0)
+        + float(os.getenv("INTENT_COST_URGENCY", "0.6")) * urgency_pressure
+    )
 
-    if belief_state.get("dynamics", {}).get("interaction_health") in {"tense", "stalled"}:
-        score += 2
-        reasons.append("relationship_tense_or_stalled")
-
+    utility = benefit - cost
+    threshold = float(os.getenv("INTENT_START_UTILITY_THRESHOLD", "1.0"))
+    reasons.append(f"utility:{utility:.2f}")
+    reasons.append(f"benefit:{benefit:.2f}")
+    reasons.append(f"cost:{cost:.2f}")
     if intent_type in {"closing", "credibility_check"} and slots_missing:
-        score += 1
-        reasons.append("priority_intent_with_missing")
+        utility += 0.2
+        reasons.append("priority_intent_boost")
 
-    return MultiTurnScore(should_start=(score >= 3), score=score, reasons=reasons)
+    return MultiTurnScore(should_start=(utility >= threshold), score=int(round(utility * 10)), reasons=reasons)
 
 
 def _commitment_level(intent_type: str, slots_missing: list[str], belief_state: BeliefState) -> str:
@@ -432,7 +460,21 @@ def _ensure_steps_hydrated(
 
 
 def _should_replan(intent: IntentState, world_state: WorldState) -> str | None:
-    if world_state.get("price_firm") and intent.get("intent_type") != "closing":
+    evidence_items = world_state.get("evidence_items", [])
+    firmness_conf = max(
+        (
+            float(item.get("confidence", 0.0))
+            for item in evidence_items
+            if item.get("type") == "FIRMNESS"
+        ),
+        default=0.0,
+    )
+    threshold = float(os.getenv("INTENT_FIRMNESS_REPLAN_THRESHOLD", "0.6"))
+    if (
+        firmness_conf >= threshold
+        and world_state.get("price_mentioned")
+        and intent.get("intent_type") != "closing"
+    ):
         return "closing"
     return None
 
@@ -490,12 +532,17 @@ def update_intent_state(
             intent["steps"] = build_steps(intent_type, slots_missing)
             intent["step_idx"] = 0
             intent["step_attempts"] = 0
-            intent["max_attempts_per_step"] = 2
+            intent["max_attempts_per_step"] = int(
+                os.getenv("INTENT_MAX_ATTEMPTS_PER_STEP", "2")
+            )
             intent["success_criteria"] = success_criteria or ["slots_required_complete"]
             intent["confidence"] = 0.4
             intent["created_turn"] = turn_count
             intent["last_turn"] = turn_count
             intent["continue_until"] = "slots_required_complete"
+            intent["no_progress_turns"] = 0
+            intent["slot_fill_count"] = len(intent["slots"]["slots_filled"])
+            intent["slot_fill_count_recent"] = len(intent["slots"]["slots_filled"])
             step = _current_step(intent)
             intent["next_action_hint"] = _next_action_hint(
                 step["kind"] if step else "",
@@ -581,6 +628,33 @@ def update_intent_state(
     retargeted = meta.get("intent_transition", "") == "retarget"
     slots_missing = _slots_missing(intent)
 
+    slots_filled = intent.get("slots", {}).get("slots_filled", {})
+    prev_slots = meta.get("intent_prev", {}).get("slots", {})
+    prev_required = set(prev_slots.get("slots_required", []))
+    prev_filled = set(prev_slots.get("slots_filled", {}).keys())
+    prev_missing_count = len(prev_required - prev_filled)
+    current_missing_count = len(slots_missing)
+    if not prev_required:
+        progress_made = True
+    else:
+        progress_made = current_missing_count < prev_missing_count
+    if progress_made:
+        intent["no_progress_turns"] = 0
+    else:
+        intent["no_progress_turns"] = intent.get("no_progress_turns", 0) + 1
+    intent["slot_fill_count"] = len(slots_filled)
+    intent["slot_fill_count_recent"] = len(meta.get("slots_filled_delta", {}))
+    base_confidence = float(intent.get("confidence", 0.4) or 0.4)
+    if base_confidence <= 0.0:
+        base_confidence = 0.4
+    if not progress_made:
+        intent["confidence"] = max(
+            0.0,
+            base_confidence - float(os.getenv("INTENT_CONFIDENCE_DECAY", "0.1")),
+        )
+    else:
+        intent["confidence"] = base_confidence
+
     succeeded, success_reasons = evaluate_success(intent, world_state, belief_state, meta)
     if succeeded:
         intent["status"] = "succeeded"
@@ -619,7 +693,7 @@ def update_intent_state(
         meta["intent_new"] = deepcopy(intent)
         return intent, meta, _build_intent_hint(intent, slots_missing, commitment)
 
-    max_total_turns = 6
+    max_total_turns = int(os.getenv("INTENT_MAX_TURNS", "6"))
     if turn_count - intent.get("created_turn", turn_count) >= max_total_turns:
         intent["status"] = "abandoned"
         intent["abandon_reasons"] = list(intent.get("abandon_reasons", [])) + [
@@ -676,6 +750,26 @@ def update_intent_state(
                     meta["intent_transition"] = "advance"
             else:
                 meta["intent_decision"] = "continue"
+
+    no_progress_limit = int(os.getenv("INTENT_NO_PROGRESS_ABORT_TURNS", "2"))
+    steps = intent.get("steps", [])
+    is_last_step = bool(steps) and intent.get("step_idx", 0) >= len(steps) - 1
+    if (
+        intent.get("no_progress_turns", 0) >= no_progress_limit
+        and is_last_step
+        and meta.get("intent_decision") not in {"pivot", "retarget"}
+    ) or intent.get("confidence", 0.0) < 0.15:
+        intent["status"] = "abandoned"
+        intent["abandon_reasons"] = list(intent.get("abandon_reasons", [])) + [
+            "no_progress",
+        ]
+        intent["next_action_hint"] = ""
+        intent["last_observation"] = "Se estancó la intención."
+        intent["last_turn"] = turn_count
+        meta["intent_decision"] = "abandon"
+        meta["intent_transition"] = "abandon"
+        meta["intent_new"] = deepcopy(intent)
+        return intent, meta, _build_intent_hint(intent, slots_missing, commitment)
 
     step = _current_step(intent)
     intent["next_action_hint"] = _next_action_hint(

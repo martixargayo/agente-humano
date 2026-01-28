@@ -4,7 +4,7 @@ from __future__ import annotations
 from statistics import mean
 from typing import Any, Dict, List, TypedDict
 
-from .schemas import BeliefState, WorldState
+from .schemas import BeliefState, EvidenceItem, WorldState
 
 
 class ExtractorOutput(TypedDict):
@@ -14,6 +14,7 @@ class ExtractorOutput(TypedDict):
     decisions: Dict[str, Any]
     reasons: List[str]
     schema_version: str
+    evidence_items: List[EvidenceItem]
 
 
 ALLOWED_WORLD_KEYS = set(WorldState.__annotations__.keys())
@@ -97,6 +98,7 @@ def extract_state_patch_llm(
         "decisions": {"should_update_beliefs": False, "message_is_vague": False},
         "reasons": ["not_implemented"],
         "schema_version": "world_v1",
+        "evidence_items": [],
     }
     validate_extractor_output(output)
     return output

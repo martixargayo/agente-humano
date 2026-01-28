@@ -27,7 +27,8 @@ def test_intent_starts_when_requires_multi_turn():
     assert meta["intent_decision"] == "commit"
 
 
-def test_intent_does_not_start_when_one_turn_sufficient():
+def test_intent_does_not_start_when_one_turn_sufficient(monkeypatch):
+    monkeypatch.setenv("INTENT_START_UTILITY_THRESHOLD", "2.5")
     world = default_world_state()
     world["price_mentioned"] = True
     world["price_value"] = 9000
@@ -508,8 +509,20 @@ def test_pivot_kind_progression():
 
 def test_replan_transition_when_price_firm_detected():
     world = default_world_state()
-    world["price_firm"] = True
     world["price_firm_text"] = "precio fijo"
+    world["price_mentioned"] = True
+    world["price_value"] = 9000
+    world["evidence_items"] = [
+        {
+            "type": "FIRMNESS",
+            "text": "precio fijo",
+            "value": None,
+            "source": "regex",
+            "confidence": 0.8,
+            "turn_idx": 1,
+            "raw": None,
+        }
+    ]
     belief = default_belief_state()
     progress = default_progress_state()
     intent = default_intent_state()
@@ -646,3 +659,100 @@ def test_hydration_missing_empty_does_not_break_hint():
     assert updated["status"] == "active"
     assert "steps_hydrated" in meta["reasons"]
     assert "step_kind" in hint
+
+
+def test_intent_abandons_after_no_progress(monkeypatch):
+    monkeypatch.setenv("INTENT_NO_PROGRESS_ABORT_TURNS", "2")
+    world = default_world_state()
+    belief = default_belief_state()
+    progress = default_progress_state()
+    intent = default_intent_state()
+    intent.update(
+        {
+            "status": "active",
+            "intent_goal": "Buscar BATNA",
+            "intent_type": "info_extract",
+            "steps": [
+                {
+                    "kind": "probe_open",
+                    "target_slot": "seller_batna",
+                    "success_if_filled": ["seller_batna"],
+                }
+            ],
+            "step_idx": 0,
+            "slots": {"slots_required": ["seller_batna"], "slots_optional": [], "slots_filled": {}},
+        }
+    )
+
+    updated, _meta, _hint = update_intent_state(
+        prev_intent=intent,
+        world_state=world,
+        belief_state=belief,
+        progress_state=progress,
+        user_message="",
+        turn_count=2,
+        precedence=None,
+    )
+    updated, meta, _hint = update_intent_state(
+        prev_intent=updated,
+        world_state=world,
+        belief_state=belief,
+        progress_state=progress,
+        user_message="",
+        turn_count=3,
+        precedence=None,
+    )
+
+    assert updated["status"] == "abandoned"
+    assert "no_progress" in updated["abandon_reasons"]
+    assert meta["intent_decision"] == "abandon"
+
+
+def test_firmness_requires_confident_evidence_for_replan(monkeypatch):
+    monkeypatch.setenv("INTENT_FIRMNESS_REPLAN_THRESHOLD", "0.7")
+    world = default_world_state()
+    world["price_firm_text"] = "no negocio"
+    world["price_mentioned"] = False
+    world["evidence_items"] = [
+        {
+            "type": "FIRMNESS",
+            "text": "no negocio",
+            "value": None,
+            "source": "regex",
+            "confidence": 0.4,
+            "turn_idx": 1,
+            "raw": None,
+        }
+    ]
+    belief = default_belief_state()
+    progress = default_progress_state()
+    intent = default_intent_state()
+    intent.update(
+        {
+            "status": "active",
+            "intent_goal": "Buscar BATNA",
+            "intent_type": "info_extract",
+            "steps": [
+                {
+                    "kind": "probe_open",
+                    "target_slot": "seller_batna",
+                    "success_if_filled": ["seller_batna"],
+                }
+            ],
+            "step_idx": 0,
+            "slots": {"slots_required": ["seller_batna"], "slots_optional": [], "slots_filled": {}},
+        }
+    )
+
+    updated, meta, _hint = update_intent_state(
+        prev_intent=intent,
+        world_state=world,
+        belief_state=belief,
+        progress_state=progress,
+        user_message="no negocio",
+        turn_count=2,
+        precedence=None,
+    )
+
+    assert updated["intent_type"] == "info_extract"
+    assert meta["intent_decision"] != "replan"

@@ -1,5 +1,5 @@
 from negotiation.policy_planner import allowed_policy_ids
-from negotiation.policies import POLICIES, get_policy
+from negotiation.policies import POLICIES, get_policy, policy_catalog_text
 from negotiation.schemas import (
     default_belief_state,
     default_progress_state,
@@ -36,3 +36,19 @@ def test_required_guards_exclude_policies_without_safe_when_tense_when_tense():
 def test_all_policies_define_phase_hints():
     for policy in POLICIES:
         assert policy.phase_hints, f"Policy {policy.policy_id} missing phase_hints"
+
+
+def test_all_policies_define_new_contract_fields():
+    for policy in POLICIES:
+        assert isinstance(policy.required_inputs, list)
+        assert isinstance(policy.target_slots, list)
+        assert isinstance(policy.expected_effects, list)
+        assert isinstance(policy.failure_modes, list)
+
+
+def test_policy_catalog_includes_contract_fields():
+    catalog = policy_catalog_text()
+    assert "Required:" in catalog
+    assert "Target slots:" in catalog
+    assert "Expected:" in catalog
+    assert "Failure:" in catalog
