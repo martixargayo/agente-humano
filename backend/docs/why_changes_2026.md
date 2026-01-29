@@ -29,3 +29,11 @@
 
 ## Compatibilidad
 - Consumers legacy intactos: se mantienen los campos de WorldState; ahora se derivan desde evidencia.
+
+## WHY: World evidence v2 (open-set controlado)
+- **Closed-world antes**: EvidenceItem dependía de enums (`EvidenceType`, `_FIELD_TO_TYPE`) y del acoplamiento field->type, obligando a tocar core por cada nueva señal.
+- **Whitelist + cuarentena**: el registry de paths limita lo que puede entrar; todo path no registrado se captura en `unknown_claims` para trazabilidad sin contaminar consumidores.
+- **Source-of-truth unidireccional**: `world_observations_v2` es la fuente y los flags/evidence legacy se derivan de forma determinista, evitando drift.
+- **Dedupe determinista + caps**: dedupe por `path|polarity|bucket|text` y límites de memoria (`MAX_CLAIMS`, `RECENT_K`, `MAX_UNKNOWN`) mantienen rendimiento y evitan sesgos por repetición.
+- **Tradeoffs**: aumenta la complejidad del updater/validación, pero habilita extensibilidad open-set y auditoría consistente.
+- **Plan Fase B**: migrar consumidores a queries v2 y mover reglas de flags a un engine declarativo por dominio.
