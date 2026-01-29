@@ -181,13 +181,15 @@ scene.add(ambient);
 const clock = new THREE.Clock();
 
 // =========================
-// Config boca (ajustable a mano)
+// Config boca (AJUSTABLE por editor)
 // =========================
-const MOUTH_CENTER_Y = 0.16; // posición vertical del centro de la boca
-const MOUTH_CENTER_X = -0.045; // posición horizontal del centro de la boca
-const MOUTH_WIDTH = 0.18; // ancho de la región de boca
-const MOUTH_HEIGHT = 0.14; // alto máximo (labios + hueco)
-const MOUTH_CURVE = 0.0; // curvatura en U (0 = recto)
+window.MouthTuning = window.MouthTuning || {
+  centerY: 0.16,   // posición vertical del centro de la boca
+  centerX: -0.045, // posición horizontal del centro de la boca
+  width: 0.18,     // ancho de la región de boca
+  height: 0.14,    // alto máximo (labios + hueco)
+  curve: 0.0,      // curvatura en U (0 = recto)
+};
 
 // =========================
 // Config cuello / separación cabeza-cuerpo (TUNED)
@@ -208,6 +210,9 @@ window.NeckTuning = {
 let particlesGeometryRef = null;
 let headWeightAttrRef = null;
 let basePosAttrRef = null;
+
+let mouthWeightAttrRef = null;
+let mouthSideAttrRef = null;
 
 // =========================
 // JS smoothstep (una sola vez)
@@ -292,6 +297,92 @@ function scheduleRecomputeHeadWeights(reason = 'change') {
 }
 
 window.recomputeHeadWeights = () => scheduleRecomputeHeadWeights('manual');
+
+// =========================
+// Recalcular aMouthWeight/aMouthSide en caliente (API pública)
+// =========================
+let _mouthRecomputePending = false;
+
+function logMouthTuning(reason = 'update') {
+  const t = window.MouthTuning;
+  console.info(`[mouth] ${reason}`, {
+    centerX: t.centerX,
+    centerY: t.centerY,
+    width: t.width,
+    height: t.height,
+    curve: t.curve,
+  });
+  console.log('[mouth] Pega esto en app.js:\nwindow.MouthTuning = ' + JSON.stringify(t, null, 2) + ';');
+}
+
+function recomputeMouthWeightsNow() {
+  if (!mouthWeightAttrRef || !mouthSideAttrRef || !basePosAttrRef) {
+    console.warn('[mouth] aMouthWeight/aMouthSide todavía no está listo (espera a que cargue el GLB).');
+    return;
+  }
+
+  const t0 = performance.now();
+  const t = window.MouthTuning;
+
+  const wArr = mouthWeightAttrRef.array;
+  const sArr = mouthSideAttrRef.array;
+  const pos = basePosAttrRef.array;
+
+  const wAbs = Math.max(1e-6, Math.abs(t.width));
+  const hAbs = Math.max(1e-6, Math.abs(t.height));
+
+  for (let i = 0; i < mouthWeightAttrRef.count; i++) {
+    const x = pos[i * 3 + 0];
+    const y = pos[i * 3 + 1];
+
+    let dx = x - t.centerX;
+    let ax = Math.abs(dx);
+
+    let weight = 0.0;
+    let side = 0.0;
+
+    if (ax <= wAbs) {
+      let normX = dx / wAbs;
+      let curveY = t.centerY - t.curve * normX * normX;
+      let dy = y - curveY;
+      let ay = Math.abs(dy);
+
+      if (ay <= hAbs) {
+        let wx = 1.0 - ax / wAbs;
+        let wy = 1.0 - ay / hAbs;
+        weight = wx * wy;
+
+        if (weight < 0.0) weight = 0.0;
+        if (weight > 1.0) weight = 1.0;
+
+        if (dy > 0.0) side = 1.0;
+        else if (dy < 0.0) side = -1.0;
+        else side = 0.0;
+      }
+    }
+
+    wArr[i] = weight;
+    sArr[i] = side;
+  }
+
+  mouthWeightAttrRef.needsUpdate = true;
+  mouthSideAttrRef.needsUpdate = true;
+
+  const dt = performance.now() - t0;
+  console.info('[mouth] aMouthWeight recalculado', { ms: dt.toFixed(2) });
+}
+
+function scheduleRecomputeMouthWeights(reason = 'change') {
+  if (_mouthRecomputePending) return;
+  _mouthRecomputePending = true;
+  requestAnimationFrame(() => {
+    _mouthRecomputePending = false;
+    recomputeMouthWeightsNow();
+    logMouthTuning(reason);
+  });
+}
+
+window.recomputeMouthWeights = () => scheduleRecomputeMouthWeights('manual');
 
 // =========================
 // 2. Shaders de partículas
@@ -555,22 +646,26 @@ function generateFaceParticlesFromVertices(srcGeometry) {
     const cy = Math.floor((y + 0.4) * 10.0);
     clusterIds[i] = cx + cy * 10.0;
 
-    // ------- Boca -------
-    let dx = x - MOUTH_CENTER_X;
+    // ------- Boca (desde window.MouthTuning) -------
+    const mt = window.MouthTuning;
+    const mwAbs = Math.max(1e-6, Math.abs(mt.width));
+    const mhAbs = Math.max(1e-6, Math.abs(mt.height));
+
+    let dx = x - mt.centerX;
     let ax = Math.abs(dx);
 
     let weight = 0.0;
     let side = 0.0;
 
-    if (ax <= MOUTH_WIDTH) {
-      let normX = dx / MOUTH_WIDTH;
-      let curveY = MOUTH_CENTER_Y - MOUTH_CURVE * normX * normX;
+    if (ax <= mwAbs) {
+      let normX = dx / mwAbs;
+      let curveY = mt.centerY - mt.curve * normX * normX;
       let dy = y - curveY;
       let ay = Math.abs(dy);
 
-      if (ay <= MOUTH_HEIGHT) {
-        let wx = 1.0 - ax / MOUTH_WIDTH;
-        let wy = 1.0 - ay / MOUTH_HEIGHT;
+      if (ay <= mhAbs) {
+        let wx = 1.0 - ax / mwAbs;
+        let wy = 1.0 - ay / mhAbs;
         weight = wx * wy;
 
         if (weight < 0.0) weight = 0.0;
@@ -690,6 +785,9 @@ loader.load(
     headWeightAttrRef = particlesGeo.getAttribute('aHeadWeight');
     basePosAttrRef = particlesGeo.getAttribute('aBasePosition');
 
+    mouthWeightAttrRef = particlesGeo.getAttribute('aMouthWeight');
+    mouthSideAttrRef = particlesGeo.getAttribute('aMouthSide');
+
     const t = window.NeckTuning;
 
     particleMaterial = new THREE.ShaderMaterial({
@@ -740,8 +838,9 @@ loader.load(
     controls.target.set(0, 0.15, 0);
     controls.update();
 
-    // por si se tocó NeckTuning antes de cargar
+    // por si se tocó NeckTuning/MouthTuning antes de cargar
     scheduleRecomputeHeadWeights('after_load');
+    scheduleRecomputeMouthWeights('after_load');
   },
   undefined,
   (err) => {
@@ -1209,13 +1308,14 @@ function animate() {
     }
     particleMaterial.uniforms.uBodyOffset.value.set(0.0, offY, 0.0);
 
-    // ✅ pivotes live desde NeckTuning (para que el editor los cambie)
-    const t = window.NeckTuning;
-    particleMaterial.uniforms.uNeckPivot.value.set(0.0, t.neckPivotY, 0.0);
-    particleMaterial.uniforms.uBodyPivot.value.set(0.0, t.bodyPivotY, 0.0);
+    // ✅ (CAMBIO #1) pivotes live SOLO cuando estás en modo editor
+    if (DEBUG_EDIT_ENABLED) {
+      const t = window.NeckTuning;
+      particleMaterial.uniforms.uNeckPivot.value.set(0.0, t.neckPivotY, 0.0);
+      particleMaterial.uniforms.uBodyPivot.value.set(0.0, t.bodyPivotY, 0.0);
+    }
   }
 
-  
   if (particlePoints) {
     particlePoints.rotation.set(0, 0, 0);
     particlePoints.position.set(0, 0, 0);
@@ -1551,16 +1651,17 @@ function initNeckEditorOverlay() {
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
     fontSize: '12px',
     lineHeight: '1.35',
-    maxWidth: '360px',
+    maxWidth: '420px',
     userSelect: 'none',
   });
   info.innerHTML = `
-    <div style="font-weight:700; margin-bottom:6px;">Neck Editor</div>
-    <div>Arrastra handles (rojo). Tecla <b>E</b> ocultar/mostrar.</div>
+    <div style="font-weight:700; margin-bottom:6px;">Neck + Mouth Editor</div>
+    <div>Arrastra handles. Tecla <b>E</b> ocultar/mostrar.</div>
     <div style="margin-top:6px; opacity:.9">
-      Handles: <b>center</b>, <b>top</b>, <b>bottom</b>, <b>left</b>, <b>right</b>, <b>curve</b>, <b>neckPivot</b>, <b>bodyPivot</b>
+      <div><span style="color:#ff6b6b">■</span> Neck: <b>center</b>, <b>top</b>, <b>bottom</b>, <b>left</b>, <b>right</b>, <b>curve</b>, <b>neckPivot</b>, <b>bodyPivot</b></div>
+      <div style="margin-top:4px;"><span style="color:#67e8f9">■</span> Mouth: <b>mouth_center</b>, <b>mouth_left</b>, <b>mouth_right</b>, <b>mouth_top</b>, <b>mouth_bottom</b>, <b>mouth_curve</b></div>
     </div>
-    <div style="margin-top:8px; opacity:.85">Cada cambio imprime JSON en consola.</div>
+    <div style="margin-top:8px; opacity:.85">Cada cambio imprime JSON en consola (neck y/o mouth).</div>
   `;
   document.body.appendChild(info);
   NeckEditor.infoEl = info;
@@ -1621,7 +1722,15 @@ function getHandlesModel() {
   const curveX = t.centerX + wAbs;
   const curveY = t.topY - t.curve; // coincide con fórmula en el borde (nx=1)
 
+  // Mouth handles
+  const m = window.MouthTuning;
+  const mwAbs = Math.max(1e-6, Math.abs(m.width));
+  const mhAbs = Math.max(1e-6, Math.abs(m.height));
+  const mCurveX = m.centerX + mwAbs;
+  const mCurveY = m.centerY - m.curve; // en el borde (nx=1), centro de la banda
+
   return {
+    // Neck
     center: { x: t.centerX, y: midY },
     top: { x: t.centerX, y: t.topY },
     bottom: { x: t.centerX, y: t.bottomY },
@@ -1630,6 +1739,14 @@ function getHandlesModel() {
     curve: { x: curveX, y: curveY },
     neckPivot: { x: t.centerX, y: t.neckPivotY },
     bodyPivot: { x: t.centerX, y: t.bodyPivotY },
+
+    // Mouth
+    mouth_center: { x: m.centerX, y: m.centerY },
+    mouth_left: { x: m.centerX - mwAbs, y: m.centerY },
+    mouth_right: { x: m.centerX + mwAbs, y: m.centerY },
+    mouth_top: { x: m.centerX, y: m.centerY + mhAbs },
+    mouth_bottom: { x: m.centerX, y: m.centerY - mhAbs },
+    mouth_curve: { x: mCurveX, y: mCurveY },
   };
 }
 
@@ -1650,61 +1767,108 @@ function pickHandle(clientX, clientY) {
   return best;
 }
 
-function applyDrag(key, worldPoint, startPoint, startTuning) {
-  const t = window.NeckTuning;
+function applyDrag(key, worldPoint, startPoint, startNeckTuning, startMouthTuning) {
   const minBand = 1e-4;
 
-  if (key === 'center') {
+  // ======================
+  // NECK
+  // ======================
+  if (!key.startsWith('mouth_')) {
+    const t = window.NeckTuning;
+
+    if (key === 'center') {
+      const dx = worldPoint.x - startPoint.x;
+      const dy = worldPoint.y - startPoint.y;
+
+      t.centerX = startNeckTuning.centerX + dx;
+      t.topY = startNeckTuning.topY + dy;
+      t.bottomY = startNeckTuning.bottomY + dy;
+      t.neckPivotY = startNeckTuning.neckPivotY + dy;
+      t.bodyPivotY = startNeckTuning.bodyPivotY + dy;
+    }
+
+    if (key === 'top') {
+      t.topY = worldPoint.y;
+      if (t.topY < t.bottomY + minBand) t.topY = t.bottomY + minBand;
+    }
+
+    if (key === 'bottom') {
+      t.bottomY = worldPoint.y;
+      if (t.bottomY > t.topY - minBand) t.bottomY = t.topY - minBand;
+
+      // si quieres que pivotes sigan al bottom por defecto:
+      // (comenta estas dos líneas si NO quieres auto-follow)
+      t.neckPivotY = t.bottomY;
+      t.bodyPivotY = t.bottomY - 0.12;
+    }
+
+    if (key === 'left') {
+      const w = startNeckTuning.centerX - worldPoint.x;
+      t.width = Math.max(1e-6, Math.abs(w));
+    }
+
+    if (key === 'right') {
+      const w = worldPoint.x - startNeckTuning.centerX;
+      t.width = Math.max(1e-6, Math.abs(w));
+    }
+
+    if (key === 'curve') {
+      // curve = topY - y_en_el_borde (nx=1)
+      const newCurve = (t.topY - worldPoint.y);
+      t.curve = newCurve;
+    }
+
+    if (key === 'neckPivot') {
+      t.neckPivotY = worldPoint.y;
+    }
+
+    if (key === 'bodyPivot') {
+      t.bodyPivotY = worldPoint.y;
+    }
+
+    scheduleRecomputeHeadWeights(`drag:${key}`);
+    return;
+  }
+
+  // ======================
+  // MOUTH
+  // ======================
+  const m = window.MouthTuning;
+
+  if (key === 'mouth_center') {
     const dx = worldPoint.x - startPoint.x;
     const dy = worldPoint.y - startPoint.y;
 
-    t.centerX = startTuning.centerX + dx;
-    t.topY = startTuning.topY + dy;
-    t.bottomY = startTuning.bottomY + dy;
-    t.neckPivotY = startTuning.neckPivotY + dy;
-    t.bodyPivotY = startTuning.bodyPivotY + dy;
+    m.centerX = startMouthTuning.centerX + dx;
+    m.centerY = startMouthTuning.centerY + dy;
   }
 
-  if (key === 'top') {
-    t.topY = worldPoint.y;
-    if (t.topY < t.bottomY + minBand) t.topY = t.bottomY + minBand;
+  if (key === 'mouth_left') {
+    const w = startMouthTuning.centerX - worldPoint.x;
+    m.width = Math.max(1e-6, Math.abs(w));
   }
 
-  if (key === 'bottom') {
-    t.bottomY = worldPoint.y;
-    if (t.bottomY > t.topY - minBand) t.bottomY = t.topY - minBand;
-
-    // si quieres que pivotes sigan al bottom por defecto:
-    // (comenta estas dos líneas si NO quieres auto-follow)
-    t.neckPivotY = t.bottomY;
-    t.bodyPivotY = t.bottomY - 0.12;
+  if (key === 'mouth_right') {
+    const w = worldPoint.x - startMouthTuning.centerX;
+    m.width = Math.max(1e-6, Math.abs(w));
   }
 
-  if (key === 'left') {
-    const w = startTuning.centerX - worldPoint.x;
-    t.width = Math.max(1e-6, Math.abs(w));
+  if (key === 'mouth_top') {
+    const h = worldPoint.y - startMouthTuning.centerY;
+    m.height = Math.max(1e-6, Math.abs(h));
   }
 
-  if (key === 'right') {
-    const w = worldPoint.x - startTuning.centerX;
-    t.width = Math.max(1e-6, Math.abs(w));
+  if (key === 'mouth_bottom') {
+    const h = startMouthTuning.centerY - worldPoint.y;
+    m.height = Math.max(1e-6, Math.abs(h));
   }
 
-  if (key === 'curve') {
-    // curve = topY - y_en_el_borde (nx=1)
-    const newCurve = (t.topY - worldPoint.y);
-    t.curve = newCurve;
+  if (key === 'mouth_curve') {
+    // en el borde (nx=1): y = centerY - curve  => curve = centerY - y
+    m.curve = (m.centerY - worldPoint.y);
   }
 
-  if (key === 'neckPivot') {
-    t.neckPivotY = worldPoint.y;
-  }
-
-  if (key === 'bodyPivot') {
-    t.bodyPivotY = worldPoint.y;
-  }
-
-  scheduleRecomputeHeadWeights(`drag:${key}`);
+  scheduleRecomputeMouthWeights(`drag:${key}`);
 }
 
 function onNeckEditorDown(e) {
@@ -1718,7 +1882,8 @@ function onNeckEditorDown(e) {
   NeckEditor.dragging = {
     key,
     startPoint: p,
-    startTuning: { ...window.NeckTuning },
+    startNeckTuning: { ...window.NeckTuning },
+    startMouthTuning: { ...window.MouthTuning },
   };
 
   controls.enabled = false;
@@ -1733,11 +1898,11 @@ function onNeckEditorMove(e) {
     return;
   }
 
-  const { key, startPoint, startTuning } = NeckEditor.dragging;
+  const { key, startPoint, startNeckTuning, startMouthTuning } = NeckEditor.dragging;
   const p = rayToPlane(e.clientX, e.clientY);
   if (!p) return;
 
-  applyDrag(key, p, startPoint, startTuning);
+  applyDrag(key, p, startPoint, startNeckTuning, startMouthTuning);
   e.preventDefault();
 }
 
@@ -1781,7 +1946,7 @@ function drawHandle(ctx, key, color, filled, clientX, clientY) {
   ctx.strokeStyle = color;
 
   if (filled) {
-    ctx.fillStyle = 'rgba(255,0,0,0.15)';
+    ctx.fillStyle = color.includes('67e8f9') ? 'rgba(103,232,249,0.12)' : 'rgba(255,0,0,0.15)';
     ctx.fill();
   }
 
@@ -1796,70 +1961,149 @@ function drawNeckEditorOverlay() {
   const ctx = NeckEditor.ctx;
   ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
 
-  const t = window.NeckTuning;
-  const wAbs = Math.max(1e-6, Math.abs(t.width));
+  // =========================
+  // NECK CURVES (rojo)
+  // =========================
+  {
+    const t = window.NeckTuning;
+    const wAbs = Math.max(1e-6, Math.abs(t.width));
 
-  // --- Dibujar curvas top/bottom ---
-  const segments = 64;
-  const x0 = t.centerX - wAbs;
-  const x1 = t.centerX + wAbs;
+    const segments = 64;
+    const x0 = t.centerX - wAbs;
+    const x1 = t.centerX + wAbs;
 
-  const topPts = [];
-  const botPts = [];
+    const topPts = [];
+    const botPts = [];
 
-  for (let i = 0; i <= segments; i++) {
-    const u = i / segments;
-    const x = x0 + (x1 - x0) * u;
+    for (let i = 0; i <= segments; i++) {
+      const u = i / segments;
+      const x = x0 + (x1 - x0) * u;
 
-    const dx = x - t.centerX;
-    const nx = dx / wAbs;
-    const nxClamped = Math.max(-1, Math.min(1, nx));
-    const c = t.curve * nxClamped * nxClamped;
+      const dx = x - t.centerX;
+      const nx = dx / wAbs;
+      const nxClamped = Math.max(-1, Math.min(1, nx));
+      const c = t.curve * nxClamped * nxClamped;
 
-    const yTop = t.topY - c;
-    const yBot = t.bottomY - c;
+      const yTop = t.topY - c;
+      const yBot = t.bottomY - c;
 
-    topPts.push(screenProject(x, yTop, 0));
-    botPts.push(screenProject(x, yBot, 0));
+      topPts.push(screenProject(x, yTop, 0));
+      botPts.push(screenProject(x, yBot, 0));
+    }
+
+    ctx.save();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(255,0,0,0.95)';
+
+    // top
+    ctx.beginPath();
+    ctx.moveTo(topPts[0].x, topPts[0].y);
+    for (let i = 1; i < topPts.length; i++) ctx.lineTo(topPts[i].x, topPts[i].y);
+    ctx.stroke();
+
+    // bottom
+    ctx.beginPath();
+    ctx.moveTo(botPts[0].x, botPts[0].y);
+    for (let i = 1; i < botPts.length; i++) ctx.lineTo(botPts[i].x, botPts[i].y);
+    ctx.stroke();
+
+    // bordes verticales (aprox)
+    const leftTop = topPts[0], leftBot = botPts[0];
+    const rightTop = topPts[topPts.length - 1], rightBot = botPts[botPts.length - 1];
+
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(leftTop.x, leftTop.y); ctx.lineTo(leftBot.x, leftBot.y);
+    ctx.moveTo(rightTop.x, rightTop.y); ctx.lineTo(rightBot.x, rightBot.y);
+    ctx.stroke();
+
+    ctx.restore();
   }
 
-  ctx.save();
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = 'rgba(255,0,0,0.95)';
+  // =========================
+  // MOUTH REGION (cyan)
+  // =========================
+  {
+    const m = window.MouthTuning;
+    const wAbs = Math.max(1e-6, Math.abs(m.width));
+    const hAbs = Math.max(1e-6, Math.abs(m.height));
 
-  // top
-  ctx.beginPath();
-  ctx.moveTo(topPts[0].x, topPts[0].y);
-  for (let i = 1; i < topPts.length; i++) ctx.lineTo(topPts[i].x, topPts[i].y);
-  ctx.stroke();
+    const segments = 64;
+    const x0 = m.centerX - wAbs;
+    const x1 = m.centerX + wAbs;
 
-  // bottom
-  ctx.beginPath();
-  ctx.moveTo(botPts[0].x, botPts[0].y);
-  for (let i = 1; i < botPts.length; i++) ctx.lineTo(botPts[i].x, botPts[i].y);
-  ctx.stroke();
+    const midPts = [];
+    const topPts = [];
+    const botPts = [];
 
-  // bordes verticales (aprox)
-  const leftTop = topPts[0], leftBot = botPts[0];
-  const rightTop = topPts[topPts.length - 1], rightBot = botPts[botPts.length - 1];
+    for (let i = 0; i <= segments; i++) {
+      const u = i / segments;
+      const x = x0 + (x1 - x0) * u;
 
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.moveTo(leftTop.x, leftTop.y); ctx.lineTo(leftBot.x, leftBot.y);
-  ctx.moveTo(rightTop.x, rightTop.y); ctx.lineTo(rightBot.x, rightBot.y);
-  ctx.stroke();
+      const dx = x - m.centerX;
+      const nx = dx / wAbs;
+      const nxClamped = Math.max(-1, Math.min(1, nx));
+      const c = m.curve * nxClamped * nxClamped;
 
-  ctx.restore();
+      const yMid = m.centerY - c;
+      const yTop = yMid + hAbs;
+      const yBot = yMid - hAbs;
 
-  // --- Handles ---
+      midPts.push(screenProject(x, yMid, 0));
+      topPts.push(screenProject(x, yTop, 0));
+      botPts.push(screenProject(x, yBot, 0));
+    }
+
+    ctx.save();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(103,232,249,0.95)';
+
+    // mid (centerline)
+    ctx.beginPath();
+    ctx.moveTo(midPts[0].x, midPts[0].y);
+    for (let i = 1; i < midPts.length; i++) ctx.lineTo(midPts[i].x, midPts[i].y);
+    ctx.stroke();
+
+    // top
+    ctx.beginPath();
+    ctx.moveTo(topPts[0].x, topPts[0].y);
+    for (let i = 1; i < topPts.length; i++) ctx.lineTo(topPts[i].x, topPts[i].y);
+    ctx.stroke();
+
+    // bottom
+    ctx.beginPath();
+    ctx.moveTo(botPts[0].x, botPts[0].y);
+    for (let i = 1; i < botPts.length; i++) ctx.lineTo(botPts[i].x, botPts[i].y);
+    ctx.stroke();
+
+    // bordes verticales
+    const leftTop = topPts[0], leftBot = botPts[0];
+    const rightTop = topPts[topPts.length - 1], rightBot = botPts[botPts.length - 1];
+
+    ctx.lineWidth = 1.25;
+    ctx.beginPath();
+    ctx.moveTo(leftTop.x, leftTop.y); ctx.lineTo(leftBot.x, leftBot.y);
+    ctx.moveTo(rightTop.x, rightTop.y); ctx.lineTo(rightBot.x, rightBot.y);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  // =========================
+  // HANDLES (neck + mouth)
+  // =========================
   const handles = getHandlesModel();
   for (const key of Object.keys(handles)) {
     const s = screenProject(handles[key].x, handles[key].y, 0);
-    const isPivot = (key === 'neckPivot' || key === 'bodyPivot');
-    const isCurve = (key === 'curve');
 
-    // pivots: un poco distinto para distinguirlos
-    const color = isPivot ? 'rgba(255,0,0,0.75)' : (isCurve ? 'rgba(255,0,0,0.95)' : 'rgba(255,0,0,0.95)');
+    const isMouth = key.startsWith('mouth_');
+    const isPivot = (key === 'neckPivot' || key === 'bodyPivot');
+    const isCurve = (key === 'curve' || key === 'mouth_curve');
+
+    const color = isMouth
+      ? 'rgba(103,232,249,0.95)'
+      : (isPivot ? 'rgba(255,0,0,0.75)' : (isCurve ? 'rgba(255,0,0,0.95)' : 'rgba(255,0,0,0.95)'));
+
     drawHandle(ctx, key, color, true, s.x, s.y);
 
     // labels chiquitas
