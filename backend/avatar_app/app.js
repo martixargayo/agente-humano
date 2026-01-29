@@ -164,6 +164,23 @@ const MOUTH_HEIGHT = 0.14; // alto máximo (labios + hueco)
 const MOUTH_CURVE = 0.0; // curvatura en U (0 = recto)
 
 // =========================
+// Config cuello / separación cabeza-cuerpo (AJUSTABLE EN CONSOLA)
+// =========================
+window.NeckTuning = window.NeckTuning || {
+  // lo ponemos cerca de la boca para que al inicio coincida y tú lo ajustes
+  centerX: MOUTH_CENTER_X,
+  width: MOUTH_WIDTH * 2.0,     // “dos veces la boca” como pediste
+  topY: MOUTH_CENTER_Y + 0.06,  // línea superior del rectángulo del cuello
+  bottomY: MOUTH_CENTER_Y - 0.06, // línea inferior
+  curve: MOUTH_CURVE,           // curvatura tipo U
+
+  // pivotes (si quieres tocar dónde rota cada parte)
+  neckPivotY: (MOUTH_CENTER_Y - 0.06),
+  bodyPivotY: (MOUTH_CENTER_Y - 0.06) - 0.12,
+};
+
+
+// =========================
 // Config cuello / separación cabeza-cuerpo (ajustable a mano)
 // =========================
 // Colocado inicialmente "cerca de la boca" para que lo ajustes tú rápido.
@@ -555,6 +572,55 @@ function generateFaceParticlesFromVertices(srcGeometry) {
   return particlesGeo;
 }
 
+// =========================
+// Recalcular aHeadWeight en caliente (CONSOLa)
+// =========================
+function smoothstepJS(edge0, edge1, x) {
+  const d = edge1 - edge0;
+  if (Math.abs(d) < 1e-8) return x < edge0 ? 0 : 1;
+  const t = Math.max(0, Math.min(1, (x - edge0) / d));
+  return t * t * (3 - 2 * t);
+}
+
+window.recomputeHeadWeights = function recomputeHeadWeights() {
+  if (!headWeightAttrRef || !basePosAttrRef) {
+    console.warn('[neck] aHeadWeight todavía no está listo (espera a que cargue el GLB).');
+    return;
+  }
+
+  const t = window.NeckTuning;
+  const arr = headWeightAttrRef.array;
+  const pos = basePosAttrRef.array;
+
+  for (let i = 0; i < headWeightAttrRef.count; i++) {
+    const x = pos[i * 3 + 0];
+    const y = pos[i * 3 + 1];
+
+    const dx = x - t.centerX;
+    const insideWidth = Math.abs(dx) <= t.width;
+
+    const nx = dx / t.width;
+    const nxClamped = Math.max(-1, Math.min(1, nx));
+    const curve = t.curve * nxClamped * nxClamped;
+
+    let yTop = insideWidth ? (t.topY - curve) : t.topY;
+    let yBot = insideWidth ? (t.bottomY - curve) : t.bottomY;
+
+    if (yTop < yBot) { const tmp = yTop; yTop = yBot; yBot = tmp; }
+
+    let hw = 0.0;
+    if (y >= yTop) hw = 1.0;
+    else if (y <= yBot) hw = 0.0;
+    else hw = smoothstepJS(yBot, yTop, y);
+
+    arr[i] = hw;
+  }
+
+  headWeightAttrRef.needsUpdate = true;
+
+  console.info('[neck] aHeadWeight recalculado', JSON.stringify(t));
+};
+
 // Tamaño de punto fijo
 const POINT_SIZE = 3.5 * window.devicePixelRatio;
 
@@ -565,6 +631,12 @@ const loader = new GLTFLoader();
 
 let particleMaterial = null;
 let particlePoints = null; // referencia global para mover la cabeza
+
+// refs para ajustar el cuello en caliente desde consola
+let particlesGeometryRef = null;
+let headWeightAttrRef = null;
+let basePosAttrRef = null;
+
 
 loader.load(
   './FaceVolumen.glb',
@@ -617,6 +689,11 @@ loader.load(
 
     // Generar partículas a partir de los vértices (solo frontal) + UV
     const particlesGeo = generateFaceParticlesFromVertices(mergedGeom);
+
+    // ✅ guardar refs para ajuste por consola
+    particlesGeometryRef = particlesGeo;
+    headWeightAttrRef = particlesGeo.getAttribute('aHeadWeight');
+    basePosAttrRef = particlesGeo.getAttribute('aBasePosition');
 
     particleMaterial = new THREE.ShaderMaterial({
       vertexShader,
