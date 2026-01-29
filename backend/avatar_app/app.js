@@ -4,6 +4,12 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 
 // =========================
+// URL params
+// =========================
+const URL_PARAMS = new URLSearchParams(window.location.search);
+const DEBUG_EDIT_ENABLED = URL_PARAMS.get('debugEdit') === '1';
+
+// =========================
 // Estado global del avatar / audio
 // =========================
 const AvatarState = {
@@ -30,19 +36,22 @@ const AudioDebug = {
 const DebugView = { headWeight: false };
 
 (() => {
-  const params = new URLSearchParams(window.location.search);
-  if (params.get('audioDebug') === '1') AudioDebug.enabled = true;
-  const minRms = parseFloat(params.get('minRms'));
+  if (URL_PARAMS.get('audioDebug') === '1') AudioDebug.enabled = true;
+  const minRms = parseFloat(URL_PARAMS.get('minRms'));
   if (!Number.isNaN(minRms)) AudioDebug.minRms = minRms;
-  const scale = parseFloat(params.get('levelScale'));
+  const scale = parseFloat(URL_PARAMS.get('levelScale'));
   if (!Number.isNaN(scale)) AudioDebug.scale = scale;
-  const logIntervalMs = parseFloat(params.get('logIntervalMs'));
+  const logIntervalMs = parseFloat(URL_PARAMS.get('logIntervalMs'));
   if (!Number.isNaN(logIntervalMs)) AudioDebug.logIntervalMs = logIntervalMs;
 
   // Debug cuello
-  if (params.get('debugNeck') === '1' || params.get('debugHead') === '1') {
+  if (URL_PARAMS.get('debugNeck') === '1' || URL_PARAMS.get('debugHead') === '1') {
     DebugView.headWeight = true;
     console.info('[debug] Debug cuello/cabeza activado (aHeadWeight). Pulsa N para alternar.');
+  }
+
+  if (DEBUG_EDIT_ENABLED) {
+    console.info('[neck-editor] Modo editor ACTIVADO (?debugEdit=1). Tecla E para ocultar/mostrar.');
   }
 
   if (AudioDebug.enabled) {
@@ -60,6 +69,11 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'n' || e.key === 'N') {
     DebugView.headWeight = !DebugView.headWeight;
     console.info('[debug] Debug cuello/cabeza (aHeadWeight):', DebugView.headWeight ? 'ON' : 'OFF');
+  }
+  if (DEBUG_EDIT_ENABLED && (e.key === 'e' || e.key === 'E')) {
+    NeckEditor.visible = !NeckEditor.visible;
+    setNeckEditorVisible(NeckEditor.visible);
+    console.info('[neck-editor] Visible:', NeckEditor.visible ? 'ON' : 'OFF');
   }
 });
 
@@ -103,19 +117,14 @@ function getOrCreateAudioContext() {
 
 function cleanupAudio() {
   if (audioSource) {
-    try {
-      audioSource.stop();
-    } catch (err) {
+    try { audioSource.stop(); } catch (err) {
       if (AudioDebug.enabled) console.warn('[audio-debug] Error al parar source', err);
     }
-    try {
-      audioSource.disconnect();
-    } catch (err) {
+    try { audioSource.disconnect(); } catch (err) {
       if (AudioDebug.enabled) console.warn('[audio-debug] Error al desconectar source', err);
     }
     audioSource = null;
   }
-  // No cerramos el audioCtx para poder reutilizarlo y evitar recortes en la primera frase
   analyser = null;
   analyserData = null;
   silentFrameCount = 0;
@@ -164,38 +173,110 @@ const MOUTH_HEIGHT = 0.14; // alto máximo (labios + hueco)
 const MOUTH_CURVE = 0.0; // curvatura en U (0 = recto)
 
 // =========================
-// Config cuello / separación cabeza-cuerpo (AJUSTABLE EN CONSOLA)
+// ✅ ÚNICA config de cuello (la que se edita)
 // =========================
 window.NeckTuning = window.NeckTuning || {
-  // lo ponemos cerca de la boca para que al inicio coincida y tú lo ajustes
   centerX: MOUTH_CENTER_X,
-  width: MOUTH_WIDTH * 2.0,     // “dos veces la boca” como pediste
-  topY: MOUTH_CENTER_Y + 0.06,  // línea superior del rectángulo del cuello
-  bottomY: MOUTH_CENTER_Y - 0.06, // línea inferior
-  curve: MOUTH_CURVE,           // curvatura tipo U
+  width: MOUTH_WIDTH * 2.0,
+  topY: MOUTH_CENTER_Y + 0.06,
+  bottomY: MOUTH_CENTER_Y - 0.06,
+  curve: MOUTH_CURVE,
 
-  // pivotes (si quieres tocar dónde rota cada parte)
+  // pivotes
   neckPivotY: (MOUTH_CENTER_Y - 0.06),
   bodyPivotY: (MOUTH_CENTER_Y - 0.06) - 0.12,
 };
 
+// =========================
+// Refs para recalcular pesos en caliente
+// =========================
+let particlesGeometryRef = null;
+let headWeightAttrRef = null;
+let basePosAttrRef = null;
 
 // =========================
-// Config cuello / separación cabeza-cuerpo (ajustable a mano)
+// JS smoothstep (una sola vez)
 // =========================
-// Colocado inicialmente "cerca de la boca" para que lo ajustes tú rápido.
-// Dos líneas (top/bottom) + curvatura + ancho.
-// Si quieres un rectángulo más estrecho: baja NECK_WIDTH.
-// Si quieres más banda de mezcla: separa más TOP/BOTTOM.
-const NECK_CENTER_X = MOUTH_CENTER_X;
-const NECK_WIDTH = MOUTH_WIDTH * 2.0;              // ancho ~2x boca (ajustable)
-const NECK_LINE_TOP_Y = MOUTH_CENTER_Y + 0.06;     // línea superior (ajustable)
-const NECK_LINE_BOTTOM_Y = MOUTH_CENTER_Y - 0.06;  // línea inferior (ajustable)
-const NECK_CURVE = MOUTH_CURVE;                    // curvatura (ajustable, 0 = recto)
+function smoothstepJS(edge0, edge1, x) {
+  const d = edge1 - edge0;
+  if (Math.abs(d) < 1e-8) return x < edge0 ? 0 : 1;
+  const t = Math.max(0, Math.min(1, (x - edge0) / d));
+  return t * t * (3 - 2 * t);
+}
 
-// Pivotes (ajustables). El cuello suele articular cerca de la línea inferior.
-const NECK_PIVOT = new THREE.Vector3(0.0, NECK_LINE_BOTTOM_Y, 0.0);
-const BODY_PIVOT = new THREE.Vector3(0.0, NECK_LINE_BOTTOM_Y - 0.12, 0.0);
+// =========================
+// Recalcular aHeadWeight en caliente (API pública)
+// =========================
+let _neckRecomputePending = false;
+
+function logNeckTuning(reason = 'update') {
+  const t = window.NeckTuning;
+  console.info(`[neck] ${reason}`, {
+    centerX: t.centerX,
+    width: t.width,
+    topY: t.topY,
+    bottomY: t.bottomY,
+    curve: t.curve,
+    neckPivotY: t.neckPivotY,
+    bodyPivotY: t.bodyPivotY,
+  });
+  console.log('[neck] Pega esto en app.js:\nwindow.NeckTuning = ' + JSON.stringify(t, null, 2) + ';');
+}
+
+function recomputeHeadWeightsNow() {
+  if (!headWeightAttrRef || !basePosAttrRef) {
+    console.warn('[neck] aHeadWeight todavía no está listo (espera a que cargue el GLB).');
+    return;
+  }
+
+  const t0 = performance.now();
+  const t = window.NeckTuning;
+
+  const arr = headWeightAttrRef.array;
+  const pos = basePosAttrRef.array;
+
+  const wAbs = Math.max(1e-6, Math.abs(t.width));
+
+  for (let i = 0; i < headWeightAttrRef.count; i++) {
+    const x = pos[i * 3 + 0];
+    const y = pos[i * 3 + 1];
+
+    const dx = x - t.centerX;
+    const insideWidth = Math.abs(dx) <= wAbs;
+
+    const nx = dx / wAbs;
+    const nxClamped = Math.max(-1, Math.min(1, nx));
+    const curve = t.curve * nxClamped * nxClamped;
+
+    let yTop = insideWidth ? (t.topY - curve) : t.topY;
+    let yBot = insideWidth ? (t.bottomY - curve) : t.bottomY;
+
+    if (yTop < yBot) { const tmp = yTop; yTop = yBot; yBot = tmp; }
+
+    let hw = 0.0;
+    if (y >= yTop) hw = 1.0;
+    else if (y <= yBot) hw = 0.0;
+    else hw = smoothstepJS(yBot, yTop, y);
+
+    arr[i] = hw;
+  }
+
+  headWeightAttrRef.needsUpdate = true;
+  const dt = performance.now() - t0;
+  console.info('[neck] aHeadWeight recalculado', { ms: dt.toFixed(2) });
+}
+
+function scheduleRecomputeHeadWeights(reason = 'change') {
+  if (_neckRecomputePending) return;
+  _neckRecomputePending = true;
+  requestAnimationFrame(() => {
+    _neckRecomputePending = false;
+    recomputeHeadWeightsNow();
+    logNeckTuning(reason);
+  });
+}
+
+window.recomputeHeadWeights = () => scheduleRecomputeHeadWeights('manual');
 
 // =========================
 // 2. Shaders de partículas
@@ -223,12 +304,12 @@ uniform float uRestOpen;
 uniform float uBreathAmp;
 uniform float uBreathFreq;
 
-// NUEVO: rig procedural cabeza/cuerpo
-uniform vec3 uHeadRot;     // x=pitch, y=yaw, z=roll
-uniform vec3 uBodyRot;     // x=pitch, y=yaw, z=roll
-uniform vec3 uBodyOffset;  // traslación sutil del cuerpo
-uniform vec3 uNeckPivot;   // pivote cuello
-uniform vec3 uBodyPivot;   // pivote cuerpo
+// rig procedural cabeza/cuerpo
+uniform vec3 uHeadRot;
+uniform vec3 uBodyRot;
+uniform vec3 uBodyOffset;
+uniform vec3 uNeckPivot;
+uniform vec3 uBodyPivot;
 
 attribute vec3 aBasePosition;
 attribute vec3 aRandom;
@@ -239,13 +320,12 @@ attribute vec2 aUv;
 attribute float aMouthWeight;
 attribute float aMouthSide;
 
-// NUEVO: peso cabeza (0=cuerpo, 1=cabeza)
+// peso cabeza (0=cuerpo, 1=cabeza)
 attribute float aHeadWeight;
 
 varying vec2 vUv;
 varying float vHeadWeight;
 
-// --- helpers de ruido simples --- //
 float hash11(float p) {
   return fract(sin(p * 127.1) * 43758.5453123);
 }
@@ -257,10 +337,9 @@ float hash21(vec2 p) {
 float simpleNoise(vec3 p, float t) {
   float n1 = hash21(p.xy + t);
   float n2 = hash21(p.yz - t * 0.5);
-  return (n1 + n2) * 0.5; // 0..1
+  return (n1 + n2) * 0.5;
 }
 
-// --- rotaciones --- //
 mat3 rotX(float a) {
   float s = sin(a), c = cos(a);
   return mat3(
@@ -290,7 +369,6 @@ mat3 rotZ(float a) {
 
 vec3 rotateAroundPivot(vec3 p, vec3 pivot, vec3 r) {
   vec3 q = p - pivot;
-  // orden: yaw(Y) -> pitch(X) -> roll(Z)
   q = rotY(r.y) * rotX(r.x) * rotZ(r.z) * q;
   return q + pivot;
 }
@@ -302,7 +380,6 @@ void main() {
   vec3 pos = aBasePosition;
   float t = uTime;
 
-  // 1) ONDA GLOBAL SUAVE
   float globalPhase = t * 0.5;
   float swayX = sin(globalPhase + aRandom.x * 6.2831);
   float swayY = cos(globalPhase * 0.8 + aRandom.y * 6.2831);
@@ -311,9 +388,8 @@ void main() {
     swayX * 0.003,
     swayY * 0.002,
     0.0
-  ) * uGlobalAmp;
+  );
 
-  // 2) MOVIMIENTO POR CLUSTERS
   float clusterPhase = hash11(aClusterId + 10.0) * 6.2831;
   float clusterAnim = sin(t * 0.8 + clusterPhase);
 
@@ -323,22 +399,18 @@ void main() {
     hash11(aClusterId + 3.0) - 0.5
   ));
 
-  vec3 clusterOffset = clusterDir * clusterAnim * 0.004 * uClusterAmp;
+  vec3 clusterOffset = clusterDir * clusterAnim * 0.004;
 
-  // 3) MICRO-NOISE
   float n = simpleNoise(aBasePosition * 1.5, t * 0.6);
   float micro = (n - 0.5);
-
   vec3 microDir = normalize(aRandom * 2.0 - 1.0);
-  vec3 microOffset = microDir * micro * 0.002 * uNoiseAmp;
+  vec3 microOffset = microDir * micro * 0.002;
 
-  // 3.5) RESPIRACIÓN SUAVE (más peso en zona baja)
   float breathPhase = sin(uTime * uBreathFreq) * 0.5 + 0.5;
   float heightFactor = clamp(1.0 - (aBasePosition.y + 0.3) * 2.0, 0.0, 1.0);
   float breath = breathPhase * heightFactor * uBreathAmp;
   vec3 breathOffset = vec3(0.0, breath * 0.01, breath * 0.005);
 
-  // 4) HABLA (boca)
   float phase = sin(uTime * uTalkFreq);
   float talkOpen = max(phase, 0.0) * uTalk;
 
@@ -352,18 +424,15 @@ void main() {
 
   float verticalOffset = side * lipAmp * mouthFactor;
   float depthOffset = -uLipDepthAmp * mouthFactor;
-
   vec3 mouthOffset = vec3(0.0, verticalOffset, depthOffset);
 
-  // Base + offsets + boca
   vec3 displaced = pos
-    + globalOffset
-    + clusterOffset
-    + microOffset
+    + globalOffset * uGlobalAmp
+    + clusterOffset * uClusterAmp
+    + microOffset * uNoiseAmp
     + breathOffset
     + mouthOffset;
 
-  // ===== Rig cabeza/cuerpo con mezcla por aHeadWeight =====
   vec3 bodyPos = rotateAroundPivot(displaced, uBodyPivot, uBodyRot) + uBodyOffset;
   vec3 headPos = rotateAroundPivot(bodyPos, uNeckPivot, uHeadRot);
   vec3 finalPos = mix(bodyPos, headPos, aHeadWeight);
@@ -381,48 +450,36 @@ precision highp float;
 
 uniform vec3 uColor;
 uniform sampler2D uColorMap;
-uniform float uUseMap; // 1.0 si hay textura, 0.0 si no
-uniform float uDebugHeadWeight; // 1.0 = debug ON
+uniform float uUseMap;
+uniform float uDebugHeadWeight;
 
 varying vec2 vUv;
 varying float vHeadWeight;
 
 void main() {
-  // 1) círculo suave
   vec2 p = gl_PointCoord * 2.0 - 1.0;
   float r2 = dot(p, p);
   if (r2 > 1.0) discard;
 
   float r = sqrt(r2);
   float circle = 1.0 - smoothstep(0.7, 1.0, r);
-
   if (circle < 0.02) discard;
 
-  // DEBUG: pintar por peso cabeza/cuerpo
   if (uDebugHeadWeight > 0.5) {
-    // 0=cuerpo (negro), 1=cabeza (blanco), banda=gris
     vec3 dbg = vec3(clamp(vHeadWeight, 0.0, 1.0));
     gl_FragColor = vec4(dbg, circle);
     return;
   }
 
-  // 2) leer color de la textura de piel (si existe)
   vec3 texColor = texture2D(uColorMap, vUv).rgb;
-
-  // brillo 0..1
   float densityRaw = (texColor.r + texColor.g + texColor.b) / 3.0;
   float density = mix(1.0, densityRaw, uUseMap);
 
-  // 3) brillo → alpha
-  float alphaMask = density;
-  float alpha = circle * alphaMask;
-
+  float alpha = circle * density;
   if (alpha < 0.02) discard;
 
-  // 4) color final
   vec3 baseColor = uColor;
   vec3 finalColor = mix(baseColor * 0.6, baseColor, density);
-
   gl_FragColor = vec4(finalColor, alpha);
 }
 `;
@@ -430,13 +487,6 @@ void main() {
 // =========================
 // 3. Generar puntos desde vértices (cara frontal) + UV
 // =========================
-function smoothstepJS(edge0, edge1, x) {
-  const d = edge1 - edge0;
-  if (Math.abs(d) < 1e-8) return x < edge0 ? 0 : 1;
-  const t = Math.max(0, Math.min(1, (x - edge0) / d));
-  return t * t * (3 - 2 * t);
-}
-
 function generateFaceParticlesFromVertices(srcGeometry) {
   const srcPos = srcGeometry.getAttribute('position');
   const srcUv = srcGeometry.getAttribute('uv');
@@ -451,8 +501,6 @@ function generateFaceParticlesFromVertices(srcGeometry) {
 
   for (let i = 0; i < vertexCount; i++) {
     v.fromBufferAttribute(srcPos, i);
-
-    // Corte frontal: solo puntos con Z >= 0 (ajusta si ves la cara al revés)
     if (v.z < 0.0) continue;
 
     posArray.push(v.x, v.y, v.z);
@@ -461,7 +509,6 @@ function generateFaceParticlesFromVertices(srcGeometry) {
       uv.fromBufferAttribute(srcUv, i);
       uvArray.push(uv.x, uv.y);
     } else {
-      // por si no hay UV, ponemos algo por defecto
       uvArray.push(0.0, 0.0);
     }
   }
@@ -470,22 +517,18 @@ function generateFaceParticlesFromVertices(srcGeometry) {
   const uvs = new Float32Array(uvArray);
   const count = positions.length / 3;
 
-  // Atributos extra para movimiento tipo Phantom
   const basePositions = new Float32Array(positions.length);
   basePositions.set(positions);
 
   const randoms = new Float32Array(count * 3);
   const clusterIds = new Float32Array(count);
 
-  // Boca
   const mouthWeights = new Float32Array(count);
   const mouthSides = new Float32Array(count);
 
-  // Cabeza/cuerpo (cuello)
   const headWeights = new Float32Array(count);
 
   for (let i = 0; i < count; i++) {
-    // random por punto
     randoms[i * 3 + 0] = Math.random();
     randoms[i * 3 + 1] = Math.random();
     randoms[i * 3 + 2] = Math.random();
@@ -493,12 +536,11 @@ function generateFaceParticlesFromVertices(srcGeometry) {
     const x = positions[i * 3 + 0];
     const y = positions[i * 3 + 1];
 
-    // clusterId simple a partir de X/Y (para mover “manchas” juntas)
     const cx = Math.floor((x + 0.4) * 10.0);
     const cy = Math.floor((y + 0.4) * 10.0);
     clusterIds[i] = cx + cy * 10.0;
 
-    // ------- Cálculo de región de boca -------
+    // ------- Boca -------
     let dx = x - MOUTH_CENTER_X;
     let ax = Math.abs(dx);
 
@@ -512,39 +554,36 @@ function generateFaceParticlesFromVertices(srcGeometry) {
       let ay = Math.abs(dy);
 
       if (ay <= MOUTH_HEIGHT) {
-        let wx = 1.0 - ax / MOUTH_WIDTH; // centro horizontal más peso
-        let wy = 1.0 - ay / MOUTH_HEIGHT; // cerca de la curva, más peso
+        let wx = 1.0 - ax / MOUTH_WIDTH;
+        let wy = 1.0 - ay / MOUTH_HEIGHT;
         weight = wx * wy;
 
         if (weight < 0.0) weight = 0.0;
         if (weight > 1.0) weight = 1.0;
 
-        if (dy > 0.0) {
-          side = 1.0; // labio superior
-        } else if (dy < 0.0) {
-          side = -1.0; // labio inferior
-        } else {
-          side = 0.0;
-        }
+        if (dy > 0.0) side = 1.0;
+        else if (dy < 0.0) side = -1.0;
+        else side = 0.0;
       }
     }
 
     mouthWeights[i] = weight;
     mouthSides[i] = side;
 
-    // ------- Cálculo de región cuello (2 líneas + curvatura + ancho) -------
-    // Líneas curvas: TOP y BOTTOM, curvadas como la boca (parábola en X).
-    const dxN = x - NECK_CENTER_X;
-    const insideWidth = Math.abs(dxN) <= NECK_WIDTH;
+    // ------- Cuello (desde window.NeckTuning) -------
+    const t = window.NeckTuning;
+    const wAbs = Math.max(1e-6, Math.abs(t.width));
 
-    const nx = dxN / NECK_WIDTH;
+    const dxN = x - t.centerX;
+    const insideWidth = Math.abs(dxN) <= wAbs;
+
+    const nx = dxN / wAbs;
     const nxClamped = Math.max(-1, Math.min(1, nx));
-    const curve = NECK_CURVE * nxClamped * nxClamped;
+    const curve = t.curve * nxClamped * nxClamped;
 
-    let yTop = insideWidth ? (NECK_LINE_TOP_Y - curve) : NECK_LINE_TOP_Y;
-    let yBot = insideWidth ? (NECK_LINE_BOTTOM_Y - curve) : NECK_LINE_BOTTOM_Y;
+    let yTop = insideWidth ? (t.topY - curve) : t.topY;
+    let yBot = insideWidth ? (t.bottomY - curve) : t.bottomY;
 
-    // Seguridad: si el usuario invierte líneas, arreglamos
     if (yTop < yBot) {
       const tmp = yTop;
       yTop = yBot;
@@ -572,55 +611,6 @@ function generateFaceParticlesFromVertices(srcGeometry) {
   return particlesGeo;
 }
 
-// =========================
-// Recalcular aHeadWeight en caliente (CONSOLa)
-// =========================
-function smoothstepJS(edge0, edge1, x) {
-  const d = edge1 - edge0;
-  if (Math.abs(d) < 1e-8) return x < edge0 ? 0 : 1;
-  const t = Math.max(0, Math.min(1, (x - edge0) / d));
-  return t * t * (3 - 2 * t);
-}
-
-window.recomputeHeadWeights = function recomputeHeadWeights() {
-  if (!headWeightAttrRef || !basePosAttrRef) {
-    console.warn('[neck] aHeadWeight todavía no está listo (espera a que cargue el GLB).');
-    return;
-  }
-
-  const t = window.NeckTuning;
-  const arr = headWeightAttrRef.array;
-  const pos = basePosAttrRef.array;
-
-  for (let i = 0; i < headWeightAttrRef.count; i++) {
-    const x = pos[i * 3 + 0];
-    const y = pos[i * 3 + 1];
-
-    const dx = x - t.centerX;
-    const insideWidth = Math.abs(dx) <= t.width;
-
-    const nx = dx / t.width;
-    const nxClamped = Math.max(-1, Math.min(1, nx));
-    const curve = t.curve * nxClamped * nxClamped;
-
-    let yTop = insideWidth ? (t.topY - curve) : t.topY;
-    let yBot = insideWidth ? (t.bottomY - curve) : t.bottomY;
-
-    if (yTop < yBot) { const tmp = yTop; yTop = yBot; yBot = tmp; }
-
-    let hw = 0.0;
-    if (y >= yTop) hw = 1.0;
-    else if (y <= yBot) hw = 0.0;
-    else hw = smoothstepJS(yBot, yTop, y);
-
-    arr[i] = hw;
-  }
-
-  headWeightAttrRef.needsUpdate = true;
-
-  console.info('[neck] aHeadWeight recalculado', JSON.stringify(t));
-};
-
 // Tamaño de punto fijo
 const POINT_SIZE = 3.5 * window.devicePixelRatio;
 
@@ -630,13 +620,7 @@ const POINT_SIZE = 3.5 * window.devicePixelRatio;
 const loader = new GLTFLoader();
 
 let particleMaterial = null;
-let particlePoints = null; // referencia global para mover la cabeza
-
-// refs para ajustar el cuello en caliente desde consola
-let particlesGeometryRef = null;
-let headWeightAttrRef = null;
-let basePosAttrRef = null;
-
+let particlePoints = null;
 
 loader.load(
   './FaceVolumen.glb',
@@ -651,7 +635,6 @@ loader.load(
       return;
     }
 
-    // intentar recuperar la textura de color de la cara
     let colorMap = null;
     for (const m of meshes) {
       if (m.material && m.material.map) {
@@ -672,7 +655,6 @@ loader.load(
     });
 
     const mergeFn = BufferGeometryUtils.mergeGeometries || BufferGeometryUtils.mergeBufferGeometries;
-
     const mergedGeom = mergeFn(geoms, true);
     if (!mergedGeom) {
       console.error('Fallo al fusionar geometrías');
@@ -680,20 +662,20 @@ loader.load(
     }
     mergedGeom.computeVertexNormals();
 
-    // centrar la malla fusionada
     mergedGeom.computeBoundingBox();
     const box = mergedGeom.boundingBox;
     const center = new THREE.Vector3();
     box.getCenter(center);
     mergedGeom.translate(-center.x, -center.y, -center.z);
 
-    // Generar partículas a partir de los vértices (solo frontal) + UV
     const particlesGeo = generateFaceParticlesFromVertices(mergedGeom);
 
-    // ✅ guardar refs para ajuste por consola
+    // refs para edición / recompute
     particlesGeometryRef = particlesGeo;
     headWeightAttrRef = particlesGeo.getAttribute('aHeadWeight');
     basePosAttrRef = particlesGeo.getAttribute('aBasePosition');
+
+    const t = window.NeckTuning;
 
     particleMaterial = new THREE.ShaderMaterial({
       vertexShader,
@@ -714,24 +696,22 @@ loader.load(
 
         // habla
         uTalk: { value: 0.0 },
-        uTalkAmpTop: { value: 0.024 }, // apertura labio superior
-        uTalkAmpBot: { value: 0.075 }, // apertura labio inferior
-        uTalkFreq: { value: 24.0 }, // velocidad "bla bla"
-        uLipDepthAmp: { value: 0.1 }, // cuánto entra hacia dentro
-
-        // rest pose (apertura mínima constante) – alto para ver la separación
+        uTalkAmpTop: { value: 0.024 },
+        uTalkAmpBot: { value: 0.075 },
+        uTalkFreq: { value: 24.0 },
+        uLipDepthAmp: { value: 0.1 },
         uRestOpen: { value: 0.30 },
 
         // respiración
-        uBreathAmp: { value: 1.0 }, // cantidad de respiración
-        uBreathFreq: { value: 0.6 }, // velocidad respiración (lenta)
+        uBreathAmp: { value: 1.0 },
+        uBreathFreq: { value: 0.6 },
 
-        // NUEVO: rig procedural
+        // rig procedural
         uHeadRot: { value: new THREE.Vector3(0, 0, 0) },
         uBodyRot: { value: new THREE.Vector3(0, 0, 0) },
         uBodyOffset: { value: new THREE.Vector3(0, 0, 0) },
-        uNeckPivot: { value: NECK_PIVOT.clone() },
-        uBodyPivot: { value: BODY_PIVOT.clone() },
+        uNeckPivot: { value: new THREE.Vector3(0.0, t.neckPivotY, 0.0) },
+        uBodyPivot: { value: new THREE.Vector3(0.0, t.bodyPivotY, 0.0) },
 
         // DEBUG
         uDebugHeadWeight: { value: DebugView.headWeight ? 1.0 : 0.0 },
@@ -744,6 +724,9 @@ loader.load(
 
     controls.target.set(0, 0.15, 0);
     controls.update();
+
+    // por si se tocó NeckTuning antes de cargar
+    scheduleRecomputeHeadWeights('after_load');
   },
   undefined,
   (err) => {
@@ -760,6 +743,7 @@ window.addEventListener('resize', () => {
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   renderer.setSize(w, h);
+  resizeNeckEditorOverlay();
 });
 
 // =========================
@@ -770,7 +754,6 @@ function base64ToAudioData(b64, mimeType = 'audio/wav') {
     throw new Error('Respuesta TTS sin audio_base64 válido');
   }
 
-  // Normalizamos por si viniera con prefijo data: o espacios/saltos de línea
   const sanitized = b64
     .replace(/^data:[^;]+;base64,/, '')
     .replace(/\s+/g, '')
@@ -815,19 +798,14 @@ async function warmupFrontendTts() {
   try {
     console.log("[warmup] Iniciando warmup del TTS...");
 
-    // 1. Pedimos un TTS muy corto al mismo endpoint real
     const audioData = await requestTTS("Calibración de audio.");
-
-    // 2. Creamos el AudioContext real
     const ctx = getOrCreateAudioContext();
 
-    // 3. Decodificamos el audio igual que haría playAudioFromAudioData
     const bufferForDecode = audioData.arrayBuffer.slice(0);
     const audioBuffer = await ctx.decodeAudioData(bufferForDecode);
 
-    // 4. Creamos un source, pero lo reproducimos a volumen 0
     const gain = ctx.createGain();
-    gain.gain.value = 0.0; // silencio total
+    gain.gain.value = 0.0;
 
     const source = ctx.createBufferSource();
     source.buffer = audioBuffer;
@@ -837,7 +815,6 @@ async function warmupFrontendTts() {
 
     await ctx.resume();
 
-    // 5. Arrancamos el audio con offset seguro para inicializar pipeline WebAudio
     const startTime = ctx.currentTime + 0.05;
     source.start(startTime);
 
@@ -910,11 +887,9 @@ async function playAudioFromAudioData(
   audioData,
   { emotion = 'neutral', speechIntensity = 1.0 } = {},
 ) {
-  // Si estaba el test de labios activo, lo apagamos
   lipTestActive = false;
   if (testLipsBtn) testLipsBtn.textContent = 'Test labios';
 
-  // Paramos cualquier audio anterior, pero mantenemos el AudioContext
   cleanupAudio();
 
   if (!audioData?.arrayBuffer) {
@@ -935,8 +910,7 @@ async function playAudioFromAudioData(
     throw err;
   }
 
-  // --- Padding de silencio para evitar que el navegador recorte el inicio ---
-  const paddingSeconds = 0.06; // ~60ms
+  const paddingSeconds = 0.06;
   const paddingSamples = Math.floor(audioBuffer.sampleRate * paddingSeconds);
 
   const paddedBuffer = ctx.createBuffer(
@@ -948,8 +922,6 @@ async function playAudioFromAudioData(
   for (let ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
     const src = audioBuffer.getChannelData(ch);
     const dst = paddedBuffer.getChannelData(ch);
-
-    // Dejamos los primeros paddingSamples en 0 (silencio) y copiamos el audio detrás
     dst.set(src, paddingSamples);
   }
 
@@ -963,7 +935,6 @@ async function playAudioFromAudioData(
     });
   }
 
-  // Configuramos el analyser cada vez, pero con el mismo AudioContext global
   analyser = ctx.createAnalyser();
   analyser.fftSize = 512;
   analyser.smoothingTimeConstant = 0.4;
@@ -981,37 +952,19 @@ async function playAudioFromAudioData(
   AvatarState.emotion = emotion;
   AvatarState.speechIntensity = speechIntensity;
 
-  if (AudioDebug.enabled) {
-    console.info('[audio-debug] Inicio reproducción', {
-      emotion,
-      speechIntensity,
-      analyserFftSize: analyser.fftSize,
-      minRms: AudioDebug.minRms,
-      scale: AudioDebug.scale,
-    });
-  }
-
   audioSource.onended = () => {
-    if (AudioDebug.enabled) {
-      console.log('[avatar] TTS terminado');
-    }
+    if (AudioDebug.enabled) console.log('[avatar] TTS terminado');
     AvatarState.mode = 'IDLE';
     AvatarState.speechIntensity = 1.0;
     AvatarState.talkLevel = 0;
     cleanupAudio();
   };
 
-  if (AudioDebug.enabled) {
-    console.log('[avatar] TTS playback start');
-  }
-
-  // Arrancamos el audio con un pequeño offset temporal (50ms) para estabilizar el contexto
   const startTime = ctx.currentTime + 0.05;
   audioSource.start(startTime);
 }
 
 function getTalkLevelFromAudio() {
-  // 0) Si no hay analyser, no hay audio → boca cerrada
   if (!(analyser && analyserData)) {
     if (AudioDebug.enabled) {
       const now = performance.now();
@@ -1028,64 +981,46 @@ function getTalkLevelFromAudio() {
     return 0;
   }
 
-  // 1) RMS crudo del audio (-1..1 → RMS 0..~0.3)
   analyser.getByteTimeDomainData(analyserData);
   let sum = 0;
   for (let i = 0; i < analyserData.length; i++) {
-    const v = analyserData[i] / 128 - 1; // -1..1
+    const v = analyserData[i] / 128 - 1;
     sum += v * v;
   }
   const rms = Math.sqrt(sum / analyserData.length);
   const intensity = AvatarState.speechIntensity || 1.0;
 
-  // === NÚMEROS SACADOS DE AUDITION ===
-  // Silencio ≈ -57 dB → ≈ 0.0014 (muy bajo)
-  // Voz media ≈ -18 / -22 dB → ≈ 0.08–0.12
-  const SILENCE_RMS = 0.01;  // ≈ -40 dB: por encima del ruido, por debajo de la voz normal
-  const VOICE_RMS   = 0.12;  // zona en la que consideramos "voz bastante fuerte"
+  const SILENCE_RMS = 0.01;
+  const VOICE_RMS = 0.12;
 
-  // 2) Contador de frames "silenciosos" para no parpadear la boca
-  if (rms < SILENCE_RMS) {
-    silentFrameCount++;
-  } else {
-    silentFrameCount = 0;
-  }
+  if (rms < SILENCE_RMS) silentFrameCount++;
+  else silentFrameCount = 0;
 
   let target = 0.0;
 
   if (AvatarState.mode === 'SPEAKING') {
-    // Si llevamos al menos 2 frames (≈100ms) por debajo del umbral ⇒ silencio real
     if (silentFrameCount >= 2) {
       target = 0.0;
     } else {
-      // 3) Mapear RMS → 0..1 usando el rango [SILENCE_RMS, VOICE_RMS]
       let t = (rms - SILENCE_RMS) / (VOICE_RMS - SILENCE_RMS);
-      t = Math.max(0, Math.min(1, t)); // clamp 0..1
-
-      // aplicar intensidad del backend (excited/calm)
+      t = Math.max(0, Math.min(1, t));
       t *= intensity;
 
-      // levantar un poco el suelo cuando hay voz
       if (t > 0) {
-        const floor = LipsyncConfig.floorSpeaking; // 0.12
+        const floor = LipsyncConfig.floorSpeaking;
         t = floor + (1.0 - floor) * t;
       }
-
       target = t;
     }
   } else {
-    // IDLE / LISTENING / THINKING → boca cerrada
     target = 0.0;
   }
 
-  // 4) Envelope: ataque rápido, release más lento
-  const dt = 1 / 60; // aprox 60 FPS
-  const speed =
-    target > lipsyncLevel ? LipsyncConfig.attack : LipsyncConfig.release;
+  const dt = 1 / 60;
+  const speed = target > lipsyncLevel ? LipsyncConfig.attack : LipsyncConfig.release;
   const smoothing = 1 - Math.exp(-dt * speed);
   lipsyncLevel += (target - lipsyncLevel) * smoothing;
 
-  // 5) Debug actualizado (sin el viejo "normalized" por minRms/scale)
   if (AudioDebug.enabled) {
     debugStats.frames += 1;
     debugStats.rmsSum += rms;
@@ -1094,11 +1029,8 @@ function getTalkLevelFromAudio() {
     debugStats.targetMin = Math.min(debugStats.targetMin, target);
     debugStats.targetMax = Math.max(debugStats.targetMax, target);
 
-    if (rms >= SILENCE_RMS) {
-      debugStats.speakingFrames += 1;
-    } else {
-      debugStats.silentFrames += 1;
-    }
+    if (rms >= SILENCE_RMS) debugStats.speakingFrames += 1;
+    else debugStats.silentFrames += 1;
 
     const now = performance.now();
     if (now - lastAudioDebugLog > AudioDebug.logIntervalMs) {
@@ -1120,7 +1052,6 @@ function getTalkLevelFromAudio() {
         },
       });
 
-      // reset stats
       debugStats.frames = 0;
       debugStats.rmsSum = 0;
       debugStats.rmsMin = Number.POSITIVE_INFINITY;
@@ -1143,61 +1074,27 @@ function randRange(a, b) {
 }
 
 const MotionConfig = {
-  head: {
-    // amplitudes equivalentes a tu seno actual (aprox)
-    ampYaw: 0.055,
-    ampPitch: 0.050,
-    ampRoll: 0.030,
-    holdMin: 1.0,
-    holdMax: 3.2,
-    smooth: 10.0,
-  },
-  body: {
-    // mucho más pequeño que la cabeza
-    ampYaw: 0.012,
-    ampPitch: 0.010,
-    ampRoll: 0.010,
-    holdMin: 1.2,
-    holdMax: 4.0,
-    smooth: 6.0,
-  },
-  micro: {
-    yaw: 0.006,
-    pitch: 0.004,
-    roll: 0.004,
-  },
+  head: { ampYaw: 0.055, ampPitch: 0.050, ampRoll: 0.030, holdMin: 1.0, holdMax: 3.2, smooth: 10.0 },
+  body: { ampYaw: 0.012, ampPitch: 0.010, ampRoll: 0.010, holdMin: 1.2, holdMax: 4.0, smooth: 6.0 },
+  micro: { yaw: 0.006, pitch: 0.004, roll: 0.004 },
 };
 
 const MotionState = {
   seed: Math.random() * 1000.0,
-  head: {
-    current: new THREE.Vector3(0, 0, 0),
-    target: new THREE.Vector3(0, 0, 0),
-    nextSwitch: 0,
-  },
-  body: {
-    current: new THREE.Vector3(0, 0, 0),
-    target: new THREE.Vector3(0, 0, 0),
-    nextSwitch: 0,
-  },
-  nod: {
-    active: false,
-    t0: 0,
-    dur: 0.32,
-    amp: 0.012, // asentir MUY suave
-  },
+  head: { current: new THREE.Vector3(0, 0, 0), target: new THREE.Vector3(0, 0, 0), nextSwitch: 0 },
+  body: { current: new THREE.Vector3(0, 0, 0), target: new THREE.Vector3(0, 0, 0), nextSwitch: 0 },
+  nod: { active: false, t0: 0, dur: 0.32, amp: 0.012 },
 };
 
 function pickTarget(cfg) {
-  // Sesgo al centro (humano): muchas veces cerca de 0, a veces más lejos
   const bias = 0.65;
   const s = () => (Math.random() * 2 - 1);
   const soften = () => (Math.random() < bias ? 0.35 : 1.0) * randRange(0.4, 1.0);
 
   return new THREE.Vector3(
-    s() * cfg.ampPitch * soften(), // pitch (x)
-    s() * cfg.ampYaw * soften(),   // yaw (y)
-    s() * cfg.ampRoll * soften(),  // roll (z)
+    s() * cfg.ampPitch * soften(),
+    s() * cfg.ampYaw * soften(),
+    s() * cfg.ampRoll * soften(),
   );
 }
 
@@ -1211,9 +1108,8 @@ function updateChannel(ch, cfg, t, dt) {
 }
 
 function updateNod(t, dt) {
-  // Asentir solo en LISTENING y rara vez
   if (!MotionState.nod.active && AvatarState.mode === 'LISTENING') {
-    const p = 0.18; // prob por segundo
+    const p = 0.18;
     if (Math.random() < p * dt) {
       MotionState.nod.active = true;
       MotionState.nod.t0 = t;
@@ -1230,7 +1126,7 @@ function updateNod(t, dt) {
     return 0.0;
   }
 
-  const s = Math.sin(u * 3.14159); // 0..1..0
+  const s = Math.sin(u * 3.14159);
   return -MotionState.nod.amp * s;
 }
 
@@ -1245,36 +1141,25 @@ function animate() {
   requestAnimationFrame(animate);
 
   const elapsed = clock.getElapsedTime();
-  const delta = clock.getDelta(); // ahora mismo no lo usamos, pero no pasa nada
+  const delta = clock.getDelta();
 
   if (particleMaterial) {
     particleMaterial.uniforms.uTime.value = elapsed;
 
     let targetTalk = 0.0;
+    if (lipHoldActive) targetTalk = 1.0;
+    else targetTalk = getTalkLevelFromAudio();
 
-    if (lipHoldActive) {
-      // Modo test: boca a tope
-      targetTalk = 1.0;
-    } else {
-      // Modo normal: nivel desde el audio (ya suavizado)
-      targetTalk = getTalkLevelFromAudio();
-    }
-
-    // usamos el mismo camino para ambos modos
     AvatarState.talkLevel = targetTalk;
     particleMaterial.uniforms.uTalk.value = AvatarState.talkLevel;
 
-    // rest casi fijo, la apertura viene de uTalk
     particleMaterial.uniforms.uRestOpen.value = 0.03;
 
-    // Debug uniform
     particleMaterial.uniforms.uDebugHeadWeight.value = DebugView.headWeight ? 1.0 : 0.0;
 
-    // ===== Movimiento procedural (cabeza/cuerpo con pausas) =====
     updateChannel(MotionState.head, MotionConfig.head, elapsed, delta);
     updateChannel(MotionState.body, MotionConfig.body, elapsed, delta);
 
-    // micro movimiento continuo (muy sutil)
     const microYaw =
       (Math.sin(elapsed * 2.1 + MotionState.seed) * MotionConfig.micro.yaw) +
       (Math.sin(elapsed * 3.7 + MotionState.seed * 0.3) * MotionConfig.micro.yaw * 0.45);
@@ -1287,18 +1172,15 @@ function animate() {
       (Math.sin(elapsed * 1.5 + MotionState.seed * 1.3) * MotionConfig.micro.roll) +
       (Math.sin(elapsed * 2.9 + MotionState.seed * 0.4) * MotionConfig.micro.roll * 0.45);
 
-    // nod suave al escuchar
     const nodPitch = updateNod(elapsed, delta);
 
-    // Cabeza final
     const head = MotionState.head.current;
     particleMaterial.uniforms.uHeadRot.value.set(
-      head.x + microPitch + nodPitch,  // pitch
-      head.y + microYaw,               // yaw
-      head.z + microRoll               // roll
+      head.x + microPitch + nodPitch,
+      head.y + microYaw,
+      head.z + microRoll
     );
 
-    // Cuerpo final
     const body = MotionState.body.current;
     particleMaterial.uniforms.uBodyRot.value.set(
       body.x + microPitch * 0.25,
@@ -1306,15 +1188,18 @@ function animate() {
       body.z + microRoll * 0.25
     );
 
-    // Offset de cuerpo (equivalente a tu particlePoints.position.y anterior)
     let offY = 0.0;
     if (AvatarState.idleMotionEnabled) {
       offY = 0.01 * Math.sin(elapsed * 0.9) + 0.005 * Math.sin(elapsed * 0.37);
     }
     particleMaterial.uniforms.uBodyOffset.value.set(0.0, offY, 0.0);
+
+    // ✅ pivotes live desde NeckTuning (para que el editor los cambie)
+    const t = window.NeckTuning;
+    particleMaterial.uniforms.uNeckPivot.value.set(0.0, t.neckPivotY, 0.0);
+    particleMaterial.uniforms.uBodyPivot.value.set(0.0, t.bodyPivotY, 0.0);
   }
 
-  // Ya no movemos el objeto entero (todo el rig va en shader)
   if (particlePoints) {
     particlePoints.rotation.set(0, 0, 0);
     particlePoints.position.set(0, 0, 0);
@@ -1322,6 +1207,8 @@ function animate() {
 
   controls.update();
   renderer.render(scene, camera);
+
+  if (NeckEditor.visible) drawNeckEditorOverlay();
 }
 
 animate();
@@ -1337,17 +1224,12 @@ let agentSendInFlight = 0;
 
 function setAgentSendBusy(isBusy, buttonLabel) {
   if (!sendToAgentBtn) return;
-  if (isBusy) {
-    agentSendInFlight += 1;
-  } else {
-    agentSendInFlight = Math.max(0, agentSendInFlight - 1);
-  }
+  if (isBusy) agentSendInFlight += 1;
+  else agentSendInFlight = Math.max(0, agentSendInFlight - 1);
+
   sendToAgentBtn.disabled = agentSendInFlight > 0;
-  if (agentSendInFlight === 0) {
-    sendToAgentBtn.textContent = 'Enviar al agente';
-  } else if (buttonLabel) {
-    sendToAgentBtn.textContent = buttonLabel;
-  }
+  if (agentSendInFlight === 0) sendToAgentBtn.textContent = 'Enviar al agente';
+  else if (buttonLabel) sendToAgentBtn.textContent = buttonLabel;
 }
 
 if (sendToAgentBtn) {
@@ -1396,7 +1278,6 @@ let waveAnalyser = null;
 let waveDataArray = null;
 let waveAnimationId = null;
 
-// NEW: guardamos mimeType real del recorder para construir el blob/file
 let recorderMimeType = 'audio/webm;codecs=opus';
 
 function drawWaveform() {
@@ -1442,16 +1323,13 @@ function teardownMic() {
 async function startRecording() {
   if (!navigator.mediaDevices?.getUserMedia) return alert('getUserMedia no soportado');
 
-  // NEW: gesto de usuario → desbloquear AudioContext y hacer warmup una vez
   try {
     getOrCreateAudioContext().resume().catch(() => {});
     warmupFrontendTts();
   } catch (_) {}
 
-  // 1. Configuración inicial y visual
   audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-  // NEW: forzar mimeType estable (tu browser lo soporta)
   recorderMimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
     ? 'audio/webm;codecs=opus'
     : 'audio/webm';
@@ -1473,21 +1351,13 @@ async function startRecording() {
     setAgentSendBusy(true);
 
     try {
-      if (!blob.size) {
-        throw new Error('No se capturó audio. Intenta grabar de nuevo.');
-      }
+      if (!blob.size) throw new Error('No se capturó audio. Intenta grabar de nuevo.');
 
-      // Archivo coherente con el mimeType real (opus/webm)
       const audioFile = new File([blob], 'grabacion.webm', { type: recorderMimeType });
       const formData = new FormData();
       formData.append('file', audioFile);
 
-      // Enviar a STT
-      const res = await fetch(`${BACKEND_URL}/stt_google`, {
-        method: 'POST',
-        body: formData,
-      });
-
+      const res = await fetch(`${BACKEND_URL}/stt_google`, { method: 'POST', body: formData });
       if (!res.ok) {
         const errText = await res.text();
         throw new Error(`Error STT: ${res.status} ${errText}`);
@@ -1497,22 +1367,16 @@ async function startRecording() {
       const text = (data?.text || '').trim();
       if (!text) throw new Error('Transcripción vacía');
 
-      // UI
       if (micLabel) micLabel.textContent = 'Enviando…';
       const modeRadio = document.querySelector('input[name="agentMode"]:checked');
       const mode = modeRadio ? modeRadio.value : 'negociar';
       const withAudio = !textOnlyCheckbox?.checked;
 
-      // ✅ CRÍTICO: liberar micro + waveform ANTES del TTS
       teardownMic();
-
-      // Enviar al agente (esto dispara el TTS)
       await sendTextToAgent(text, { mode, withAudio });
 
     } catch (err) {
       hadError = true;
-
-      // ✅ también liberar recursos si hubo error
       teardownMic();
 
       console.error('Error al transcribir/enviar audio:', err);
@@ -1523,21 +1387,15 @@ async function startRecording() {
 
     } finally {
       setAgentSendBusy(false);
-
-      // No borrar mensaje si hubo error
-      if (!hadError && micLabel) {
-        micLabel.textContent = 'Pulsa el micro y habla';
-      }
+      if (!hadError && micLabel) micLabel.textContent = 'Pulsa el micro y habla';
     }
   };
 
-  // 2. Iniciar grabación y visualización
   mediaRecorder.start(250);
   isRecording = true;
   if (micLabel) micLabel.textContent = 'Grabando…';
   AvatarState.mode = 'LISTENING';
 
-  // Configuración del canvas de ondas (Waveform)
   waveAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
   waveAnalyser = waveAudioCtx.createAnalyser();
   waveAnalyser.fftSize = 1024;
@@ -1624,18 +1482,396 @@ testTalkBtn.addEventListener('mouseleave', stopLipTest);
 
 testTalkBtn.addEventListener(
   'touchstart',
-  (e) => {
-    e.preventDefault();
-    startLipTest();
-  },
+  (e) => { e.preventDefault(); startLipTest(); },
   { passive: false },
 );
 
 testTalkBtn.addEventListener(
   'touchend',
-  (e) => {
-    e.preventDefault();
-    stopLipTest();
-  },
+  (e) => { e.preventDefault(); stopLipTest(); },
   { passive: false },
 );
+
+// ============================================================================
+// ✅ Neck Editor Overlay (solo si ?debugEdit=1)
+// ============================================================================
+
+const NeckEditor = {
+  enabled: DEBUG_EDIT_ENABLED,
+  visible: DEBUG_EDIT_ENABLED,
+  overlay: null,
+  ctx: null,
+  dpr: 1,
+  dragging: null, // { key, startPoint, startTuning }
+  hoverKey: null,
+  raycaster: new THREE.Raycaster(),
+  plane: new THREE.Plane(new THREE.Vector3(0, 0, 1), 0), // z=0
+  handlesRadius: 10,
+  infoEl: null,
+};
+
+function setNeckEditorVisible(v) {
+  if (!NeckEditor.enabled) return;
+  if (!NeckEditor.overlay) initNeckEditorOverlay();
+  NeckEditor.visible = !!v;
+  NeckEditor.overlay.style.display = NeckEditor.visible ? 'block' : 'none';
+  if (NeckEditor.infoEl) NeckEditor.infoEl.style.display = NeckEditor.visible ? 'block' : 'none';
+  NeckEditor.overlay.style.pointerEvents = NeckEditor.visible ? 'auto' : 'none';
+}
+
+function initNeckEditorOverlay() {
+  if (!NeckEditor.enabled || NeckEditor.overlay) return;
+
+  const overlay = document.createElement('canvas');
+  overlay.id = 'neck-editor-overlay';
+  Object.assign(overlay.style, {
+    position: 'fixed',
+    top: '0px',
+    left: '0px',
+    width: '100vw',
+    height: '100vh',
+    zIndex: '9999',
+    pointerEvents: 'auto',
+  });
+
+  document.body.appendChild(overlay);
+  NeckEditor.overlay = overlay;
+  NeckEditor.ctx = overlay.getContext('2d');
+
+  const info = document.createElement('div');
+  Object.assign(info.style, {
+    position: 'fixed',
+    top: '12px',
+    left: '12px',
+    zIndex: '10000',
+    padding: '10px 12px',
+    borderRadius: '12px',
+    background: 'rgba(0,0,0,0.55)',
+    color: '#fff',
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+    fontSize: '12px',
+    lineHeight: '1.35',
+    maxWidth: '360px',
+    userSelect: 'none',
+  });
+  info.innerHTML = `
+    <div style="font-weight:700; margin-bottom:6px;">Neck Editor</div>
+    <div>Arrastra handles (rojo). Tecla <b>E</b> ocultar/mostrar.</div>
+    <div style="margin-top:6px; opacity:.9">
+      Handles: <b>center</b>, <b>top</b>, <b>bottom</b>, <b>left</b>, <b>right</b>, <b>curve</b>, <b>neckPivot</b>, <b>bodyPivot</b>
+    </div>
+    <div style="margin-top:8px; opacity:.85">Cada cambio imprime JSON en consola.</div>
+  `;
+  document.body.appendChild(info);
+  NeckEditor.infoEl = info;
+
+  overlay.addEventListener('mousemove', onNeckEditorMove);
+  overlay.addEventListener('mousedown', onNeckEditorDown);
+  window.addEventListener('mouseup', onNeckEditorUp);
+
+  overlay.addEventListener('touchstart', onNeckEditorTouchStart, { passive: false });
+  overlay.addEventListener('touchmove', onNeckEditorTouchMove, { passive: false });
+  overlay.addEventListener('touchend', onNeckEditorTouchEnd, { passive: false });
+
+  resizeNeckEditorOverlay();
+  setNeckEditorVisible(true);
+}
+
+function resizeNeckEditorOverlay() {
+  if (!NeckEditor.overlay) return;
+  const dpr = Math.max(1, window.devicePixelRatio || 1);
+  NeckEditor.dpr = dpr;
+  NeckEditor.overlay.width = Math.floor(window.innerWidth * dpr);
+  NeckEditor.overlay.height = Math.floor(window.innerHeight * dpr);
+  NeckEditor.overlay.style.width = '100vw';
+  NeckEditor.overlay.style.height = '100vh';
+  const ctx = NeckEditor.ctx;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function getMouseNDC(clientX, clientY) {
+  return {
+    x: (clientX / window.innerWidth) * 2 - 1,
+    y: -(clientY / window.innerHeight) * 2 + 1,
+  };
+}
+
+function screenProject(x, y, z = 0) {
+  const v = new THREE.Vector3(x, y, z).project(camera);
+  return {
+    x: (v.x * 0.5 + 0.5) * window.innerWidth,
+    y: (-v.y * 0.5 + 0.5) * window.innerHeight,
+  };
+}
+
+function rayToPlane(clientX, clientY) {
+  const ndc = getMouseNDC(clientX, clientY);
+  NeckEditor.raycaster.setFromCamera(ndc, camera);
+  const out = new THREE.Vector3();
+  const hit = NeckEditor.raycaster.ray.intersectPlane(NeckEditor.plane, out);
+  return hit ? out.clone() : null;
+}
+
+function getHandlesModel() {
+  const t = window.NeckTuning;
+  const midY = (t.topY + t.bottomY) * 0.5;
+  const wAbs = Math.max(1e-6, Math.abs(t.width));
+
+  // curve handle: lo ponemos en el borde derecho del top (x = centerX + width)
+  const curveX = t.centerX + wAbs;
+  const curveY = t.topY - t.curve; // coincide con fórmula en el borde (nx=1)
+
+  return {
+    center: { x: t.centerX, y: midY },
+    top: { x: t.centerX, y: t.topY },
+    bottom: { x: t.centerX, y: t.bottomY },
+    left: { x: t.centerX - wAbs, y: midY },
+    right: { x: t.centerX + wAbs, y: midY },
+    curve: { x: curveX, y: curveY },
+    neckPivot: { x: t.centerX, y: t.neckPivotY },
+    bodyPivot: { x: t.centerX, y: t.bodyPivotY },
+  };
+}
+
+function pickHandle(clientX, clientY) {
+  const handles = getHandlesModel();
+  let best = null;
+  let bestD = Infinity;
+  for (const key of Object.keys(handles)) {
+    const s = screenProject(handles[key].x, handles[key].y, 0);
+    const dx = s.x - clientX;
+    const dy = s.y - clientY;
+    const d = Math.sqrt(dx * dx + dy * dy);
+    if (d < NeckEditor.handlesRadius && d < bestD) {
+      bestD = d;
+      best = key;
+    }
+  }
+  return best;
+}
+
+function applyDrag(key, worldPoint, startPoint, startTuning) {
+  const t = window.NeckTuning;
+  const minBand = 1e-4;
+
+  if (key === 'center') {
+    const dx = worldPoint.x - startPoint.x;
+    const dy = worldPoint.y - startPoint.y;
+
+    t.centerX = startTuning.centerX + dx;
+    t.topY = startTuning.topY + dy;
+    t.bottomY = startTuning.bottomY + dy;
+    t.neckPivotY = startTuning.neckPivotY + dy;
+    t.bodyPivotY = startTuning.bodyPivotY + dy;
+  }
+
+  if (key === 'top') {
+    t.topY = worldPoint.y;
+    if (t.topY < t.bottomY + minBand) t.topY = t.bottomY + minBand;
+  }
+
+  if (key === 'bottom') {
+    t.bottomY = worldPoint.y;
+    if (t.bottomY > t.topY - minBand) t.bottomY = t.topY - minBand;
+
+    // si quieres que pivotes sigan al bottom por defecto:
+    // (comenta estas dos líneas si NO quieres auto-follow)
+    t.neckPivotY = t.bottomY;
+    t.bodyPivotY = t.bottomY - 0.12;
+  }
+
+  if (key === 'left') {
+    const w = startTuning.centerX - worldPoint.x;
+    t.width = Math.max(1e-6, Math.abs(w));
+  }
+
+  if (key === 'right') {
+    const w = worldPoint.x - startTuning.centerX;
+    t.width = Math.max(1e-6, Math.abs(w));
+  }
+
+  if (key === 'curve') {
+    // curve = topY - y_en_el_borde (nx=1)
+    const newCurve = (t.topY - worldPoint.y);
+    t.curve = newCurve;
+  }
+
+  if (key === 'neckPivot') {
+    t.neckPivotY = worldPoint.y;
+  }
+
+  if (key === 'bodyPivot') {
+    t.bodyPivotY = worldPoint.y;
+  }
+
+  scheduleRecomputeHeadWeights(`drag:${key}`);
+}
+
+function onNeckEditorDown(e) {
+  if (!NeckEditor.visible) return;
+  const key = pickHandle(e.clientX, e.clientY);
+  if (!key) return;
+
+  const p = rayToPlane(e.clientX, e.clientY);
+  if (!p) return;
+
+  NeckEditor.dragging = {
+    key,
+    startPoint: p,
+    startTuning: { ...window.NeckTuning },
+  };
+
+  controls.enabled = false;
+  e.preventDefault();
+}
+
+function onNeckEditorMove(e) {
+  if (!NeckEditor.visible) return;
+
+  if (!NeckEditor.dragging) {
+    NeckEditor.hoverKey = pickHandle(e.clientX, e.clientY);
+    return;
+  }
+
+  const { key, startPoint, startTuning } = NeckEditor.dragging;
+  const p = rayToPlane(e.clientX, e.clientY);
+  if (!p) return;
+
+  applyDrag(key, p, startPoint, startTuning);
+  e.preventDefault();
+}
+
+function onNeckEditorUp() {
+  if (!NeckEditor.dragging) return;
+  NeckEditor.dragging = null;
+  controls.enabled = true;
+}
+
+function onNeckEditorTouchStart(e) {
+  if (!NeckEditor.visible) return;
+  if (!e.touches?.length) return;
+  const t = e.touches[0];
+  onNeckEditorDown({ clientX: t.clientX, clientY: t.clientY, preventDefault: () => {} });
+  e.preventDefault();
+}
+
+function onNeckEditorTouchMove(e) {
+  if (!NeckEditor.visible) return;
+  if (!e.touches?.length) return;
+  const t = e.touches[0];
+  onNeckEditorMove({ clientX: t.clientX, clientY: t.clientY, preventDefault: () => {} });
+  e.preventDefault();
+}
+
+function onNeckEditorTouchEnd(e) {
+  onNeckEditorUp(e);
+  e.preventDefault();
+}
+
+function drawHandle(ctx, key, color, filled, clientX, clientY) {
+  const r = NeckEditor.handlesRadius;
+  const isHover = NeckEditor.hoverKey === key;
+  const isDrag = NeckEditor.dragging?.key === key;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(clientX, clientY, r, 0, Math.PI * 2);
+
+  ctx.lineWidth = isDrag ? 3 : (isHover ? 2 : 1.5);
+  ctx.strokeStyle = color;
+
+  if (filled) {
+    ctx.fillStyle = 'rgba(255,0,0,0.15)';
+    ctx.fill();
+  }
+
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawNeckEditorOverlay() {
+  if (!NeckEditor.enabled || !NeckEditor.visible) return;
+  if (!NeckEditor.overlay) initNeckEditorOverlay();
+
+  const ctx = NeckEditor.ctx;
+  ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+
+  const t = window.NeckTuning;
+  const wAbs = Math.max(1e-6, Math.abs(t.width));
+
+  // --- Dibujar curvas top/bottom ---
+  const segments = 64;
+  const x0 = t.centerX - wAbs;
+  const x1 = t.centerX + wAbs;
+
+  const topPts = [];
+  const botPts = [];
+
+  for (let i = 0; i <= segments; i++) {
+    const u = i / segments;
+    const x = x0 + (x1 - x0) * u;
+
+    const dx = x - t.centerX;
+    const nx = dx / wAbs;
+    const nxClamped = Math.max(-1, Math.min(1, nx));
+    const c = t.curve * nxClamped * nxClamped;
+
+    const yTop = t.topY - c;
+    const yBot = t.bottomY - c;
+
+    topPts.push(screenProject(x, yTop, 0));
+    botPts.push(screenProject(x, yBot, 0));
+  }
+
+  ctx.save();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(255,0,0,0.95)';
+
+  // top
+  ctx.beginPath();
+  ctx.moveTo(topPts[0].x, topPts[0].y);
+  for (let i = 1; i < topPts.length; i++) ctx.lineTo(topPts[i].x, topPts[i].y);
+  ctx.stroke();
+
+  // bottom
+  ctx.beginPath();
+  ctx.moveTo(botPts[0].x, botPts[0].y);
+  for (let i = 1; i < botPts.length; i++) ctx.lineTo(botPts[i].x, botPts[i].y);
+  ctx.stroke();
+
+  // bordes verticales (aprox)
+  const leftTop = topPts[0], leftBot = botPts[0];
+  const rightTop = topPts[topPts.length - 1], rightBot = botPts[botPts.length - 1];
+
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(leftTop.x, leftTop.y); ctx.lineTo(leftBot.x, leftBot.y);
+  ctx.moveTo(rightTop.x, rightTop.y); ctx.lineTo(rightBot.x, rightBot.y);
+  ctx.stroke();
+
+  ctx.restore();
+
+  // --- Handles ---
+  const handles = getHandlesModel();
+  for (const key of Object.keys(handles)) {
+    const s = screenProject(handles[key].x, handles[key].y, 0);
+    const isPivot = (key === 'neckPivot' || key === 'bodyPivot');
+    const isCurve = (key === 'curve');
+
+    // pivots: un poco distinto para distinguirlos
+    const color = isPivot ? 'rgba(255,0,0,0.75)' : (isCurve ? 'rgba(255,0,0,0.95)' : 'rgba(255,0,0,0.95)');
+    drawHandle(ctx, key, color, true, s.x, s.y);
+
+    // labels chiquitas
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
+    ctx.fillText(key, s.x + 12, s.y - 10);
+    ctx.restore();
+  }
+}
+
+// init overlay si aplica
+if (DEBUG_EDIT_ENABLED) {
+  initNeckEditorOverlay();
+}
