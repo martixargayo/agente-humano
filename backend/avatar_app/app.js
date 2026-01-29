@@ -190,18 +190,16 @@ const MOUTH_HEIGHT = 0.14; // alto máximo (labios + hueco)
 const MOUTH_CURVE = 0.0; // curvatura en U (0 = recto)
 
 // =========================
-// ✅ ÚNICA config de cuello (la que se edita)
+// Config cuello / separación cabeza-cuerpo (TUNED)
 // =========================
-window.NeckTuning = window.NeckTuning || {
-  centerX: MOUTH_CENTER_X,
-  width: MOUTH_WIDTH * 2.0,
-  topY: MOUTH_CENTER_Y + 0.06,
-  bottomY: MOUTH_CENTER_Y - 0.06,
-  curve: MOUTH_CURVE,
-
-  // pivotes
-  neckPivotY: (MOUTH_CENTER_Y - 0.06),
-  bodyPivotY: (MOUTH_CENTER_Y - 0.06) - 0.12,
+window.NeckTuning = {
+  centerX: -0.05540768292619062,
+  width: 0.3289615614114691,
+  topY: -0.3029435623085454,
+  bottomY: -0.5299623850146092,
+  curve: -0.18449820086885416,
+  neckPivotY: -0.5299623850146092,
+  bodyPivotY: -0.6499623850146092
 };
 
 // =========================
@@ -1217,6 +1215,7 @@ function animate() {
     particleMaterial.uniforms.uBodyPivot.value.set(0.0, t.bodyPivotY, 0.0);
   }
 
+  
   if (particlePoints) {
     particlePoints.rotation.set(0, 0, 0);
     particlePoints.position.set(0, 0, 0);
