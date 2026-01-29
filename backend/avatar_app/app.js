@@ -9,6 +9,23 @@ import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js'
 const URL_PARAMS = new URLSearchParams(window.location.search);
 const DEBUG_EDIT_ENABLED = URL_PARAMS.get('debugEdit') === '1';
 
+// ============================================================================
+// ✅ Neck Editor state (DEBE existir antes de animate() y keydown)
+// ============================================================================
+const NeckEditor = {
+  enabled: DEBUG_EDIT_ENABLED,
+  visible: DEBUG_EDIT_ENABLED,
+  overlay: null,
+  ctx: null,
+  dpr: 1,
+  dragging: null,
+  hoverKey: null,
+  raycaster: new THREE.Raycaster(),
+  plane: new THREE.Plane(new THREE.Vector3(0, 0, 1), 0), // z=0
+  handlesRadius: 10,
+  infoEl: null,
+};
+
 // =========================
 // Estado global del avatar / audio
 // =========================
@@ -1208,7 +1225,7 @@ function animate() {
   controls.update();
   renderer.render(scene, camera);
 
-  if (NeckEditor.visible) drawNeckEditorOverlay();
+  if (NeckEditor && NeckEditor.visible) drawNeckEditorOverlay();
 }
 
 animate();
@@ -1492,23 +1509,7 @@ testTalkBtn.addEventListener(
   { passive: false },
 );
 
-// ============================================================================
-// ✅ Neck Editor Overlay (solo si ?debugEdit=1)
-// ============================================================================
 
-const NeckEditor = {
-  enabled: DEBUG_EDIT_ENABLED,
-  visible: DEBUG_EDIT_ENABLED,
-  overlay: null,
-  ctx: null,
-  dpr: 1,
-  dragging: null, // { key, startPoint, startTuning }
-  hoverKey: null,
-  raycaster: new THREE.Raycaster(),
-  plane: new THREE.Plane(new THREE.Vector3(0, 0, 1), 0), // z=0
-  handlesRadius: 10,
-  infoEl: null,
-};
 
 function setNeckEditorVisible(v) {
   if (!NeckEditor.enabled) return;
