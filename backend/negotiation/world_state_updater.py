@@ -1,10 +1,12 @@
 # backend/negotiation/world_state_updater.py
 from __future__ import annotations
 
+import hashlib
 import re
 import os
 from typing import Any, List, Tuple
 
+from .evidence_registry import get_spec
 from .schemas import EvidenceItem, WorldState, default_world_state
 from .llm_state_extractor import (
     build_extractor_meta,
@@ -39,6 +41,10 @@ CONF = {
     "URGENCY_STRONG": float(os.getenv("CONF_URGENCY_STRONG", "0.70")),
     "URGENCY_WEAK": float(os.getenv("CONF_URGENCY_WEAK", "0.40")),
 }
+
+EVIDENCE_V2_MAX_CLAIMS = int(os.getenv("EVIDENCE_V2_MAX_CLAIMS", "200"))
+EVIDENCE_V2_RECENT_K = int(os.getenv("EVIDENCE_V2_RECENT_K", "3"))
+EVIDENCE_V2_MAX_UNKNOWN = int(os.getenv("EVIDENCE_V2_MAX_UNKNOWN", "50"))
 
 _DEADLINE_PATTERNS = [
     r"\bhoy\b",
@@ -205,6 +211,34 @@ _FIELD_TO_TYPE: dict[str, str] = {
     "tone_signal": "TONE",
 }
 
+LEGACY_FIELD_TO_PATH: dict[str, str] = {
+    "price_value": "negotiation.price.offer",
+    "price_mentioned": "negotiation.price.mentioned",
+    "price_firm": "negotiation.price.firmness",
+    "deadline_days": "negotiation.deadline.days",
+    "deadline_claimed": "negotiation.deadline.claimed",
+    "urgency_claimed": "negotiation.urgency.claimed",
+    "other_buyer_claimed": "negotiation.other_buyer.claimed",
+    "concession_made": "negotiation.concession.made",
+    "batna_claimed": "negotiation.batna.claimed",
+    "tone_signal": "negotiation.tone.signal",
+    "evidence_offered": "negotiation.evidence.offered",
+}
+
+PATH_TO_LEGACY: dict[str, dict[str, str]] = {
+    "negotiation.price.offer": {"type": "PRICE", "field": "price_value"},
+    "negotiation.price.mentioned": {"type": "PRICE", "field": "price_mentioned"},
+    "negotiation.price.firmness": {"type": "FIRMNESS", "field": "price_firm"},
+    "negotiation.deadline.days": {"type": "DEADLINE", "field": "deadline_days"},
+    "negotiation.deadline.claimed": {"type": "DEADLINE", "field": "deadline_claimed"},
+    "negotiation.urgency.claimed": {"type": "URGENCY", "field": "urgency_claimed"},
+    "negotiation.other_buyer.claimed": {"type": "OTHER_BUYER", "field": "other_buyer_claimed"},
+    "negotiation.concession.made": {"type": "CONCESSION", "field": "concession_made"},
+    "negotiation.batna.claimed": {"type": "BATNA", "field": "batna_claimed"},
+    "negotiation.tone.signal": {"type": "TONE", "field": "tone_signal"},
+    "negotiation.evidence.offered": {"type": "EVIDENCE_DOC", "field": "evidence_offered"},
+}
+
 
 def _evidence_key(item: EvidenceItem) -> tuple:
     evidence_type = item.get("type")
@@ -227,6 +261,84 @@ def _evidence_key(item: EvidenceItem) -> tuple:
         polarity,
         source,
     )
+
+
+def _norm_text_for_dedupe(text: str) -> str:
+    return (text or "").strip().lower()[:60]
+
+
+def _dedupe_key(path: str, polarity: str, bucket: Any, norm_text: str) -> str:
+    raw = f"{path}|{polarity}|{bucket}|{norm_text}".encode("utf-8")
+    return hashlib.sha1(raw).hexdigest()
+
+
+def _record_turn_idx(record: dict) -> int:
+    return int(((record.get("provenance") or {}).get("turn_idx") or 0))
+
+
+def _index_init() -> dict[str, dict]:
+    return {"latest_by_path": {}, "best_by_path": {}, "recent_by_path": {}}
+
+
+def _index_upsert(index: dict[str, Any], record: dict, recent_k: int) -> None:
+    claim = record.get("claim", {})
+    path = claim.get("path")
+    if not path:
+        return
+    latest = index.setdefault("latest_by_path", {})
+    best = index.setdefault("best_by_path", {})
+    recent = index.setdefault("recent_by_path", {})
+    turn_idx = _record_turn_idx(record)
+    if path not in latest or turn_idx >= _record_turn_idx(latest[path]):
+        latest[path] = record
+    if path not in best:
+        best[path] = record
+    else:
+        current = best[path]
+        curr_conf = float(current.get("confidence", 0.0))
+        next_conf = float(record.get("confidence", 0.0))
+        if next_conf > curr_conf or (
+            next_conf == curr_conf and turn_idx >= _record_turn_idx(current)
+        ):
+            best[path] = record
+    recent_list = list(recent.get(path, []))
+    recent_list.insert(0, record)
+    recent_list.sort(key=_record_turn_idx, reverse=True)
+    recent[path] = recent_list[:recent_k]
+
+
+def _path_for_legacy_item(item: EvidenceItem) -> str | None:
+    raw_path = (item.get("raw") or {}).get("path")
+    if isinstance(raw_path, str) and raw_path:
+        return raw_path
+    field = item.get("field") or ""
+    if isinstance(field, str) and "." in field:
+        return field
+    field = _infer_field(item)
+    if field in LEGACY_FIELD_TO_PATH:
+        return LEGACY_FIELD_TO_PATH[field]
+    evidence_type = item.get("type")
+    if evidence_type == "PRICE":
+        if item.get("value") is not None:
+            return "negotiation.price.offer"
+        return "negotiation.price.mentioned"
+    if evidence_type == "DEADLINE":
+        return "negotiation.deadline.days"
+    if evidence_type == "FIRMNESS":
+        return "negotiation.price.firmness"
+    if evidence_type == "URGENCY":
+        return "negotiation.urgency.claimed"
+    if evidence_type == "OTHER_BUYER":
+        return "negotiation.other_buyer.claimed"
+    if evidence_type == "CONCESSION":
+        return "negotiation.concession.made"
+    if evidence_type == "BATNA":
+        return "negotiation.batna.claimed"
+    if evidence_type == "TONE":
+        return "negotiation.tone.signal"
+    if evidence_type == "EVIDENCE_DOC":
+        return "negotiation.evidence.offered"
+    return None
 
 
 def _extract_sentence(text: str, match_span: tuple[int, int]) -> str:
@@ -260,6 +372,117 @@ def _parse_number(raw: str) -> float | None:
         return float(cleaned)
     except ValueError:
         return None
+
+
+def _make_record_v2(
+    *,
+    path: str,
+    value: Any,
+    polarity: str,
+    qualifiers: dict | None,
+    confidence: float,
+    text: str,
+    span: tuple[int, int] | None,
+    source: str,
+    turn_idx: int,
+    raw: dict | None,
+    unknown_claims: list[dict],
+) -> dict | None:
+    spec = get_spec(path)
+    if not spec:
+        unknown_claims.append(
+            {
+                "path": path,
+                "text": (text or "")[:120],
+                "source": source,
+                "turn_idx": turn_idx,
+                "reason": "path_not_registered",
+            }
+        )
+        return None
+    try:
+        coerced = spec.coerce(value) if value is not None else None
+    except Exception:
+        unknown_claims.append(
+            {
+                "path": path,
+                "text": (text or "")[:120],
+                "source": source,
+                "turn_idx": turn_idx,
+                "reason": "coerce_failed",
+            }
+        )
+        return None
+    qualifiers = qualifiers or {}
+    if not isinstance(qualifiers, dict):
+        qualifiers = {}
+    cleaned_qualifiers = {k: qualifiers[k] for k in qualifiers if k in spec.qualifiers_allowed}
+    bucket = spec.bucketize(coerced)
+    norm_text = _norm_text_for_dedupe(text)
+    return {
+        "dedupe_key": _dedupe_key(path, polarity, bucket, norm_text),
+        "claim": {
+            "path": path,
+            "value": coerced,
+            "polarity": polarity or "affirm",
+            "unit": spec.unit,
+            "qualifiers": cleaned_qualifiers,
+        },
+        "confidence": float(confidence or 0.0),
+        "provenance": {
+            "text": text or "",
+            "span": span,
+            "source": source,
+            "turn_idx": int(turn_idx),
+            "raw": raw,
+        },
+    }
+
+
+def _append_record_v2(
+    claims: list[dict],
+    record: dict,
+    window_turns: int,
+) -> bool:
+    if not record:
+        return False
+    dedupe_key = record.get("dedupe_key")
+    turn_idx = _record_turn_idx(record)
+    for item in reversed(claims[-50:]):
+        if item.get("dedupe_key") != dedupe_key:
+            continue
+        prev_turn = _record_turn_idx(item)
+        if abs(turn_idx - prev_turn) <= window_turns:
+            return False
+    claims.append(record)
+    return True
+
+
+def _rebuild_v2_index(claims: list[dict], recent_k: int) -> dict[str, dict]:
+    index = _index_init()
+    for record in claims:
+        _index_upsert(index, record, recent_k)
+    return index
+
+
+def _v2_record_to_legacy_item(record: dict) -> EvidenceItem | None:
+    claim = record.get("claim", {})
+    path = claim.get("path")
+    mapping = PATH_TO_LEGACY.get(path or "")
+    if not mapping:
+        return None
+    provenance = record.get("provenance", {})
+    return _make_evidence(
+        mapping["type"],
+        mapping["field"],
+        str(provenance.get("text", "")),
+        claim.get("value"),
+        str(provenance.get("source", "manual")),
+        float(record.get("confidence", 0.0)),
+        int(provenance.get("turn_idx") or 0),
+        span=provenance.get("span"),
+        raw={"v2_path": path, "qualifiers": claim.get("qualifiers", {})},
+    )
 
 
 def _extract_price(text: str) -> float | None:
@@ -876,6 +1099,206 @@ def _derive_flags_from_evidence(
     return world
 
 
+def _get_claim(
+    world: WorldState,
+    path: str,
+    *,
+    min_conf: float = 0.0,
+    prefer: str = "best",
+) -> dict | None:
+    v2 = world.get("world_observations_v2", {}) or {}
+    index = v2.get("index", {}) or {}
+    table = index.get("best_by_path", {}) if prefer == "best" else index.get("latest_by_path", {})
+    record = (table or {}).get(path)
+    if not record:
+        return None
+    if float(record.get("confidence", 0.0)) < min_conf:
+        return None
+    return record
+
+
+def _derive_legacy_from_v2(world: WorldState, confidence_min: float) -> WorldState:
+    defaults = default_world_state()
+    derived: dict[str, Any] = {
+        "price_mentioned": False,
+        "price_value": None,
+        "deadline_claimed": False,
+        "deadline_text": "",
+        "deadline_days": None,
+        "deadline_kind": "unknown",
+        "urgency_claimed": False,
+        "urgency_text": "",
+        "urgency_reason": "",
+        "other_buyer_claimed": False,
+        "other_buyer_text": "",
+        "other_buyer_offer_price": None,
+        "other_buyer_timing_text": "",
+        "concession_made": False,
+        "concession_text": "",
+        "batna_claimed": False,
+        "batna_text": "",
+        "price_firm": False,
+        "price_firm_text": "",
+        "evidence_offered": False,
+        "evidence_text": "",
+        "tone_signal": world.get("tone_signal", defaults["tone_signal"]),
+        "tone_confidence": float(world.get("tone_confidence", defaults["tone_confidence"]) or 0.0),
+    }
+
+    price_offer = _get_claim(world, "negotiation.price.offer", min_conf=CONF["PRICE_NUMERIC"])
+    price_mentioned = _get_claim(
+        world, "negotiation.price.mentioned", min_conf=CONF["PRICE_KEYWORD"], prefer="latest"
+    )
+    if price_offer or price_mentioned:
+        derived["price_mentioned"] = True
+    if price_offer:
+        derived["price_value"] = float(price_offer.get("claim", {}).get("value"))
+
+    deadline_days = _get_claim(world, "negotiation.deadline.days", min_conf=CONF["DEADLINE_WEAK"])
+    deadline_claimed = _get_claim(
+        world, "negotiation.deadline.claimed", min_conf=CONF["DEADLINE_WEAK"]
+    )
+    if deadline_days or deadline_claimed:
+        derived["deadline_claimed"] = True
+        if deadline_days:
+            derived["deadline_days"] = int(deadline_days.get("claim", {}).get("value") or 0)
+            derived["deadline_text"] = str(deadline_days.get("provenance", {}).get("text", ""))
+
+    urgency = _get_claim(world, "negotiation.urgency.claimed", min_conf=CONF["URGENCY_STRONG"])
+    if urgency:
+        derived["urgency_claimed"] = True
+        derived["urgency_text"] = str(urgency.get("provenance", {}).get("text", ""))
+        derived["urgency_reason"] = derived["urgency_text"][:120]
+
+    other_buyer = _get_claim(world, "negotiation.other_buyer.claimed", min_conf=confidence_min)
+    if other_buyer:
+        derived["other_buyer_claimed"] = True
+        derived["other_buyer_text"] = str(other_buyer.get("provenance", {}).get("text", ""))
+        qualifiers = (other_buyer.get("claim", {}) or {}).get("qualifiers", {}) or {}
+        derived["other_buyer_offer_price"] = qualifiers.get("offer_price")
+        derived["other_buyer_timing_text"] = qualifiers.get("timing") or ""
+
+    concession = _get_claim(world, "negotiation.concession.made", min_conf=confidence_min)
+    if concession:
+        derived["concession_made"] = True
+        derived["concession_text"] = str(concession.get("provenance", {}).get("text", ""))
+
+    batna = _get_claim(world, "negotiation.batna.claimed", min_conf=confidence_min)
+    if batna:
+        derived["batna_claimed"] = True
+        derived["batna_text"] = str(batna.get("provenance", {}).get("text", ""))
+
+    firm = _get_claim(world, "negotiation.price.firmness", min_conf=CONF["FIRMNESS_STRONG"])
+    if firm:
+        derived["price_firm"] = True
+        derived["price_firm_text"] = str(firm.get("provenance", {}).get("text", ""))
+
+    evidence_offer = _get_claim(world, "negotiation.evidence.offered", min_conf=confidence_min)
+    if evidence_offer:
+        derived["evidence_offered"] = True
+        derived["evidence_text"] = str(evidence_offer.get("provenance", {}).get("text", ""))
+
+    tone_min = float(os.getenv("CONF_TONE_MIN", "0.45"))
+    tone = _get_claim(world, "negotiation.tone.signal", min_conf=tone_min)
+    if tone:
+        derived["tone_signal"] = str(tone.get("claim", {}).get("value", derived["tone_signal"]))
+        derived["tone_confidence"] = max(
+            float(derived.get("tone_confidence", 0.0)), float(tone.get("confidence", 0.0))
+        )
+
+    world.update(derived)
+    world.setdefault("world_derived", {"fields": {}})
+    world["world_derived"]["fields"] = dict(derived)
+    return world
+
+
+def _sync_legacy_evidence_from_v2(world: WorldState) -> WorldState:
+    claims = (world.get("world_observations_v2") or {}).get("claims", []) or []
+    items: list[EvidenceItem] = []
+    window_turns = int(os.getenv("DEDUP_EVIDENCE_WINDOW_TURNS", "3"))
+    for record in claims:
+        legacy = _v2_record_to_legacy_item(record)
+        if legacy:
+            _append_evidence(items, legacy, window_turns)
+    world["evidence_items"] = items
+    world.setdefault("world_observations", {"raw_fields": {}, "evidence_items": []})
+    world["world_observations"]["evidence_items"] = list(items)
+    return world
+
+
+def _build_v2_from_evidence(
+    evidence_items: list[EvidenceItem],
+    claims: list[dict],
+    *,
+    turn_idx: int,
+    unknown_claims: list[dict],
+) -> list[dict]:
+    window_turns = int(os.getenv("DEDUP_EVIDENCE_WINDOW_TURNS", "3"))
+    for item in evidence_items:
+        if not isinstance(item, dict):
+            continue
+        path = _path_for_legacy_item(item)
+        if not path:
+            unknown_claims.append(
+                {
+                    "path": str(item.get("field") or item.get("type") or ""),
+                    "text": str(item.get("text", ""))[:120],
+                    "source": item.get("source", "manual"),
+                    "turn_idx": turn_idx,
+                    "reason": "invalid_shape",
+                }
+            )
+            continue
+        text = str(item.get("text", "")).strip()
+        confidence = item.get("confidence")
+        if not text or confidence is None:
+            unknown_claims.append(
+                {
+                    "path": path,
+                    "text": text[:120],
+                    "source": item.get("source", "manual"),
+                    "turn_idx": turn_idx,
+                    "reason": "invalid_shape",
+                }
+            )
+            continue
+        value = item.get("value")
+        if path in {
+            "negotiation.price.mentioned",
+            "negotiation.deadline.claimed",
+            "negotiation.urgency.claimed",
+            "negotiation.other_buyer.claimed",
+            "negotiation.concession.made",
+            "negotiation.batna.claimed",
+            "negotiation.evidence.offered",
+        } and value is None:
+            value = True
+        qualifiers: dict[str, Any] = {}
+        if path == "negotiation.other_buyer.claimed" and isinstance(value, dict):
+            qualifiers = {
+                "offer_price": value.get("offer_price"),
+                "timing": value.get("timing"),
+            }
+            value = True
+        record = _make_record_v2(
+            path=path,
+            value=value,
+            polarity=item.get("polarity", "affirm"),
+            qualifiers=qualifiers,
+            confidence=float(confidence),
+            text=text,
+            span=item.get("span"),
+            source=str(item.get("source", "manual")),
+            turn_idx=turn_idx,
+            raw=item.get("raw"),
+            unknown_claims=unknown_claims,
+        )
+        if record:
+            _append_record_v2(claims, record, window_turns)
+    claims.sort(key=_record_turn_idx, reverse=True)
+    return claims[:EVIDENCE_V2_MAX_CLAIMS]
+
+
 def update_world_state(
     prev_world: WorldState | None,
     user_message: str,
@@ -887,14 +1310,21 @@ def update_world_state(
     if prev_world:
         base.update(prev_world)
 
+    turn_idx = int(turn_count or 0) or int((base.get("world_state_meta") or {}).get("turn_idx") or 0) + 1
+    base.setdefault("world_state_meta", {})
+    base["world_state_meta"]["turn_idx"] = turn_idx
+    base["world_state_meta"].setdefault("unknown_claims", [])
+    base.setdefault(
+        "world_observations_v2",
+        {"claims": [], "index": _index_init()},
+    )
+
     recent_history = _coerce_recent_history(recent_history)
     belief_state = belief_state or {}
     use_llm = os.getenv("USE_LLM_EXTRACTOR", "true").lower() in {"1", "true", "yes"}
     use_legacy = os.getenv("USE_LEGACY_MATCHERS", "true").lower() in {"1", "true", "yes"}
     confidence_min = float(os.getenv("EVIDENCE_CONFIDENCE_MIN", "0.6"))
     base["world_state_meta"]["evidence_confidence_min"] = confidence_min
-    if turn_count is not None:
-        base["world_state_meta"]["turn_idx"] = int(turn_count)
 
     if use_llm and _should_call_llm_extractor(user_message, base):
         output = extract_state_patch_llm(base, belief_state, user_message, recent_history)
@@ -944,7 +1374,21 @@ def update_world_state(
             world["evidence_items"] = items
             world["world_state_meta"]["last_update_source"] = "llm"
         meta = build_extractor_meta(output)
-        world = _derive_flags_from_evidence(world, confidence_min)
+        unknown_claims = list(base.get("world_state_meta", {}).get("unknown_claims", []))
+        claims = list((base.get("world_observations_v2") or {}).get("claims", []) or [])
+        claims = _build_v2_from_evidence(
+            list(world.get("evidence_items", []) or []),
+            claims,
+            turn_idx=turn_idx,
+            unknown_claims=unknown_claims,
+        )
+        unknown_claims = unknown_claims[-EVIDENCE_V2_MAX_UNKNOWN:]
+        world["world_state_meta"]["unknown_claims"] = unknown_claims
+        world.setdefault("world_observations_v2", {"claims": [], "index": _index_init()})
+        world["world_observations_v2"]["claims"] = claims
+        world["world_observations_v2"]["index"] = _rebuild_v2_index(claims, EVIDENCE_V2_RECENT_K)
+        world = _sync_legacy_evidence_from_v2(world)
+        world = _derive_legacy_from_v2(world, confidence_min)
         world.setdefault("world_observations", {"raw_fields": {}, "evidence_items": []})
         if isinstance(world["world_observations"].get("raw_fields"), dict):
             world["world_observations"]["raw_fields"].update(patch)
@@ -956,7 +1400,21 @@ def update_world_state(
     if use_legacy:
         world = _legacy_regex_update(base, user_message)
         world["world_state_meta"]["last_update_source"] = "regex"
-        world = _derive_flags_from_evidence(world, confidence_min)
+        unknown_claims = list(base.get("world_state_meta", {}).get("unknown_claims", []))
+        claims = list((base.get("world_observations_v2") or {}).get("claims", []) or [])
+        claims = _build_v2_from_evidence(
+            list(world.get("evidence_items", []) or []),
+            claims,
+            turn_idx=turn_idx,
+            unknown_claims=unknown_claims,
+        )
+        unknown_claims = unknown_claims[-EVIDENCE_V2_MAX_UNKNOWN:]
+        world["world_state_meta"]["unknown_claims"] = unknown_claims
+        world.setdefault("world_observations_v2", {"claims": [], "index": _index_init()})
+        world["world_observations_v2"]["claims"] = claims
+        world["world_observations_v2"]["index"] = _rebuild_v2_index(claims, EVIDENCE_V2_RECENT_K)
+        world = _sync_legacy_evidence_from_v2(world)
+        world = _derive_legacy_from_v2(world, confidence_min)
         world["world_state_meta"]["updated_fields"] = sorted(
             [key for key in world.keys() if world.get(key) != base.get(key)]
         )
@@ -967,6 +1425,15 @@ def update_world_state(
             "extractor_confidence_summary": {"min": 0.0, "avg": 0.0},
         }
 
+    base["world_observations_v2"]["index"] = _rebuild_v2_index(
+        list((base.get("world_observations_v2") or {}).get("claims", []) or []),
+        EVIDENCE_V2_RECENT_K,
+    )
+    base["world_state_meta"]["unknown_claims"] = list(
+        base.get("world_state_meta", {}).get("unknown_claims", [])
+    )[-EVIDENCE_V2_MAX_UNKNOWN:]
+    base = _sync_legacy_evidence_from_v2(base)
+    base = _derive_legacy_from_v2(base, confidence_min)
     return base, {
         "extractor_used": False,
         "extractor_reasons": ["skipped"],

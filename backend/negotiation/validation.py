@@ -28,6 +28,8 @@ from .schemas import (
 _ALLOWED_HEALTH: set[InteractionHealth] = {"stable", "tense", "stalled"}
 _ALLOWED_RISK: set[RiskPosture] = {"low", "mid", "high"}
 _ALLOWED_TONE: set[ToneSignal] = {"neutral", "friendly", "tense"}
+_MAX_V2_CLAIMS = int(os.getenv("EVIDENCE_V2_MAX_CLAIMS", "200"))
+_MAX_V2_UNKNOWN = int(os.getenv("EVIDENCE_V2_MAX_UNKNOWN", "50"))
 _ALLOWED_INTENT_STATUS: set[IntentStatus] = {
     "inactive",
     "active",
@@ -198,6 +200,42 @@ def normalize_world_state(raw: object) -> Tuple[WorldState, List[str]]:
     else:
         issues.append("world_observations_invalid")
 
+    observations_v2 = raw.get("world_observations_v2", {})
+    if isinstance(observations_v2, dict):
+        claims = observations_v2.get("claims", [])
+        cleaned_claims = []
+        if isinstance(claims, list):
+            for item in claims:
+                if not isinstance(item, dict):
+                    continue
+                claim = item.get("claim", {})
+                provenance = item.get("provenance", {})
+                if not isinstance(claim, dict) or not isinstance(provenance, dict):
+                    continue
+                path = claim.get("path")
+                text = provenance.get("text")
+                confidence = item.get("confidence")
+                if not path or not isinstance(path, str) or not text or confidence is None:
+                    continue
+                claim.setdefault("polarity", "affirm")
+                claim.setdefault("qualifiers", {})
+                cleaned_claims.append(item)
+        if cleaned_claims:
+            cleaned_claims.sort(
+                key=lambda rec: int((rec.get("provenance") or {}).get("turn_idx") or 0),
+                reverse=True,
+            )
+            cleaned_claims = cleaned_claims[:_MAX_V2_CLAIMS]
+        base["world_observations_v2"]["claims"] = cleaned_claims
+        index = observations_v2.get("index", {})
+        if isinstance(index, dict):
+            if index:
+                base["world_observations_v2"]["index"] = index
+        else:
+            issues.append("world_observations_v2_index_invalid")
+    else:
+        issues.append("world_observations_v2_invalid")
+
     derived = raw.get("world_derived", {})
     if isinstance(derived, dict):
         fields = derived.get("fields", {})
@@ -232,6 +270,11 @@ def normalize_world_state(raw: object) -> Tuple[WorldState, List[str]]:
             except (TypeError, ValueError):
                 issues.append("world_state_meta_turn_idx_invalid")
                 meta["turn_idx"] = None
+        unknown_claims = world_state_meta.get("unknown_claims", meta.get("unknown_claims", []))
+        if isinstance(unknown_claims, list):
+            meta["unknown_claims"] = unknown_claims[-_MAX_V2_UNKNOWN:]
+        else:
+            issues.append("world_state_meta_unknown_claims_invalid")
         base["world_state_meta"] = meta
     else:
         issues.append("world_state_meta_invalid")

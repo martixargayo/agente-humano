@@ -306,6 +306,32 @@ def _diff_belief_state(prev: BeliefState, new: BeliefState) -> dict:
     return diff
 
 
+def _top_evidence_v2(world_state: WorldState) -> list[dict]:
+    claims = (world_state.get("world_observations_v2") or {}).get("claims", []) or []
+    top = sorted(
+        claims,
+        key=lambda rec: (
+            float(rec.get("confidence", 0.0)),
+            int((rec.get("provenance") or {}).get("turn_idx") or 0),
+        ),
+        reverse=True,
+    )[:5]
+    compact = []
+    for record in top:
+        claim = record.get("claim", {}) or {}
+        provenance = record.get("provenance", {}) or {}
+        compact.append(
+            {
+                "path": claim.get("path"),
+                "value": claim.get("value"),
+                "confidence": record.get("confidence"),
+                "turn_idx": provenance.get("turn_idx"),
+                "text_prefix": str(provenance.get("text", ""))[:60],
+            }
+        )
+    return compact
+
+
 # ---- RAG táctico por policy ----
 
 
@@ -897,6 +923,10 @@ def run_negotiation_agent(
             ),
             "extractor_confidence_summary": new_graph_state.get("extractor_meta", {}).get(
                 "extractor_confidence_summary", {"min": 0.0, "avg": 0.0}
+            ),
+            "top_evidence_v2": _top_evidence_v2(new_world_state),
+            "unknown_claims_count": len(
+                (new_world_state.get("world_state_meta") or {}).get("unknown_claims", [])
             ),
             "memory_meta": new_graph_state.get("memory_meta", {}),
             "refresh_meta": new_graph_state.get("refresh_meta", {}),

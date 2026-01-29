@@ -116,6 +116,7 @@ class WorldState(TypedDict):
     conflict_markers: List[str]
     evidence_items: List["EvidenceItem"]
     world_observations: "WorldObservations"
+    world_observations_v2: "WorldObservationsV2"
     world_derived: "WorldDerived"
     world_state_meta: "WorldStateMeta"
 
@@ -138,6 +139,40 @@ class WorldObservations(TypedDict):
     evidence_items: List["EvidenceItem"]
 
 
+class EvidenceV2Claim(TypedDict):
+    path: str
+    value: Any | None
+    polarity: EvidencePolarity
+    unit: str | None
+    qualifiers: Dict[str, Any]
+
+
+class EvidenceV2Provenance(TypedDict):
+    text: str
+    span: tuple[int, int] | None
+    source: EvidenceSource
+    turn_idx: int
+    raw: Dict[str, Any] | None
+
+
+class EvidenceV2Record(TypedDict):
+    claim: EvidenceV2Claim
+    confidence: float
+    dedupe_key: str
+    provenance: EvidenceV2Provenance
+
+
+class EvidenceV2Index(TypedDict):
+    latest_by_path: Dict[str, EvidenceV2Record]
+    best_by_path: Dict[str, EvidenceV2Record]
+    recent_by_path: Dict[str, List[EvidenceV2Record]]
+
+
+class WorldObservationsV2(TypedDict):
+    claims: List[EvidenceV2Record]
+    index: EvidenceV2Index
+
+
 class WorldDerived(TypedDict):
     fields: Dict[str, Any]
 
@@ -152,6 +187,7 @@ class WorldStateMeta(TypedDict):
     evidence_confidence_min: float
     updated_fields: List[str]
     turn_idx: int | None
+    unknown_claims: List[Dict[str, Any]]
 
 
 class BeliefReason(TypedDict):
@@ -273,12 +309,21 @@ def default_world_state() -> WorldState:
             "raw_fields": {},
             "evidence_items": [],
         },
+        "world_observations_v2": {
+            "claims": [],
+            "index": {
+                "latest_by_path": {},
+                "best_by_path": {},
+                "recent_by_path": {},
+            },
+        },
         "world_derived": {"fields": {}},
         "world_state_meta": {
             "last_update_source": "regex",
             "evidence_confidence_min": 0.6,
             "updated_fields": [],
             "turn_idx": None,
+            "unknown_claims": [],
         },
     }
 
