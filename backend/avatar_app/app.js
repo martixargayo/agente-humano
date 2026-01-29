@@ -22,6 +22,13 @@ const AudioDebug = {
   logIntervalMs: 1000,
 };
 
+// =========================
+// Debug visual: pintar por aHeadWeight
+//   - Activa con ?debugNeck=1 o ?debugHead=1
+//   - Toggle con tecla N
+// =========================
+const DebugView = { headWeight: false };
+
 (() => {
   const params = new URLSearchParams(window.location.search);
   if (params.get('audioDebug') === '1') AudioDebug.enabled = true;
@@ -31,6 +38,12 @@ const AudioDebug = {
   if (!Number.isNaN(scale)) AudioDebug.scale = scale;
   const logIntervalMs = parseFloat(params.get('logIntervalMs'));
   if (!Number.isNaN(logIntervalMs)) AudioDebug.logIntervalMs = logIntervalMs;
+
+  // Debug cuello
+  if (params.get('debugNeck') === '1' || params.get('debugHead') === '1') {
+    DebugView.headWeight = true;
+    console.info('[debug] Debug cuello/cabeza activado (aHeadWeight). Pulsa N para alternar.');
+  }
 
   if (AudioDebug.enabled) {
     console.info('[audio-debug] Activado', {
@@ -42,6 +55,13 @@ const AudioDebug = {
     console.info('Para depurar el movimiento de labios añade ?audioDebug=1&minRms=0.01&levelScale=15 a la URL.');
   }
 })();
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'n' || e.key === 'N') {
+    DebugView.headWeight = !DebugView.headWeight;
+    console.info('[debug] Debug cuello/cabeza (aHeadWeight):', DebugView.headWeight ? 'ON' : 'OFF');
+  }
+});
 
 let audioCtx = null;
 let analyser = null;
@@ -144,10 +164,27 @@ const MOUTH_HEIGHT = 0.14; // alto máximo (labios + hueco)
 const MOUTH_CURVE = 0.0; // curvatura en U (0 = recto)
 
 // =========================
+// Config cuello / separación cabeza-cuerpo (ajustable a mano)
+// =========================
+// Colocado inicialmente "cerca de la boca" para que lo ajustes tú rápido.
+// Dos líneas (top/bottom) + curvatura + ancho.
+// Si quieres un rectángulo más estrecho: baja NECK_WIDTH.
+// Si quieres más banda de mezcla: separa más TOP/BOTTOM.
+const NECK_CENTER_X = MOUTH_CENTER_X;
+const NECK_WIDTH = MOUTH_WIDTH * 2.0;              // ancho ~2x boca (ajustable)
+const NECK_LINE_TOP_Y = MOUTH_CENTER_Y + 0.06;     // línea superior (ajustable)
+const NECK_LINE_BOTTOM_Y = MOUTH_CENTER_Y - 0.06;  // línea inferior (ajustable)
+const NECK_CURVE = MOUTH_CURVE;                    // curvatura (ajustable, 0 = recto)
+
+// Pivotes (ajustables). El cuello suele articular cerca de la línea inferior.
+const NECK_PIVOT = new THREE.Vector3(0.0, NECK_LINE_BOTTOM_Y, 0.0);
+const BODY_PIVOT = new THREE.Vector3(0.0, NECK_LINE_BOTTOM_Y - 0.12, 0.0);
+
+// =========================
 // 2. Shaders de partículas
 // =========================
 
-// Vertex: movimiento tipo “campo” + respiración + boca hablando + tamaño fijo
+// Vertex: movimiento tipo “campo” + respiración + boca hablando + rig cabeza/cuerpo + tamaño fijo
 const vertexShader = /* glsl */ `
 precision highp float;
 
@@ -163,11 +200,18 @@ uniform float uTalkAmpTop;
 uniform float uTalkAmpBot;
 uniform float uTalkFreq;
 uniform float uLipDepthAmp;
-uniform float uRestOpen;   // apertura mínima en reposo
+uniform float uRestOpen;
 
 // respiración
 uniform float uBreathAmp;
 uniform float uBreathFreq;
+
+// NUEVO: rig procedural cabeza/cuerpo
+uniform vec3 uHeadRot;     // x=pitch, y=yaw, z=roll
+uniform vec3 uBodyRot;     // x=pitch, y=yaw, z=roll
+uniform vec3 uBodyOffset;  // traslación sutil del cuerpo
+uniform vec3 uNeckPivot;   // pivote cuello
+uniform vec3 uBodyPivot;   // pivote cuerpo
 
 attribute vec3 aBasePosition;
 attribute vec3 aRandom;
@@ -178,7 +222,11 @@ attribute vec2 aUv;
 attribute float aMouthWeight;
 attribute float aMouthSide;
 
+// NUEVO: peso cabeza (0=cuerpo, 1=cabeza)
+attribute float aHeadWeight;
+
 varying vec2 vUv;
+varying float vHeadWeight;
 
 // --- helpers de ruido simples --- //
 float hash11(float p) {
@@ -195,13 +243,49 @@ float simpleNoise(vec3 p, float t) {
   return (n1 + n2) * 0.5; // 0..1
 }
 
+// --- rotaciones --- //
+mat3 rotX(float a) {
+  float s = sin(a), c = cos(a);
+  return mat3(
+    1.0, 0.0, 0.0,
+    0.0, c,   -s,
+    0.0, s,   c
+  );
+}
+
+mat3 rotY(float a) {
+  float s = sin(a), c = cos(a);
+  return mat3(
+    c,   0.0, s,
+    0.0, 1.0, 0.0,
+    -s,  0.0, c
+  );
+}
+
+mat3 rotZ(float a) {
+  float s = sin(a), c = cos(a);
+  return mat3(
+    c,   -s,  0.0,
+    s,   c,   0.0,
+    0.0, 0.0, 1.0
+  );
+}
+
+vec3 rotateAroundPivot(vec3 p, vec3 pivot, vec3 r) {
+  vec3 q = p - pivot;
+  // orden: yaw(Y) -> pitch(X) -> roll(Z)
+  q = rotY(r.y) * rotX(r.x) * rotZ(r.z) * q;
+  return q + pivot;
+}
+
 void main() {
   vUv = aUv;
+  vHeadWeight = aHeadWeight;
 
   vec3 pos = aBasePosition;
   float t = uTime;
 
-  // 1) ONDA GLOBAL SUAVE (como “campo” de la cara)
+  // 1) ONDA GLOBAL SUAVE
   float globalPhase = t * 0.5;
   float swayX = sin(globalPhase + aRandom.x * 6.2831);
   float swayY = cos(globalPhase * 0.8 + aRandom.y * 6.2831);
@@ -212,7 +296,7 @@ void main() {
     0.0
   ) * uGlobalAmp;
 
-  // 2) MOVIMIENTO POR CLUSTERS (manchas)
+  // 2) MOVIMIENTO POR CLUSTERS
   float clusterPhase = hash11(aClusterId + 10.0) * 6.2831;
   float clusterAnim = sin(t * 0.8 + clusterPhase);
 
@@ -224,49 +308,37 @@ void main() {
 
   vec3 clusterOffset = clusterDir * clusterAnim * 0.004 * uClusterAmp;
 
-  // 3) MICRO-NOISE (ligero temblor elegante)
+  // 3) MICRO-NOISE
   float n = simpleNoise(aBasePosition * 1.5, t * 0.6);
-  float micro = (n - 0.5); // -0.5..+0.5
+  float micro = (n - 0.5);
 
   vec3 microDir = normalize(aRandom * 2.0 - 1.0);
   vec3 microOffset = microDir * micro * 0.002 * uNoiseAmp;
 
   // 3.5) RESPIRACIÓN SUAVE (más peso en zona baja)
-  float breathPhase = sin(uTime * uBreathFreq) * 0.5 + 0.5; // 0..1
+  float breathPhase = sin(uTime * uBreathFreq) * 0.5 + 0.5;
   float heightFactor = clamp(1.0 - (aBasePosition.y + 0.3) * 2.0, 0.0, 1.0);
   float breath = breathPhase * heightFactor * uBreathAmp;
   vec3 breathOffset = vec3(0.0, breath * 0.01, breath * 0.005);
 
-  // 4) HABLA: labios arriba/abajo + un poco hacia dentro (Z-)
+  // 4) HABLA (boca)
   float phase = sin(uTime * uTalkFreq);
-  float talkOpen = max(phase, 0.0) * uTalk; // apertura por habla (0..1)
+  float talkOpen = max(phase, 0.0) * uTalk;
 
-  // apertura total = rest + habla
   float totalOpen = uRestOpen + talkOpen;
   totalOpen = clamp(totalOpen, 0.0, 1.0);
 
-  // +1 labio superior, -1 labio inferior
   float side = aMouthSide;
-
-  // amplitud distinta arriba/abajo
   float lipAmp = mix(uTalkAmpBot, uTalkAmpTop, step(0.0, side));
 
-  // factor total según peso de boca y apertura
   float mouthFactor = aMouthWeight * totalOpen;
 
-  // desplazamiento vertical
   float verticalOffset = side * lipAmp * mouthFactor;
-
-  // pequeño desplazamiento hacia dentro (Z-)
   float depthOffset = -uLipDepthAmp * mouthFactor;
 
-  vec3 mouthOffset = vec3(
-    0.0,
-    verticalOffset,
-    depthOffset
-  );
+  vec3 mouthOffset = vec3(0.0, verticalOffset, depthOffset);
 
-  // POSICIÓN FINAL
+  // Base + offsets + boca
   vec3 displaced = pos
     + globalOffset
     + clusterOffset
@@ -274,24 +346,29 @@ void main() {
     + breathOffset
     + mouthOffset;
 
-  vec4 mvPosition = modelViewMatrix * vec4(displaced, 1.0);
+  // ===== Rig cabeza/cuerpo con mezcla por aHeadWeight =====
+  vec3 bodyPos = rotateAroundPivot(displaced, uBodyPivot, uBodyRot) + uBodyOffset;
+  vec3 headPos = rotateAroundPivot(bodyPos, uNeckPivot, uHeadRot);
+  vec3 finalPos = mix(bodyPos, headPos, aHeadWeight);
 
-  // Tamaño FIJO en pantalla (no depende de la distancia)
+  vec4 mvPosition = modelViewMatrix * vec4(finalPos, 1.0);
+
   gl_PointSize = uPointSize;
-
   gl_Position = projectionMatrix * mvPosition;
 }
 `;
 
-// Fragment: disco suave + modulación por textura de color (zonas claras/oscuras)
+// Fragment: disco suave + modulación por textura (normal) + debug por aHeadWeight
 const fragmentShader = /* glsl */ `
 precision highp float;
 
 uniform vec3 uColor;
 uniform sampler2D uColorMap;
 uniform float uUseMap; // 1.0 si hay textura, 0.0 si no
+uniform float uDebugHeadWeight; // 1.0 = debug ON
 
 varying vec2 vUv;
+varying float vHeadWeight;
 
 void main() {
   // 1) círculo suave
@@ -302,21 +379,30 @@ void main() {
   float r = sqrt(r2);
   float circle = 1.0 - smoothstep(0.7, 1.0, r);
 
+  if (circle < 0.02) discard;
+
+  // DEBUG: pintar por peso cabeza/cuerpo
+  if (uDebugHeadWeight > 0.5) {
+    // 0=cuerpo (negro), 1=cabeza (blanco), banda=gris
+    vec3 dbg = vec3(clamp(vHeadWeight, 0.0, 1.0));
+    gl_FragColor = vec4(dbg, circle);
+    return;
+  }
+
   // 2) leer color de la textura de piel (si existe)
   vec3 texColor = texture2D(uColorMap, vUv).rgb;
 
   // brillo 0..1
   float densityRaw = (texColor.r + texColor.g + texColor.b) / 3.0;
-  // si no hay textura, usamos 1.0 (todo visible)
   float density = mix(1.0, densityRaw, uUseMap);
 
-  // 3) mapear brillo → alpha (zonas oscuras casi desaparecen)
+  // 3) brillo → alpha
   float alphaMask = density;
   float alpha = circle * alphaMask;
 
   if (alpha < 0.02) discard;
 
-  // 4) color final: base gris, ligeramente modulado por el brillo
+  // 4) color final
   vec3 baseColor = uColor;
   vec3 finalColor = mix(baseColor * 0.6, baseColor, density);
 
@@ -327,6 +413,13 @@ void main() {
 // =========================
 // 3. Generar puntos desde vértices (cara frontal) + UV
 // =========================
+function smoothstepJS(edge0, edge1, x) {
+  const d = edge1 - edge0;
+  if (Math.abs(d) < 1e-8) return x < edge0 ? 0 : 1;
+  const t = Math.max(0, Math.min(1, (x - edge0) / d));
+  return t * t * (3 - 2 * t);
+}
+
 function generateFaceParticlesFromVertices(srcGeometry) {
   const srcPos = srcGeometry.getAttribute('position');
   const srcUv = srcGeometry.getAttribute('uv');
@@ -370,6 +463,9 @@ function generateFaceParticlesFromVertices(srcGeometry) {
   // Boca
   const mouthWeights = new Float32Array(count);
   const mouthSides = new Float32Array(count);
+
+  // Cabeza/cuerpo (cuello)
+  const headWeights = new Float32Array(count);
 
   for (let i = 0; i < count; i++) {
     // random por punto
@@ -418,6 +514,32 @@ function generateFaceParticlesFromVertices(srcGeometry) {
 
     mouthWeights[i] = weight;
     mouthSides[i] = side;
+
+    // ------- Cálculo de región cuello (2 líneas + curvatura + ancho) -------
+    // Líneas curvas: TOP y BOTTOM, curvadas como la boca (parábola en X).
+    const dxN = x - NECK_CENTER_X;
+    const insideWidth = Math.abs(dxN) <= NECK_WIDTH;
+
+    const nx = dxN / NECK_WIDTH;
+    const nxClamped = Math.max(-1, Math.min(1, nx));
+    const curve = NECK_CURVE * nxClamped * nxClamped;
+
+    let yTop = insideWidth ? (NECK_LINE_TOP_Y - curve) : NECK_LINE_TOP_Y;
+    let yBot = insideWidth ? (NECK_LINE_BOTTOM_Y - curve) : NECK_LINE_BOTTOM_Y;
+
+    // Seguridad: si el usuario invierte líneas, arreglamos
+    if (yTop < yBot) {
+      const tmp = yTop;
+      yTop = yBot;
+      yBot = tmp;
+    }
+
+    let hw = 0.0;
+    if (y >= yTop) hw = 1.0;
+    else if (y <= yBot) hw = 0.0;
+    else hw = smoothstepJS(yBot, yTop, y);
+
+    headWeights[i] = hw;
   }
 
   const particlesGeo = new THREE.BufferGeometry();
@@ -428,6 +550,7 @@ function generateFaceParticlesFromVertices(srcGeometry) {
   particlesGeo.setAttribute('aClusterId', new THREE.BufferAttribute(clusterIds, 1));
   particlesGeo.setAttribute('aMouthWeight', new THREE.BufferAttribute(mouthWeights, 1));
   particlesGeo.setAttribute('aMouthSide', new THREE.BufferAttribute(mouthSides, 1));
+  particlesGeo.setAttribute('aHeadWeight', new THREE.BufferAttribute(headWeights, 1));
 
   return particlesGeo;
 }
@@ -525,6 +648,16 @@ loader.load(
         // respiración
         uBreathAmp: { value: 1.0 }, // cantidad de respiración
         uBreathFreq: { value: 0.6 }, // velocidad respiración (lenta)
+
+        // NUEVO: rig procedural
+        uHeadRot: { value: new THREE.Vector3(0, 0, 0) },
+        uBodyRot: { value: new THREE.Vector3(0, 0, 0) },
+        uBodyOffset: { value: new THREE.Vector3(0, 0, 0) },
+        uNeckPivot: { value: NECK_PIVOT.clone() },
+        uBodyPivot: { value: BODY_PIVOT.clone() },
+
+        // DEBUG
+        uDebugHeadWeight: { value: DebugView.headWeight ? 1.0 : 0.0 },
       },
     });
 
@@ -638,7 +771,6 @@ async function warmupFrontendTts() {
   }
 }
 
-
 async function requestTTS(text) {
   const res = await fetch(`${BACKEND_URL}/tts`, {
     method: 'POST',
@@ -726,7 +858,7 @@ async function playAudioFromAudioData(
     throw err;
   }
 
-    // --- Padding de silencio para evitar que el navegador recorte el inicio ---
+  // --- Padding de silencio para evitar que el navegador recorte el inicio ---
   const paddingSeconds = 0.06; // ~60ms
   const paddingSamples = Math.floor(audioBuffer.sampleRate * paddingSeconds);
 
@@ -745,7 +877,6 @@ async function playAudioFromAudioData(
   }
 
   audioBuffer = paddedBuffer;
-
 
   if (AudioDebug.enabled) {
     console.log('[avatar] TTS decodificado', {
@@ -928,6 +1059,105 @@ function getTalkLevelFromAudio() {
 }
 
 // =========================
+// Movimiento humano "espontáneo" (targets + pausas)
+// =========================
+function randRange(a, b) {
+  return a + (b - a) * Math.random();
+}
+
+const MotionConfig = {
+  head: {
+    // amplitudes equivalentes a tu seno actual (aprox)
+    ampYaw: 0.055,
+    ampPitch: 0.050,
+    ampRoll: 0.030,
+    holdMin: 1.0,
+    holdMax: 3.2,
+    smooth: 10.0,
+  },
+  body: {
+    // mucho más pequeño que la cabeza
+    ampYaw: 0.012,
+    ampPitch: 0.010,
+    ampRoll: 0.010,
+    holdMin: 1.2,
+    holdMax: 4.0,
+    smooth: 6.0,
+  },
+  micro: {
+    yaw: 0.006,
+    pitch: 0.004,
+    roll: 0.004,
+  },
+};
+
+const MotionState = {
+  seed: Math.random() * 1000.0,
+  head: {
+    current: new THREE.Vector3(0, 0, 0),
+    target: new THREE.Vector3(0, 0, 0),
+    nextSwitch: 0,
+  },
+  body: {
+    current: new THREE.Vector3(0, 0, 0),
+    target: new THREE.Vector3(0, 0, 0),
+    nextSwitch: 0,
+  },
+  nod: {
+    active: false,
+    t0: 0,
+    dur: 0.32,
+    amp: 0.012, // asentir MUY suave
+  },
+};
+
+function pickTarget(cfg) {
+  // Sesgo al centro (humano): muchas veces cerca de 0, a veces más lejos
+  const bias = 0.65;
+  const s = () => (Math.random() * 2 - 1);
+  const soften = () => (Math.random() < bias ? 0.35 : 1.0) * randRange(0.4, 1.0);
+
+  return new THREE.Vector3(
+    s() * cfg.ampPitch * soften(), // pitch (x)
+    s() * cfg.ampYaw * soften(),   // yaw (y)
+    s() * cfg.ampRoll * soften(),  // roll (z)
+  );
+}
+
+function updateChannel(ch, cfg, t, dt) {
+  if (t >= ch.nextSwitch) {
+    ch.target.copy(pickTarget(cfg));
+    ch.nextSwitch = t + randRange(cfg.holdMin, cfg.holdMax);
+  }
+  const k = 1.0 - Math.exp(-dt * cfg.smooth);
+  ch.current.lerp(ch.target, k);
+}
+
+function updateNod(t, dt) {
+  // Asentir solo en LISTENING y rara vez
+  if (!MotionState.nod.active && AvatarState.mode === 'LISTENING') {
+    const p = 0.18; // prob por segundo
+    if (Math.random() < p * dt) {
+      MotionState.nod.active = true;
+      MotionState.nod.t0 = t;
+      MotionState.nod.dur = randRange(0.28, 0.40);
+      MotionState.nod.amp = randRange(0.010, 0.014);
+    }
+  }
+
+  if (!MotionState.nod.active) return 0.0;
+
+  const u = (t - MotionState.nod.t0) / MotionState.nod.dur;
+  if (u >= 1.0) {
+    MotionState.nod.active = false;
+    return 0.0;
+  }
+
+  const s = Math.sin(u * 3.14159); // 0..1..0
+  return -MotionState.nod.amp * s;
+}
+
+// =========================
 // 7. Loop + modo test labios
 // =========================
 let lipTestActive = false;
@@ -959,24 +1189,58 @@ function animate() {
 
     // rest casi fijo, la apertura viene de uTalk
     particleMaterial.uniforms.uRestOpen.value = 0.03;
+
+    // Debug uniform
+    particleMaterial.uniforms.uDebugHeadWeight.value = DebugView.headWeight ? 1.0 : 0.0;
+
+    // ===== Movimiento procedural (cabeza/cuerpo con pausas) =====
+    updateChannel(MotionState.head, MotionConfig.head, elapsed, delta);
+    updateChannel(MotionState.body, MotionConfig.body, elapsed, delta);
+
+    // micro movimiento continuo (muy sutil)
+    const microYaw =
+      (Math.sin(elapsed * 2.1 + MotionState.seed) * MotionConfig.micro.yaw) +
+      (Math.sin(elapsed * 3.7 + MotionState.seed * 0.3) * MotionConfig.micro.yaw * 0.45);
+
+    const microPitch =
+      (Math.sin(elapsed * 1.8 + MotionState.seed * 0.7) * MotionConfig.micro.pitch) +
+      (Math.sin(elapsed * 3.2 + MotionState.seed * 0.2) * MotionConfig.micro.pitch * 0.45);
+
+    const microRoll =
+      (Math.sin(elapsed * 1.5 + MotionState.seed * 1.3) * MotionConfig.micro.roll) +
+      (Math.sin(elapsed * 2.9 + MotionState.seed * 0.4) * MotionConfig.micro.roll * 0.45);
+
+    // nod suave al escuchar
+    const nodPitch = updateNod(elapsed, delta);
+
+    // Cabeza final
+    const head = MotionState.head.current;
+    particleMaterial.uniforms.uHeadRot.value.set(
+      head.x + microPitch + nodPitch,  // pitch
+      head.y + microYaw,               // yaw
+      head.z + microRoll               // roll
+    );
+
+    // Cuerpo final
+    const body = MotionState.body.current;
+    particleMaterial.uniforms.uBodyRot.value.set(
+      body.x + microPitch * 0.25,
+      body.y + microYaw * 0.25,
+      body.z + microRoll * 0.25
+    );
+
+    // Offset de cuerpo (equivalente a tu particlePoints.position.y anterior)
+    let offY = 0.0;
+    if (AvatarState.idleMotionEnabled) {
+      offY = 0.01 * Math.sin(elapsed * 0.9) + 0.005 * Math.sin(elapsed * 0.37);
+    }
+    particleMaterial.uniforms.uBodyOffset.value.set(0.0, offY, 0.0);
   }
 
-  // movimiento global de cabeza/cuello (más vivo y menos lineal)
+  // Ya no movemos el objeto entero (todo el rig va en shader)
   if (particlePoints) {
-    const t = elapsed;
-
-    const headYaw = Math.sin(t * 0.8) * 0.025 + Math.sin(t * 1.7) * 0.03; // izquierda-derecha
-    const headPitch = Math.sin(t * 0.6 + 1.0) * 0.03 + Math.sin(t * 1.3) * 0.02; // arriba-abajo
-    const headRoll = Math.sin(t * 0.45 + 2.0) * 0.03; // cabeceo lateral
-
-    particlePoints.rotation.y = headYaw;
-    particlePoints.rotation.x = headPitch;
-    particlePoints.rotation.z = headRoll;
-
-    if (AvatarState.idleMotionEnabled) {
-      particlePoints.position.y =
-        0.01 * Math.sin(t * 0.9) + 0.005 * Math.sin(t * 0.37);
-    }
+    particlePoints.rotation.set(0, 0, 0);
+    particlePoints.position.set(0, 0, 0);
   }
 
   controls.update();
@@ -1098,7 +1362,6 @@ function teardownMic() {
   waveDataArray = null;
 }
 
-
 async function startRecording() {
   if (!navigator.mediaDevices?.getUserMedia) return alert('getUserMedia no soportado');
 
@@ -1124,72 +1387,72 @@ async function startRecording() {
     if (e?.data && e.data.size > 0) audioChunks.push(e.data);
   };
 
-mediaRecorder.onstop = async () => {
-  const blob = new Blob(audioChunks, { type: recorderMimeType });
-  const lastReplyEl = document.getElementById('lastReply');
-  let hadError = false;
+  mediaRecorder.onstop = async () => {
+    const blob = new Blob(audioChunks, { type: recorderMimeType });
+    const lastReplyEl = document.getElementById('lastReply');
+    let hadError = false;
 
-  if (micLabel) micLabel.textContent = 'Transcribiendo…';
-  setAgentSendBusy(true);
+    if (micLabel) micLabel.textContent = 'Transcribiendo…';
+    setAgentSendBusy(true);
 
-  try {
-    if (!blob.size) {
-      throw new Error('No se capturó audio. Intenta grabar de nuevo.');
+    try {
+      if (!blob.size) {
+        throw new Error('No se capturó audio. Intenta grabar de nuevo.');
+      }
+
+      // Archivo coherente con el mimeType real (opus/webm)
+      const audioFile = new File([blob], 'grabacion.webm', { type: recorderMimeType });
+      const formData = new FormData();
+      formData.append('file', audioFile);
+
+      // Enviar a STT
+      const res = await fetch(`${BACKEND_URL}/stt_google`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Error STT: ${res.status} ${errText}`);
+      }
+
+      const data = await res.json();
+      const text = (data?.text || '').trim();
+      if (!text) throw new Error('Transcripción vacía');
+
+      // UI
+      if (micLabel) micLabel.textContent = 'Enviando…';
+      const modeRadio = document.querySelector('input[name="agentMode"]:checked');
+      const mode = modeRadio ? modeRadio.value : 'negociar';
+      const withAudio = !textOnlyCheckbox?.checked;
+
+      // ✅ CRÍTICO: liberar micro + waveform ANTES del TTS
+      teardownMic();
+
+      // Enviar al agente (esto dispara el TTS)
+      await sendTextToAgent(text, { mode, withAudio });
+
+    } catch (err) {
+      hadError = true;
+
+      // ✅ también liberar recursos si hubo error
+      teardownMic();
+
+      console.error('Error al transcribir/enviar audio:', err);
+      const message = err?.message || 'Error de transcripción';
+      if (lastReplyEl) lastReplyEl.textContent = message;
+      if (micLabel) micLabel.textContent = message;
+      AvatarState.mode = 'IDLE';
+
+    } finally {
+      setAgentSendBusy(false);
+
+      // No borrar mensaje si hubo error
+      if (!hadError && micLabel) {
+        micLabel.textContent = 'Pulsa el micro y habla';
+      }
     }
-
-    // Archivo coherente con el mimeType real (opus/webm)
-    const audioFile = new File([blob], 'grabacion.webm', { type: recorderMimeType });
-    const formData = new FormData();
-    formData.append('file', audioFile);
-
-    // Enviar a STT
-    const res = await fetch(`${BACKEND_URL}/stt_google`, {
-      method: 'POST',
-      body: formData,
-    });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`Error STT: ${res.status} ${errText}`);
-    }
-
-    const data = await res.json();
-    const text = (data?.text || '').trim();
-    if (!text) throw new Error('Transcripción vacía');
-
-    // UI
-    if (micLabel) micLabel.textContent = 'Enviando…';
-    const modeRadio = document.querySelector('input[name="agentMode"]:checked');
-    const mode = modeRadio ? modeRadio.value : 'negociar';
-    const withAudio = !textOnlyCheckbox?.checked;
-
-    // ✅ CRÍTICO: liberar micro + waveform ANTES del TTS
-    teardownMic();
-
-    // Enviar al agente (esto dispara el TTS)
-    await sendTextToAgent(text, { mode, withAudio });
-
-  } catch (err) {
-    hadError = true;
-
-    // ✅ también liberar recursos si hubo error
-    teardownMic();
-
-    console.error('Error al transcribir/enviar audio:', err);
-    const message = err?.message || 'Error de transcripción';
-    if (lastReplyEl) lastReplyEl.textContent = message;
-    if (micLabel) micLabel.textContent = message;
-    AvatarState.mode = 'IDLE';
-
-  } finally {
-    setAgentSendBusy(false);
-
-    // No borrar mensaje si hubo error
-    if (!hadError && micLabel) {
-      micLabel.textContent = 'Pulsa el micro y habla';
-    }
-  }
-};
+  };
 
   // 2. Iniciar grabación y visualización
   mediaRecorder.start(250);
@@ -1240,10 +1503,6 @@ if (micBtn) {
     }
   });
 }
-
-
-
-
 
 // =========================
 // 10. Botón "Hablar (test)" – solo frontend, sin backend
