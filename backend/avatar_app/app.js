@@ -236,17 +236,17 @@ window.NeckTuning = window.NeckTuning || {
 // Config ojos / parpadeo (cortina de puntos)
 //   -> editable con editor modo EYES (tecla 3)
 // =========================
-window.EyeTuning = window.EyeTuning || {
-  leftCenterX: -0.115,
-  rightCenterX: 0.115,
-  centerY: 0.26,
-  width: 0.075,
-  height: 0.038,
-  lidCurve: 0.012,      // arqueo leve del “párpado”
-  z: 0.02,              // un pelín delante del plano de cara
-  hideOffsetY: 0.075,   // cuánto sube la cortina cuando está abierta
-  pointsPerEye: 260,    // densidad del parpadeo
-  alpha: 0.70,          // opacidad máxima de la cortina
+window.EyeTuning = {
+  leftCenterX: -0.2790878109748029,
+  rightCenterX: 0.12250231427620147,
+  centerY: 0.592741067776794,
+  width: 0.06666211982918908,
+  height: 0.028326739143716306,
+  lidCurve: 0.012,
+  z: 0.017249169318488914,
+  hideOffsetY: 0.046115941012340955,
+  pointsPerEye: 260,
+  alpha: 0.7
 };
 
 // =========================
