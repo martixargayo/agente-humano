@@ -9,6 +9,7 @@ let silentFrameCount = 0;
 let audioSource = null;
 let lipHoldActive = false;
 let lipsyncLevel = 0; // nivel suavizado 0..1
+
 const debugStats = {
   frames: 0,
   rmsSum: 0,
@@ -24,7 +25,7 @@ const debugStats = {
   silentFrames: 0,
 };
 
-// === NUEVO: helper para un AudioContext global y reutilizable ===
+// === helper para un AudioContext global y reutilizable ===
 function getOrCreateAudioContext() {
   if (!audioCtx || audioCtx.state === 'closed') {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -48,7 +49,7 @@ function cleanupAudio() {
 }
 
 // =========================
-// 6. Utilidades de red y audio
+// Utilidades de red y audio
 // =========================
 function base64ToAudioData(b64, mimeType = 'audio/wav') {
   if (typeof b64 !== 'string' || !b64.trim()) {
@@ -97,9 +98,9 @@ let frontendTtsWarmedUp = false;
 async function warmupFrontendTts() {
   if (frontendTtsWarmedUp) return;
   try {
-    console.log("[warmup] Iniciando warmup del TTS...");
+    console.log('[warmup] Iniciando warmup del TTS...');
 
-    const audioData = await requestTTS("Calibración de audio.");
+    const audioData = await requestTTS('Calibración de audio.');
     const ctx = getOrCreateAudioContext();
 
     const bufferForDecode = audioData.arrayBuffer.slice(0);
@@ -120,9 +121,9 @@ async function warmupFrontendTts() {
     source.start(startTime);
 
     frontendTtsWarmedUp = true;
-    console.log("[warmup] Frontend TTS OK");
+    console.log('[warmup] Frontend TTS OK');
   } catch (e) {
-    console.warn("[warmup] Falló warmup frontend TTS:", e);
+    console.warn('[warmup] Falló warmup frontend TTS:', e);
   }
 }
 
@@ -185,7 +186,7 @@ async function sendTextToAgent(message, { mode = 'negociar', withAudio = true } 
 }
 
 // =========================
-// 7. Loop + modo test labios (se mantiene igual)
+// Loop + modo test labios (se mantiene igual)
 // =========================
 let lipTestActive = false;
 let lipTestStartTime = 0;
@@ -398,9 +399,19 @@ function setupTextUI() {
     sendToAgentBtn.addEventListener('click', async () => {
       const text = (userTextEl?.value || '').trim();
       if (!text) return;
+
       const modeRadio = document.querySelector('input[name="agentMode"]:checked');
       const mode = modeRadio ? modeRadio.value : 'negociar';
       const withAudio = !textOnlyCheckbox?.checked;
+
+      // ✅ Warmup también aquí (si vas a reproducir audio)
+      if (withAudio) {
+        try {
+          getOrCreateAudioContext().resume().catch(() => {});
+          warmupFrontendTts(); // no bloquea si ya está warmed
+        } catch (_) {}
+      }
+
       setAgentSendBusy(true, 'Hablando...');
       try {
         await sendTextToAgent(text, { mode, withAudio });
@@ -427,7 +438,7 @@ function setupTextUI() {
 }
 
 // =========================
-// Mic simple (visual)
+// Mic simple (visual) – lo de siempre
 // =========================
 const micBtn = document.getElementById('micBtn');
 const waveCanvas = document.getElementById('waveCanvas');
@@ -486,6 +497,7 @@ function teardownMic() {
 async function startRecording() {
   if (!navigator.mediaDevices?.getUserMedia) return alert('getUserMedia no soportado');
 
+  // gesto de usuario → desbloqueo + warmup (igual que tu baseline)
   try {
     getOrCreateAudioContext().resume().catch(() => {});
     warmupFrontendTts();
@@ -605,7 +617,7 @@ function setupMicUI() {
 }
 
 // =========================
-// 10. Botón "Hablar (test)" – solo frontend, sin backend
+// Botón "Hablar (test)" – igual
 // =========================
 function setupTestTalkButton() {
   const testTalkBtn = document.createElement('button');
