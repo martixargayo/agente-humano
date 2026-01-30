@@ -48,6 +48,50 @@ function cleanupAudio() {
   silentFrameCount = 0;
 }
 
+function primeAudioOutput(ctx) {
+  // 20ms de silencio para "enganchar" el pipeline de salida
+  const frames = Math.floor(ctx.sampleRate * 0.02);
+  const buf = ctx.createBuffer(1, frames, ctx.sampleRate);
+
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+
+  const g = ctx.createGain();
+  g.gain.value = 0.0;
+
+  src.connect(g);
+  g.connect(ctx.destination);
+
+  const t0 = ctx.currentTime + 0.01;
+  src.start(t0);
+  src.stop(t0 + 0.02);
+
+  src.onended = () => {
+    try { src.disconnect(); } catch (_) {}
+    try { g.disconnect(); } catch (_) {}
+  };
+}
+
+function measureLeadingSilence(audioBuffer, thr = 0.002) {
+  const ch = audioBuffer.getChannelData(0);
+  const sr = audioBuffer.sampleRate;
+
+  let first = -1;
+  for (let i = 0; i < ch.length; i++) {
+    if (Math.abs(ch[i]) > thr) { first = i; break; }
+  }
+
+  const lead = first < 0 ? audioBuffer.duration : first / sr;
+  console.log('[audio-check]', {
+    duration: Number(audioBuffer.duration.toFixed(3)),
+    leadingSilenceSec: Number(lead.toFixed(3)),
+    sampleRate: sr,
+  });
+
+  return lead;
+}
+
+
 // =========================
 // Utilidades de red y audio
 // =========================
@@ -235,6 +279,7 @@ async function playAudioFromAudioData(
   }
 
   audioBuffer = paddedBuffer;
+  measureLeadingSilence(audioBuffer);
 
   if (AudioDebug.enabled) {
     console.log('[avatar] TTS decodificado', {
@@ -256,6 +301,7 @@ async function playAudioFromAudioData(
   analyser.connect(ctx.destination);
 
   await ctx.resume();
+  primeAudioOutput(ctx);
 
   AvatarState.mode = 'SPEAKING';
   AvatarState.emotion = emotion;
@@ -269,8 +315,7 @@ async function playAudioFromAudioData(
     cleanupAudio();
   };
 
-  const startTime = ctx.currentTime + 0.05;
-  audioSource.start(startTime);
+  audioSource.start(); // empieza ya (el prime ya estabiliza)
 }
 
 export function getTalkLevelFromAudio() {
