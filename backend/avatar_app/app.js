@@ -37,13 +37,6 @@ const AvatarState = {
   idleMotionEnabled: true,
 };
 
-// ✅ Turn controller (debe existir antes de que animate() lo use)
-const TurnController = {
-  agentSpeechActive: false,
-  onAgentSpeechEnded: null,
-};
-
-
 const AudioDebug = {
   enabled: false,
   // Más sensible para ver movimiento de labios
@@ -1258,9 +1251,6 @@ let lipTestActive = false;
 let lipTestStartTime = 0;
 let testLipsBtn = null;
 
-// ✅ NUEVO: detección robusta de fin de habla del agente
-let _prevAvatarModeForTurn = AvatarState.mode;
-
 function animate() {
   requestAnimationFrame(animate);
 
@@ -1335,395 +1325,66 @@ function animate() {
   renderer.render(scene, camera);
 
   if (NeckEditor && NeckEditor.visible) drawNeckEditorOverlay();
-
-  // =========================
-  // ✅ Turn end detection (SPEAKING -> !SPEAKING) + agentSpeechActive
-  // =========================
-  if (
-    TurnController.agentSpeechActive &&
-    _prevAvatarModeForTurn === 'SPEAKING' &&
-    AvatarState.mode !== 'SPEAKING'
-  ) {
-    TurnController.agentSpeechActive = false;
-    try { TurnController.onAgentSpeechEnded?.('tts_end'); } catch (_) {}
-  }
-  _prevAvatarModeForTurn = AvatarState.mode;
 }
 
 animate();
 
-
 // =========================
-// 8. UI voice-first (pacto + modos + input)
+// 8. UI básica (texto → agente → TTS)
 // =========================
-const UI = {
-  // Overlays
-  voicePact: document.getElementById('voicePact'),
-  voicePactEnableBtn: document.getElementById('voicePactEnableBtn'),
-  voicePactSkipBtn: document.getElementById('voicePactSkipBtn'),
+const sendToAgentBtn = document.getElementById('sendToAgentBtn');
+const userTextEl = document.getElementById('userText');
+const textOnlyCheckbox = document.getElementById('textOnly');
+const idleMotionToggle = document.getElementById('idleMotionToggle');
+let agentSendInFlight = 0;
 
-  // Voice HUD
-  voiceHud: document.getElementById('voiceHud'),
-  voiceWaveCanvas: document.getElementById('voiceWaveCanvas'),
-  voiceStopBtn: document.getElementById('voiceStopBtn'),
-  switchToTextBtn: document.getElementById('switchToTextBtn'),
+function setAgentSendBusy(isBusy, buttonLabel) {
+  if (!sendToAgentBtn) return;
+  if (isBusy) agentSendInFlight += 1;
+  else agentSendInFlight = Math.max(0, agentSendInFlight - 1);
 
-  // Text bar
-  textBar: document.getElementById('textBar'),
-  textInput: document.getElementById('textInput'),
-  textSendBtn: document.getElementById('textSendBtn'),
-  textMicBtn: document.getElementById('textMicBtn'),
-
-  // Optional legacy (si aún existe)
-  lastReplyEl: document.getElementById('lastReply'),
-
-  // Optional toast (si existe)
-  replyToast: document.getElementById('replyToast'),
-  replyToastText: document.getElementById('replyToastText'),
-};
-
-const VoiceFirst = {
-  lsKeyGranted: 'voice_pact_granted_v1',
-  pactGranted: false,
-  inputMode: 'VOICE', // VOICE | TEXT
-  uiMode: 'INIT',     // INIT | READY | LISTENING | THINKING | SPEAKING | TEXT
-};
-
-function readBoolLS(key) {
-  try { return localStorage.getItem(key) === '1'; } catch (_) { return false; }
+  sendToAgentBtn.disabled = agentSendInFlight > 0;
+  if (agentSendInFlight === 0) sendToAgentBtn.textContent = 'Enviar al agente';
+  else if (buttonLabel) sendToAgentBtn.textContent = buttonLabel;
 }
 
-function writeBoolLS(key, v) {
-  try { localStorage.setItem(key, v ? '1' : '0'); } catch (_) {}
-}
-
-function showVoicePact(show) {
-  if (!UI.voicePact) return;
-  UI.voicePact.classList.toggle('is-hidden', !show);
-}
-
-function setReply(text) {
-  if (UI.lastReplyEl) UI.lastReplyEl.textContent = text ?? '';
-  if (UI.replyToast && UI.replyToastText) {
-    UI.replyToastText.textContent = text ?? '';
-    UI.replyToast.classList.toggle('is-hidden', !text);
-  }
-}
-
-function hideReplyToast() {
-  if (UI.replyToast) UI.replyToast.classList.add('is-hidden');
-}
-
-function setBodyModeClass(mode) {
-  const cls = [
-    'mode-init',
-    'mode-ready',
-    'mode-listening',
-    'mode-thinking',
-    'mode-speaking',
-    'mode-text',
-  ];
-  document.body.classList.remove(...cls);
-
-  const map = {
-    INIT: 'mode-init',
-    READY: 'mode-ready',
-    LISTENING: 'mode-listening',
-    THINKING: 'mode-thinking',
-    SPEAKING: 'mode-speaking',
-    TEXT: 'mode-text',
-  };
-  document.body.classList.add(map[mode] || 'mode-init');
-}
-
-function setUIMode(mode) {
-  VoiceFirst.uiMode = mode;
-  setBodyModeClass(mode);
-
-  // Visibilidad módulos
-  if (UI.voiceHud) UI.voiceHud.classList.toggle('is-hidden', !(mode === 'READY' || mode === 'LISTENING'));
-  if (UI.textBar) UI.textBar.classList.toggle('is-hidden', mode !== 'TEXT');
-
-  // Interacciones básicas (sin sobrepensarlo)
-  const disableText = (mode === 'THINKING' || mode === 'SPEAKING' || mode === 'LISTENING');
-  if (UI.textInput) UI.textInput.disabled = disableText;
-  if (UI.textSendBtn) UI.textSendBtn.disabled = disableText || !(UI.textInput?.value || '').trim();
-
-  if (UI.voiceStopBtn) UI.voiceStopBtn.disabled = (mode !== 'LISTENING');
-
-  // Mantener coherencia con AvatarState (para nods/lipsync)
-  if (mode === 'SPEAKING') AvatarState.mode = 'SPEAKING';
-  else if (mode === 'LISTENING') AvatarState.mode = 'LISTENING';
-  else if (mode === 'THINKING') AvatarState.mode = 'THINKING';
-  else AvatarState.mode = 'IDLE';
-}
-
-async function requestVoicePact() {
-  // AudioContext + permiso mic dentro de un gesto (click)
-  const ctx = getOrCreateAudioContext();
-  try { await ctx.resume(); } catch (_) {}
-
-  if (!navigator.mediaDevices?.getUserMedia) {
-    throw new Error('getUserMedia no soportado');
-  }
-
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  // Cerramos inmediatamente: solo queremos “permiso” para la sesión
-  try { stream.getTracks().forEach((t) => t.stop()); } catch (_) {}
-
-  VoiceFirst.pactGranted = true;
-  writeBoolLS(VoiceFirst.lsKeyGranted, true);
-}
-
-function getSelectedAgentMode() {
-  const modeRadio = document.querySelector('input[name="agentMode"]:checked');
-  return modeRadio ? modeRadio.value : 'negociar';
-}
-
-function setInputModeVoice() {
-  VoiceFirst.inputMode = 'VOICE';
-  if (VoiceFirst.pactGranted) {
-    setUIMode('READY');
-    autoStartListeningSoon('switch_to_voice');
-  } else {
-    showVoicePact(true);
-    setUIMode('TEXT');
-  }
-}
-
-function setInputModeText() {
-  VoiceFirst.inputMode = 'TEXT';
-  setUIMode('TEXT');
-  try { UI.textInput?.focus(); } catch (_) {}
-}
-
-function autoStartListeningSoon(reason = 'auto') {
-  if (!VoiceFirst.pactGranted) return;
-  if (VoiceFirst.inputMode !== 'VOICE') return;
-  if (VoiceFirst.uiMode !== 'READY') return;
-
-  // Pequeño delay para que la transición se sienta suave
-  setTimeout(async () => {
-    if (!VoiceFirst.pactGranted) return;
-    if (VoiceFirst.inputMode !== 'VOICE') return;
-    if (VoiceFirst.uiMode !== 'READY') return;
-    if (isRecording) return;
-
+if (sendToAgentBtn) {
+  sendToAgentBtn.addEventListener('click', async () => {
+    const text = (userTextEl?.value || '').trim();
+    if (!text) return;
+    const modeRadio = document.querySelector('input[name="agentMode"]:checked');
+    const mode = modeRadio ? modeRadio.value : 'negociar';
+    const withAudio = !textOnlyCheckbox?.checked;
+    setAgentSendBusy(true, 'Hablando...');
     try {
-      await startRecording();
-      setUIMode('LISTENING');
-    } catch (err) {
-      console.warn('[voice] No se pudo iniciar grabación automática', err);
-      setInputModeText();
-    }
-  }, 140);
-}
-
-function attachPostTtsHookOnce() {
-  // Envolvemos el onended del audio para entrar en READY + auto-mic
-  if (!audioSource) return;
-
-  // Evitar wrap doble
-  if (audioSource.__voiceFirstWrapped) return;
-  audioSource.__voiceFirstWrapped = true;
-
-  const prev = audioSource.onended;
-  audioSource.onended = () => {
-    try { prev?.(); } catch (_) {}
-
-    // Si el usuario está en modo texto, no forzamos nada
-    if (VoiceFirst.inputMode !== 'VOICE') {
-      setUIMode('TEXT');
-      return;
-    }
-
-    // Turno del usuario
-    setUIMode('READY');
-    autoStartListeningSoon('tts_end');
-  };
-}
-
-async function sendTextToAgentVoiceFirst(message, { withAudio = true } = {}) {
-  const text = (message || '').trim();
-  if (!text) return;
-
-  hideReplyToast();
-  setReply('…');
-  setUIMode('THINKING');
-
-  try {
-    const mode = getSelectedAgentMode();
-    const endpoint = mode === 'chat' ? '/chat' : '/negociar';
-
-    const res = await fetch(`${BACKEND_URL}${endpoint}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: 'web_user', session_id: 'sesion_demo', message: text }),
-    });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`Error agente: ${res.status} ${errText}`);
-    }
-
-    const data = await res.json();
-    const replyText = data.reply || '';
-    const emotion = data.emotion || 'neutral';
-    const intensity = data.tone === 'excited' ? 1.25 : data.tone === 'calm' ? 0.8 : 1.0;
-
-    setReply(replyText);
-
-    if (!withAudio || !replyText) {
-      // Si no hay audio: turno usuario igualmente
-      if (VoiceFirst.inputMode === 'VOICE' && VoiceFirst.pactGranted) {
-        setUIMode('READY');
-        autoStartListeningSoon('no_audio_reply');
-      } else {
-        setUIMode('TEXT');
-      }
-      return;
-    }
-
-    // TTS
-    setUIMode('SPEAKING');
-    const audioData = await requestTTS(replyText);
-    await playAudioFromAudioData(audioData, { emotion, speechIntensity: intensity });
-
-    // Engancha el final del TTS -> READY -> auto-mic
-    attachPostTtsHookOnce();
-
-  } catch (err) {
-    console.error('Error al hablar con el backend:', err);
-    setReply(err?.message || 'Error de red');
-    setUIMode('TEXT');
-  }
-}
-
-// ---- Wiring UI ----
-if (UI.voicePactEnableBtn) {
-  UI.voicePactEnableBtn.addEventListener('click', async () => {
-    try {
-      await requestVoicePact();
-      showVoicePact(false);
-      setInputModeVoice();
-    } catch (err) {
-      console.warn('[voice-pact] Falló permiso mic', err);
-      setInputModeText();
+      await sendTextToAgent(text, { mode, withAudio });
+    } finally {
+      setAgentSendBusy(false);
     }
   });
 }
 
-if (UI.voicePactSkipBtn) {
-  UI.voicePactSkipBtn.addEventListener('click', () => {
-    // Sin pacto: entramos en texto y dejamos mic como “opt-in”
-    showVoicePact(false);
-    setInputModeText();
-  });
-}
-
-if (UI.switchToTextBtn) {
-  UI.switchToTextBtn.addEventListener('click', () => {
-    // Cancela grabación si estaba escuchando
-    if (isRecording) stopRecording({ cancel: true });
-    setInputModeText();
-  });
-}
-
-if (UI.textMicBtn) {
-  UI.textMicBtn.addEventListener('click', () => {
-    setInputModeVoice();
-  });
-}
-
-if (UI.textSendBtn) {
-  UI.textSendBtn.addEventListener('click', async () => {
-    const v = (UI.textInput?.value || '').trim();
-    if (!v) return;
-    UI.textInput.value = '';
-    if (UI.textSendBtn) UI.textSendBtn.disabled = true;
-    await sendTextToAgentVoiceFirst(v, { withAudio: true });
-  });
-}
-
-if (UI.textInput) {
-  UI.textInput.addEventListener('input', () => {
-    if (UI.textSendBtn) UI.textSendBtn.disabled = !(UI.textInput.value || '').trim();
-  });
-
-  UI.textInput.addEventListener('keydown', (e) => {
-    // Enter envía (sin shift)
-    if (e.key === 'Enter' && !e.shiftKey) {
+if (userTextEl) {
+  userTextEl.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();
-      UI.textSendBtn?.click();
+      sendToAgentBtn?.click();
     }
   });
 }
 
-if (UI.voiceStopBtn) {
-  UI.voiceStopBtn.addEventListener('click', () => {
-    if (VoiceFirst.uiMode === 'LISTENING') {
-      stopRecording({ cancel: false }); // envía STT -> agente
-      setUIMode('THINKING');
-    }
+if (idleMotionToggle) {
+  idleMotionToggle.addEventListener('change', (e) => {
+    AvatarState.idleMotionEnabled = e.target.checked;
   });
 }
-
-// Key handling: SPACE termina voz | typing cancela voz y pasa a texto
-window.addEventListener('keydown', (e) => {
-  // SPACE para terminar cuando está escuchando
-  if (VoiceFirst.uiMode === 'LISTENING' && e.code === 'Space') {
-    e.preventDefault();
-    stopRecording({ cancel: false });
-    setUIMode('THINKING');
-    return;
-  }
-
-  // Si está en READY/LISTENING y el usuario teclea texto, cancelamos voz y pasamos a TEXT
-  const isTextKey =
-    e.key &&
-    e.key.length === 1 &&
-    !e.ctrlKey &&
-    !e.metaKey &&
-    !e.altKey;
-
-  if (isTextKey && (VoiceFirst.uiMode === 'READY' || VoiceFirst.uiMode === 'LISTENING')) {
-    // Cancelar grabación sin enviar
-    if (isRecording) stopRecording({ cancel: true });
-
-    setInputModeText();
-    // Insertar el carácter “capturado”
-    if (UI.textInput) {
-      e.preventDefault();
-      UI.textInput.value = (UI.textInput.value || '') + e.key;
-      UI.textInput.dispatchEvent(new Event('input'));
-      try { UI.textInput.focus(); } catch (_) {}
-    }
-  }
-});
-
-// Init UI
-(() => {
-  VoiceFirst.pactGranted = readBoolLS(VoiceFirst.lsKeyGranted);
-
-  if (!VoiceFirst.pactGranted) {
-    // Mostrar “pacto” al inicio y default a texto
-    showVoicePact(true);
-    VoiceFirst.inputMode = 'TEXT';
-    setUIMode('TEXT');
-  } else {
-    // Voice-first por defecto
-    showVoicePact(false);
-    VoiceFirst.inputMode = 'VOICE';
-    setUIMode('READY');
-    autoStartListeningSoon('init');
-  }
-})();
 
 // =========================
-// 9. Mic (dock) – voz automática + waveform
+// 9. Mic simple (visual)
 // =========================
-const waveCanvas = UI.dockWaveCanvas;
-
+const micBtn = document.getElementById('micBtn');
+const waveCanvas = document.getElementById('waveCanvas');
+const micLabel = document.getElementById('micLabel');
 let mediaRecorder = null;
 let audioChunks = [];
 let isRecording = false;
@@ -1734,36 +1395,22 @@ let waveDataArray = null;
 let waveAnimationId = null;
 
 let recorderMimeType = 'audio/webm;codecs=opus';
-let cancelNextRecording = false;
 
 function drawWaveform() {
   if (!waveCanvas || !waveAnalyser) return;
   const ctx = waveCanvas.getContext('2d');
-
-  if (waveCanvas.width !== waveCanvas.clientWidth || waveCanvas.height !== waveCanvas.clientHeight) {
-    waveCanvas.width = Math.max(1, waveCanvas.clientWidth);
-    waveCanvas.height = Math.max(1, waveCanvas.clientHeight);
-  }
-
   const width = waveCanvas.width;
   const height = waveCanvas.height;
-
   waveAnimationId = requestAnimationFrame(drawWaveform);
   waveAnalyser.getByteTimeDomainData(waveDataArray);
-
   ctx.clearRect(0, 0, width, height);
-
-  // fondo ultra sutil (para que “respire”)
-  ctx.fillStyle = 'rgba(255,255,255,0.02)';
+  ctx.fillStyle = 'rgba(15,23,42,1)';
   ctx.fillRect(0, 0, width, height);
-
   ctx.lineWidth = 2;
-  ctx.strokeStyle = 'rgba(255,255,255,0.80)';
+  ctx.strokeStyle = '#22c55e';
   ctx.beginPath();
-
   const sliceWidth = width / waveDataArray.length;
   let x = 0;
-
   for (let i = 0; i < waveDataArray.length; i++) {
     const v = waveDataArray[i] / 128.0;
     const y = (v * height) / 2;
@@ -1771,7 +1418,6 @@ function drawWaveform() {
     else ctx.lineTo(x, y);
     x += sliceWidth;
   }
-
   ctx.lineTo(width, height / 2);
   ctx.stroke();
 }
@@ -1791,15 +1437,12 @@ function teardownMic() {
 }
 
 async function startRecording() {
-  if (isRecording) return;
-  if (!navigator.mediaDevices?.getUserMedia) throw new Error('getUserMedia no soportado');
+  if (!navigator.mediaDevices?.getUserMedia) return alert('getUserMedia no soportado');
 
   try {
     getOrCreateAudioContext().resume().catch(() => {});
     warmupFrontendTts();
   } catch (_) {}
-
-  cancelNextRecording = false;
 
   audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
@@ -1808,6 +1451,7 @@ async function startRecording() {
     : 'audio/webm';
 
   mediaRecorder = new MediaRecorder(audioStream, { mimeType: recorderMimeType });
+
   audioChunks = [];
 
   mediaRecorder.ondataavailable = (e) => {
@@ -1816,19 +1460,14 @@ async function startRecording() {
 
   mediaRecorder.onstop = async () => {
     const blob = new Blob(audioChunks, { type: recorderMimeType });
+    const lastReplyEl = document.getElementById('lastReply');
+    let hadError = false;
 
-    // cancelado: no enviamos nada
-    if (cancelNextRecording) {
-      cancelNextRecording = false;
-      teardownMic();
-      isRecording = false;
-      return;
-    }
-
-    setUIMode('THINKING');
+    if (micLabel) micLabel.textContent = 'Transcribiendo…';
+    setAgentSendBusy(true);
 
     try {
-      if (!blob.size) throw new Error('No se capturó audio. Intenta de nuevo.');
+      if (!blob.size) throw new Error('No se capturó audio. Intenta grabar de nuevo.');
 
       const audioFile = new File([blob], 'grabacion.webm', { type: recorderMimeType });
       const formData = new FormData();
@@ -1844,38 +1483,45 @@ async function startRecording() {
       const text = (data?.text || '').trim();
       if (!text) throw new Error('Transcripción vacía');
 
-      teardownMic();
-      isRecording = false;
+      if (micLabel) micLabel.textContent = 'Enviando…';
+      const modeRadio = document.querySelector('input[name="agentMode"]:checked');
+      const mode = modeRadio ? modeRadio.value : 'negociar';
+      const withAudio = !textOnlyCheckbox?.checked;
 
-      await sendTextToAgentDock(text, { withAudio: true });
+      teardownMic();
+      await sendTextToAgent(text, { mode, withAudio });
 
     } catch (err) {
+      hadError = true;
       teardownMic();
-      isRecording = false;
 
       console.error('Error al transcribir/enviar audio:', err);
-      setReply(err?.message || 'Error de transcripción');
-      enterTextMode('stt_fail');
+      const message = err?.message || 'Error de transcripción';
+      if (lastReplyEl) lastReplyEl.textContent = message;
+      if (micLabel) micLabel.textContent = message;
+      AvatarState.mode = 'IDLE';
+
+    } finally {
+      setAgentSendBusy(false);
+      if (!hadError && micLabel) micLabel.textContent = 'Pulsa el micro y habla';
     }
   };
 
   mediaRecorder.start(250);
   isRecording = true;
+  if (micLabel) micLabel.textContent = 'Grabando…';
+  AvatarState.mode = 'LISTENING';
 
   waveAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
   waveAnalyser = waveAudioCtx.createAnalyser();
   waveAnalyser.fftSize = 1024;
-
   const source = waveAudioCtx.createMediaStreamSource(audioStream);
   source.connect(waveAnalyser);
-
   waveDataArray = new Uint8Array(waveAnalyser.frequencyBinCount);
   drawWaveform();
 }
 
-function stopRecording({ cancel = false } = {}) {
-  if (cancel) cancelNextRecording = true;
-
+function stopRecording() {
   if (mediaRecorder && isRecording) {
     try {
       if (mediaRecorder.state === 'recording') {
@@ -1893,8 +1539,21 @@ function stopRecording({ cancel = false } = {}) {
   }
 
   isRecording = false;
+  if (micLabel) micLabel.textContent = 'Procesando…';
+  if (AvatarState.mode === 'LISTENING') AvatarState.mode = 'IDLE';
 }
 
+if (micBtn) {
+  micBtn.addEventListener('click', async () => {
+    if (isRecording) {
+      stopRecording();
+      micBtn.textContent = '🎤 Hablar';
+    } else {
+      await startRecording();
+      micBtn.textContent = '⏹️ Detener';
+    }
+  });
+}
 
 // =========================
 // 10. Botón "Hablar (test)" – solo frontend, sin backend

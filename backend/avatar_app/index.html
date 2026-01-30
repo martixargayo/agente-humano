@@ -2,9 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Avatar 3D – Agente Humano</title>
-
   <script type="importmap">
     {
       "imports": {
@@ -13,95 +11,104 @@
       }
     }
   </script>
-
-  <link rel="stylesheet" href="./ui.css" />
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #000;
+      color: #fff;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    #ui {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      z-index: 10;
+      background: rgba(0,0,0,0.6);
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 14px;
+      width: 340px;
+      backdrop-filter: blur(6px);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    }
+    #ui h1 {
+      font-size: 16px;
+      margin: 0 0 6px 0;
+      letter-spacing: 0.03em;
+    }
+    #lastReply {
+      display: block;
+      margin-top: 4px;
+      font-size: 13px;
+      color: #e5e7eb;
+      max-width: 320px;
+      word-wrap: break-word;
+      white-space: pre-wrap;
+    }
+    textarea {
+      width: 100%;
+      border-radius: 6px;
+      padding: 6px;
+      resize: vertical;
+      min-height: 60px;
+    }
+    button { cursor: pointer; }
+  </style>
 </head>
-
-<body class="mode-init">
-
-  <!-- 0) Canvas 3D full-screen -->
-  <canvas id="c"></canvas>
-
-  <!-- 1) Atlas Glow Layer (cuñas) -->
-  <div id="atlasGlowLayer" aria-hidden="true">
-    <div class="atlas-wedge tl"></div>
-    <div class="atlas-wedge tr"></div>
-    <div class="atlas-wedge bl"></div>
-    <div class="atlas-wedge br"></div>
-  </div>
-
-  <!-- 2) Voice Pact (permiso) - overlay -->
-  <div id="voicePact" class="overlayCard is-hidden" role="dialog" aria-modal="true" aria-labelledby="voicePactTitle">
-    <div class="card">
-      <div class="badge">Modo voz</div>
-      <h2 id="voicePactTitle">Activa el micrófono automático</h2>
-      <p>
-        Para una conversación fluida, necesito permiso para activar el micro automáticamente cuando sea tu turno.
-      </p>
-
-      <div class="row">
-        <button id="voicePactEnableBtn" class="btnPrimary" type="button">
-          Activar modo voz
-        </button>
-        <button id="voicePactSkipBtn" class="btnGhost" type="button">
-          Ahora no
-        </button>
-      </div>
-
-      <p class="fineprint">
-        Puedes cambiar a escribir en cualquier momento.
-      </p>
-    </div>
-  </div>
-
-  <!-- 3) INPUT DOCK ÚNICO (abajo-centro) -->
-  <div id="inputDock" class="dock" aria-label="Entrada">
-    <div class="dockToggle" role="tablist" aria-label="Modo de entrada">
-      <button id="dockModeVoice" class="dockTab is-active" type="button" role="tab" aria-selected="true">
-        Hablar
-      </button>
-      <button id="dockModeText" class="dockTab" type="button" role="tab" aria-selected="false">
-        Escribir
-      </button>
-    </div>
-
-    <div class="dockPill" role="group" aria-label="Entrada">
-      <!-- VOICE BODY -->
-      <div id="dockVoiceBody" class="dockBody dockBodyVoice" aria-hidden="false">
-        <div class="dockWaveWrap" aria-hidden="true">
-          <canvas id="dockWaveCanvas" width="520" height="28"></canvas>
-        </div>
-      </div>
-
-      <!-- TEXT BODY -->
-      <div id="dockTextBody" class="dockBody dockBodyText is-hidden" aria-hidden="true">
-        <textarea id="dockTextInput" rows="1" placeholder="Escribe un mensaje..."></textarea>
-      </div>
-
-      <!-- ACTION -->
-      <button id="dockActionBtn" class="dockActionBtn" type="button" aria-label="Acción">
-        <span id="dockActionIconMic" class="dockActionIcon">🎤</span>
-        <span id="dockActionIconSend" class="dockActionIcon is-hidden">↑</span>
-        <span id="dockKeycap" class="dockKeycap">space</span>
-      </button>
-    </div>
-  </div>
-
-  <!-- 4) Respuesta texto (mínima) -->
-  <div id="replyToast" class="replyToast is-hidden" aria-live="polite">
-    <span class="label">Respuesta</span>
-    <span id="lastReply"></span>
-  </div>
-
-  <!-- 5) Legacy panel (oculto) -->
-  <div id="legacyPanel" class="legacyPanel" hidden>
+<body>
+  <div id="ui">
+    <h1>Avatar 3D</h1>
     <div>
-      <label><input type="radio" name="agentMode" value="chat" checked /> Chat normal</label>
-      <label style="margin-left: 8px;"><input type="radio" name="agentMode" value="negociar" /> Negociador</label>
+      <label>
+        <input type="radio" name="agentMode" value="chat" checked />
+        Chat normal
+      </label>
+      <label style="margin-left: 8px;">
+        <input type="radio" name="agentMode" value="negociar" />
+        Negociador
+      </label>
     </div>
-    <label><input type="checkbox" id="textOnly" /> Solo texto (sin voz)</label>
-    <label><input type="checkbox" id="idleMotionToggle" checked /> Movimiento idle</label>
+
+    <div style="margin-top: 6px;">
+      <textarea id="userText" rows="2" placeholder="Escribe aquí... (Ctrl/Cmd+Enter para enviar)"></textarea>
+    </div>
+
+    <div style="margin-top: 4px;">
+      <label>
+        <input type="checkbox" id="textOnly" />
+        Solo texto (sin voz)
+      </label>
+    </div>
+
+    <div style="margin-top: 6px; font-size: 13px;">
+      <div style="margin-top: 6px;">
+        <label>
+          <input type="checkbox" id="idleMotionToggle" checked />
+          Movimiento idle (respiración / balanceo)
+        </label>
+      </div>
+    </div>
+
+    <button id="sendToAgentBtn" style="margin-top: 6px; width: 100%;">Enviar al agente</button>
+
+    <div style="margin-top: 6px;">
+      <button id="micBtn">🎤 Hablar</button>
+    </div>
+    <canvas id="waveCanvas" width="320" height="40"
+            style="margin-top:4px;background:rgba(15,23,42,0.9);border-radius:4px;"></canvas>
+    <div id="micLabel" style="font-size:12px;margin-top:2px;color:#9ca3af;">
+      Pulsa el micro y habla
+    </div>
+
+    <div style="margin-top: 6px; font-size: 12px;">
+      Respuesta:
+      <span id="lastReply"></span>
+    </div>
   </div>
+
+  <canvas id="c"></canvas>
 
   <script type="module" src="./app.js"></script>
 </body>
