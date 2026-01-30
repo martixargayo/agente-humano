@@ -91,6 +91,76 @@ function measureLeadingSilence(audioBuffer, thr = 0.002) {
   return lead;
 }
 
+function rmsChannel(audioBuffer, chIndex) {
+  const data = audioBuffer.getChannelData(chIndex);
+  let sum = 0;
+  // muestreo para no matar CPU
+  const step = Math.max(1, Math.floor(data.length / 50000));
+  let n = 0;
+  for (let i = 0; i < data.length; i += step) {
+    const v = data[i];
+    sum += v * v;
+    n++;
+  }
+  return Math.sqrt(sum / Math.max(1, n));
+}
+
+function logChannelRms(audioBuffer, tag = 'channels') {
+  const n = audioBuffer.numberOfChannels;
+  const rms = [];
+  for (let ch = 0; ch < n; ch++) rms.push(rmsChannel(audioBuffer, ch));
+  console.log(`[audio-check] ${tag}`, {
+    channels: n,
+    rms: rms.map((x) => Number(x.toFixed(6))),
+  });
+  return rms;
+}
+
+// Si llega mono -> lo duplicamos a estéreo.
+// Si llega estéreo pero un canal está casi vacío -> copiamos el bueno al otro.
+function normalizeStereo(ctx, audioBuffer) {
+  const n = audioBuffer.numberOfChannels;
+
+  if (n === 1) {
+    const mono = audioBuffer.getChannelData(0);
+    const out = ctx.createBuffer(2, audioBuffer.length, audioBuffer.sampleRate);
+    out.getChannelData(0).set(mono);
+    out.getChannelData(1).set(mono);
+    console.warn('[audio-fix] upmix mono -> stereo (duplicado)');
+    return out;
+  }
+
+  if (n >= 2) {
+    const r0 = rmsChannel(audioBuffer, 0);
+    const r1 = rmsChannel(audioBuffer, 1);
+
+    // ratio muy agresivo para detectar “solo derecha/izquierda”
+    const eps = 1e-9;
+    const ratio01 = (r0 + eps) / (r1 + eps);
+
+    // Si uno es <10% del otro, consideramos “canal muerto”
+    if (ratio01 < 0.10) {
+      // canal 0 casi muerto -> copiar canal 1 al 0
+      const out = ctx.createBuffer(2, audioBuffer.length, audioBuffer.sampleRate);
+      out.getChannelData(0).set(audioBuffer.getChannelData(1));
+      out.getChannelData(1).set(audioBuffer.getChannelData(1));
+      console.warn('[audio-fix] canal 0 casi vacío -> duplico canal 1 a L/R', { r0, r1 });
+      return out;
+    }
+
+    if (ratio01 > 10.0) {
+      // canal 1 casi muerto -> copiar canal 0 al 1
+      const out = ctx.createBuffer(2, audioBuffer.length, audioBuffer.sampleRate);
+      out.getChannelData(0).set(audioBuffer.getChannelData(0));
+      out.getChannelData(1).set(audioBuffer.getChannelData(0));
+      console.warn('[audio-fix] canal 1 casi vacío -> duplico canal 0 a L/R', { r0, r1 });
+      return out;
+    }
+  }
+
+  return audioBuffer;
+}
+
 
 // =========================
 // Utilidades de red y audio
@@ -279,6 +349,11 @@ async function playAudioFromAudioData(
   }
 
   audioBuffer = paddedBuffer;
+
+  logChannelRms(audioBuffer, 'before_normalizeStereo');
+  audioBuffer = normalizeStereo(ctx, audioBuffer);
+  logChannelRms(audioBuffer, 'after_normalizeStereo');
+
   measureLeadingSilence(audioBuffer);
 
   if (AudioDebug.enabled) {
