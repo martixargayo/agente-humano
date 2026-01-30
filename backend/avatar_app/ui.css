@@ -6,18 +6,17 @@
   --ui-white-soft: rgba(255,255,255,0.72);
   --ui-border: rgba(255,255,255,0.14);
   --ui-glass: rgba(255,255,255,0.06);
-  --ui-glass-strong: rgba(255,255,255,0.09);
   --ui-shadow: 0 16px 60px rgba(0,0,0,0.45);
 
   /* Atlas glow */
-  --atlas-opacity: 0;        /* se controla por clases mode-* */
+  --atlas-opacity: 0;
   --atlas-dot-opacity: 0;
-  --atlas-blur: 70px;
-  --atlas-spread: 520px;
   --atlas-speed: 6.5s;
 
-  --accent: rgba(120, 210, 255, 0.85);
+  --accent: rgba(120, 210, 255, 0.92);
 }
+
+.is-hidden{ display:none !important; }
 
 html,body{
   margin:0;
@@ -40,149 +39,174 @@ html,body{
 }
 
 /* =========================
-   Atlas Glow Layer (corners)
+   Atlas Glow Layer (CUÑAS)
 ========================= */
 #atlasGlowLayer{
   position:fixed;
   inset:0;
   pointer-events:none;
   z-index:5;
-  opacity: 1;
 }
 
-/* Cada corner es un “paquete” glow + dot-grid */
-.atlas-corner{
+/* wedge base */
+.atlas-wedge{
   position:absolute;
-  width: 38vw;
-  height: 38vh;
-  min-width: 420px;
-  min-height: 320px;
+  width: 56vw;
+  height: 56vh;
+  min-width: 560px;
+  min-height: 420px;
   opacity: var(--atlas-opacity);
-  filter: blur(0px);
   transform: translateZ(0);
-  animation:
-    atlasBreath var(--atlas-speed) ease-in-out infinite,
-    atlasDrift calc(var(--atlas-speed) * 2.1) linear infinite;
+  mix-blend-mode: screen;
 }
 
-/* Glow base (gradientes suaves) + dot-grid (pattern) */
-.atlas-corner::before,
-.atlas-corner::after{
+/* cada esquina define el anclaje del gradiente */
+.atlas-wedge.tl{ top:0; left:0; --gx: 0%;   --gy: 0%;   clip-path: polygon(0 0, 100% 0, 0 100%); }
+.atlas-wedge.tr{ top:0; right:0; --gx: 100%; --gy: 0%;  clip-path: polygon(100% 0, 0 0, 100% 100%); }
+.atlas-wedge.bl{ bottom:0; left:0; --gx: 0%; --gy: 100%; clip-path: polygon(0 100%, 0 0, 100% 100%); }
+.atlas-wedge.br{ bottom:0; right:0; --gx: 100%; --gy: 100%; clip-path: polygon(100% 100%, 0 100%, 100% 0); }
+
+.atlas-wedge::before,
+.atlas-wedge::after{
   content:"";
   position:absolute;
-  inset:-40px;
-  border-radius: 48px;
+  inset:-70px;
   transform: translateZ(0);
 }
 
-/* Glow ambiental */
-.atlas-corner::before{
+/* Glow fuerte pegado al borde + “ondas” suaves */
+.atlas-wedge::before{
   background:
-    radial-gradient(closest-side,
-      rgba(120, 210, 255, 0.20),
-      rgba(120, 210, 255, 0.10) 35%,
-      rgba(120, 210, 255, 0.00) 70%
+    radial-gradient(circle at var(--gx) var(--gy),
+      rgba(0, 175, 255, 0.92),
+      rgba(0, 175, 255, 0.35) 38%,
+      rgba(0, 175, 255, 0.00) 72%
+    ),
+    repeating-linear-gradient(135deg,
+      rgba(255,255,255,0.10) 0px,
+      rgba(255,255,255,0.10) 2px,
+      rgba(255,255,255,0.00) 18px,
+      rgba(255,255,255,0.00) 34px
     );
-  filter: blur(var(--atlas-blur));
+  filter: blur(34px);
+  animation:
+    atlasBreath var(--atlas-speed) ease-in-out infinite,
+    atlasWaves 5.8s linear infinite;
 }
 
-/* Dot-grid tipo Atlas (más visible cerca de esquina, se desvanece hacia dentro) */
-.atlas-corner::after{
+/* Dot-grid tipo Atlas, concentrado en esquina */
+.atlas-wedge::after{
   opacity: var(--atlas-dot-opacity);
   background-image:
-    radial-gradient(rgba(255,255,255,0.55) 1px, rgba(255,255,255,0) 1.6px);
+    radial-gradient(rgba(255,255,255,0.60) 1px, rgba(255,255,255,0) 1.7px);
   background-size: 14px 14px;
+
+  /* máscara para concentrarlo en esquina */
   mask-image:
-    radial-gradient(closest-side,
+    radial-gradient(circle at var(--gx) var(--gy),
       rgba(0,0,0,1) 0%,
-      rgba(0,0,0,1) 35%,
-      rgba(0,0,0,0) 80%
+      rgba(0,0,0,1) 36%,
+      rgba(0,0,0,0) 78%
     );
   -webkit-mask-image:
-    radial-gradient(closest-side,
+    radial-gradient(circle at var(--gx) var(--gy),
       rgba(0,0,0,1) 0%,
-      rgba(0,0,0,1) 35%,
-      rgba(0,0,0,0) 80%
+      rgba(0,0,0,1) 36%,
+      rgba(0,0,0,0) 78%
     );
-  filter: blur(0.15px);
+
+  animation: atlasDots 7.4s ease-in-out infinite;
 }
 
-/* Posiciones esquinas */
-.atlas-corner.tl{ top:-20px; left:-20px; }
-.atlas-corner.tr{ top:-20px; right:-20px; }
-.atlas-corner.bl{ bottom:-20px; left:-20px; }
-.atlas-corner.br{ bottom:-20px; right:-20px; }
-
-/* Animaciones sutiles */
+/* animaciones */
 @keyframes atlasBreath{
-  0%   { opacity: calc(var(--atlas-opacity) * 0.85); }
+  0%   { opacity: calc(var(--atlas-opacity) * 0.82); }
   50%  { opacity: calc(var(--atlas-opacity) * 1.00); }
-  100% { opacity: calc(var(--atlas-opacity) * 0.85); }
+  100% { opacity: calc(var(--atlas-opacity) * 0.82); }
 }
 
-@keyframes atlasDrift{
-  0%   { transform: translate3d(0,0,0); }
-  50%  { transform: translate3d(0,10px,0); }
-  100% { transform: translate3d(0,0,0); }
+@keyframes atlasWaves{
+  0%   { background-position: 0 0, 0 0; }
+  100% { background-position: 0 0, 220px 220px; }
 }
 
-/* Intensidad por modo (JS lo pondrá con clases en body) */
+@keyframes atlasDots{
+  0%   { opacity: calc(var(--atlas-dot-opacity) * 0.80); }
+  50%  { opacity: calc(var(--atlas-dot-opacity) * 1.00); }
+  100% { opacity: calc(var(--atlas-dot-opacity) * 0.80); }
+}
+
+/* Intensidad por modo */
 body.mode-ready{
-  --atlas-opacity: 0.55;
-  --atlas-dot-opacity: 0.28;
+  --atlas-opacity: 0.78;
+  --atlas-dot-opacity: 0.42;
 }
 body.mode-listening{
-  --atlas-opacity: 0.85;
-  --atlas-dot-opacity: 0.38;
+  --atlas-opacity: 1.00;
+  --atlas-dot-opacity: 0.52;
 }
 body.mode-speaking,
 body.mode-text,
-body.mode-thinking{
+body.mode-thinking,
+body.mode-init{
   --atlas-opacity: 0;
   --atlas-dot-opacity: 0;
 }
 
-/* Reduce motion */
 @media (prefers-reduced-motion: reduce){
-  .atlas-corner{ animation: none; }
+  .atlas-wedge::before,
+  .atlas-wedge::after{ animation:none; }
 }
 
 /* =========================
-   HUD containers
+   INPUT DOCK (único)
 ========================= */
-.hud{
+.dock{
   position:fixed;
+  left:50%;
+  bottom:18px;
+  transform:translateX(-50%);
   z-index:10;
+  width: min(860px, calc(100vw - 32px));
   display:flex;
   flex-direction:column;
+  align-items:center;
   gap:10px;
 }
 
-/* Voice HUD: abajo izquierda */
-.voiceHud{
-  left: 18px;
-  bottom: 18px;
-  align-items:flex-start;
+.dockToggle{
+  display:inline-flex;
+  gap:6px;
+  padding:6px;
+  border-radius:999px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.12);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 18px 70px rgba(0,0,0,0.45);
 }
 
-/* Text bar: abajo centro */
-.textBar{
-  left: 50%;
-  bottom: 18px;
-  transform: translateX(-50%);
-  width: min(760px, calc(100vw - 32px));
-  align-items: stretch;
+.dockTab{
+  border:none;
+  background: transparent;
+  color: rgba(255,255,255,0.72);
+  padding: 8px 14px;
+  border-radius:999px;
+  font-weight:650;
+  cursor:pointer;
 }
 
-/* =========================
-   Glass pills (UI blanca)
-========================= */
-.voicePill,
-.textPill{
+.dockTab.is-active{
+  background: rgba(255,255,255,0.10);
+  color: var(--ui-white);
+}
+
+.dockPill{
+  width:100%;
   display:flex;
   align-items:center;
   gap:12px;
-  padding: 10px 12px;
+  padding: 10px 10px 10px 14px;
   border-radius: 999px;
   background: var(--ui-glass);
   border: 1px solid var(--ui-border);
@@ -191,124 +215,89 @@ body.mode-thinking{
   -webkit-backdrop-filter: blur(14px);
 }
 
-.waveWrap{
-  width: 230px;
-  height: 34px;
-  border-radius: 999px;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.10);
+.dockBody{
+  flex:1;
   display:flex;
   align-items:center;
-  justify-content:center;
-  overflow:hidden;
+  min-height: 44px;
 }
 
-#waveCanvas{
-  width: 220px;
+.dockWaveWrap{
+  width:100%;
   height: 34px;
+  border-radius:999px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.10);
+  overflow:hidden;
+  display:flex;
+  align-items:center;
+  padding: 0 12px;
+}
+
+#dockWaveCanvas{
+  width:100%;
+  height: 22px;
   display:block;
 }
 
-/* Botón principal “Space para enviar” */
-.pillBtn{
-  height: 34px;
-  padding: 0 14px;
-  border-radius: 999px;
-  border: 1px solid rgba(255,255,255,0.14);
-  background: rgba(255,255,255,0.08);
-  color: var(--ui-white);
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  cursor: pointer;
-}
-
-.pillBtn:hover{
-  background: rgba(255,255,255,0.12);
-}
-
-/* Sub row de voz */
-.voiceSubRow{
-  display:flex;
-  align-items:center;
-  gap:12px;
-  padding-left: 10px;
-}
-
-.linkBtn{
-  border:none;
-  background: transparent;
-  color: var(--ui-white-soft);
-  cursor:pointer;
-  padding: 6px 8px;
-  border-radius: 10px;
-}
-
-.linkBtn:hover{
-  background: rgba(255,255,255,0.06);
-  color: var(--ui-white);
-}
-
-.micLabel{
-  font-size: 12px;
-  color: rgba(255,255,255,0.55);
-}
-
-/* Text bar internals */
-.iconBtn{
-  width: 38px;
-  height: 38px;
-  border-radius: 999px;
-  border: 1px solid rgba(255,255,255,0.14);
-  background: rgba(255,255,255,0.06);
-  color: var(--ui-white);
-  cursor:pointer;
-}
-
-.iconBtn:hover{
-  background: rgba(255,255,255,0.10);
-}
-
-#userText{
-  flex:1;
+#dockTextInput{
+  width:100%;
+  height: 40px;
   resize:none;
-  height: 38px;
-  padding: 8px 10px;
   border:none;
   outline:none;
   background: transparent;
   color: var(--ui-white);
   font-size: 14px;
   line-height: 22px;
+  padding: 8px 6px;
 }
 
-#userText::placeholder{
-  color: rgba(255,255,255,0.38);
+#dockTextInput::placeholder{
+  color: rgba(255,255,255,0.40);
 }
 
-.sendBtn{
-  width: 42px;
-  height: 42px;
+.dockActionBtn{
+  width: 46px;
+  height: 46px;
   border-radius: 999px;
   border: 1px solid rgba(255,255,255,0.14);
   background: rgba(255,255,255,0.08);
   color: var(--ui-white);
   cursor:pointer;
-  font-size: 16px;
+  position:relative;
+  display:flex;
+  align-items:center;
+  justify-content:center;
 }
 
-.sendBtn:hover{
+.dockActionBtn:hover{
   background: rgba(255,255,255,0.12);
 }
 
-/* Focus ring “OpenAI-like” */
-#userText:focus + .sendBtn,
-#userText:focus{
-  outline: none;
+.dockActionBtn:disabled{
+  opacity:0.55;
+  cursor:default;
 }
 
-.textPill:has(#userText:focus){
+.dockKeycap{
+  position:absolute;
+  right:-8px;
+  bottom:-8px;
+  font-size:10px;
+  padding: 3px 7px;
+  border-radius:999px;
+  background: rgba(0,0,0,0.48);
+  border: 1px solid rgba(255,255,255,0.14);
+  color: rgba(255,255,255,0.78);
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+}
+
+/* Focus ring OpenAI-like */
+.dockPill:has(#dockTextInput:focus){
   border-color: rgba(120,210,255,0.28);
-  box-shadow: 0 16px 60px rgba(0,0,0,0.45), 0 0 0 1px rgba(120,210,255,0.18);
+  box-shadow: var(--ui-shadow), 0 0 0 1px rgba(120,210,255,0.18);
 }
 
 /* =========================
@@ -326,8 +315,6 @@ body.mode-thinking{
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
 }
-
-.overlayCard.is-hidden{ display:none; }
 
 .overlayCard .card{
   width: min(560px, 100%);
@@ -380,9 +367,7 @@ body.mode-thinking{
   font-weight: 650;
   cursor:pointer;
 }
-.btnPrimary:hover{
-  background: rgba(255,255,255,0.14);
-}
+.btnPrimary:hover{ background: rgba(255,255,255,0.14); }
 
 .btnGhost{
   height: 40px;
@@ -423,8 +408,6 @@ body.mode-thinking{
   box-shadow: 0 18px 70px rgba(0,0,0,0.50);
   color: rgba(255,255,255,0.86);
 }
-
-.replyToast.is-hidden{ display:none; }
 
 .replyToast .label{
   display:inline-block;

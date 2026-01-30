@@ -1251,6 +1251,9 @@ let lipTestActive = false;
 let lipTestStartTime = 0;
 let testLipsBtn = null;
 
+// ✅ NUEVO: detección robusta de fin de habla del agente
+let _prevAvatarModeForTurn = AvatarState.mode;
+
 function animate() {
   requestAnimationFrame(animate);
 
@@ -1325,9 +1328,23 @@ function animate() {
   renderer.render(scene, camera);
 
   if (NeckEditor && NeckEditor.visible) drawNeckEditorOverlay();
+
+  // =========================
+  // ✅ Turn end detection (SPEAKING -> !SPEAKING) + agentSpeechActive
+  // =========================
+  if (
+    TurnController.agentSpeechActive &&
+    _prevAvatarModeForTurn === 'SPEAKING' &&
+    AvatarState.mode !== 'SPEAKING'
+  ) {
+    TurnController.agentSpeechActive = false;
+    try { TurnController.onAgentSpeechEnded?.('tts_end'); } catch (_) {}
+  }
+  _prevAvatarModeForTurn = AvatarState.mode;
 }
 
 animate();
+
 
 // =========================
 // 8. UI voice-first (pacto + modos + input)
@@ -1696,9 +1713,10 @@ window.addEventListener('keydown', (e) => {
 })();
 
 // =========================
-// 9. Mic simple (voice-first)
+// 9. Mic (dock) – voz automática + waveform
 // =========================
-const waveCanvas = UI.voiceWaveCanvas; // nuevo canvas pequeño para onda
+const waveCanvas = UI.dockWaveCanvas;
+
 let mediaRecorder = null;
 let audioChunks = [];
 let isRecording = false;
@@ -1715,7 +1733,6 @@ function drawWaveform() {
   if (!waveCanvas || !waveAnalyser) return;
   const ctx = waveCanvas.getContext('2d');
 
-  // Asegurar tamaño real del canvas (por si el CSS lo escala)
   if (waveCanvas.width !== waveCanvas.clientWidth || waveCanvas.height !== waveCanvas.clientHeight) {
     waveCanvas.width = Math.max(1, waveCanvas.clientWidth);
     waveCanvas.height = Math.max(1, waveCanvas.clientHeight);
@@ -1729,12 +1746,12 @@ function drawWaveform() {
 
   ctx.clearRect(0, 0, width, height);
 
-  // Fondo muy sutil (blanco/transparente)
-  ctx.fillStyle = 'rgba(255,255,255,0.03)';
+  // fondo ultra sutil (para que “respire”)
+  ctx.fillStyle = 'rgba(255,255,255,0.02)';
   ctx.fillRect(0, 0, width, height);
 
   ctx.lineWidth = 2;
-  ctx.strokeStyle = 'rgba(255,255,255,0.70)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.80)';
   ctx.beginPath();
 
   const sliceWidth = width / waveDataArray.length;
@@ -1792,9 +1809,8 @@ async function startRecording() {
 
   mediaRecorder.onstop = async () => {
     const blob = new Blob(audioChunks, { type: recorderMimeType });
-    let hadError = false;
 
-    // Si fue cancelado (typing/switch), no enviamos nada
+    // cancelado: no enviamos nada
     if (cancelNextRecording) {
       cancelNextRecording = false;
       teardownMic();
@@ -1824,29 +1840,21 @@ async function startRecording() {
       teardownMic();
       isRecording = false;
 
-      await sendTextToAgentVoiceFirst(text, { withAudio: true });
+      await sendTextToAgentDock(text, { withAudio: true });
 
     } catch (err) {
-      hadError = true;
       teardownMic();
       isRecording = false;
 
       console.error('Error al transcribir/enviar audio:', err);
       setReply(err?.message || 'Error de transcripción');
-      setUIMode('TEXT');
-    } finally {
-      if (!hadError) {
-        // Si el mensaje se envió, el flujo seguirá:
-        // THINKING -> SPEAKING -> READY -> auto mic (si VOICE)
-      }
+      enterTextMode('stt_fail');
     }
   };
 
-  // Arranca
   mediaRecorder.start(250);
   isRecording = true;
 
-  // Analizador para waveform UI
   waveAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
   waveAnalyser = waveAudioCtx.createAnalyser();
   waveAnalyser.fftSize = 1024;

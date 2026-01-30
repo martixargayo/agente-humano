@@ -14,37 +14,23 @@
     }
   </script>
 
-  <!-- ✅ NUEVO: UI minimal -->
   <link rel="stylesheet" href="./ui.css" />
 </head>
 
-<!--
-  Para previsualizar el glow sin JS todavía, prueba a poner:
-  <body class="mode-ready">  o  <body class="mode-listening">
-  Luego el JS lo controlará dinámicamente.
--->
-<body class="mode-speaking">
+<body class="mode-init">
 
-  <!-- =========================
-       0) Canvas 3D full-screen
-  ========================== -->
+  <!-- 0) Canvas 3D full-screen -->
   <canvas id="c"></canvas>
 
-  <!-- =========================
-       1) Glow Atlas Layer (esquinas)
-       pointer-events: none
-  ========================== -->
+  <!-- 1) Atlas Glow Layer (cuñas) -->
   <div id="atlasGlowLayer" aria-hidden="true">
-    <div class="atlas-corner tl"></div>
-    <div class="atlas-corner tr"></div>
-    <div class="atlas-corner bl"></div>
-    <div class="atlas-corner br"></div>
+    <div class="atlas-wedge tl"></div>
+    <div class="atlas-wedge tr"></div>
+    <div class="atlas-wedge bl"></div>
+    <div class="atlas-wedge br"></div>
   </div>
 
-  <!-- =========================
-       2) Voice Pact (permiso) - overlay
-       (JS lo mostrará/ocultará)
-  ========================== -->
+  <!-- 2) Voice Pact (permiso) - overlay -->
   <div id="voicePact" class="overlayCard is-hidden" role="dialog" aria-modal="true" aria-labelledby="voicePactTitle">
     <div class="card">
       <div class="badge">Modo voz</div>
@@ -68,68 +54,46 @@
     </div>
   </div>
 
-  <!-- =========================
-       3) Voice HUD (abajo-izquierda)
-       Mantiene IDs existentes: micBtn, waveCanvas, micLabel
-  ========================== -->
-  <div id="voiceHud" class="hud voiceHud">
-    <div class="voicePill">
-      <div class="waveWrap" aria-hidden="true">
-        <canvas id="waveCanvas" width="220" height="34"></canvas>
-      </div>
-
-      <button id="voiceStopBtn" class="pillBtn" type="button">
-        Space para enviar
-      </button>
-    </div>
-
-    <div class="voiceSubRow">
-      <!-- Mantengo micBtn para tu app.js actual -->
-      <button id="micBtn" class="linkBtn" type="button" title="Hablar">
+  <!-- 3) INPUT DOCK ÚNICO (abajo-centro) -->
+  <div id="inputDock" class="dock" aria-label="Entrada">
+    <div class="dockToggle" role="tablist" aria-label="Modo de entrada">
+      <button id="dockModeVoice" class="dockTab is-active" type="button" role="tab" aria-selected="true">
         Hablar
       </button>
-
-      <button id="switchToTextBtn" class="linkBtn" type="button">
+      <button id="dockModeText" class="dockTab" type="button" role="tab" aria-selected="false">
         Escribir
       </button>
+    </div>
 
-      <span id="micLabel" class="micLabel">Pulsa para hablar</span>
+    <div class="dockPill" role="group" aria-label="Entrada">
+      <!-- VOICE BODY -->
+      <div id="dockVoiceBody" class="dockBody dockBodyVoice" aria-hidden="false">
+        <div class="dockWaveWrap" aria-hidden="true">
+          <canvas id="dockWaveCanvas" width="520" height="28"></canvas>
+        </div>
+      </div>
+
+      <!-- TEXT BODY -->
+      <div id="dockTextBody" class="dockBody dockBodyText is-hidden" aria-hidden="true">
+        <textarea id="dockTextInput" rows="1" placeholder="Escribe un mensaje..."></textarea>
+      </div>
+
+      <!-- ACTION -->
+      <button id="dockActionBtn" class="dockActionBtn" type="button" aria-label="Acción">
+        <span id="dockActionIconMic" class="dockActionIcon">🎤</span>
+        <span id="dockActionIconSend" class="dockActionIcon is-hidden">↑</span>
+        <span id="dockKeycap" class="dockKeycap">space</span>
+      </button>
     </div>
   </div>
 
-  <!-- =========================
-       4) Text Bar (abajo-centro)
-       Mantiene IDs existentes: userText, sendToAgentBtn
-  ========================== -->
-  <div id="textBar" class="hud textBar">
-    <div class="textPill">
-      <button id="textMicBtn" class="iconBtn" type="button" title="Volver a voz" aria-label="Volver a voz">
-        🎤
-      </button>
-
-      <!-- Mantengo userText para tu app.js actual -->
-      <textarea id="userText" rows="1" placeholder="Escribe un mensaje..."></textarea>
-
-      <!-- Mantengo sendToAgentBtn para tu app.js actual -->
-      <button id="sendToAgentBtn" class="sendBtn" type="button" aria-label="Enviar">
-        ↑
-      </button>
-    </div>
-  </div>
-
-  <!-- =========================
-       5) Respuesta texto (mínima)
-       Mantengo lastReply para tu app.js
-  ========================== -->
+  <!-- 4) Respuesta texto (mínima) -->
   <div id="replyToast" class="replyToast is-hidden" aria-live="polite">
     <span class="label">Respuesta</span>
     <span id="lastReply"></span>
   </div>
 
-  <!-- =========================
-       6) Legacy panel (oculto)
-       Mantengo IDs por compatibilidad si aún los usas
-  ========================== -->
+  <!-- 5) Legacy panel (oculto) -->
   <div id="legacyPanel" class="legacyPanel" hidden>
     <div>
       <label><input type="radio" name="agentMode" value="chat" checked /> Chat normal</label>
@@ -139,7 +103,6 @@
     <label><input type="checkbox" id="idleMotionToggle" checked /> Movimiento idle</label>
   </div>
 
-  <!-- Tu app principal -->
   <script type="module" src="./app.js"></script>
 </body>
 </html>
