@@ -1,18 +1,16 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
-import { smoothstepJS } from './state.js';
-import { DebugView } from './state.js';
+import { smoothstepJS, DebugView } from './state.js';
 
 // =========================
 // Config boca (ajustable a mano)
-//   -> ahora se expone como window.MouthTuning (editable)
 // =========================
-const MOUTH_CENTER_Y = 0.16; // posición vertical del centro de la boca
-const MOUTH_CENTER_X = -0.045; // posición horizontal del centro de la boca
-const MOUTH_WIDTH = 0.18; // ancho de la región de boca
-const MOUTH_HEIGHT = 0.14; // alto máximo (labios + hueco)
-const MOUTH_CURVE = 0.0; // curvatura en U (0 = recto)
+const MOUTH_CENTER_Y = 0.16;
+const MOUTH_CENTER_X = -0.045;
+const MOUTH_WIDTH = 0.18;
+const MOUTH_HEIGHT = 0.14;
+const MOUTH_CURVE = 0.0;
 
 window.MouthTuning = window.MouthTuning || {
   centerX: MOUTH_CENTER_X,
@@ -23,7 +21,7 @@ window.MouthTuning = window.MouthTuning || {
 };
 
 // =========================
-// Config cuello / separación cabeza-cuerpo (TUNED)
+// Config cuello / separación cabeza-cuerpo
 // =========================
 window.NeckTuning = window.NeckTuning || {
   centerX: -0.05540768292619062,
@@ -36,20 +34,20 @@ window.NeckTuning = window.NeckTuning || {
 };
 
 // =========================
-// Config ojos / parpadeo (cortina de puntos)
+// Config ojos (capa de puntos estática; SIN parpadeo)
 //   -> editable con editor modo EYES (tecla 3)
 // =========================
-window.EyeTuning = {
+window.EyeTuning = window.EyeTuning || {
   leftCenterX: -0.2790878109748029,
   rightCenterX: 0.12250231427620147,
   centerY: 0.592741067776794,
   width: 0.06666211982918908,
   height: 0.028326739143716306,
   lidCurve: 0.012,
-  z: 0.017249169318488914,
-  hideOffsetY: 0.046115941012340955,
+  z: 0.017249169318488914,         // ✅ esto empuja adelante/atrás los ojos
+  hideOffsetY: 0.046115941012340955, // (se mantiene por compatibilidad, ya no se usa)
   pointsPerEye: 260,
-  alpha: 0.7
+  alpha: 0.7, // alpha de la capa de ojos
 };
 
 // =========================
@@ -62,7 +60,7 @@ let basePosAttrRef = null;
 let mouthWeightAttrRef = null;
 let mouthSideAttrRef = null;
 
-let blinkPoints = null;
+let eyePoints = null;
 
 let particleMaterial = null;
 let particlePoints = null;
@@ -71,7 +69,7 @@ let sceneRef = null;
 let controlsRef = null;
 
 // =========================
-// Recalcular aHeadWeight en caliente (API pública)
+// Recalcular aHeadWeight en caliente
 // =========================
 let _neckRecomputePending = false;
 
@@ -145,7 +143,7 @@ export function scheduleRecomputeHeadWeights(reason = 'change') {
 window.recomputeHeadWeights = () => scheduleRecomputeHeadWeights('manual');
 
 // =========================
-// Recalcular boca (aMouthWeight/aMouthSide) en caliente
+// Recalcular boca en caliente
 // =========================
 let _mouthRecomputePending = false;
 
@@ -229,9 +227,9 @@ export function scheduleRecomputeMouthWeights(reason = 'change') {
 window.recomputeMouthWeights = () => scheduleRecomputeMouthWeights('manual');
 
 // =========================
-// Rebuild “cortinas” de ojos
+// Rebuild capa de ojos (antes “blink curtain”)
 // =========================
-let _blinkRebuildPending = false;
+let _eyesRebuildPending = false;
 
 function logEyeTuning(reason = 'update') {
   const t = window.EyeTuning;
@@ -243,14 +241,13 @@ function logEyeTuning(reason = 'update') {
     height: t.height,
     lidCurve: t.lidCurve,
     z: t.z,
-    hideOffsetY: t.hideOffsetY,
     pointsPerEye: t.pointsPerEye,
     alpha: t.alpha,
   });
   console.log('[eyes] Pega esto en app.js:\nwindow.EyeTuning = ' + JSON.stringify(t, null, 2) + ';');
 }
 
-function createBlinkCurtainGeometry() {
+function createEyeLayerGeometry() {
   const t = window.EyeTuning;
 
   const pointsPerEye = Math.max(20, (t.pointsPerEye | 0));
@@ -266,8 +263,8 @@ function createBlinkCurtainGeometry() {
   const mouthSides = new Float32Array(total);
   const headWeights = new Float32Array(total);
 
+  // usamos aBlinkMask como “eyeMask” (1.0 = capa ojos)
   const blinkMask = new Float32Array(total);
-  const blinkHideOffset = new Float32Array(total * 3);
 
   const wAbs = Math.max(1e-6, Math.abs(t.width));
   const hAbs = Math.max(1e-6, Math.abs(t.height));
@@ -290,10 +287,9 @@ function createBlinkCurtainGeometry() {
       const nxClamped = Math.max(-1, Math.min(1, nx));
       const curve = t.lidCurve * nxClamped * nxClamped;
 
-      // Cortina: rellena el área del ojo con un arqueo leve (más natural)
       const x = cx + rx;
       const y = cy + ry - curve;
-      const z = t.z;
+      const z = t.z; // ✅ Z “adelante/atrás”
 
       positions[idx * 3 + 0] = x;
       positions[idx * 3 + 1] = y;
@@ -303,6 +299,7 @@ function createBlinkCurtainGeometry() {
       basePositions[idx * 3 + 1] = y;
       basePositions[idx * 3 + 2] = z;
 
+      // UV dummy (no usamos mapa en esta capa)
       uvs[idx * 2 + 0] = 0.0;
       uvs[idx * 2 + 1] = 0.0;
 
@@ -316,13 +313,7 @@ function createBlinkCurtainGeometry() {
       mouthSides[idx] = 0.0;
       headWeights[idx] = 1.0;
 
-      blinkMask[idx] = 1.0;
-
-      // cuando está abierto, sube y se “esconde”
-      blinkHideOffset[idx * 3 + 0] = 0.0;
-      blinkHideOffset[idx * 3 + 1] = Math.max(0.001, t.hideOffsetY);
-      blinkHideOffset[idx * 3 + 2] = 0.0;
-
+      blinkMask[idx] = 1.0; // “eye layer on”
       idx++;
     }
   }
@@ -337,42 +328,44 @@ function createBlinkCurtainGeometry() {
   geo.setAttribute('aMouthSide', new THREE.BufferAttribute(mouthSides, 1));
   geo.setAttribute('aHeadWeight', new THREE.BufferAttribute(headWeights, 1));
   geo.setAttribute('aBlinkMask', new THREE.BufferAttribute(blinkMask, 1));
-  geo.setAttribute('aBlinkHideOffset', new THREE.BufferAttribute(blinkHideOffset, 3));
   return geo;
 }
 
-function rebuildBlinkCurtain(reason = 'change') {
-  if (!particleMaterial) return;
-  if (!sceneRef) return;
+function rebuildEyeLayer(reason = 'change') {
+  if (!particleMaterial || !sceneRef) return;
 
-  if (!blinkPoints) {
-    const geo = createBlinkCurtainGeometry();
-    blinkPoints = new THREE.Points(geo, particleMaterial);
-    blinkPoints.frustumCulled = false;
-    sceneRef.add(blinkPoints);
+  if (!eyePoints) {
+    const geo = createEyeLayerGeometry();
+    eyePoints = new THREE.Points(geo, particleMaterial);
+    eyePoints.frustumCulled = false;
+    sceneRef.add(eyePoints);
   } else {
-    const old = blinkPoints.geometry;
-    blinkPoints.geometry = createBlinkCurtainGeometry();
+    const old = eyePoints.geometry;
+    eyePoints.geometry = createEyeLayerGeometry();
     try { old.dispose(); } catch (_) {}
+  }
+
+  // alpha capa ojos
+  if (particleMaterial?.uniforms?.uBlinkAlpha) {
+    particleMaterial.uniforms.uBlinkAlpha.value = window.EyeTuning.alpha ?? 0.7;
   }
 
   logEyeTuning(reason);
 }
 
+// ✅ mantenemos el nombre para no romper imports del editorOverlay
 export function scheduleRebuildBlinkCurtain(reason = 'change') {
-  if (_blinkRebuildPending) return;
-  _blinkRebuildPending = true;
+  if (_eyesRebuildPending) return;
+  _eyesRebuildPending = true;
   requestAnimationFrame(() => {
-    _blinkRebuildPending = false;
-    rebuildBlinkCurtain(reason);
+    _eyesRebuildPending = false;
+    rebuildEyeLayer(reason);
   });
 }
 
 // =========================
-// 2. Shaders de partículas
+// Shaders de partículas
 // =========================
-
-// Vertex: movimiento tipo “campo” + respiración + boca hablando + rig cabeza/cuerpo + tamaño fijo
 const vertexShader = /* glsl */ `
 precision highp float;
 
@@ -401,9 +394,6 @@ uniform vec3 uBodyOffset;
 uniform vec3 uNeckPivot;
 uniform vec3 uBodyPivot;
 
-// parpadeo
-uniform float uBlink;
-
 attribute vec3 aBasePosition;
 attribute vec3 aRandom;
 attribute float aClusterId;
@@ -416,9 +406,8 @@ attribute float aMouthSide;
 // peso cabeza (0=cuerpo, 1=cabeza)
 attribute float aHeadWeight;
 
-// blink overlay
+// eye layer mask (reutiliza nombre por compatibilidad)
 attribute float aBlinkMask;
-attribute vec3 aBlinkHideOffset;
 
 varying vec2 vUv;
 varying float vHeadWeight;
@@ -518,7 +507,6 @@ void main() {
 
   float side = aMouthSide;
   float lipAmp = mix(uTalkAmpBot, uTalkAmpTop, step(0.0, side));
-
   float mouthFactor = aMouthWeight * totalOpen;
 
   float verticalOffset = side * lipAmp * mouthFactor;
@@ -532,9 +520,6 @@ void main() {
     + breathOffset
     + mouthOffset;
 
-  // blink overlay: cuando uBlink=0 (abierto) -> sube y se esconde
-  displaced += aBlinkHideOffset * (1.0 - uBlink) * aBlinkMask;
-
   vec3 bodyPos = rotateAroundPivot(displaced, uBodyPivot, uBodyRot) + uBodyOffset;
   vec3 headPos = rotateAroundPivot(bodyPos, uNeckPivot, uHeadRot);
   vec3 finalPos = mix(bodyPos, headPos, aHeadWeight);
@@ -546,7 +531,6 @@ void main() {
 }
 `;
 
-// Fragment: disco suave + modulación por textura (normal) + debug por aHeadWeight + blink overlay
 const fragmentShader = /* glsl */ `
 precision highp float;
 
@@ -555,8 +539,7 @@ uniform sampler2D uColorMap;
 uniform float uUseMap;
 uniform float uDebugHeadWeight;
 
-// blink
-uniform float uBlink;
+// capa ojos (reutiliza nombre por compatibilidad)
 uniform float uBlinkAlpha;
 
 varying vec2 vUv;
@@ -578,11 +561,11 @@ void main() {
     return;
   }
 
-  // Blink overlay: puntos oscuros que aparecen muy rápido
+  // Capa ojos: puntos oscuros estáticos (SIN parpadeo)
   if (vBlinkMask > 0.5) {
-    float a = circle * uBlinkAlpha * smoothstep(0.02, 0.12, uBlink);
+    float a = circle * uBlinkAlpha;
     if (a < 0.02) discard;
-    vec3 c = vec3(0.03); // casi negro
+    vec3 c = vec3(0.03);
     gl_FragColor = vec4(c, a);
     return;
   }
@@ -601,7 +584,7 @@ void main() {
 `;
 
 // =========================
-// 3. Generar puntos desde vértices (cara frontal) + UV
+// Generar puntos desde vértices (cara frontal) + UV
 // =========================
 function generateFaceParticlesFromVertices(srcGeometry) {
   const srcPos = srcGeometry.getAttribute('position');
@@ -644,9 +627,8 @@ function generateFaceParticlesFromVertices(srcGeometry) {
 
   const headWeights = new Float32Array(count);
 
-  // blink attrs (en cara normal -> 0)
+  // “eye mask” (cara normal -> 0)
   const blinkMask = new Float32Array(count);
-  const blinkHideOffset = new Float32Array(count * 3);
 
   for (let i = 0; i < count; i++) {
     randoms[i * 3 + 0] = Math.random();
@@ -660,7 +642,7 @@ function generateFaceParticlesFromVertices(srcGeometry) {
     const cy = Math.floor((y + 0.4) * 10.0);
     clusterIds[i] = cx + cy * 10.0;
 
-    // ------- Boca (desde window.MouthTuning) -------
+    // ------- Boca -------
     const m = window.MouthTuning;
     const mwAbs = Math.max(1e-6, Math.abs(m.width));
     const mhAbs = Math.max(1e-6, Math.abs(m.height));
@@ -682,8 +664,7 @@ function generateFaceParticlesFromVertices(srcGeometry) {
         let wy = 1.0 - ay / mhAbs;
         weight = wx * wy;
 
-        if (weight < 0.0) weight = 0.0;
-        if (weight > 1.0) weight = 1.0;
+        weight = Math.max(0.0, Math.min(1.0, weight));
 
         if (dy > 0.0) side = 1.0;
         else if (dy < 0.0) side = -1.0;
@@ -694,7 +675,7 @@ function generateFaceParticlesFromVertices(srcGeometry) {
     mouthWeights[i] = weight;
     mouthSides[i] = side;
 
-    // ------- Cuello (desde window.NeckTuning) -------
+    // ------- Cuello -------
     const t = window.NeckTuning;
     const wAbs = Math.max(1e-6, Math.abs(t.width));
 
@@ -721,11 +702,8 @@ function generateFaceParticlesFromVertices(srcGeometry) {
 
     headWeights[i] = hw;
 
-    // blink defaults (cara)
+    // cara normal: no es capa ojos
     blinkMask[i] = 0.0;
-    blinkHideOffset[i * 3 + 0] = 0.0;
-    blinkHideOffset[i * 3 + 1] = 0.0;
-    blinkHideOffset[i * 3 + 2] = 0.0;
   }
 
   const particlesGeo = new THREE.BufferGeometry();
@@ -738,7 +716,6 @@ function generateFaceParticlesFromVertices(srcGeometry) {
   particlesGeo.setAttribute('aMouthSide', new THREE.BufferAttribute(mouthSides, 1));
   particlesGeo.setAttribute('aHeadWeight', new THREE.BufferAttribute(headWeights, 1));
   particlesGeo.setAttribute('aBlinkMask', new THREE.BufferAttribute(blinkMask, 1));
-  particlesGeo.setAttribute('aBlinkHideOffset', new THREE.BufferAttribute(blinkHideOffset, 3));
 
   return particlesGeo;
 }
@@ -747,7 +724,7 @@ function generateFaceParticlesFromVertices(srcGeometry) {
 const POINT_SIZE = 3.5 * window.devicePixelRatio;
 
 // =========================
-// 4. Cargar GLB, fusionar capas, crear partículas
+// Cargar GLB, fusionar capas, crear partículas
 // =========================
 export function initAvatarParticles({ scene, controls }) {
   sceneRef = scene;
@@ -849,8 +826,7 @@ export function initAvatarParticles({ scene, controls }) {
           uNeckPivot: { value: new THREE.Vector3(0.0, t.neckPivotY, 0.0) },
           uBodyPivot: { value: new THREE.Vector3(0.0, t.bodyPivotY, 0.0) },
 
-          // blink
-          uBlink: { value: 0.0 },
+          // capa ojos (antes blink alpha)
           uBlinkAlpha: { value: window.EyeTuning.alpha ?? 0.7 },
 
           // DEBUG
@@ -862,13 +838,12 @@ export function initAvatarParticles({ scene, controls }) {
       particlePoints.frustumCulled = false;
       sceneRef.add(particlePoints);
 
-      // Blink overlay points
-      rebuildBlinkCurtain('after_load');
+      // ✅ Capa ojos (estática)
+      rebuildEyeLayer('after_load');
 
       controlsRef.target.set(0, 0.15, 0);
       controlsRef.update();
 
-      // por si se tocó NeckTuning/MouthTuning antes de cargar
       scheduleRecomputeHeadWeights('after_load');
       scheduleRecomputeMouthWeights('after_load');
     },
@@ -885,7 +860,6 @@ export function initAvatarParticles({ scene, controls }) {
 export function getParticleMaterial() { return particleMaterial; }
 export function getParticlePoints() { return particlePoints; }
 
-// (Opcional) helper para toggles: mantiene compatibilidad si quieres llamarlo desde fuera
 export function setDebugHeadWeight(enabled) {
   DebugView.headWeight = !!enabled;
   if (particleMaterial) particleMaterial.uniforms.uDebugHeadWeight.value = DebugView.headWeight ? 1.0 : 0.0;

@@ -1,4 +1,4 @@
-import { DEBUG_EDIT_ENABLED, NeckEditor, AvatarState, DebugView, MotionConfig, MotionState, SpeakFocus, updateBlink, updateChannel, updateNod, onSpeakStart, onSpeakEnd, DebugEdit, FreezePose } from './state.js';
+import { DEBUG_EDIT_ENABLED, NeckEditor, AvatarState, DebugView, MotionConfig, MotionState, SpeakFocus, updateChannel, updateNod, onSpeakStart, onSpeakEnd, DebugEdit, FreezePose } from './state.js';
 import { scene, camera, renderer, controls, clock } from './scene.js';
 import { initAvatarParticles, getParticleMaterial, getParticlePoints } from './avatarParticles.js';
 import { initAgentUI, getTalkLevelFromAudio, isLipHoldActive } from './audioAgent.js';
@@ -27,17 +27,12 @@ function animate() {
     if (!speakingNow && SpeakFocus.wasSpeaking) onSpeakEnd(elapsed);
     SpeakFocus.wasSpeaking = speakingNow;
 
-    // speaking blend suave
     const targetBlend = speakingNow ? 1.0 : 0.0;
     SpeakFocus.speakingBlend += (targetBlend - SpeakFocus.speakingBlend) * (1.0 - Math.exp(-delta * 6.5));
 
-    // lean in/out
     const targetLean = speakingNow ? 0.028 : 0.0;
     SpeakFocus.leanZ += (targetLean - SpeakFocus.leanZ) * (1.0 - Math.exp(-delta * 7.0));
   }
-
-  // blink value: en freeze lo paramos
-  const blink = freezeActive ? 0.0 : updateBlink(elapsed);
 
   const particleMaterial = getParticleMaterial();
   const particlePoints = getParticlePoints();
@@ -50,7 +45,6 @@ function animate() {
         FreezePose.uTime = elapsed;
 
         FreezePose.talk = particleMaterial.uniforms.uTalk?.value ?? 0.0;
-        FreezePose.blink = particleMaterial.uniforms.uBlink?.value ?? 0.0;
         FreezePose.headRot.copy(particleMaterial.uniforms.uHeadRot.value);
         FreezePose.bodyRot.copy(particleMaterial.uniforms.uBodyRot.value);
         FreezePose.bodyOffset.copy(particleMaterial.uniforms.uBodyOffset.value);
@@ -58,31 +52,19 @@ function animate() {
         console.info('[debugEdit] FREEZE ON', { uTime: FreezePose.uTime });
       }
 
-      // Congela uTime => se para sway/ruido/respiración shader
       particleMaterial.uniforms.uTime.value = FreezePose.uTime;
 
-      // Mantener talk congelado
       AvatarState.talkLevel = FreezePose.talk;
       particleMaterial.uniforms.uTalk.value = FreezePose.talk;
       particleMaterial.uniforms.uRestOpen.value = 0.03;
 
       particleMaterial.uniforms.uDebugHeadWeight.value = DebugView.headWeight ? 1.0 : 0.0;
 
-      // Blink congelado, pero en modo eyes forzamos “cierre estático”
-      let blinkVal = FreezePose.blink;
-      if (DEBUG_EDIT_ENABLED && NeckEditor?.visible && NeckEditor?.mode === 'eyes') {
-        blinkVal = NeckEditor.dragging ? 1.0 : 0.65;
-      }
-      particleMaterial.uniforms.uBlink.value = blinkVal;
-      particleMaterial.uniforms.uBlinkAlpha.value = window.EyeTuning.alpha ?? 0.7;
-
-      // Pose congelada
       particleMaterial.uniforms.uHeadRot.value.copy(FreezePose.headRot);
       particleMaterial.uniforms.uBodyRot.value.copy(FreezePose.bodyRot);
       particleMaterial.uniforms.uBodyOffset.value.copy(FreezePose.bodyOffset);
 
     } else {
-      // fuera de freeze, permitir recaptura futura
       FreezePose.captured = false;
 
       particleMaterial.uniforms.uTime.value = elapsed;
@@ -97,16 +79,6 @@ function animate() {
       particleMaterial.uniforms.uRestOpen.value = 0.03;
       particleMaterial.uniforms.uDebugHeadWeight.value = DebugView.headWeight ? 1.0 : 0.0;
 
-      // preview blink en editor eyes
-      let blinkVal = blink;
-      if (DEBUG_EDIT_ENABLED && NeckEditor?.visible && NeckEditor?.mode === 'eyes') {
-        blinkVal = Math.max(blinkVal, NeckEditor.dragging ? 1.0 : 0.65);
-      }
-
-      particleMaterial.uniforms.uBlink.value = blinkVal;
-      particleMaterial.uniforms.uBlinkAlpha.value = window.EyeTuning.alpha ?? 0.7;
-
-      // motion normal
       const sB = SpeakFocus.speakingBlend;
 
       const headCfg = {

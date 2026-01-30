@@ -23,9 +23,7 @@ export const FreezePose = {
   bodyRot: new THREE.Vector3(0, 0, 0),
   bodyOffset: new THREE.Vector3(0, 0, 0),
   talk: 0,
-  blink: 0,
 };
-
 
 // ============================================================================
 // ✅ Neck Editor state (DEBE existir antes de animate() y keydown)
@@ -129,97 +127,6 @@ export const LipsyncConfig = {
 };
 
 // =========================
-// Parpadeo: estado y timing
-// =========================
-export const BlinkState = {
-  value: 0.0,         // 0=open, 1=closed
-  phase: 'idle',      // idle | closing | hold | opening | gap
-  t0: 0,
-  next: 0,
-  doDouble: false,
-  doubleDone: false,
-};
-
-function scheduleNextBlink(now) {
-  BlinkState.next = now + randRange(2.6, 6.2);
-  BlinkState.doDouble = Math.random() < 0.16;
-  BlinkState.doubleDone = false;
-}
-
-scheduleNextBlink(0);
-
-function startBlink(now) {
-  BlinkState.phase = 'closing';
-  BlinkState.t0 = now;
-}
-
-export function updateBlink(now) {
-  // si está idle, chequea si toca parpadear
-  if (BlinkState.phase === 'idle') {
-    if (now >= BlinkState.next) startBlink(now);
-    BlinkState.value = 0.0;
-    return BlinkState.value;
-  }
-
-  // timings súper rápidos (casi imperceptible)
-  const CLOSE_S = 0.045;
-  const HOLD_S = 0.018;
-  const OPEN_S = 0.075;
-  const GAP_S = 0.10; // si hay doble blink
-
-  if (BlinkState.phase === 'closing') {
-    const u = (now - BlinkState.t0) / CLOSE_S;
-    BlinkState.value = Math.max(0, Math.min(1, u));
-    if (u >= 1) {
-      BlinkState.phase = 'hold';
-      BlinkState.t0 = now;
-      BlinkState.value = 1.0;
-    }
-    return BlinkState.value;
-  }
-
-  if (BlinkState.phase === 'hold') {
-    BlinkState.value = 1.0;
-    if ((now - BlinkState.t0) >= HOLD_S) {
-      BlinkState.phase = 'opening';
-      BlinkState.t0 = now;
-    }
-    return BlinkState.value;
-  }
-
-  if (BlinkState.phase === 'opening') {
-    const u = (now - BlinkState.t0) / OPEN_S;
-    BlinkState.value = 1.0 - Math.max(0, Math.min(1, u));
-    if (u >= 1) {
-      BlinkState.value = 0.0;
-      if (BlinkState.doDouble && !BlinkState.doubleDone) {
-        BlinkState.doubleDone = true;
-        BlinkState.phase = 'gap';
-        BlinkState.t0 = now;
-      } else {
-        BlinkState.phase = 'idle';
-        scheduleNextBlink(now);
-      }
-    }
-    return BlinkState.value;
-  }
-
-  if (BlinkState.phase === 'gap') {
-    BlinkState.value = 0.0;
-    if ((now - BlinkState.t0) >= GAP_S) {
-      BlinkState.phase = 'closing';
-      BlinkState.t0 = now;
-    }
-    return BlinkState.value;
-  }
-
-  BlinkState.phase = 'idle';
-  BlinkState.value = 0.0;
-  scheduleNextBlink(now);
-  return BlinkState.value;
-}
-
-// =========================
 // Movimiento humano "espontáneo" (targets + pausas)
 // =========================
 export const MotionConfig = {
@@ -235,13 +142,13 @@ export const MotionState = {
   nod: { active: false, t0: 0, dur: 0.32, amp: 0.012, count: 1 },
 };
 
-// === NUEVO: Focus al empezar a hablar (recoloca + hold) y speaking “más suave”
+// === Focus al empezar a hablar (hold) y speaking “más suave”
 export const SpeakFocus = {
   wasSpeaking: false,
   holdUntil: 0,
-  speakingBlend: 0,     // 0..1 (smooth)
+  speakingBlend: 0, // 0..1 (smooth)
   leanZ: 0,
-  centerBias: 0,        // 0..1 (smooth) ✅ nuevo: para mirar al centro de forma orgánica
+  centerBias: 0,    // 0..1 (smooth)
 };
 
 function pickTarget(cfg) {
@@ -266,13 +173,13 @@ export function updateChannel(ch, cfg, t, dt) {
 }
 
 export function updateNod(t, dt) {
-  // ✅ Solo inicia nods aleatorios cuando está escuchando, pero si ya empezó NO se corta aunque cambie el modo
+  // Solo inicia nods aleatorios cuando está escuchando, pero si ya empezó NO se corta aunque cambie el modo
   if (!MotionState.nod.active && AvatarState.mode === 'LISTENING') {
-    const p = 0.12; // probabilidad por segundo aprox. (sutil)
+    const p = 0.12; // probabilidad por segundo aprox.
     if (Math.random() < p * dt) {
       MotionState.nod.active = true;
       MotionState.nod.t0 = t;
-      MotionState.nod.count = (Math.random() < 0.42) ? 2 : 1; // 1 o 2 “aja”
+      MotionState.nod.count = (Math.random() < 0.42) ? 2 : 1;
       MotionState.nod.dur = (MotionState.nod.count === 1)
         ? randRange(0.32, 0.48)
         : randRange(0.62, 0.92);
@@ -288,16 +195,14 @@ export function updateNod(t, dt) {
     return 0.0;
   }
 
-  // 1 o 2 nods: pulsos de media-seno, con el segundo más suave y con fade-out final
   const n = Math.max(1, MotionState.nod.count | 0);
   const segU = u * n;
   const idx = Math.min(n - 1, Math.floor(segU));
   const localU = segU - idx;
 
-  const ampSeg = MotionState.nod.amp * (idx === 0 ? 1.0 : 0.65); // segundo nod más pequeño
+  const ampSeg = MotionState.nod.amp * (idx === 0 ? 1.0 : 0.65);
   const pulse = -ampSeg * Math.sin(localU * Math.PI);
 
-  // envelope suave (entra y sale imperceptible)
   const envIn = smoothstepJS(0.0, 0.14, u);
   const envOut = 1.0 - smoothstepJS(0.72, 1.0, u);
 
@@ -305,10 +210,8 @@ export function updateNod(t, dt) {
 }
 
 export function onSpeakStart(now) {
-  // ✅ Recolocar mirando al centro, pero ORGÁNICO: no forzamos target=0 (solo marcamos el hold)
   const hold = randRange(2.0, 3.0);
   SpeakFocus.holdUntil = now + hold;
-
   console.info('[speak-focus] start', { holdSec: hold.toFixed(2) });
 }
 
