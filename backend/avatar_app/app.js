@@ -1520,7 +1520,7 @@ const MotionState = {
   seed: Math.random() * 1000.0,
   head: { current: new THREE.Vector3(0, 0, 0), target: new THREE.Vector3(0, 0, 0), nextSwitch: 0 },
   body: { current: new THREE.Vector3(0, 0, 0), target: new THREE.Vector3(0, 0, 0), nextSwitch: 0 },
-  nod: { active: false, t0: 0, dur: 0.32, amp: 0.012 },
+  nod: { active: false, t0: 0, dur: 0.32, amp: 0.012, count: 1 },
 };
 
 // === NUEVO: Focus al empezar a hablar (recoloca + hold) y speaking “más suave”
@@ -1529,6 +1529,7 @@ const SpeakFocus = {
   holdUntil: 0,
   speakingBlend: 0,     // 0..1 (smooth)
   leanZ: 0,
+  centerBias: 0,        // 0..1 (smooth) ✅ nuevo: para mirar al centro de forma orgánica
 };
 
 function pickTarget(cfg) {
@@ -1553,12 +1554,16 @@ function updateChannel(ch, cfg, t, dt) {
 }
 
 function updateNod(t, dt) {
+  // ✅ Solo inicia nods aleatorios cuando está escuchando, pero si ya empezó NO se corta aunque cambie el modo
   if (!MotionState.nod.active && AvatarState.mode === 'LISTENING') {
-    const p = 0.18;
+    const p = 0.12; // probabilidad por segundo aprox. (sutil)
     if (Math.random() < p * dt) {
       MotionState.nod.active = true;
       MotionState.nod.t0 = t;
-      MotionState.nod.dur = randRange(0.28, 0.40);
+      MotionState.nod.count = (Math.random() < 0.42) ? 2 : 1; // 1 o 2 “aja”
+      MotionState.nod.dur = (MotionState.nod.count === 1)
+        ? randRange(0.32, 0.48)
+        : randRange(0.62, 0.92);
       MotionState.nod.amp = randRange(0.010, 0.014);
     }
   }
@@ -1571,24 +1576,27 @@ function updateNod(t, dt) {
     return 0.0;
   }
 
-  const s = Math.sin(u * 3.14159);
-  return -MotionState.nod.amp * s;
+  // 1 o 2 nods: pulsos de media-seno, con el segundo más suave y con fade-out final
+  const n = Math.max(1, MotionState.nod.count | 0);
+  const segU = u * n;
+  const idx = Math.min(n - 1, Math.floor(segU));
+  const localU = segU - idx;
+
+  const ampSeg = MotionState.nod.amp * (idx === 0 ? 1.0 : 0.65); // segundo nod más pequeño
+  const pulse = -ampSeg * Math.sin(localU * Math.PI);
+
+  // envelope suave (entra y sale imperceptible)
+  const envIn = smoothstepJS(0.0, 0.14, u);
+  const envOut = 1.0 - smoothstepJS(0.72, 1.0, u);
+
+  return pulse * envIn * envOut;
 }
 
 function onSpeakStart(now) {
-  // recolocar mirando al centro, muy suave, y aguantar 2-3s
+  // ✅ Recolocar mirando al centro, pero ORGÁNICO: no forzamos target=0 (solo marcamos el hold)
   const hold = randRange(2.0, 3.0);
   SpeakFocus.holdUntil = now + hold;
 
-  // fuerza objetivo a cero (mirar al frente)
-  MotionState.head.target.set(0, 0, 0);
-  MotionState.head.nextSwitch = SpeakFocus.holdUntil;
-
-  // cuerpo aún más estable cuando empieza a hablar
-  MotionState.body.target.set(0, 0, 0);
-  MotionState.body.nextSwitch = now + randRange(1.2, 2.2);
-
-  // log
   console.info('[speak-focus] start', { holdSec: hold.toFixed(2) });
 }
 
@@ -1641,8 +1649,14 @@ function animate() {
 
     particleMaterial.uniforms.uDebugHeadWeight.value = DebugView.headWeight ? 1.0 : 0.0;
 
+    // ✅ Patch 1: preview de blink en modo editor + eyes
+    let blinkVal = blink;
+    if (DEBUG_EDIT_ENABLED && NeckEditor?.visible && NeckEditor?.mode === 'eyes') {
+      blinkVal = Math.max(blinkVal, NeckEditor.dragging ? 1.0 : 0.65);
+    }
+
     // blink uniforms
-    particleMaterial.uniforms.uBlink.value = blink;
+    particleMaterial.uniforms.uBlink.value = blinkVal;
     particleMaterial.uniforms.uBlinkAlpha.value = window.EyeTuning.alpha ?? 0.7;
 
     // speaking => amplitud más pequeña + smoothing más alto (más calmado)
@@ -1685,16 +1699,21 @@ function animate() {
 
     const nodPitch = updateNod(elapsed, delta);
 
-    // Durante hold inicial, “mira al centro” de forma clara
+    // ✅ Ajuste 2: “mirar al centro” orgánico y suave (sin snap)
     const holdActive = speakingNow && (elapsed < SpeakFocus.holdUntil);
-    const centerBias = holdActive ? 0.92 : (0.22 * sB); // siempre un pelín centrado al hablar
+    const targetCenterBias = holdActive ? 0.92 : (0.22 * sB); // durante hold fuerte, luego leve mientras habla
+
+    const centerSpeed = (targetCenterBias > SpeakFocus.centerBias) ? 4.8 : 2.2; // sube rápido natural, baja más lento
+    SpeakFocus.centerBias += (targetCenterBias - SpeakFocus.centerBias) * (1.0 - Math.exp(-delta * centerSpeed));
+
+    const centerBias = SpeakFocus.centerBias;
 
     const head = MotionState.head.current;
     let hx = head.x + microPitch + nodPitch;
     let hy = head.y + microYaw;
     let hz = head.z + microRoll;
 
-    // bias a mirar al centro (0,0,0)
+    // bias a mirar al centro (0,0,0) de forma suave
     hx *= (1.0 - centerBias);
     hy *= (1.0 - centerBias);
     hz *= (1.0 - centerBias);
@@ -2041,9 +2060,17 @@ function updateNeckEditorInfo() {
     handlesLine = 'Handles: <b>leftCenter</b>, <b>rightCenter</b>, <b>width</b>, <b>height</b>, <b>curve</b>, <b>hide</b>, <b>z</b> &nbsp;(<b>[</b>/<b>]</b> densidad)';
   }
 
+  // ✅ Patch 2: botones clicables
   NeckEditor.infoEl.innerHTML = `
     <div style="font-weight:700; margin-bottom:6px;">Editor (${mode.toUpperCase()})</div>
-    <div>Tecla <b>E</b> ocultar/mostrar. Modos: <b>1</b>=Neck <b>2</b>=Mouth <b>3</b>=Eyes</div>
+
+    <div style="margin-bottom:8px;">
+      <button data-mode="neck"  style="margin-right:6px; padding:4px 8px; border-radius:10px; border:1px solid rgba(255,255,255,.25); background:rgba(255,255,255,.08); color:#fff; cursor:pointer;">Neck</button>
+      <button data-mode="mouth" style="margin-right:6px; padding:4px 8px; border-radius:10px; border:1px solid rgba(255,255,255,.25); background:rgba(255,255,255,.08); color:#fff; cursor:pointer;">Mouth</button>
+      <button data-mode="eyes"  style="padding:4px 8px; border-radius:10px; border:1px solid rgba(255,255,255,.25); background:rgba(255,255,255,.08); color:#fff; cursor:pointer;">Eyes</button>
+    </div>
+
+    <div>Tecla <b>E</b> ocultar/mostrar. (También: <b>1</b>/<b>2</b>/<b>3</b>)</div>
     <div style="margin-top:6px; opacity:.92">${handlesLine}</div>
     <div style="margin-top:8px; opacity:.85">Cada cambio imprime JSON en consola.</div>
   `;
@@ -2085,6 +2112,16 @@ function initNeckEditorOverlay() {
     userSelect: 'none',
   });
   NeckEditor.infoEl = info;
+
+  // ✅ Patch 2: listener botones modo
+  info.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('[data-mode]');
+    if (!btn) return;
+    NeckEditor.mode = btn.dataset.mode;
+    console.info('[neck-editor] Modo:', NeckEditor.mode.toUpperCase());
+    updateNeckEditorInfo();
+  });
+
   updateNeckEditorInfo();
   document.body.appendChild(info);
 
@@ -2618,6 +2655,33 @@ function drawNeckEditorOverlay() {
       ctx.globalAlpha = 1.0;
     }
 
+    // ✅ Patch 3: cruces grandes en centros (imposible “no verlos”)
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    ctx.lineWidth = 2;
+
+    const centers = [
+      { x: t.leftCenterX, y: t.centerY, label: 'L' },
+      { x: t.rightCenterX, y: t.centerY, label: 'R' },
+    ];
+
+    for (const c of centers) {
+      const s = screenProject(c.x, c.y, 0);
+      const size = 18;
+
+      ctx.beginPath();
+      ctx.moveTo(s.x - size, s.y);
+      ctx.lineTo(s.x + size, s.y);
+      ctx.moveTo(s.x, s.y - size);
+      ctx.lineTo(s.x, s.y + size);
+      ctx.stroke();
+
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.font = '14px ui-monospace, monospace';
+      ctx.fillText(c.label, s.x + size + 6, s.y + 5);
+    }
+    ctx.restore();
+
     ctx.restore();
   }
 
@@ -2643,3 +2707,4 @@ function drawNeckEditorOverlay() {
 if (DEBUG_EDIT_ENABLED) {
   initNeckEditorOverlay();
 }
+
