@@ -6,6 +6,27 @@ import * as THREE from 'three';
 export const URL_PARAMS = new URLSearchParams(window.location.search);
 export const DEBUG_EDIT_ENABLED = URL_PARAMS.get('debugEdit') === '1';
 
+// =========================
+// DebugEdit: freeze motion + camera/orbit toggle
+// =========================
+export const DebugEdit = {
+  enabled: DEBUG_EDIT_ENABLED,
+  freezeMotion: DEBUG_EDIT_ENABLED, // por defecto: congelado en modo editor
+  cameraMode: false,                // true => OrbitControls ON, overlay no captura eventos
+};
+
+// Pose congelada (uniforms)
+export const FreezePose = {
+  captured: false,
+  uTime: 0,
+  uHeadRot: new THREE.Vector3(0, 0, 0),
+  uBodyRot: new THREE.Vector3(0, 0, 0),
+  uBodyOffset: new THREE.Vector3(0, 0, 0),
+  uTalk: 0,
+  uBlink: 0,
+};
+
+
 // ============================================================================
 // ✅ Neck Editor state (DEBE existir antes de animate() y keydown)
 //   (ahora actúa como editor general: neck/mouth/eyes)

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { DEBUG_EDIT_ENABLED, NeckEditor, DebugView } from './state.js';
+import { DEBUG_EDIT_ENABLED, NeckEditor, DebugView, DebugEdit, FreezePose } from './state.js';
 import { camera, controls, addResizeHandler } from './scene.js';
 import { scheduleRecomputeHeadWeights, scheduleRecomputeMouthWeights, scheduleRebuildBlinkCurtain, setDebugHeadWeight } from './avatarParticles.js';
 
@@ -36,18 +36,57 @@ window.addEventListener('keydown', (e) => {
       scheduleRebuildBlinkCurtain('eyes:points++');
     }
   }
+
+  // ⏸ P pausa / ▶ reanuda movimiento (solo debugEdit)
+  if (DEBUG_EDIT_ENABLED && (e.key === 'p' || e.key === 'P')) {
+    setFreezeMotion(!DebugEdit.freezeMotion);
+  }
+
+  // 🎥 V alterna cámara/orbit vs edición
+  if (DEBUG_EDIT_ENABLED && (e.key === 'v' || e.key === 'V')) {
+    setCameraMode(!DebugEdit.cameraMode);
+  }
 });
 
 // =========================
 // Editor overlay helpers
 // =========================
+function setFreezeMotion(v) {
+  if (!DebugEdit.enabled) return;
+  DebugEdit.freezeMotion = !!v;
+  FreezePose.captured = false; // recaptura cuando haga falta
+  updateNeckEditorInfo();
+  console.info('[debugEdit] freezeMotion:', DebugEdit.freezeMotion ? 'ON' : 'OFF');
+}
+
+function setCameraMode(v) {
+  if (!DebugEdit.enabled) return;
+  DebugEdit.cameraMode = !!v;
+
+  // Aplica el cambio al overlay/controls respetando si el editor está visible
+  setNeckEditorVisible(NeckEditor.visible);
+
+  updateNeckEditorInfo();
+  console.info('[debugEdit] cameraMode:', DebugEdit.cameraMode ? 'ON' : 'OFF');
+}
+
 function setNeckEditorVisible(v) {
   if (!NeckEditor.enabled) return;
   if (!NeckEditor.overlay) initNeckEditorOverlay();
+
   NeckEditor.visible = !!v;
-  NeckEditor.overlay.style.display = NeckEditor.visible ? 'block' : 'none';
+
+  const overlayVisible = NeckEditor.visible && !DebugEdit.cameraMode;
+
+  NeckEditor.overlay.style.display = overlayVisible ? 'block' : 'none';
+  NeckEditor.overlay.style.pointerEvents = overlayVisible ? 'auto' : 'none';
+
   if (NeckEditor.infoEl) NeckEditor.infoEl.style.display = NeckEditor.visible ? 'block' : 'none';
-  NeckEditor.overlay.style.pointerEvents = NeckEditor.visible ? 'auto' : 'none';
+
+  // Controls: en debugEdit solo se activan si cameraMode ON o si editor oculto
+  if (DebugEdit.enabled) {
+    controls.enabled = DebugEdit.cameraMode || !NeckEditor.visible;
+  }
 }
 
 function updateNeckEditorInfo() {
@@ -64,7 +103,10 @@ function updateNeckEditorInfo() {
   }
 
   // ✅ Patch 2: botones clicables
-  NeckEditor.infoEl.innerHTML = `
+  const freezeLabel = DebugEdit.freezeMotion ? '▶ Reanudar movimiento' : '⏸ Pausar movimiento';
+  const cameraLabel = DebugEdit.cameraMode ? '✏️ Editar (bloquear cámara)' : '🎥 Cámara (rotar/zoom)';
+
+    NeckEditor.infoEl.innerHTML = `
     <div style="font-weight:700; margin-bottom:6px;">Editor (${mode.toUpperCase()})</div>
 
     <div style="margin-bottom:8px;">
@@ -73,7 +115,13 @@ function updateNeckEditorInfo() {
       <button data-mode="eyes"  style="padding:4px 8px; border-radius:10px; border:1px solid rgba(255,255,255,.25); background:rgba(255,255,255,.08); color:#fff; cursor:pointer;">Eyes</button>
     </div>
 
+    <div style="margin-bottom:8px;">
+      <button data-action="toggle-freeze" style="margin-right:6px; padding:4px 8px; border-radius:10px; border:1px solid rgba(255,255,255,.25); background:rgba(255,255,255,.12); color:#fff; cursor:pointer;">${freezeLabel}</button>
+      <button data-action="toggle-camera" style="padding:4px 8px; border-radius:10px; border:1px solid rgba(255,255,255,.25); background:rgba(255,255,255,.12); color:#fff; cursor:pointer;">${cameraLabel}</button>
+    </div>
+
     <div>Tecla <b>E</b> ocultar/mostrar. (También: <b>1</b>/<b>2</b>/<b>3</b>)</div>
+    <div>Atajos: <b>P</b> pausa, <b>V</b> cámara</div>
     <div style="margin-top:6px; opacity:.92">${handlesLine}</div>
     <div style="margin-top:8px; opacity:.85">Cada cambio imprime JSON en consola.</div>
   `;
@@ -118,12 +166,21 @@ function initNeckEditorOverlay() {
 
   // ✅ Patch 2: listener botones modo
   info.addEventListener('click', (ev) => {
+    const actionBtn = ev.target.closest('[data-action]');
+    if (actionBtn) {
+      const a = actionBtn.dataset.action;
+      if (a === 'toggle-freeze') setFreezeMotion(!DebugEdit.freezeMotion);
+      if (a === 'toggle-camera') setCameraMode(!DebugEdit.cameraMode);
+      return;
+    }
+
     const btn = ev.target.closest('[data-mode]');
     if (!btn) return;
     NeckEditor.mode = btn.dataset.mode;
     console.info('[neck-editor] Modo:', NeckEditor.mode.toUpperCase());
     updateNeckEditorInfo();
   });
+
 
   updateNeckEditorInfo();
   document.body.appendChild(info);
@@ -138,6 +195,9 @@ function initNeckEditorOverlay() {
 
   resizeNeckEditorOverlay();
   setNeckEditorVisible(true);
+  // defaults en debugEdit: quieto y en modo edición (sin cámara)
+  setFreezeMotion(true);
+  setCameraMode(false);
 }
 
 function resizeNeckEditorOverlay() {
@@ -421,7 +481,7 @@ function onNeckEditorDown(e) {
     startTuning,
   };
 
-  controls.enabled = false;
+  controls.enabled = true;
   e.preventDefault();
 }
 
