@@ -19,11 +19,11 @@ export const DebugEdit = {
 export const FreezePose = {
   captured: false,
   uTime: 0,
-  uHeadRot: new THREE.Vector3(0, 0, 0),
-  uBodyRot: new THREE.Vector3(0, 0, 0),
-  uBodyOffset: new THREE.Vector3(0, 0, 0),
-  uTalk: 0,
-  uBlink: 0,
+  headRot: new THREE.Vector3(0, 0, 0),
+  bodyRot: new THREE.Vector3(0, 0, 0),
+  bodyOffset: new THREE.Vector3(0, 0, 0),
+  talk: 0,
+  blink: 0,
 };
 
 
