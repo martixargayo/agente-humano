@@ -37,6 +37,13 @@ const AvatarState = {
   idleMotionEnabled: true,
 };
 
+// ✅ Turn controller (debe existir antes de que animate() lo use)
+const TurnController = {
+  agentSpeechActive: false,
+  onAgentSpeechEnded: null,
+};
+
+
 const AudioDebug = {
   enabled: false,
   // Más sensible para ver movimiento de labios
