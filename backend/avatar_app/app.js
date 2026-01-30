@@ -2707,4 +2707,3 @@ function drawNeckEditorOverlay() {
 if (DEBUG_EDIT_ENABLED) {
   initNeckEditorOverlay();
 }
-
