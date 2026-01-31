@@ -127,7 +127,7 @@ def test_skip_uses_safe_neutral_when_no_last_policy(monkeypatch):
     deps = _fake_deps(fake_plan_phase_policy)
     monkeypatch.setattr(
         "negotiation.negotiation_graph.gate_phase_policy",
-        lambda **_kwargs: (True, "forced_skip"),
+        lambda **_kwargs: (True, "forced_skip", {"interaction_meta": {}}),
     )
     monkeypatch.setattr(
         "negotiation.negotiation_graph.allowed_policy_ids",
@@ -212,7 +212,7 @@ def test_interaction_present_in_debug_trace(monkeypatch):
 
 def test_gate_phase_policy_triggers_on_interaction_change():
     world_diff = {"interaction": {"implicit_acceptance": {"before": False, "after": True}}}
-    planner_skipped, reason = gate_phase_policy(
+    planner_skipped, reason, _meta = gate_phase_policy(
         world_diff=world_diff,
         precedence_changed=False,
         intent_transition_present=False,
@@ -233,7 +233,7 @@ def test_gate_phase_policy_skips_on_repeated_ack(monkeypatch):
     new_world, _ = update_world_state(prev_world, "ok")
     world_diff = diff_world_state(prev_world, new_world)
 
-    planner_skipped, reason = gate_phase_policy(
+    planner_skipped, reason, _meta = gate_phase_policy(
         world_diff=world_diff,
         precedence_changed=False,
         intent_transition_present=False,

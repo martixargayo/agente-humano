@@ -449,20 +449,18 @@ def world_updater_node(state: NegotiationTurn) -> NegotiationTurn:
         ),
         interval=int(os.getenv("WORLD_REFRESH_INTERVAL_TURNS", "3")),
     )
-    gate_state["input_shape_prev"] = current_features
-    gate_state["interaction_fingerprint_prev"] = interaction_fingerprint_current
-    gate_state["interaction_fingerprint_version"] = int(
-        gate_state.get("interaction_fingerprint_version", 1) or 1
-    )
     if world_skipped:
         gate_state["world_skip_count"] = int(gate_state.get("world_skip_count", 0) or 0) + 1
-        state["world_state"] = prev_world
-        state["world_diff"] = {}
+        world_state = dict(prev_world)
+        world_state["interaction"] = interaction_current
+        state["world_state"] = world_state
+        state["world_diff"] = diff_world_state(prev_world, world_state)
         state["extractor_meta"] = {
             "extractor_used": False,
             "extractor_skipped": True,
             "skip_reason": skip_reason,
             "world_gate_features": gate_meta,
+            "interaction_updated": True,
         }
     else:
         force_llm = skip_reason == "interval_expired"
@@ -479,7 +477,15 @@ def world_updater_node(state: NegotiationTurn) -> NegotiationTurn:
         state["world_diff"] = diff_world_state(prev_world, state["world_state"])
         extractor_meta["world_gate_features"] = gate_meta
         extractor_meta["extractor_skipped"] = False
+        extractor_meta["interaction_updated"] = True
         state["extractor_meta"] = extractor_meta
+    gate_state["input_shape_prev"] = current_features
+    gate_state["interaction_fingerprint_prev"] = interaction_fingerprint(
+        state.get("world_state", {}).get("interaction", {})
+    )
+    gate_state["interaction_fingerprint_version"] = int(
+        gate_state.get("interaction_fingerprint_version", 1) or 1
+    )
     state["progress_state"]["gate_state"] = gate_state
     return state
 
@@ -626,7 +632,7 @@ def phase_policy_planner_node(state: NegotiationTurn) -> NegotiationTurn:
     intent_transition = (state.get("intent_meta") or {}).get("intent_transition")
     intent_transition_present = bool(intent_transition and intent_transition != "none")
 
-    planner_skipped, skip_reason = gate_phase_policy(
+    planner_skipped, skip_reason, planner_gate_meta = gate_phase_policy(
         world_diff=state.get("world_diff", {}),
         precedence_changed=precedence_changed,
         intent_transition_present=intent_transition_present,
@@ -658,6 +664,7 @@ def phase_policy_planner_node(state: NegotiationTurn) -> NegotiationTurn:
         "allowed_ids_hash": allowed_hash,
         "allowed_ids_hash_prev": prev_allowed_hash,
         "allowed_ids_hash_stable_count": stable_count,
+        "planner_gate_features": planner_gate_meta,
     }
     planner_meta.update(prec_meta)
     planner_meta.update(intent_meta)
@@ -775,6 +782,7 @@ def phase_policy_planner_node(state: NegotiationTurn) -> NegotiationTurn:
             "planner": gate_state.get("last_planner_refresh_turn", 0),
         },
         "world_gate_features": state.get("extractor_meta", {}).get("world_gate_features", {}),
+        "planner_gate_features": planner_gate_meta,
         "allowed_ids_hash": allowed_hash,
         "allowed_ids_hash_prev": prev_allowed_hash,
         "allowed_ids_hash_stable_count": stable_count,

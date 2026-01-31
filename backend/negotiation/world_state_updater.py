@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import unicodedata
 import os
 from typing import Any, List, Tuple
 
@@ -143,15 +144,19 @@ _DOCS_MAP = {
 _FRIENDLY_MARKERS = ["gracias", "sin problema", "encantado", "perfecto"]
 _TENSE_MARKERS = ["no tengo tiempo", "último", "ultima", "ya", "prisa", "urge"]
 _CONFLICT_MARKERS = ["no pienso", "ni de broma", "no voy a", "olvídalo"]
-_ACCEPTANCE_MARKERS = [
-    "vale",
-    "me parece bien",
-    "de acuerdo",
-    "ok",
-    "okay",
-    "perfecto",
-    "me sirve",
+_ACCEPT_PATTERNS = [
+    r"\bvale\b",
+    r"\bde acuerdo\b",
+    r"\bok(?:ay)?\b",
+    r"\bperfecto\b",
+    r"\bme parece bien\b",
+    r"\bme sirve\b",
 ]
+_NEGATION_WINDOW = r"(?:\bno\b|\bpero\s+no\b|\bpara\s+nada\b|\bni\s+de\s+broma\b)"
+_NEGATION_AFTER = re.compile(
+    r"^\s*(?:,?\s*)?(?:no\b|pero\s+no\b|para\s+nada\b|ni\s+de\s+broma\b)",
+    flags=re.IGNORECASE,
+)
 _EVASION_MARKERS = [
     "no sé",
     "no se",
@@ -177,8 +182,25 @@ def _normalize_text(text: str) -> str:
 
 
 def _normalize_short(text: str) -> str:
-    cleaned = re.sub(r"[^\w\s€]", "", text.lower())
+    normalized = unicodedata.normalize("NFKD", text)
+    normalized = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    cleaned = re.sub(r"[^\w\s€]", "", normalized.lower())
     return re.sub(r"\s+", " ", cleaned).strip()[:80]
+
+
+def _match_affirmation(text_lower: str) -> bool:
+    for pat in _ACCEPT_PATTERNS:
+        match = re.search(pat, text_lower)
+        if not match:
+            continue
+        before = text_lower[max(0, match.start() - 20) : match.start()]
+        after = text_lower[match.end() : match.end() + 25]
+        if re.search(_NEGATION_WINDOW + r"\s*$", before):
+            continue
+        if _NEGATION_AFTER.search(after):
+            continue
+        return True
+    return False
 
 
 def _bucket_phrase(text: str) -> str:
@@ -228,7 +250,7 @@ def extract_interaction_signals(
         tone_hits = _tone_hits_from_message(text)
         tone_signal = _derive_tone_signal(tone_hits)
 
-    implicit_acceptance = any(marker in lower for marker in _ACCEPTANCE_MARKERS)
+    implicit_acceptance = _match_affirmation(lower)
     evasion_detected = any(marker in lower for marker in _EVASION_MARKERS)
     soft_commitment = any(marker in lower for marker in _SOFT_COMMITMENT_MARKERS)
     prev_user = _normalize_short(_previous_user_message(recent_history))
