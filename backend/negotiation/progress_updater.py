@@ -1,6 +1,7 @@
 # backend/negotiation/progress_updater.py
 from __future__ import annotations
 
+from .gate_utils import _split_world_diff
 from .schemas import BeliefState, PolicyDecision, ProgressState, WorldState, default_progress_state
 from .world_state_updater import diff_world_state
 
@@ -17,7 +18,7 @@ def _has_info_delta(world_diff: dict) -> bool:
         "price_mentioned",
         "price_value",
     }
-    domain = world_diff.get("domain", world_diff)
+    domain, _interaction = _split_world_diff(world_diff)
     return any(key in domain for key in info_keys)
 
 

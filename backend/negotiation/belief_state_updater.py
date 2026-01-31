@@ -12,6 +12,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, confloat, conlist, field_validator
 
 from prompts import BELIEF_UPDATE_SYSTEM_PROMPT, BELIEF_UPDATE_USER_PROMPT
+from .gate_utils import _split_world_diff
 from .schemas import (
     BeliefState,
     PolicyDecision,
@@ -127,8 +128,7 @@ def has_belief_evidence_delta(
     decisions = (extractor_meta or {}).get("decisions", {}) or {}
     if decisions.get("should_update_beliefs") is True:
         return True
-    domain = world_diff.get("domain", world_diff)
-    interaction = world_diff.get("interaction", {})
+    domain, interaction = _split_world_diff(world_diff)
     if domain or interaction:
         return True
     for key in _CRITICAL_FLAGS:

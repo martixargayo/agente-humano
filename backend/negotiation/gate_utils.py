@@ -7,7 +7,21 @@ from typing import Any, Dict, Iterable, Tuple
 
 _EMAIL_PATTERN = re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")
 _PHONE_PATTERN = re.compile(r"\b\d{2,4}[-.\s]?\d{2,4}[-.\s]?\d{2,4}\b")
+_URL_PATTERN = re.compile(r"(https?://\S+|www\.\S+)", re.IGNORECASE)
 _SYMBOL_PATTERN = re.compile(r"[%€$@#\+\-]")
+_ATTACHMENT_HINTS = (
+    "foto",
+    "fotos",
+    "pdf",
+    "documento",
+    "documentos",
+    "adjunto",
+    "adjunta",
+    "archivo",
+    "archivos",
+    "imagen",
+    "imágenes",
+)
 
 
 def stable_allowed_ids_hash(allowed_ids: Iterable[str]) -> str:
@@ -16,85 +30,72 @@ def stable_allowed_ids_hash(allowed_ids: Iterable[str]) -> str:
 
 
 def _length_bucket(length: int) -> str:
-    if length <= 20:
-        return "xs"
-    if length <= 80:
-        return "s"
-    if length <= 200:
-        return "m"
-    if length <= 400:
-        return "l"
-    return "xl"
+    if length <= 0:
+        return "0"
+    if length <= 4:
+        return "1_4"
+    if length <= 12:
+        return "5_12"
+    if length <= 40:
+        return "13_40"
+    return "41_plus"
+
+
+def _token_bucket(count: int) -> str:
+    if count <= 0:
+        return "0"
+    if count <= 2:
+        return "1_2"
+    if count <= 6:
+        return "3_6"
+    if count <= 14:
+        return "7_14"
+    return "15_plus"
 
 
 def input_shape_features(text: str) -> Dict[str, Any]:
     raw = text or ""
     length = len(raw)
-    non_alpha = sum(1 for ch in raw if not ch.isalpha())
-    non_alpha_ratio = 0.0 if length == 0 else non_alpha / max(length, 1)
-    has_digit = any(ch.isdigit() for ch in raw)
-    has_symbol = bool(_SYMBOL_PATTERN.search(raw))
-    has_email = bool(_EMAIL_PATTERN.search(raw))
-    has_phone = bool(_PHONE_PATTERN.search(raw))
-    has_currency = any(sym in raw for sym in ("€", "$", "%"))
+    digits_count = sum(1 for ch in raw if ch.isdigit())
+    token_count = len(re.findall(r"\w+", raw, flags=re.UNICODE))
+    lowered = raw.lower()
     return {
-        "length": length,
-        "length_bucket": _length_bucket(length),
-        "non_alpha_ratio": round(non_alpha_ratio, 4),
-        "has_digit": has_digit,
-        "has_symbol": has_symbol,
-        "has_email": has_email,
-        "has_phone": has_phone,
-        "has_currency": has_currency,
+        "len_bucket": _length_bucket(length),
+        "token_count_bucket": _token_bucket(token_count),
+        "has_digits": digits_count > 0,
+        "digits_count_bucket": "0" if digits_count == 0 else ("1_2" if digits_count <= 2 else "3_plus"),
+        "has_currency": any(sym in raw for sym in ("€", "$")),
+        "has_question": "?" in raw,
+        "has_exclamation": "!" in raw,
+        "has_url": bool(_URL_PATTERN.search(raw)),
+        "has_attachment": any(hint in lowered for hint in _ATTACHMENT_HINTS),
+        "has_email": bool(_EMAIL_PATTERN.search(raw)),
+        "has_phone": bool(_PHONE_PATTERN.search(raw)),
+        "has_symbol": bool(_SYMBOL_PATTERN.search(raw)),
     }
 
 
 def input_shape_changed_materially(
     prev_features: Dict[str, Any] | None,
     current_features: Dict[str, Any],
-    length_delta_ratio_threshold: float = 0.35,
-    non_alpha_ratio_threshold: float = 0.20,
 ) -> Tuple[bool, Dict[str, Any]]:
     if not prev_features:
         return True, {"reason": "no_prev_features"}
-
-    prev_len = int(prev_features.get("length", 0) or 0)
-    curr_len = int(current_features.get("length", 0) or 0)
-    length_delta_ratio = (
-        abs(curr_len - prev_len) / max(prev_len, 1)
-        if prev_len > 0
-        else (1.0 if curr_len > 0 else 0.0)
-    )
-    prev_non_alpha = float(prev_features.get("non_alpha_ratio", 0.0) or 0.0)
-    curr_non_alpha = float(current_features.get("non_alpha_ratio", 0.0) or 0.0)
-    non_alpha_delta = abs(curr_non_alpha - prev_non_alpha)
-
-    length_bucket_changed = (
-        prev_features.get("length_bucket") != current_features.get("length_bucket")
-    )
-    digit_or_symbol_changed = any(
-        bool(prev_features.get(key)) != bool(current_features.get(key))
-        for key in (
-            "has_digit",
-            "has_symbol",
-            "has_email",
-            "has_phone",
-            "has_currency",
-        )
-    )
-
-    changed = (
-        length_delta_ratio >= length_delta_ratio_threshold
-        or non_alpha_delta >= non_alpha_ratio_threshold
-        or length_bucket_changed
-        or digit_or_symbol_changed
-    )
-    return changed, {
-        "length_delta_ratio": round(length_delta_ratio, 4),
-        "non_alpha_ratio_delta": round(non_alpha_delta, 4),
-        "length_bucket_changed": length_bucket_changed,
-        "digit_or_symbol_changed": digit_or_symbol_changed,
-    }
+    material_keys = [
+        "len_bucket",
+        "token_count_bucket",
+        "has_digits",
+        "digits_count_bucket",
+        "has_currency",
+        "has_question",
+        "has_exclamation",
+        "has_url",
+        "has_attachment",
+    ]
+    changed_keys = [
+        key for key in material_keys if prev_features.get(key) != current_features.get(key)
+    ]
+    return bool(changed_keys), {"changed_keys": changed_keys}
 
 
 def precedence_signature(precedence: Dict[str, Any] | None) -> str:
@@ -139,6 +140,27 @@ def _split_world_diff(world_diff: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[
     return world_diff, {}
 
 
+def interaction_strong_delta_from_diff(
+    interaction_diff: Dict[str, Any],
+) -> Tuple[bool, Dict[str, Any]]:
+    if not interaction_diff:
+        return False, {}
+    meta: Dict[str, Any] = {}
+    ia = interaction_diff.get("implicit_acceptance")
+    if ia and ia.get("before") is False and ia.get("after") is True:
+        meta["implicit_acceptance_rise"] = True
+        return True, meta
+    esc = interaction_diff.get("escalation_signal")
+    if esc and esc.get("before") != esc.get("after") and esc.get("after") in {"up", "down"}:
+        meta["escalation_change"] = {"before": esc.get("before"), "after": esc.get("after")}
+        return True, meta
+    loop = interaction_diff.get("loop_hint")
+    if loop and loop.get("before") is False and loop.get("after") is True:
+        meta["loop_enter"] = True
+        return True, meta
+    return False, meta
+
+
 def interaction_fingerprint(interaction: Dict[str, Any] | None) -> Dict[str, Any]:
     interaction = interaction or {}
     return {
@@ -174,8 +196,6 @@ def gate_world(
     if interval_expired or changed:
         reason = "interval_expired" if interval_expired else "input_shape_changed"
         return False, reason, change_meta
-    if interaction_changed:
-        return False, "interaction_changed", change_meta
     return True, "interval_hold", change_meta
 
 
@@ -196,7 +216,10 @@ def gate_belief(
         prev_world.get(flag) != world.get(flag) for flag in critical_world_flags()
     )
     tone_change = prev_world.get("tone_signal") != world.get("tone_signal")
-    interaction_change = bool(interaction_diff)
+    interaction_strong, interaction_meta = interaction_strong_delta_from_diff(interaction_diff)
+    interaction_strong_for_belief = bool(
+        interaction_meta.get("escalation_change") or interaction_meta.get("loop_enter")
+    )
     prev_health = (prev_belief or {}).get("dynamics", {}).get("interaction_health", "stable")
     health_should_refresh = (
         prev_health in {"tense", "stalled"}
@@ -207,7 +230,7 @@ def gate_belief(
         world_diff_empty
         and not critical_change
         and not tone_change
-        and not interaction_change
+        and not interaction_strong_for_belief
         and not health_should_refresh
         and not interval_expired
     ):
@@ -225,23 +248,23 @@ def gate_phase_policy(
     turn_count: int,
     last_refresh_turn: int,
     interval: int = 2,
-) -> Tuple[bool, str]:
+) -> Tuple[bool, str, Dict[str, Any]]:
     domain_diff, interaction_diff = _split_world_diff(world_diff)
     critical_diff = any(key in domain_diff for key in critical_world_flags())
-    interaction_change = bool(interaction_diff)
+    interaction_strong, interaction_meta = interaction_strong_delta_from_diff(interaction_diff)
     strong_signals = (
         critical_diff
         or precedence_changed
         or intent_transition_present
         or loop_flags_changed_flag
         or allowed_ids_hash_changed
-        or interaction_change
+        or interaction_strong
     )
     interval_expired = (turn_count - last_refresh_turn) >= interval
     if interval_expired or strong_signals:
         reason = "interval_expired" if interval_expired else "strong_signals"
-        return False, reason
-    return True, "interval_hold"
+        return False, reason, {"interaction_meta": interaction_meta}
+    return True, "interval_hold", {"interaction_meta": interaction_meta}
 
 
 def select_policy_id_on_skip(
