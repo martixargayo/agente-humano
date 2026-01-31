@@ -905,13 +905,12 @@ function base64ToAudioData(b64, mimeType = 'audio/wav') {
   }
 
   const blob = new Blob([byteArray], { type: mimeType || 'audio/wav' });
-  const objectUrl = URL.createObjectURL(blob);
   const arrayBuffer = byteArray.buffer.slice(
     byteArray.byteOffset,
     byteArray.byteOffset + byteArray.byteLength,
   );
 
-  return { blob, objectUrl, mimeType: mimeType || 'audio/wav', arrayBuffer };
+  return { blob, mimeType: mimeType || 'audio/wav', arrayBuffer };
 }
 
 const BACKEND_URL = window.location.origin;
@@ -1143,8 +1142,15 @@ async function enterListening() {
   }
   if (AvatarState.mode === 'LISTENING' || isRecording) return;
   setMode('LISTENING');
+  setStatusText('Activando mic…');
+  setListeningGlowEnabled(false);
+  ensureOrbLoop();
   try {
     await startRecording();
+    updateUiForMode();
+    if (isMicActuallyRecording()) {
+      triggerFinishHighlight();
+    }
   } catch (err) {
     console.error('Error al iniciar grabación:', err);
     setStatusText('No se pudo iniciar el micrófono.');
@@ -1438,6 +1444,18 @@ function updateReplyText(text) {
   ui.replyContainer.classList.toggle('hidden', !text);
 }
 
+function isMicActuallyRecording() {
+  return Boolean(
+    currentInputMode === InputMode.TALK &&
+    AvatarState.mode === 'LISTENING' &&
+    isRecording &&
+    mediaRecorder &&
+    mediaRecorder.state === 'recording' &&
+    audioStream &&
+    audioStream.getTracks().some((track) => track.readyState === 'live')
+  );
+}
+
 function flashStatus(message, ms = 2200) {
   setStatusText(message);
   if (statusResetId) window.clearTimeout(statusResetId);
@@ -1447,25 +1465,42 @@ function flashStatus(message, ms = 2200) {
 }
 
 function updateUiForMode() {
-  setListeningGlowEnabled(AvatarState.mode === 'LISTENING');
+  const micOn = isMicActuallyRecording();
+  setListeningGlowEnabled(micOn);
 
   if (ui.inputOrb) {
-    ui.inputOrb.classList.toggle('inactive', AvatarState.mode !== 'LISTENING');
+    ui.inputOrb.classList.toggle('inactive', !micOn);
   }
 
   if (ui.finishTurnBtn) {
-    ui.finishTurnBtn.disabled = AvatarState.mode !== 'LISTENING';
+    ui.finishTurnBtn.disabled = !micOn;
   }
 
-  if (AvatarState.mode === 'LISTENING') setStatusText('Escuchando…');
+  if (AvatarState.mode === 'LISTENING') {
+    setStatusText(micOn ? 'Escuchando…' : 'Activando mic…');
+  }
   else if (AvatarState.mode === 'SPEAKING') setStatusText('Hablando…');
   else if (AvatarState.mode === 'THINKING') setStatusText('Procesando…');
   else if (AvatarState.mode === 'IDLE') setStatusText('Listo');
   else setStatusText('Listo');
 
-  const textBusy = AvatarState.mode !== 'IDLE' || currentInputMode !== InputMode.WRITE;
-  if (ui.textInput) ui.textInput.disabled = textBusy;
-  if (ui.sendTextBtn) ui.sendTextBtn.disabled = textBusy;
+  const canSendText = AvatarState.mode === 'IDLE' && currentInputMode === InputMode.WRITE;
+  if (ui.textInput) ui.textInput.disabled = currentInputMode !== InputMode.WRITE;
+  if (ui.sendTextBtn) ui.sendTextBtn.disabled = !canSendText;
+
+  if (AvatarState.mode !== 'LISTENING') {
+    stopInputOrb();
+  }
+}
+
+function triggerFinishHighlight() {
+  if (!ui.finishTurnBtn) return;
+  ui.finishTurnBtn.classList.remove('highlight');
+  void ui.finishTurnBtn.offsetWidth;
+  ui.finishTurnBtn.classList.add('highlight');
+  window.setTimeout(() => {
+    ui.finishTurnBtn?.classList.remove('highlight');
+  }, 900);
 }
 
 function setInputMode(mode) {
@@ -1521,20 +1556,38 @@ let recorderMimeType = 'audio/webm;codecs=opus';
 let discardRecording = false;
 let orbLevel = 0;
 
+function computeIdlePulse(timeMs) {
+  return 0.08 * (0.5 + 0.5 * Math.sin((timeMs * 2 * Math.PI) / 3800));
+}
+
 function updateInputOrb() {
-  if (!ui.inputOrb || !waveAnalyser || !waveDataArray) return;
-  waveAnalyser.getByteTimeDomainData(waveDataArray);
-  let sum = 0;
-  for (let i = 0; i < waveDataArray.length; i++) {
-    const v = waveDataArray[i] / 128 - 1;
-    sum += v * v;
+  if (!ui.inputOrb) return;
+  const now = performance.now();
+  const idle = computeIdlePulse(now);
+  let level = idle;
+
+  if (waveAnalyser && waveDataArray && isMicActuallyRecording()) {
+    waveAnalyser.getByteTimeDomainData(waveDataArray);
+    let sum = 0;
+    for (let i = 0; i < waveDataArray.length; i++) {
+      const v = waveDataArray[i] / 128 - 1;
+      sum += v * v;
+    }
+    const rms = Math.sqrt(sum / waveDataArray.length);
+    const rmsNorm = Math.min(1, rms * 6);
+    level = Math.max(rmsNorm, idle);
   }
-  const rms = Math.sqrt(sum / waveDataArray.length);
-  const target = Math.min(1, rms * 6);
-  orbLevel += (target - orbLevel) * 0.2;
+
+  orbLevel += (level - orbLevel) * 0.18;
   const scale = 0.85 + orbLevel * 0.55;
   ui.inputOrb.style.setProperty('--orb-scale', scale.toFixed(2));
   waveAnimationId = requestAnimationFrame(updateInputOrb);
+}
+
+function ensureOrbLoop() {
+  if (!waveAnimationId) {
+    waveAnimationId = requestAnimationFrame(updateInputOrb);
+  }
 }
 
 function stopInputOrb() {
@@ -1547,7 +1600,6 @@ function stopInputOrb() {
 function teardownMic() {
   stopInputOrb();
 
-  try { if (waveAudioCtx) waveAudioCtx.close(); } catch (_) {}
   waveAudioCtx = null;
 
   try { if (audioStream) audioStream.getTracks().forEach((t) => t.stop()); } catch (_) {}
@@ -1613,15 +1665,25 @@ async function startRecording() {
   };
 
   mediaRecorder.start(250);
-  isRecording = true;
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  isRecording = mediaRecorder.state === 'recording';
 
-  waveAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (!audioStream.getTracks().some((track) => track.readyState === 'live')) {
+    throw new Error('El micrófono no está activo.');
+  }
+
+  if (!isRecording) {
+    throw new Error('No se pudo iniciar la grabación.');
+  }
+
+  waveAudioCtx = getOrCreateAudioContext();
+  await waveAudioCtx.resume();
   waveAnalyser = waveAudioCtx.createAnalyser();
   waveAnalyser.fftSize = 1024;
   const source = waveAudioCtx.createMediaStreamSource(audioStream);
   source.connect(waveAnalyser);
   waveDataArray = new Uint8Array(waveAnalyser.frequencyBinCount);
-  updateInputOrb();
+  ensureOrbLoop();
 }
 
 function stopRecording() {
