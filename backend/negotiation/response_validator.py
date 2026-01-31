@@ -9,6 +9,7 @@ from typing import Tuple
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
+from .policies import safe_neutral_policy_id
 from .schemas import PolicyDecision, WorldState
 
 
@@ -123,5 +124,7 @@ def validate_and_repair(
             "Prefiero no comprometer cifras ahora; antes quiero confirmar un par de detalles. "
             "¿Qué incluye exactamente el precio y qué papeles tienes a mano?"
         )
+        meta["override_policy_id"] = safe_neutral_policy_id()
+        meta["override_reason"] = "validator_fallback_safe_text"
         return safe, remaining, meta
     return new_text, violations, meta

@@ -11,8 +11,15 @@ from state import SessionState
 
 
 def _base_deps(captured, *, summarize=None):
-    def fake_plan_policy(*_args, **_kwargs):
-        return default_policy_decision(), {"planner_meta": {"mock": True}}
+    def fake_plan_phase_policy(*_args, **_kwargs):
+        phase_candidate = {
+            "phase": "opening",
+            "confidence": 0.6,
+            "reasons": ["history:mock"],
+            "signals": [],
+            "alternatives": [],
+        }
+        return phase_candidate, default_policy_decision(), {"planner_meta": {"mock": True}}
 
     def fake_update_belief_state(*_args, **_kwargs):
         return default_belief_state(), {"belief_meta": {"mock": True}}
@@ -22,7 +29,7 @@ def _base_deps(captured, *, summarize=None):
         return "ok"
 
     return AgentDeps(
-        plan_policy=fake_plan_policy,
+        plan_phase_policy=fake_plan_phase_policy,
         update_belief_state=fake_update_belief_state,
         execute=fake_execute,
         summarize=summarize,
@@ -473,7 +480,17 @@ def test_debug_trace_contains_margin(monkeypatch):
     s.progress_state = default_progress_state()
 
     deps = AgentDeps(
-        plan_policy=lambda *_a, **_k: (default_policy_decision(), {}),
+        plan_phase_policy=lambda *_a, **_k: (
+            {
+                "phase": "opening",
+                "confidence": 0.6,
+                "reasons": ["history:mock"],
+                "signals": [],
+                "alternatives": [],
+            },
+            default_policy_decision(),
+            {},
+        ),
         update_belief_state=lambda *_a, **_k: (default_belief_state(), {}),
         execute=lambda msgs: "ok",
         summarize=None,

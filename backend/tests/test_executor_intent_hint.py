@@ -7,11 +7,18 @@ from state import SessionState
 def test_executor_receives_intent_hint(monkeypatch):
     captured = {}
 
-    def fake_plan_policy(*args, **kwargs):
+    def fake_plan_phase_policy(*args, **kwargs):
         decision = default_policy_decision()
         decision["policy_id"] = "info_extract_critical"
         decision["micro_goal"] = "Pedir información clave."
-        return decision, {"planner_meta": {"mock": True}}
+        phase_candidate = {
+            "phase": "opening",
+            "confidence": 0.6,
+            "reasons": ["history:mock"],
+            "signals": [],
+            "alternatives": [],
+        }
+        return phase_candidate, decision, {"planner_meta": {"mock": True}}
 
     def fake_update_belief_state(*args, **kwargs):
         return default_belief_state(), {"belief_meta": {"mock": True}}
@@ -21,7 +28,7 @@ def test_executor_receives_intent_hint(monkeypatch):
         return "ok"
 
     deps = AgentDeps(
-        plan_policy=fake_plan_policy,
+        plan_phase_policy=fake_plan_phase_policy,
         update_belief_state=fake_update_belief_state,
         execute=fake_execute,
     )
@@ -72,11 +79,18 @@ def test_executor_receives_intent_hint(monkeypatch):
 def test_executor_prompt_contract_no_step_name_no_step_colon(monkeypatch):
     captured = {}
 
-    def fake_plan_policy(*args, **kwargs):
+    def fake_plan_phase_policy(*args, **kwargs):
         decision = default_policy_decision()
         decision["policy_id"] = "info_extract_critical"
         decision["micro_goal"] = "Pedir información clave."
-        return decision, {"planner_meta": {"mock": True}}
+        phase_candidate = {
+            "phase": "opening",
+            "confidence": 0.6,
+            "reasons": ["history:mock"],
+            "signals": [],
+            "alternatives": [],
+        }
+        return phase_candidate, decision, {"planner_meta": {"mock": True}}
 
     def fake_update_belief_state(*args, **kwargs):
         return default_belief_state(), {"belief_meta": {"mock": True}}
@@ -86,7 +100,7 @@ def test_executor_prompt_contract_no_step_name_no_step_colon(monkeypatch):
         return "ok"
 
     deps = AgentDeps(
-        plan_policy=fake_plan_policy,
+        plan_phase_policy=fake_plan_phase_policy,
         update_belief_state=fake_update_belief_state,
         execute=fake_execute,
     )
@@ -133,11 +147,18 @@ def test_executor_prompt_contract_no_step_name_no_step_colon(monkeypatch):
 def test_executor_prompt_close_next_includes_fallback_rule(monkeypatch):
     captured = {}
 
-    def fake_plan_policy(*args, **kwargs):
+    def fake_plan_phase_policy(*args, **kwargs):
         decision = default_policy_decision()
         decision["policy_id"] = "info_extract_critical"
         decision["micro_goal"] = "Pedir información clave."
-        return decision, {"planner_meta": {"mock": True}}
+        phase_candidate = {
+            "phase": "opening",
+            "confidence": 0.6,
+            "reasons": ["history:mock"],
+            "signals": [],
+            "alternatives": [],
+        }
+        return phase_candidate, decision, {"planner_meta": {"mock": True}}
 
     def fake_update_belief_state(*args, **kwargs):
         return default_belief_state(), {"belief_meta": {"mock": True}}
@@ -147,7 +168,7 @@ def test_executor_prompt_close_next_includes_fallback_rule(monkeypatch):
         return "ok"
 
     deps = AgentDeps(
-        plan_policy=fake_plan_policy,
+        plan_phase_policy=fake_plan_phase_policy,
         update_belief_state=fake_update_belief_state,
         execute=fake_execute,
     )

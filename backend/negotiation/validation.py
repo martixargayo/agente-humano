@@ -463,7 +463,42 @@ def normalize_progress_state(raw: object) -> Tuple[ProgressState, List[str]]:
     issues.extend(intent_issues)
     base["phase_state"], phase_issues = normalize_phase_state(raw.get("phase_state", {}))
     issues.extend(phase_issues)
+    base["gate_state"], gate_issues = _normalize_gate_state(raw.get("gate_state", {}))
+    issues.extend(gate_issues)
 
+    return base, issues
+
+
+def _normalize_gate_state(raw: object) -> Tuple[dict, List[str]]:
+    base = default_progress_state()["gate_state"]
+    issues: List[str] = []
+    if not isinstance(raw, dict):
+        issues.append("gate_state_no_dict")
+        return base, issues
+    for key in (
+        "last_world_refresh_turn",
+        "last_belief_refresh_turn",
+        "last_planner_refresh_turn",
+        "world_skip_count",
+        "belief_skip_count",
+        "planner_skip_count",
+        "allowed_ids_hash_stable_count",
+    ):
+        value = raw.get(key, base.get(key))
+        try:
+            base[key] = max(0, int(value))  # type: ignore[index]
+        except (TypeError, ValueError):
+            issues.append(f"gate_state_invalid:{key}")
+    base["allowed_ids_hash_prev"] = str(
+        raw.get("allowed_ids_hash_prev", base.get("allowed_ids_hash_prev", ""))
+    )
+    base["precedence_signature_prev"] = str(
+        raw.get("precedence_signature_prev", base.get("precedence_signature_prev", ""))
+    )
+    loop_flags = raw.get("loop_flags_prev", [])
+    base["loop_flags_prev"] = _unique_list(_coerce_str_list(loop_flags))
+    input_shape = raw.get("input_shape_prev", {})
+    base["input_shape_prev"] = input_shape if isinstance(input_shape, dict) else {}
     return base, issues
 
 

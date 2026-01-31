@@ -270,6 +270,21 @@ class ProgressState(TypedDict):
     turns_in_same_mode: int
     intent_state: IntentState
     phase_state: PhaseState
+    gate_state: "GateState"
+
+
+class GateState(TypedDict):
+    last_world_refresh_turn: int
+    last_belief_refresh_turn: int
+    last_planner_refresh_turn: int
+    world_skip_count: int
+    belief_skip_count: int
+    planner_skip_count: int
+    allowed_ids_hash_prev: str
+    allowed_ids_hash_stable_count: int
+    precedence_signature_prev: str
+    loop_flags_prev: List[str]
+    input_shape_prev: Dict[str, object]
 
 
 def default_world_state() -> WorldState:
@@ -364,6 +379,19 @@ def default_progress_state() -> ProgressState:
             "confidence": 0.6,
             "reasons": [],
             "last_updated_turn": 0,
+        },
+        "gate_state": {
+            "last_world_refresh_turn": 0,
+            "last_belief_refresh_turn": 0,
+            "last_planner_refresh_turn": 0,
+            "world_skip_count": 0,
+            "belief_skip_count": 0,
+            "planner_skip_count": 0,
+            "allowed_ids_hash_prev": "",
+            "allowed_ids_hash_stable_count": 0,
+            "precedence_signature_prev": "",
+            "loop_flags_prev": [],
+            "input_shape_prev": {},
         },
     }
 
