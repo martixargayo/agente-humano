@@ -266,57 +266,6 @@ def test_allowed_policy_ids_blocks_after_neutral_outcome():
     assert target_policy not in allowed
 
 
-def test_plan_policy_empty_catalog_falls_back_with_clear_error(monkeypatch):
-    os.environ.setdefault("OPENAI_API_KEY", "test")
-    from negotiation import policy_planner
-
-    importlib.reload(policy_planner)
-
-    monkeypatch.setattr(policy_planner, "list_policy_ids", lambda: [])
-    monkeypatch.setattr(policy_planner, "policy_catalog_text", lambda: "")
-
-    decision, meta = policy_planner.plan_policy(
-        world_state=default_world_state(),
-        belief_state=default_belief_state(),
-        progress_state=default_progress_state(),
-        intent_hint=None,
-        precedence=None,
-        objective="obj",
-        constraints="",
-        recent_context="",
-    )
-
-    assert meta["planner_failed"] is True
-    assert meta["planner_error"] == "policy_catalog_empty"
-    assert meta["planner_fallback_used"] is True
-    assert decision["policy_id"] == "rapport_build"
-
-
-def test_plan_policy_allowed_empty_falls_back_with_clear_error(monkeypatch):
-    os.environ.setdefault("OPENAI_API_KEY", "test")
-    from negotiation import policy_planner
-
-    importlib.reload(policy_planner)
-
-    monkeypatch.setattr(policy_planner, "_allowed_policy_ids", lambda *a, **k: [])
-
-    decision, meta = policy_planner.plan_policy(
-        world_state=default_world_state(),
-        belief_state=default_belief_state(),
-        progress_state=default_progress_state(),
-        intent_hint=None,
-        precedence=None,
-        objective="obj",
-        constraints="",
-        recent_context="",
-    )
-
-    assert meta["planner_failed"] is True
-    assert meta["planner_error"] == "allowed_empty"
-    assert meta["planner_fallback_used"] is True
-    assert decision["policy_id"] == "info_extract_critical"
-
-
 def test_normalize_progress_policy_attempts_accepts_numeric_strings():
     progress, issues = normalize_progress_state({"policy_attempts": {"rapport_build": "3"}})
 

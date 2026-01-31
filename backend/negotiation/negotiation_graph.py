@@ -989,7 +989,7 @@ def run_negotiation_agent(
     - Añade el mensaje del vendedor al historial.
     - Construye el estado para LangGraph.
     - Pasa por world_updater + belief_updater + precedence + intent_manager +
-      phase_updater + policy_planner + progress_updater + executor.
+      phase_policy_planner + progress_updater + executor.
     - Guarda estados persistentes en SessionState.
     - Añade la respuesta del comprador al historial.
     """
