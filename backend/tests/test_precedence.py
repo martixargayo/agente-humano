@@ -1,4 +1,5 @@
 from negotiation.intent_manager import update_intent_state
+from negotiation.gate_utils import precedence_signature
 from negotiation.precedence import compute_precedence
 from negotiation.schemas import (
     default_belief_state,
@@ -84,3 +85,35 @@ def test_intent_pauses_under_recovery_guard():
 
     assert updated["status"] == "paused"
     assert meta["intent_transition"] == "pause"
+
+
+def test_precedence_signature_stable_with_interaction_change():
+    world = default_world_state()
+    belief = default_belief_state()
+    prec_base = compute_precedence(world=world, belief=belief, intent=None)
+    signature_base = precedence_signature(
+        {
+            "mode": prec_base.mode,
+            "reason": prec_base.reason,
+            "min_policy_tags": list(prec_base.min_policy_tags),
+            "block_policy_tags": list(prec_base.block_policy_tags),
+            "phase_floor": prec_base.phase_floor,
+            "allow_closing": prec_base.allow_closing,
+        }
+    )
+
+    world_changed = default_world_state()
+    world_changed["interaction"]["implicit_acceptance"] = True
+    prec_changed = compute_precedence(world=world_changed, belief=belief, intent=None)
+    signature_changed = precedence_signature(
+        {
+            "mode": prec_changed.mode,
+            "reason": prec_changed.reason,
+            "min_policy_tags": list(prec_changed.min_policy_tags),
+            "block_policy_tags": list(prec_changed.block_policy_tags),
+            "phase_floor": prec_changed.phase_floor,
+            "allow_closing": prec_changed.allow_closing,
+        }
+    )
+
+    assert signature_base == signature_changed

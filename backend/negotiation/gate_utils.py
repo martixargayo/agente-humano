@@ -131,21 +131,51 @@ def critical_world_flags() -> set[str]:
     }
 
 
+def _split_world_diff(world_diff: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    if "domain" in world_diff or "interaction" in world_diff:
+        domain = world_diff.get("domain", {}) or {}
+        interaction = world_diff.get("interaction", {}) or {}
+        return domain, interaction
+    return world_diff, {}
+
+
+def interaction_fingerprint(interaction: Dict[str, Any] | None) -> Dict[str, Any]:
+    interaction = interaction or {}
+    return {
+        "implicit_acceptance": bool(interaction.get("implicit_acceptance")),
+        "escalation_signal": str(interaction.get("escalation_signal", "none")),
+        "loop_hint": bool(interaction.get("loop_hint")),
+        "evasion_detected": bool(interaction.get("evasion_detected")),
+        "soft_commitment": bool(interaction.get("soft_commitment")),
+    }
+
+
 def gate_world(
     user_message: str,
     turn_count: int,
     last_refresh_turn: int,
     prev_features: Dict[str, Any] | None,
     current_features: Dict[str, Any],
+    interaction_fingerprint_prev: Dict[str, Any] | None = None,
+    interaction_fingerprint_current: Dict[str, Any] | None = None,
+    interaction_fingerprint_version: int = 1,
     interval: int = 3,
 ) -> Tuple[bool, str, Dict[str, Any]]:
     if not (user_message or "").strip():
         return True, "empty_message", {}
     interval_expired = (turn_count - last_refresh_turn) >= interval
     changed, change_meta = input_shape_changed_materially(prev_features, current_features)
+    interaction_changed = False
+    if interaction_fingerprint_prev is not None and interaction_fingerprint_current is not None:
+        interaction_changed = interaction_fingerprint_prev != interaction_fingerprint_current
+    change_meta["interaction_changed"] = interaction_changed
+    change_meta["interaction_fingerprint_version"] = interaction_fingerprint_version
+    change_meta["interaction_fingerprint_current"] = interaction_fingerprint_current or {}
     if interval_expired or changed:
         reason = "interval_expired" if interval_expired else "input_shape_changed"
         return False, reason, change_meta
+    if interaction_changed:
+        return False, "interaction_changed", change_meta
     return True, "interval_hold", change_meta
 
 
@@ -156,16 +186,31 @@ def gate_belief(
     turn_count: int,
     last_refresh_turn: int,
     interval: int = 3,
+    prev_belief: Dict[str, Any] | None = None,
 ) -> Tuple[bool, str]:
     if last_refresh_turn == 0:
         return False, "initial_refresh"
-    world_diff_empty = not bool(world_diff)
+    domain_diff, interaction_diff = _split_world_diff(world_diff)
+    world_diff_empty = not bool(domain_diff) and not bool(interaction_diff)
     critical_change = any(
         prev_world.get(flag) != world.get(flag) for flag in critical_world_flags()
     )
     tone_change = prev_world.get("tone_signal") != world.get("tone_signal")
+    interaction_change = bool(interaction_diff)
+    prev_health = (prev_belief or {}).get("dynamics", {}).get("interaction_health", "stable")
+    health_should_refresh = (
+        prev_health in {"tense", "stalled"}
+        and (world.get("interaction") or {}).get("escalation_signal") == "down"
+    )
     interval_expired = (turn_count - last_refresh_turn) >= interval
-    if world_diff_empty and not critical_change and not tone_change and not interval_expired:
+    if (
+        world_diff_empty
+        and not critical_change
+        and not tone_change
+        and not interaction_change
+        and not health_should_refresh
+        and not interval_expired
+    ):
         return True, "no_delta_interval_hold"
     reason = "interval_expired" if interval_expired else "delta_or_signal"
     return False, reason
@@ -181,13 +226,16 @@ def gate_phase_policy(
     last_refresh_turn: int,
     interval: int = 2,
 ) -> Tuple[bool, str]:
-    critical_diff = any(key in world_diff for key in critical_world_flags())
+    domain_diff, interaction_diff = _split_world_diff(world_diff)
+    critical_diff = any(key in domain_diff for key in critical_world_flags())
+    interaction_change = bool(interaction_diff)
     strong_signals = (
         critical_diff
         or precedence_changed
         or intent_transition_present
         or loop_flags_changed_flag
         or allowed_ids_hash_changed
+        or interaction_change
     )
     interval_expired = (turn_count - last_refresh_turn) >= interval
     if interval_expired or strong_signals:

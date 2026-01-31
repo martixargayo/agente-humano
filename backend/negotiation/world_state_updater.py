@@ -143,6 +143,33 @@ _DOCS_MAP = {
 _FRIENDLY_MARKERS = ["gracias", "sin problema", "encantado", "perfecto"]
 _TENSE_MARKERS = ["no tengo tiempo", "último", "ultima", "ya", "prisa", "urge"]
 _CONFLICT_MARKERS = ["no pienso", "ni de broma", "no voy a", "olvídalo"]
+_ACCEPTANCE_MARKERS = [
+    "vale",
+    "me parece bien",
+    "de acuerdo",
+    "ok",
+    "okay",
+    "perfecto",
+    "me sirve",
+]
+_EVASION_MARKERS = [
+    "no sé",
+    "no se",
+    "como quieras",
+    "da igual",
+    "lo que tú digas",
+    "no estoy seguro",
+    "depende",
+]
+_SOFT_COMMITMENT_MARKERS = [
+    "podría",
+    "quizá",
+    "quizas",
+    "me lo pensaría",
+    "me lo pensare",
+    "podemos verlo",
+    "si me lo dejas",
+]
 
 
 def _normalize_text(text: str) -> str:
@@ -161,6 +188,68 @@ def _bucket_phrase(text: str) -> str:
     if "no negocio" in lowered:
         return "firm_weak"
     return _normalize_short(text)
+
+
+def _previous_user_message(recent_history: list[dict]) -> str:
+    for item in reversed(recent_history):
+        if item.get("role") == "user":
+            return str(item.get("content", "") or "")
+    return ""
+
+
+def _tone_hits_from_message(text: str) -> list[str]:
+    lower = text.lower()
+    hits: list[str] = []
+    for marker in _FRIENDLY_MARKERS:
+        if marker in lower:
+            hits.append(f"friendly:{marker}")
+    for marker in _TENSE_MARKERS:
+        if marker in lower:
+            hits.append(f"tense:{marker}")
+    for marker in _CONFLICT_MARKERS:
+        if marker in lower:
+            hits.append(f"tense:{marker}")
+    return hits
+
+
+def extract_interaction_signals(
+    user_message: str,
+    prev_world: WorldState | None,
+    recent_history: list[dict] | str | None = None,
+    tone_signal: str | None = None,
+) -> dict:
+    text = _normalize_text(user_message)
+    lower = text.lower()
+    recent_history = _coerce_recent_history(recent_history)
+    prev_world = prev_world or default_world_state()
+    prev_interaction = (prev_world.get("interaction") or {}) if isinstance(prev_world, dict) else {}
+    prev_tone = prev_world.get("tone_signal", "neutral")
+    if tone_signal is None:
+        tone_hits = _tone_hits_from_message(text)
+        tone_signal = _derive_tone_signal(tone_hits)
+
+    implicit_acceptance = any(marker in lower for marker in _ACCEPTANCE_MARKERS)
+    evasion_detected = any(marker in lower for marker in _EVASION_MARKERS)
+    soft_commitment = any(marker in lower for marker in _SOFT_COMMITMENT_MARKERS)
+    prev_user = _normalize_short(_previous_user_message(recent_history))
+    loop_hint = bool(prev_user and prev_user == _normalize_short(text))
+
+    escalation_signal = "none"
+    if prev_tone != tone_signal:
+        if tone_signal == "tense":
+            escalation_signal = "up"
+        elif prev_tone == "tense" and tone_signal in {"neutral", "friendly"}:
+            escalation_signal = "down"
+    if prev_interaction.get("loop_hint") and not loop_hint:
+        loop_hint = False
+
+    return {
+        "implicit_acceptance": implicit_acceptance,
+        "escalation_signal": escalation_signal,
+        "loop_hint": loop_hint,
+        "evasion_detected": evasion_detected,
+        "soft_commitment": soft_commitment,
+    }
 
 
 def _infer_field(item: EvidenceItem) -> str:
@@ -1396,6 +1485,12 @@ def update_world_state(
         world["world_state_meta"]["updated_fields"] = sorted(
             [key for key in world.keys() if world.get(key) != base.get(key)]
         )
+        world["interaction"] = extract_interaction_signals(
+            user_message,
+            base,
+            recent_history=recent_history,
+            tone_signal=world.get("tone_signal"),
+        )
         return world, meta
 
     if use_legacy:
@@ -1419,6 +1514,12 @@ def update_world_state(
         world["world_state_meta"]["updated_fields"] = sorted(
             [key for key in world.keys() if world.get(key) != base.get(key)]
         )
+        world["interaction"] = extract_interaction_signals(
+            user_message,
+            base,
+            recent_history=recent_history,
+            tone_signal=world.get("tone_signal"),
+        )
         return world, {
             "extractor_used": False,
             "extractor_reasons": ["legacy_fallback"],
@@ -1435,6 +1536,12 @@ def update_world_state(
     )[-EVIDENCE_V2_MAX_UNKNOWN:]
     base = _sync_legacy_evidence_from_v2(base)
     base = _derive_legacy_from_v2(base, confidence_min)
+    base["interaction"] = extract_interaction_signals(
+        user_message,
+        base,
+        recent_history=recent_history,
+        tone_signal=base.get("tone_signal"),
+    )
     return base, {
         "extractor_used": False,
         "extractor_reasons": ["skipped"],
@@ -1444,5 +1551,23 @@ def update_world_state(
 
 
 def diff_world_state(prev: WorldState, new: WorldState) -> dict:
-    return {key: {"before": prev.get(key), "after": new.get(key)}
-            for key in new.keys() if prev.get(key) != new.get(key)}
+    domain_diff = {
+        key: {"before": prev.get(key), "after": new.get(key)}
+        for key in new.keys()
+        if key != "interaction" and prev.get(key) != new.get(key)
+    }
+    prev_interaction = prev.get("interaction", {}) if isinstance(prev.get("interaction"), dict) else {}
+    new_interaction = new.get("interaction", {}) if isinstance(new.get("interaction"), dict) else {}
+    interaction_diff = {
+        key: {"before": prev_interaction.get(key), "after": new_interaction.get(key)}
+        for key in new_interaction.keys()
+        if prev_interaction.get(key) != new_interaction.get(key)
+    }
+    if not domain_diff and not interaction_diff:
+        return {}
+    diff: dict = {}
+    if domain_diff:
+        diff["domain"] = domain_diff
+    if interaction_diff:
+        diff["interaction"] = interaction_diff
+    return diff

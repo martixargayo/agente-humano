@@ -67,6 +67,9 @@ class _BeliefStateModel(BaseModel):
     stance: _BeliefStanceModel
     reasons: dict[ReasonKey, _BeliefReasonModel] = Field(default_factory=dict)
     hypotheses: conlist(str, max_length=5) = Field(default_factory=list)
+    hypotheses_structural: conlist(str, max_length=5) = Field(default_factory=list)
+    hypotheses_observational: conlist(str, max_length=5) = Field(default_factory=list)
+    evaluations: dict[str, confloat(ge=0.0, le=1.0)] = Field(default_factory=dict)
     dynamics: _BeliefDynamicsModel
     tom: _BeliefToMModel
 
@@ -124,12 +127,16 @@ def has_belief_evidence_delta(
     decisions = (extractor_meta or {}).get("decisions", {}) or {}
     if decisions.get("should_update_beliefs") is True:
         return True
-    if world_diff:
+    domain = world_diff.get("domain", world_diff)
+    interaction = world_diff.get("interaction", {})
+    if domain or interaction:
         return True
     for key in _CRITICAL_FLAGS:
         if world.get(key) != prev_world.get(key):
             return True
     if world.get("tone_signal") != prev_world.get("tone_signal"):
+        return True
+    if (world.get("interaction") or {}) != (prev_world.get("interaction") or {}):
         return True
     prev_hits = set(prev_world.get("tone_marker_hits", []) or [])
     new_hits = set(world.get("tone_marker_hits", []) or []) - prev_hits
