@@ -30,12 +30,26 @@ const NeckEditor = {
 // Estado global del avatar / audio
 // =========================
 const AvatarState = {
-  mode: 'IDLE', // IDLE | LISTENING | THINKING | SPEAKING
+  mode: 'BOOT', // BOOT | IDLE | LISTENING | THINKING | SPEAKING
   emotion: 'neutral',
   talkLevel: 0,
   speechIntensity: 1.0,
   idleMotionEnabled: true,
 };
+
+const InputMode = {
+  TALK: 'talk',
+  WRITE: 'write',
+};
+
+const AgentMode = {
+  CHAT: 'chat',
+  NEGOCIAR: 'negociar',
+};
+
+let currentInputMode = InputMode.TALK;
+let currentAgentMode = AgentMode.CHAT;
+let hasMicPermission = false;
 
 const AudioDebug = {
   enabled: false,
@@ -958,43 +972,25 @@ async function requestTTS(text) {
   return base64ToAudioData(audioBase64, audioMimeType || 'audio/wav');
 }
 
-async function sendTextToAgent(message, { mode = 'negociar', withAudio = true } = {}) {
-  const lastReplyEl = document.getElementById('lastReply');
-  if (lastReplyEl) lastReplyEl.textContent = '…';
-  AvatarState.mode = 'THINKING';
+async function fetchAgentReply(message, { mode = AgentMode.CHAT } = {}) {
+  const endpoint = mode === AgentMode.CHAT ? '/chat' : '/negociar';
+  const res = await fetch(`${BACKEND_URL}${endpoint}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: 'web_user', session_id: 'sesion_demo', message }),
+  });
 
-  try {
-    const endpoint = mode === 'chat' ? '/chat' : '/negociar';
-    const res = await fetch(`${BACKEND_URL}${endpoint}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: 'web_user', session_id: 'sesion_demo', message }),
-    });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`Error agente: ${res.status} ${errText}`);
-    }
-
-    const data = await res.json();
-    const replyText = data.reply || '';
-    const emotion = data.emotion || 'neutral';
-    const intensity = data.tone === 'excited' ? 1.25 : data.tone === 'calm' ? 0.8 : 1.0;
-    AvatarState.emotion = emotion;
-    if (lastReplyEl) lastReplyEl.textContent = replyText;
-
-    if (!withAudio || !replyText) {
-      AvatarState.mode = 'IDLE';
-      return;
-    }
-
-    const audioData = await requestTTS(replyText);
-    await playAudioFromAudioData(audioData, { emotion, speechIntensity: intensity });
-  } catch (err) {
-    console.error('Error al hablar con el backend:', err);
-    if (lastReplyEl) lastReplyEl.textContent = err.message || 'Error de red';
-    AvatarState.mode = 'IDLE';
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Error agente: ${res.status} ${errText}`);
   }
+
+  const data = await res.json();
+  return {
+    replyText: data.reply || '',
+    emotion: data.emotion || 'neutral',
+    intensity: data.tone === 'excited' ? 1.25 : data.tone === 'calm' ? 0.8 : 1.0,
+  };
 }
 
 async function playAudioFromAudioData(
@@ -1018,7 +1014,7 @@ async function playAudioFromAudioData(
     audioBuffer = await ctx.decodeAudioData(bufferForDecode);
   } catch (err) {
     console.error('[audio] No se pudo decodificar audio_base64', err);
-    AvatarState.mode = 'IDLE';
+    setMode('IDLE');
     AvatarState.talkLevel = 0;
     cleanupAudio();
     throw err;
@@ -1062,20 +1058,102 @@ async function playAudioFromAudioData(
 
   await ctx.resume();
 
-  AvatarState.mode = 'SPEAKING';
+  setMode('SPEAKING');
   AvatarState.emotion = emotion;
   AvatarState.speechIntensity = speechIntensity;
 
   audioSource.onended = () => {
     if (AudioDebug.enabled) console.log('[avatar] TTS terminado');
-    AvatarState.mode = 'IDLE';
-    AvatarState.speechIntensity = 1.0;
-    AvatarState.talkLevel = 0;
-    cleanupAudio();
+    handleTtsEnded();
   };
 
   const startTime = ctx.currentTime + 0.05;
   audioSource.start(startTime);
+}
+
+const TURN_TIMINGS = {
+  listenDelayMs: 180,
+};
+
+function setMode(nextMode) {
+  if (AvatarState.mode === nextMode) return;
+  AvatarState.mode = nextMode;
+  updateUiForMode();
+}
+
+function setListeningGlowEnabled(enabled) {
+  if (!ui.listeningGlow) return;
+  ui.listeningGlow.classList.toggle('active', Boolean(enabled));
+}
+
+function setStatusText(message) {
+  if (!ui.statusText) return;
+  ui.statusText.textContent = message;
+}
+
+function handleTtsEnded() {
+  AvatarState.speechIntensity = 1.0;
+  AvatarState.talkLevel = 0;
+  cleanupAudio();
+
+  if (currentInputMode === InputMode.TALK) {
+    setMode('IDLE');
+    window.setTimeout(() => {
+      enterListening();
+    }, TURN_TIMINGS.listenDelayMs);
+  } else {
+    setMode('IDLE');
+  }
+}
+
+function enterIdle() {
+  setMode('IDLE');
+}
+
+async function enterSpeaking(replyText, { emotion = 'neutral', intensity = 1.0 } = {}) {
+  if (!replyText) {
+    setStatusText('Respuesta vacía.');
+    if (currentInputMode === InputMode.TALK) {
+      return enterListening();
+    }
+    return enterIdle();
+  }
+
+  try {
+    const audioData = await requestTTS(replyText);
+    await playAudioFromAudioData(audioData, { emotion, speechIntensity: intensity });
+  } catch (err) {
+    console.error('Error TTS:', err);
+    setStatusText('No se pudo reproducir el audio.');
+    if (currentInputMode === InputMode.TALK) {
+      enterListening();
+    } else {
+      enterIdle();
+    }
+  }
+}
+
+async function enterListening() {
+  if (currentInputMode !== InputMode.TALK) {
+    return enterIdle();
+  }
+  if (!hasMicPermission) {
+    flashStatus('Necesitamos permiso de micrófono.');
+    return enterIdle();
+  }
+  if (AvatarState.mode === 'LISTENING' || isRecording) return;
+  setMode('LISTENING');
+  try {
+    await startRecording();
+  } catch (err) {
+    console.error('Error al iniciar grabación:', err);
+    setStatusText('No se pudo iniciar el micrófono.');
+    enterIdle();
+  }
+}
+
+async function enterThinking() {
+  setMode('THINKING');
 }
 
 function getTalkLevelFromAudio() {
@@ -1330,61 +1408,107 @@ function animate() {
 animate();
 
 // =========================
-// 8. UI básica (texto → agente → TTS)
+// 8. UI (turnos automáticos)
 // =========================
-const sendToAgentBtn = document.getElementById('sendToAgentBtn');
-const userTextEl = document.getElementById('userText');
-const textOnlyCheckbox = document.getElementById('textOnly');
-const idleMotionToggle = document.getElementById('idleMotionToggle');
-let agentSendInFlight = 0;
+const ui = {
+  listeningGlow: document.getElementById('listeningGlow'),
+  permissionOverlay: document.getElementById('permissionOverlay'),
+  permissionError: document.getElementById('permissionError'),
+  startBtn: document.getElementById('startBtn'),
+  replyContainer: document.getElementById('replyContainer'),
+  lastReply: document.getElementById('lastReply'),
+  statusText: document.getElementById('statusText'),
+  inputOrb: document.getElementById('inputOrb'),
+  finishTurnBtn: document.getElementById('finishTurnBtn'),
+  modeTalk: document.getElementById('modeTalk'),
+  modeWrite: document.getElementById('modeWrite'),
+  talkMode: document.getElementById('talkMode'),
+  writeMode: document.getElementById('writeMode'),
+  agentChat: document.getElementById('agentChat'),
+  agentNegotiation: document.getElementById('agentNegotiation'),
+  textInput: document.getElementById('textInput'),
+  sendTextBtn: document.getElementById('sendTextBtn'),
+};
 
-function setAgentSendBusy(isBusy, buttonLabel) {
-  if (!sendToAgentBtn) return;
-  if (isBusy) agentSendInFlight += 1;
-  else agentSendInFlight = Math.max(0, agentSendInFlight - 1);
+let statusResetId = null;
 
-  sendToAgentBtn.disabled = agentSendInFlight > 0;
-  if (agentSendInFlight === 0) sendToAgentBtn.textContent = 'Enviar al agente';
-  else if (buttonLabel) sendToAgentBtn.textContent = buttonLabel;
+function updateReplyText(text) {
+  if (!ui.lastReply || !ui.replyContainer) return;
+  ui.lastReply.textContent = text;
+  ui.replyContainer.classList.toggle('hidden', !text);
 }
 
-if (sendToAgentBtn) {
-  sendToAgentBtn.addEventListener('click', async () => {
-    const text = (userTextEl?.value || '').trim();
-    if (!text) return;
-    const modeRadio = document.querySelector('input[name="agentMode"]:checked');
-    const mode = modeRadio ? modeRadio.value : 'negociar';
-    const withAudio = !textOnlyCheckbox?.checked;
-    setAgentSendBusy(true, 'Hablando...');
-    try {
-      await sendTextToAgent(text, { mode, withAudio });
-    } finally {
-      setAgentSendBusy(false);
-    }
-  });
+function flashStatus(message, ms = 2200) {
+  setStatusText(message);
+  if (statusResetId) window.clearTimeout(statusResetId);
+  statusResetId = window.setTimeout(() => {
+    updateUiForMode();
+  }, ms);
 }
 
-if (userTextEl) {
-  userTextEl.addEventListener('keydown', (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-      e.preventDefault();
-      sendToAgentBtn?.click();
-    }
-  });
+function updateUiForMode() {
+  setListeningGlowEnabled(AvatarState.mode === 'LISTENING');
+
+  if (ui.inputOrb) {
+    ui.inputOrb.classList.toggle('inactive', AvatarState.mode !== 'LISTENING');
+  }
+
+  if (ui.finishTurnBtn) {
+    ui.finishTurnBtn.disabled = AvatarState.mode !== 'LISTENING';
+  }
+
+  if (AvatarState.mode === 'LISTENING') setStatusText('Escuchando…');
+  else if (AvatarState.mode === 'SPEAKING') setStatusText('Hablando…');
+  else if (AvatarState.mode === 'THINKING') setStatusText('Procesando…');
+  else if (AvatarState.mode === 'IDLE') setStatusText('Listo');
+  else setStatusText('Listo');
+
+  const textBusy = AvatarState.mode !== 'IDLE' || currentInputMode !== InputMode.WRITE;
+  if (ui.textInput) ui.textInput.disabled = textBusy;
+  if (ui.sendTextBtn) ui.sendTextBtn.disabled = textBusy;
 }
 
-if (idleMotionToggle) {
-  idleMotionToggle.addEventListener('change', (e) => {
-    AvatarState.idleMotionEnabled = e.target.checked;
-  });
+function setInputMode(mode) {
+  currentInputMode = mode;
+  if (ui.modeTalk) ui.modeTalk.classList.toggle('active', mode === InputMode.TALK);
+  if (ui.modeWrite) ui.modeWrite.classList.toggle('active', mode === InputMode.WRITE);
+  if (ui.modeTalk) ui.modeTalk.setAttribute('aria-selected', String(mode === InputMode.TALK));
+  if (ui.modeWrite) ui.modeWrite.setAttribute('aria-selected', String(mode === InputMode.WRITE));
+  if (ui.talkMode) ui.talkMode.classList.toggle('hidden', mode !== InputMode.TALK);
+  if (ui.writeMode) ui.writeMode.classList.toggle('hidden', mode !== InputMode.WRITE);
+
+  if (mode === InputMode.WRITE && AvatarState.mode === 'LISTENING') {
+    cancelRecording();
+  }
+
+  updateUiForMode();
+}
+
+function setAgentMode(mode) {
+  currentAgentMode = mode;
+  if (ui.agentChat) ui.agentChat.classList.toggle('active', mode === AgentMode.CHAT);
+  if (ui.agentChat) ui.agentChat.setAttribute('aria-pressed', String(mode === AgentMode.CHAT));
+  if (ui.agentNegotiation) ui.agentNegotiation.classList.toggle('active', mode === AgentMode.NEGOCIAR);
+  if (ui.agentNegotiation) {
+    ui.agentNegotiation.setAttribute('aria-pressed', String(mode === AgentMode.NEGOCIAR));
+  }
+}
+
+async function handleTextSend() {
+  const text = (ui.textInput?.value || '').trim();
+  if (!text) return;
+  if (AvatarState.mode !== 'IDLE') {
+    flashStatus('Espera a que termine el turno actual.');
+    return;
+  }
+
+  ui.textInput.value = '';
+  await sendTextTurn(text);
 }
 
 // =========================
-// 9. Mic simple (visual)
+// 9. Mic automático + visualizador RMS
 // =========================
-const micBtn = document.getElementById('micBtn');
-const waveCanvas = document.getElementById('waveCanvas');
-const micLabel = document.getElementById('micLabel');
 let mediaRecorder = null;
 let audioChunks = [];
 let isRecording = false;
@@ -1393,38 +1517,35 @@ let waveAudioCtx = null;
 let waveAnalyser = null;
 let waveDataArray = null;
 let waveAnimationId = null;
-
 let recorderMimeType = 'audio/webm;codecs=opus';
+let discardRecording = false;
+let orbLevel = 0;
 
-function drawWaveform() {
-  if (!waveCanvas || !waveAnalyser) return;
-  const ctx = waveCanvas.getContext('2d');
-  const width = waveCanvas.width;
-  const height = waveCanvas.height;
-  waveAnimationId = requestAnimationFrame(drawWaveform);
+function updateInputOrb() {
+  if (!ui.inputOrb || !waveAnalyser || !waveDataArray) return;
   waveAnalyser.getByteTimeDomainData(waveDataArray);
-  ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = 'rgba(15,23,42,1)';
-  ctx.fillRect(0, 0, width, height);
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = '#22c55e';
-  ctx.beginPath();
-  const sliceWidth = width / waveDataArray.length;
-  let x = 0;
+  let sum = 0;
   for (let i = 0; i < waveDataArray.length; i++) {
-    const v = waveDataArray[i] / 128.0;
-    const y = (v * height) / 2;
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-    x += sliceWidth;
+    const v = waveDataArray[i] / 128 - 1;
+    sum += v * v;
   }
-  ctx.lineTo(width, height / 2);
-  ctx.stroke();
+  const rms = Math.sqrt(sum / waveDataArray.length);
+  const target = Math.min(1, rms * 6);
+  orbLevel += (target - orbLevel) * 0.2;
+  const scale = 0.85 + orbLevel * 0.55;
+  ui.inputOrb.style.setProperty('--orb-scale', scale.toFixed(2));
+  waveAnimationId = requestAnimationFrame(updateInputOrb);
+}
+
+function stopInputOrb() {
+  if (waveAnimationId) cancelAnimationFrame(waveAnimationId);
+  waveAnimationId = null;
+  orbLevel = 0;
+  if (ui.inputOrb) ui.inputOrb.style.setProperty('--orb-scale', '0.85');
 }
 
 function teardownMic() {
-  try { if (waveAnimationId) cancelAnimationFrame(waveAnimationId); } catch (_) {}
-  waveAnimationId = null;
+  stopInputOrb();
 
   try { if (waveAudioCtx) waveAudioCtx.close(); } catch (_) {}
   waveAudioCtx = null;
@@ -1437,21 +1558,24 @@ function teardownMic() {
 }
 
 async function startRecording() {
-  if (!navigator.mediaDevices?.getUserMedia) return alert('getUserMedia no soportado');
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error('getUserMedia no soportado');
+  }
 
-  try {
-    getOrCreateAudioContext().resume().catch(() => {});
-    warmupFrontendTts();
-  } catch (_) {}
-
-  audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  discardRecording = false;
+  audioStream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    },
+  });
 
   recorderMimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
     ? 'audio/webm;codecs=opus'
     : 'audio/webm';
 
   mediaRecorder = new MediaRecorder(audioStream, { mimeType: recorderMimeType });
-
   audioChunks = [];
 
   mediaRecorder.ondataavailable = (e) => {
@@ -1460,57 +1584,36 @@ async function startRecording() {
 
   mediaRecorder.onstop = async () => {
     const blob = new Blob(audioChunks, { type: recorderMimeType });
-    const lastReplyEl = document.getElementById('lastReply');
-    let hadError = false;
+    audioChunks = [];
 
-    if (micLabel) micLabel.textContent = 'Transcribiendo…';
-    setAgentSendBusy(true);
+    if (discardRecording) {
+      discardRecording = false;
+      teardownMic();
+      enterIdle();
+      return;
+    }
 
     try {
       if (!blob.size) throw new Error('No se capturó audio. Intenta grabar de nuevo.');
-
-      const audioFile = new File([blob], 'grabacion.webm', { type: recorderMimeType });
-      const formData = new FormData();
-      formData.append('file', audioFile);
-
-      const res = await fetch(`${BACKEND_URL}/stt_google`, { method: 'POST', body: formData });
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(`Error STT: ${res.status} ${errText}`);
-      }
-
-      const data = await res.json();
-      const text = (data?.text || '').trim();
+      const text = await transcribeAudio(blob);
       if (!text) throw new Error('Transcripción vacía');
-
-      if (micLabel) micLabel.textContent = 'Enviando…';
-      const modeRadio = document.querySelector('input[name="agentMode"]:checked');
-      const mode = modeRadio ? modeRadio.value : 'negociar';
-      const withAudio = !textOnlyCheckbox?.checked;
-
-      teardownMic();
-      await sendTextToAgent(text, { mode, withAudio });
-
+      await sendTextTurn(text);
     } catch (err) {
-      hadError = true;
-      teardownMic();
-
       console.error('Error al transcribir/enviar audio:', err);
-      const message = err?.message || 'Error de transcripción';
-      if (lastReplyEl) lastReplyEl.textContent = message;
-      if (micLabel) micLabel.textContent = message;
-      AvatarState.mode = 'IDLE';
-
+      updateReplyText(err?.message || 'Error de transcripción');
+      flashStatus('No se pudo transcribir.');
+      if (currentInputMode === InputMode.TALK) {
+        enterListening();
+      } else {
+        enterIdle();
+      }
     } finally {
-      setAgentSendBusy(false);
-      if (!hadError && micLabel) micLabel.textContent = 'Pulsa el micro y habla';
+      teardownMic();
     }
   };
 
   mediaRecorder.start(250);
   isRecording = true;
-  if (micLabel) micLabel.textContent = 'Grabando…';
-  AvatarState.mode = 'LISTENING';
 
   waveAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
   waveAnalyser = waveAudioCtx.createAnalyser();
@@ -1518,7 +1621,7 @@ async function startRecording() {
   const source = waveAudioCtx.createMediaStreamSource(audioStream);
   source.connect(waveAnalyser);
   waveDataArray = new Uint8Array(waveAnalyser.frequencyBinCount);
-  drawWaveform();
+  updateInputOrb();
 }
 
 function stopRecording() {
@@ -1539,75 +1642,193 @@ function stopRecording() {
   }
 
   isRecording = false;
-  if (micLabel) micLabel.textContent = 'Procesando…';
-  if (AvatarState.mode === 'LISTENING') AvatarState.mode = 'IDLE';
 }
 
-if (micBtn) {
-  micBtn.addEventListener('click', async () => {
-    if (isRecording) {
-      stopRecording();
-      micBtn.textContent = '🎤 Hablar';
+function cancelRecording() {
+  if (!isRecording) return;
+  discardRecording = true;
+  stopRecording();
+}
+
+function finishUserTurn() {
+  if (AvatarState.mode !== 'LISTENING' || !isRecording) return;
+  enterThinking();
+  stopRecording();
+}
+
+async function transcribeAudio(blob) {
+  const audioFile = new File([blob], 'grabacion.webm', { type: recorderMimeType });
+  const formData = new FormData();
+  formData.append('file', audioFile);
+  const res = await fetch(`${BACKEND_URL}/stt_google`, { method: 'POST', body: formData });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Error STT: ${res.status} ${errText}`);
+  }
+
+  const data = await res.json();
+  return (data?.text || '').trim();
+}
+
+async function sendTextTurn(message) {
+  enterThinking();
+  updateReplyText('…');
+
+  try {
+    const { replyText, emotion, intensity } = await fetchAgentReply(message, { mode: currentAgentMode });
+    updateReplyText(replyText);
+    await enterSpeaking(replyText, { emotion, intensity });
+  } catch (err) {
+    console.error('Error al hablar con el backend:', err);
+    updateReplyText(err?.message || 'Error de red');
+    if (currentInputMode === InputMode.TALK) {
+      enterListening();
     } else {
-      await startRecording();
-      micBtn.textContent = '⏹️ Detener';
+      enterIdle();
+    }
+  }
+}
+
+async function requestMicPermissions() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    return false;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach((track) => track.stop());
+    hasMicPermission = true;
+    return true;
+  } catch (err) {
+    console.error('[mic] Permiso denegado', err);
+    hasMicPermission = false;
+    return false;
+  }
+}
+
+async function startConversation() {
+  if (ui.permissionError) ui.permissionError.textContent = '';
+  const ok = await requestMicPermissions();
+  if (!ok) {
+    if (ui.permissionError) {
+      ui.permissionError.textContent = 'No pudimos acceder al micrófono. Reintenta.';
+    }
+    return;
+  }
+
+  try {
+    await getOrCreateAudioContext().resume();
+    warmupFrontendTts();
+  } catch (_) {}
+
+  if (ui.permissionOverlay) ui.permissionOverlay.style.display = 'none';
+  enterIdle();
+
+  const greeting = 'Hola, ¿en qué puedo ayudarte?';
+  updateReplyText(greeting);
+  await enterSpeaking(greeting, { emotion: 'neutral', intensity: 1.0 });
+}
+
+if (ui.startBtn) {
+  ui.startBtn.addEventListener('click', () => {
+    startConversation();
+  });
+}
+
+if (ui.finishTurnBtn) {
+  ui.finishTurnBtn.addEventListener('click', () => {
+    finishUserTurn();
+  });
+}
+
+if (ui.modeTalk) {
+  ui.modeTalk.addEventListener('click', () => setInputMode(InputMode.TALK));
+}
+if (ui.modeWrite) {
+  ui.modeWrite.addEventListener('click', () => setInputMode(InputMode.WRITE));
+}
+if (ui.agentChat) {
+  ui.agentChat.addEventListener('click', () => setAgentMode(AgentMode.CHAT));
+}
+if (ui.agentNegotiation) {
+  ui.agentNegotiation.addEventListener('click', () => setAgentMode(AgentMode.NEGOCIAR));
+}
+if (ui.sendTextBtn) {
+  ui.sendTextBtn.addEventListener('click', handleTextSend);
+}
+if (ui.textInput) {
+  ui.textInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleTextSend();
     }
   });
 }
 
-// =========================
-// 10. Botón "Hablar (test)" – solo frontend, sin backend
-// =========================
-const testTalkBtn = document.createElement('button');
-testTalkBtn.textContent = 'Hablar (test)';
-Object.assign(testTalkBtn.style, {
-  position: 'fixed',
-  bottom: '16px',
-  right: '16px',
-  padding: '8px 14px',
-  borderRadius: '999px',
-  border: 'none',
-  background: 'rgba(255,255,255,0.14)',
-  color: '#ffffff',
-  fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-  fontSize: '12px',
-  letterSpacing: '0.08em',
-  textTransform: 'uppercase',
-  cursor: 'pointer',
-  backdropFilter: 'blur(10px)',
-  zIndex: '20',
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.repeat && AvatarState.mode === 'LISTENING') {
+    e.preventDefault();
+    finishUserTurn();
+  }
 });
-document.body.appendChild(testTalkBtn);
 
-const startLipTest = () => {
-  lipHoldActive = true;
-  AvatarState.mode = 'SPEAKING';
-  console.log('[test-lips] Mantener pulsado: ACTIVADO');
-};
+setInputMode(currentInputMode);
+setAgentMode(currentAgentMode);
+updateUiForMode();
 
-const stopLipTest = () => {
-  lipHoldActive = false;
-  AvatarState.mode = 'IDLE';
-  AvatarState.talkLevel = 0;
-  console.log('[test-lips] Mantener pulsado: DESACTIVADO');
-};
+// =========================
+// 10. Botón "Hablar (test)" – solo frontend, sin backend (debug)
+// =========================
+if (URL_PARAMS.get('debugTalk') === '1') {
+  const testTalkBtn = document.createElement('button');
+  testTalkBtn.textContent = 'Hablar (test)';
+  Object.assign(testTalkBtn.style, {
+    position: 'fixed',
+    bottom: '16px',
+    right: '16px',
+    padding: '8px 14px',
+    borderRadius: '999px',
+    border: 'none',
+    background: 'rgba(255,255,255,0.14)',
+    color: '#ffffff',
+    fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    fontSize: '12px',
+    letterSpacing: '0.08em',
+    textTransform: 'uppercase',
+    cursor: 'pointer',
+    backdropFilter: 'blur(10px)',
+    zIndex: '20',
+  });
+  document.body.appendChild(testTalkBtn);
 
-testTalkBtn.addEventListener('mousedown', startLipTest);
-testTalkBtn.addEventListener('mouseup', stopLipTest);
-testTalkBtn.addEventListener('mouseleave', stopLipTest);
+  const startLipTest = () => {
+    lipHoldActive = true;
+    setMode('SPEAKING');
+    console.log('[test-lips] Mantener pulsado: ACTIVADO');
+  };
 
-testTalkBtn.addEventListener(
-  'touchstart',
-  (e) => { e.preventDefault(); startLipTest(); },
-  { passive: false },
-);
+  const stopLipTest = () => {
+    lipHoldActive = false;
+    setMode('IDLE');
+    AvatarState.talkLevel = 0;
+    console.log('[test-lips] Mantener pulsado: DESACTIVADO');
+  };
 
-testTalkBtn.addEventListener(
-  'touchend',
-  (e) => { e.preventDefault(); stopLipTest(); },
-  { passive: false },
-);
+  testTalkBtn.addEventListener('mousedown', startLipTest);
+  testTalkBtn.addEventListener('mouseup', stopLipTest);
+  testTalkBtn.addEventListener('mouseleave', stopLipTest);
 
+  testTalkBtn.addEventListener(
+    'touchstart',
+    (e) => { e.preventDefault(); startLipTest(); },
+    { passive: false },
+  );
+
+  testTalkBtn.addEventListener(
+    'touchend',
+    (e) => { e.preventDefault(); stopLipTest(); },
+    { passive: false },
+  );
+}
 
 
 function setNeckEditorVisible(v) {
