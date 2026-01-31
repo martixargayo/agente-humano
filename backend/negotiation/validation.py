@@ -28,6 +28,7 @@ from .schemas import (
 _ALLOWED_HEALTH: set[InteractionHealth] = {"stable", "tense", "stalled"}
 _ALLOWED_RISK: set[RiskPosture] = {"low", "mid", "high"}
 _ALLOWED_TONE: set[ToneSignal] = {"neutral", "friendly", "tense"}
+_ALLOWED_ESCALATION = {"up", "down", "none"}
 _MAX_V2_CLAIMS = int(os.getenv("EVIDENCE_V2_MAX_CLAIMS", "200"))
 _MAX_V2_UNKNOWN = int(os.getenv("EVIDENCE_V2_MAX_UNKNOWN", "50"))
 _ALLOWED_INTENT_STATUS: set[IntentStatus] = {
@@ -58,6 +59,26 @@ _ALLOWED_REASON_KEYS = {
     "concession_signal",
     "docs_signal",
     "tone_signal",
+}
+_ALLOWED_STRUCTURAL_HYPOTHESES = {
+    "high_urgency",
+    "low_flexibility",
+    "high_flexibility",
+    "credibility_risk",
+    "relationship_risk",
+}
+_ALLOWED_OBSERVATIONAL_HYPOTHESES = {
+    "implicit_acceptance",
+    "evasion_detected",
+    "looping",
+    "deescalation",
+    "escalation",
+    "soft_commitment",
+}
+_ALLOWED_EVALUATIONS = {
+    "commitment_level",
+    "cooperation_level",
+    "responsiveness",
 }
 _STRICT_NORMALIZATION = os.getenv("STRICT_NORMALIZATION") == "1"
 
@@ -166,6 +187,28 @@ def normalize_world_state(raw: object) -> Tuple[WorldState, List[str]]:
     base["tone_marker_hits"] = _unique_list(tone_markers, max_items=10)
     conflict_markers = _coerce_str_list(raw.get("conflict_markers", []), max_items=10)
     base["conflict_markers"] = _unique_list(conflict_markers, max_items=10)
+
+    interaction = raw.get("interaction", {})
+    if isinstance(interaction, dict):
+        base["interaction"]["implicit_acceptance"] = bool(
+            interaction.get("implicit_acceptance", base["interaction"]["implicit_acceptance"])
+        )
+        escalation = interaction.get("escalation_signal", base["interaction"]["escalation_signal"])
+        if escalation not in _ALLOWED_ESCALATION:
+            issues.append("interaction_escalation_invalid")
+            escalation = base["interaction"]["escalation_signal"]
+        base["interaction"]["escalation_signal"] = escalation
+        base["interaction"]["loop_hint"] = bool(
+            interaction.get("loop_hint", base["interaction"]["loop_hint"])
+        )
+        base["interaction"]["evasion_detected"] = bool(
+            interaction.get("evasion_detected", base["interaction"]["evasion_detected"])
+        )
+        base["interaction"]["soft_commitment"] = bool(
+            interaction.get("soft_commitment", base["interaction"]["soft_commitment"])
+        )
+    else:
+        issues.append("interaction_invalid")
 
     evidence_items = raw.get("evidence_items", [])
     if isinstance(evidence_items, list):
@@ -349,6 +392,42 @@ def normalize_belief_state(
         issues.append("hypotheses_trimmed")
     base["hypotheses"] = hypotheses
 
+    structural_raw = raw.get("hypotheses_structural", [])
+    observational_raw = raw.get("hypotheses_observational", [])
+    if not structural_raw and not observational_raw and hypotheses:
+        observational_raw = hypotheses
+    structural = [
+        value
+        for value in _unique_list(_coerce_str_list(structural_raw, max_items=5))
+        if value in _ALLOWED_STRUCTURAL_HYPOTHESES
+    ]
+    observational = [
+        value
+        for value in _unique_list(_coerce_str_list(observational_raw, max_items=5))
+        if value in _ALLOWED_OBSERVATIONAL_HYPOTHESES
+    ]
+    if len(structural) >= 5:
+        issues.append("hypotheses_structural_trimmed")
+    if len(observational) >= 5:
+        issues.append("hypotheses_observational_trimmed")
+    base["hypotheses_structural"] = structural
+    base["hypotheses_observational"] = observational
+    combined = _unique_list(structural + observational, max_items=5)
+    if combined:
+        base["hypotheses"] = combined
+
+    evaluations_raw = raw.get("evaluations", {})
+    evaluations: Dict[str, float] = {}
+    if isinstance(evaluations_raw, dict):
+        for key, value in evaluations_raw.items():
+            if key not in _ALLOWED_EVALUATIONS:
+                issues.append(f"evaluation_key_invalid:{key}")
+                continue
+            evaluations[str(key)] = _clamp(_coerce_float(value, 0.0))
+    else:
+        issues.append("evaluations_invalid")
+    base["evaluations"] = evaluations
+
     dynamics = raw.get("dynamics", {})
     if not isinstance(dynamics, dict):
         issues.append("dynamics_invalid")
@@ -499,6 +578,15 @@ def _normalize_gate_state(raw: object) -> Tuple[dict, List[str]]:
     base["loop_flags_prev"] = _unique_list(_coerce_str_list(loop_flags))
     input_shape = raw.get("input_shape_prev", {})
     base["input_shape_prev"] = input_shape if isinstance(input_shape, dict) else {}
+    interaction_fp = raw.get("interaction_fingerprint_prev", {})
+    base["interaction_fingerprint_prev"] = (
+        interaction_fp if isinstance(interaction_fp, dict) else {}
+    )
+    version = raw.get("interaction_fingerprint_version", base.get("interaction_fingerprint_version", 1))
+    try:
+        base["interaction_fingerprint_version"] = max(1, int(version))
+    except (TypeError, ValueError):
+        issues.append("gate_state_invalid:interaction_fingerprint_version")
     return base, issues
 
 

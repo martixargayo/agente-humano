@@ -17,7 +17,8 @@ def _has_info_delta(world_diff: dict) -> bool:
         "price_mentioned",
         "price_value",
     }
-    return any(key in world_diff for key in info_keys)
+    domain = world_diff.get("domain", world_diff)
+    return any(key in domain for key in info_keys)
 
 
 def _evaluate_outcome(

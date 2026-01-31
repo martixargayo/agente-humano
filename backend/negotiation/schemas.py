@@ -6,6 +6,7 @@ InteractionHealth = Literal["stable", "tense", "stalled"]
 RiskPosture = Literal["low", "mid", "high"]
 PolicyOutcome = Literal["good", "neutral", "bad", ""]
 ToneSignal = Literal["neutral", "friendly", "tense"]
+InteractionEscalation = Literal["up", "down", "none"]
 RequiredInputOp = Literal["exists", "true", "non_empty"]
 EvidenceType = Literal[
     "PRICE",
@@ -114,6 +115,7 @@ class WorldState(TypedDict):
     tone_confidence: float
     tone_marker_hits: List[str]
     conflict_markers: List[str]
+    interaction: "InteractionState"
     evidence_items: List["EvidenceItem"]
     world_observations: "WorldObservations"
     world_observations_v2: "WorldObservationsV2"
@@ -132,6 +134,14 @@ class EvidenceItem(TypedDict):
     turn_idx: int | None
     span: tuple[int, int] | None
     raw: Dict[str, Any] | None
+
+
+class InteractionState(TypedDict):
+    implicit_acceptance: bool
+    escalation_signal: InteractionEscalation
+    loop_hint: bool
+    evasion_detected: bool
+    soft_commitment: bool
 
 
 class WorldObservations(TypedDict):
@@ -217,6 +227,9 @@ class BeliefState(TypedDict):
     stance: BeliefStance
     reasons: Dict["ReasonKey", BeliefReason]
     hypotheses: List[str]
+    hypotheses_structural: List[str]
+    hypotheses_observational: List[str]
+    evaluations: Dict[str, float]
     dynamics: BeliefDynamics
     tom: BeliefToM
 
@@ -285,6 +298,8 @@ class GateState(TypedDict):
     precedence_signature_prev: str
     loop_flags_prev: List[str]
     input_shape_prev: Dict[str, object]
+    interaction_fingerprint_prev: Dict[str, object]
+    interaction_fingerprint_version: int
 
 
 def default_world_state() -> WorldState:
@@ -319,6 +334,13 @@ def default_world_state() -> WorldState:
         "tone_confidence": 0.0,
         "tone_marker_hits": [],
         "conflict_markers": [],
+        "interaction": {
+            "implicit_acceptance": False,
+            "escalation_signal": "none",
+            "loop_hint": False,
+            "evasion_detected": False,
+            "soft_commitment": False,
+        },
         "evidence_items": [],
         "world_observations": {
             "raw_fields": {},
@@ -351,6 +373,9 @@ def default_belief_state() -> BeliefState:
         },
         "reasons": {},
         "hypotheses": [],
+        "hypotheses_structural": [],
+        "hypotheses_observational": [],
+        "evaluations": {},
         "dynamics": {
             "interaction_health": "stable",
             "last_update_evidence": "",
@@ -392,6 +417,8 @@ def default_progress_state() -> ProgressState:
             "precedence_signature_prev": "",
             "loop_flags_prev": [],
             "input_shape_prev": {},
+            "interaction_fingerprint_prev": {},
+            "interaction_fingerprint_version": 1,
         },
     }
 
