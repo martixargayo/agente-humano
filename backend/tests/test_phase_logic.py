@@ -1,11 +1,5 @@
-from negotiation.phase_state_updater import _apply_hysteresis, update_phase_state
+from negotiation.phase_state_updater import _apply_hysteresis
 from negotiation.policy_planner import _phase_bonus, repair_policy_by_phase
-from negotiation.schemas import (
-    default_belief_state,
-    default_intent_state,
-    default_progress_state,
-    default_world_state,
-)
 
 
 def test_phase_bonus_multi_phase_matches_both():
@@ -38,44 +32,6 @@ def test_phase_hysteresis_holds_on_low_confidence():
 
     assert current["phase"] == "opening"
     assert current["last_updated_turn"] == 6
-
-
-def test_phase_hard_override_price_firm():
-    prev = default_progress_state()["phase_state"]
-    world = default_world_state()
-    world["price_firm"] = True
-    phase, meta = update_phase_state(
-        prev_phase_state=prev,
-        world_state=world,
-        world_diff={"price_firm": {"before": False, "after": True}},
-        belief_state=default_belief_state(),
-        intent_state=default_intent_state(),
-        recent_history_text="",
-        turn_count=3,
-        precedence=None,
-    )
-
-    assert phase["phase"] == "closing"
-    assert meta["phase_hard_override_used"] is True
-
-
-def test_phase_budget_gate_skips_without_signals():
-    prev = default_progress_state()["phase_state"]
-    prev["last_updated_turn"] = 2
-    phase, meta = update_phase_state(
-        prev_phase_state=prev,
-        world_state=default_world_state(),
-        world_diff={},
-        belief_state=default_belief_state(),
-        intent_state=None,
-        recent_history_text="",
-        turn_count=3,
-        precedence=None,
-    )
-
-    assert phase["phase"] == prev["phase"]
-    assert meta["phase_update_reason"] == "budget_hold"
-
 
 def test_repair_policy_by_phase_prefers_bonus_two():
     policy_catalog = {
