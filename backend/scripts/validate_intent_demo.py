@@ -21,11 +21,18 @@ from state import SessionState
 import negotiation.negotiation_graph as negotiation_graph
 
 
-def _fake_plan_policy(*_args, **_kwargs):
+def _fake_plan_phase_policy(*_args, **_kwargs):
     decision = default_policy_decision()
     decision["policy_id"] = "info_extract_critical"
     decision["micro_goal"] = "Pedir información clave."
-    return decision, {"planner_meta": {"mock": True}}
+    phase_candidate = {
+        "phase": "opening",
+        "confidence": 0.6,
+        "reasons": ["history:mock"],
+        "signals": [],
+        "alternatives": [],
+    }
+    return phase_candidate, decision, {"planner_meta": {"mock": True}}
 
 
 def _fake_update_belief_state(*_args, **_kwargs):
@@ -89,7 +96,7 @@ def _queue_world_states(world_states):
 def run_conversation(label, world_states, messages, seed_intent=None):
     _queue_world_states(world_states)
     deps = AgentDeps(
-        plan_policy=_fake_plan_policy,
+        plan_phase_policy=_fake_plan_phase_policy,
         update_belief_state=_fake_update_belief_state,
         execute=_fake_execute,
     )

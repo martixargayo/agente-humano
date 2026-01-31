@@ -157,6 +157,7 @@ def update_belief_state(
     user_message: str,
     context_snippet: str,
     extractor_meta: dict | None = None,
+    force_update: bool = False,
 ) -> tuple[BeliefState, dict]:
     previous = prev_belief_state or default_belief_state()
     meta = {
@@ -165,14 +166,15 @@ def update_belief_state(
         "belief_update_skipped": False,
     }
 
-    if not has_belief_evidence_delta(
-        world_diff=world_diff,
-        prev_world=prev_world_state,
-        world=world_state,
-        extractor_meta=extractor_meta,
-    ):
-        meta["belief_update_skipped"] = True
-        return previous, meta
+    if not force_update:
+        if not has_belief_evidence_delta(
+            world_diff=world_diff,
+            prev_world=prev_world_state,
+            world=world_state,
+            extractor_meta=extractor_meta,
+        ):
+            meta["belief_update_skipped"] = True
+            return previous, meta
 
     messages = _belief_prompt.format_messages(
         prev_belief_state=json.dumps(previous, ensure_ascii=False),

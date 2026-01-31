@@ -12,10 +12,17 @@ from state import SessionState
 
 
 def _fake_deps(captured, belief_state):
-    def fake_plan_policy(*args, **kwargs):
+    def fake_plan_phase_policy(*args, **kwargs):
         decision = default_policy_decision()
         decision["policy_id"] = "rapport_build"
-        return decision, {"planner_meta": {"mock": True}}
+        phase_candidate = {
+            "phase": "opening",
+            "confidence": 0.6,
+            "reasons": ["history:mock"],
+            "signals": [],
+            "alternatives": [],
+        }
+        return phase_candidate, decision, {"planner_meta": {"mock": True}}
 
     def fake_update_belief_state(*args, **kwargs):
         return belief_state, {"belief_meta": {"mock": True}}
@@ -25,7 +32,7 @@ def _fake_deps(captured, belief_state):
         return "ok"
 
     return AgentDeps(
-        plan_policy=fake_plan_policy,
+        plan_phase_policy=fake_plan_phase_policy,
         update_belief_state=fake_update_belief_state,
         execute=fake_execute,
     )

@@ -38,11 +38,29 @@ from .context_utils import (
     format_memory_block,
     maybe_refresh_summary,
 )
+from .gate_utils import (
+    gate_belief,
+    gate_phase_policy,
+    gate_world,
+    input_shape_features,
+    loop_flags_changed,
+    precedence_signature,
+    select_policy_id_on_skip,
+    stable_allowed_ids_hash,
+)
 from .intent_manager import update_intent_state
-from .phase_state_updater import update_phase_state
+from .phase_policy_planner import plan_phase_policy
+from .phase_state_updater import postprocess_phase_candidate
 from .precedence import compute_precedence
-from .policies import get_policy, list_policy_ids
-from .policy_planner import allowed_policy_ids, plan_policy
+from .policies import get_policy, list_policy_ids, policy_phase_catalog, safe_neutral_policy_id
+from .policy_planner import (
+    _required_inputs_met,
+    _violates_hard_constraints,
+    allowed_policy_ids,
+    apply_intent_constraints,
+    apply_precedence_constraints,
+    repair_policy_by_phase,
+)
 from .progress_updater import update_progress_state
 from .response_validator import validate_and_repair
 from .schemas import (
@@ -174,20 +192,18 @@ summary_prompt = ChatPromptTemplate.from_messages(
 )
 
 # Tipos “paper-grade”: narrow y explícitos
-PlanFn = Callable[..., Tuple[PolicyDecision, dict]]
+PlanFn = Callable[..., Tuple[dict, PolicyDecision, dict]]
 BeliefFn = Callable[..., Tuple[BeliefState, dict]]
 ExecuteFn = Callable[..., str]
 SummarizeFn = Callable[[str, str], str]
-PreExecuteHook = Callable[["NegotiationTurn"], None]
 
 
 @dataclass(frozen=True)
 class AgentDeps:
-    plan_policy: PlanFn
+    plan_phase_policy: PlanFn
     update_belief_state: BeliefFn
     execute: ExecuteFn
     summarize: Optional[SummarizeFn] = None
-    pre_execute_hook: Optional[PreExecuteHook] = None
 
 
 def _default_execute(messages: Any) -> str:
@@ -206,7 +222,7 @@ def _default_summarize(existing_summary: str, new_block: str) -> str:
 
 
 DEFAULT_DEPS = AgentDeps(
-    plan_policy=plan_policy,
+    plan_phase_policy=plan_phase_policy,
     update_belief_state=update_belief_state,
     execute=_default_execute,
     summarize=_default_summarize,
@@ -239,6 +255,10 @@ class NegotiationTurn(TypedDict):
     intent_hint: dict
     intent_meta: dict
     policy_decision: PolicyDecision
+    policy_pre_repair: PolicyDecision | None
+    policy_post_repair: PolicyDecision | None
+    phase_candidate: dict | None
+    phase_effective: dict | None
     executed_policy: PolicyDecision | None
     last_policy_executed: PolicyDecision | None
     last_assistant_message: str
@@ -247,10 +267,14 @@ class NegotiationTurn(TypedDict):
     phase_meta: dict
     belief_update_meta: dict
     extractor_meta: dict
+    gate_meta: dict
     precedence: dict
+    precedence_signature: str
     deps: AgentDeps
 
     response: str
+    override_policy_id: str | None
+    override_reason: str | None
 
 
 # ---- Utilidades internas ----
@@ -394,16 +418,48 @@ Objetivo: recuperar tácticas concretas para ejecutar esta policy.
 def world_updater_node(state: NegotiationTurn) -> NegotiationTurn:
     prev_world = state.get("world_state") or default_world_state()
     state["prev_world_state"] = prev_world
-    world_state, extractor_meta = update_world_state(
-        prev_world,
-        state.get("user_message", ""),
-        recent_history=state.get("recent_history_text", ""),
-        belief_state=state.get("belief_state") or {},
-        turn_count=state.get("turn_count"),
+    gate_state = (state.get("progress_state") or {}).get(
+        "gate_state", default_progress_state()["gate_state"]
     )
-    state["world_state"] = world_state
-    state["extractor_meta"] = extractor_meta
-    state["world_diff"] = diff_world_state(prev_world, state["world_state"])
+    user_message = state.get("user_message", "")
+    turn_count = state.get("turn_count", 0) or 0
+    current_features = input_shape_features(user_message)
+    world_skipped, skip_reason, gate_meta = gate_world(
+        user_message=user_message,
+        turn_count=turn_count,
+        last_refresh_turn=int(gate_state.get("last_world_refresh_turn", 0) or 0),
+        prev_features=gate_state.get("input_shape_prev") or {},
+        current_features=current_features,
+        interval=int(os.getenv("WORLD_REFRESH_INTERVAL_TURNS", "3")),
+    )
+    gate_state["input_shape_prev"] = current_features
+    if world_skipped:
+        gate_state["world_skip_count"] = int(gate_state.get("world_skip_count", 0) or 0) + 1
+        state["world_state"] = prev_world
+        state["world_diff"] = {}
+        state["extractor_meta"] = {
+            "extractor_used": False,
+            "extractor_skipped": True,
+            "skip_reason": skip_reason,
+            "world_gate_features": gate_meta,
+        }
+    else:
+        force_llm = skip_reason == "interval_expired"
+        world_state, extractor_meta = update_world_state(
+            prev_world,
+            user_message,
+            recent_history=state.get("recent_history_text", ""),
+            belief_state=state.get("belief_state") or {},
+            turn_count=turn_count,
+            force_llm=force_llm,
+        )
+        gate_state["last_world_refresh_turn"] = turn_count
+        state["world_state"] = world_state
+        state["world_diff"] = diff_world_state(prev_world, state["world_state"])
+        extractor_meta["world_gate_features"] = gate_meta
+        extractor_meta["extractor_skipped"] = False
+        state["extractor_meta"] = extractor_meta
+    state["progress_state"]["gate_state"] = gate_state
     return state
 
 
@@ -411,19 +467,44 @@ def belief_updater_node(state: NegotiationTurn) -> NegotiationTurn:
     deps = state.get("deps", DEFAULT_DEPS)
     prev_belief = state.get("belief_state") or default_belief_state()
     state["prev_belief_state"] = prev_belief
-    belief_state, belief_meta = deps.update_belief_state(
-        prev_belief_state=prev_belief,
-        prev_world_state=state["prev_world_state"],
-        world_state=state["world_state"],
-        world_diff=state.get("world_diff", {}),
-        last_policy_executed=state.get("last_policy_executed"),
-        last_assistant_message=state.get("last_assistant_message", ""),
-        user_message=state.get("user_message", ""),
-        context_snippet=state.get("recent_history_text", ""),
-        extractor_meta=state.get("extractor_meta", {}),
+    gate_state = (state.get("progress_state") or {}).get(
+        "gate_state", default_progress_state()["gate_state"]
     )
+    turn_count = state.get("turn_count", 0) or 0
+    belief_skipped, skip_reason = gate_belief(
+        world_diff=state.get("world_diff", {}),
+        prev_world=state.get("prev_world_state", {}),
+        world=state.get("world_state", {}),
+        turn_count=turn_count,
+        last_refresh_turn=int(gate_state.get("last_belief_refresh_turn", 0) or 0),
+        interval=int(os.getenv("BELIEF_REFRESH_INTERVAL_TURNS", "3")),
+    )
+    if belief_skipped:
+        gate_state["belief_skip_count"] = int(gate_state.get("belief_skip_count", 0) or 0) + 1
+        belief_state = prev_belief
+        belief_meta = {
+            "belief_update_failed": False,
+            "belief_update_error": "",
+            "belief_update_skipped": True,
+            "skip_reason": skip_reason,
+        }
+    else:
+        belief_state, belief_meta = deps.update_belief_state(
+            prev_belief_state=prev_belief,
+            prev_world_state=state["prev_world_state"],
+            world_state=state["world_state"],
+            world_diff=state.get("world_diff", {}),
+            last_policy_executed=state.get("last_policy_executed"),
+            last_assistant_message=state.get("last_assistant_message", ""),
+            user_message=state.get("user_message", ""),
+            context_snippet=state.get("recent_history_text", ""),
+            extractor_meta=state.get("extractor_meta", {}),
+            force_update=True,
+        )
+        gate_state["last_belief_refresh_turn"] = turn_count
     state["belief_state"] = belief_state
     state["belief_update_meta"] = belief_meta
+    state["progress_state"]["gate_state"] = gate_state
     return state
 
 
@@ -458,47 +539,208 @@ def precedence_node(state: NegotiationTurn) -> NegotiationTurn:
         "phase_floor": prec.phase_floor,
         "allow_closing": prec.allow_closing,
     }
+    state["precedence_signature"] = precedence_signature(state["precedence"])
     return state
 
 
-def phase_updater_node(state: NegotiationTurn) -> NegotiationTurn:
-    phase_state, phase_meta = update_phase_state(
-        prev_phase_state=state.get("progress_state", {}).get("phase_state"),
-        world_state=state["world_state"],
-        world_diff=state.get("world_diff", {}),
-        belief_state=state["belief_state"],
-        intent_state=state.get("progress_state", {}).get("intent_state"),
-        recent_history_text=state.get("recent_history_text", "") or "",
-        turn_count=state.get("turn_count", 0),
-        precedence=state.get("precedence"),
-    )
-    state["progress_state"]["phase_state"] = phase_state
-    state["phase_meta"] = phase_meta
-    return state
-
-
-def policy_planner_node(state: NegotiationTurn) -> NegotiationTurn:
+def phase_policy_planner_node(state: NegotiationTurn) -> NegotiationTurn:
     deps = state.get("deps", DEFAULT_DEPS)
     _ensure_objective(state)
-    state["allowed_policy_ids"] = allowed_policy_ids(
+
+    progress_state = state.get("progress_state", {})
+    gate_state = progress_state.get("gate_state", default_progress_state()["gate_state"])
+    turn_count = state.get("turn_count", 0) or 0
+
+    allowed_base = allowed_policy_ids(
         state["world_state"], state["belief_state"], state["progress_state"]
     )
-    policy_decision, planner_meta = deps.plan_policy(
-        world_state=state["world_state"],
-        belief_state=state["belief_state"],
-        progress_state=state["progress_state"],
-        intent_hint=state.get("intent_hint"),
-        precedence=state.get("precedence"),
-        objective=state["objective"],
-        constraints=state.get("constraints", ""),
-        constraints_struct=state.get("constraints_struct", {}),
-        recent_context=state.get("recent_history_text", ""),
+    allowed_prec, prec_meta = apply_precedence_constraints(allowed_base, state.get("precedence"))
+    allowed_final, preferred, intent_meta = apply_intent_constraints(
+        allowed_prec, state.get("intent_hint")
     )
+    required_filtered = [
+        pid for pid in allowed_final if _required_inputs_met(pid, state["world_state"])
+    ]
+    if required_filtered:
+        allowed_final = required_filtered
+    allowed_final = [
+        pid
+        for pid in allowed_final
+        if not _violates_hard_constraints(
+            pid, state["world_state"], state.get("constraints_struct")
+        )
+    ]
+    if not allowed_final:
+        allowed_final = [safe_neutral_policy_id()]
+
+    allowed_hash = stable_allowed_ids_hash(allowed_final)
+    prev_allowed_hash = gate_state.get("allowed_ids_hash_prev", "")
+    allowed_hash_changed = allowed_hash != prev_allowed_hash
+    stable_count = int(gate_state.get("allowed_ids_hash_stable_count", 0) or 0)
+    stable_count = stable_count + 1 if allowed_hash == prev_allowed_hash else 0
+
+    current_signature = state.get("precedence_signature", "")
+    prev_signature = gate_state.get("precedence_signature_prev", "")
+    precedence_changed = current_signature != prev_signature
+    loop_flags_prev = gate_state.get("loop_flags_prev", [])
+    loop_flags_current = progress_state.get("loop_flags", [])
+    loop_flags_changed_flag = loop_flags_changed(loop_flags_prev, loop_flags_current)
+    intent_transition = (state.get("intent_meta") or {}).get("intent_transition")
+    intent_transition_present = bool(intent_transition and intent_transition != "none")
+
+    planner_skipped, skip_reason = gate_phase_policy(
+        world_diff=state.get("world_diff", {}),
+        precedence_changed=precedence_changed,
+        intent_transition_present=intent_transition_present,
+        loop_flags_changed_flag=loop_flags_changed_flag,
+        allowed_ids_hash_changed=allowed_hash_changed,
+        turn_count=turn_count,
+        last_refresh_turn=int(gate_state.get("last_planner_refresh_turn", 0) or 0),
+        interval=int(os.getenv("PHASE_POLICY_REFRESH_INTERVAL_TURNS", "2")),
+    )
+
+    phase_candidate = None
+    phase_effective = progress_state.get("phase_state")
+    policy_pre_repair = None
+    policy_post_repair = None
+    policy_decision = default_policy_decision()
+    planner_meta: dict = {
+        "planner_failed": False,
+        "planner_error": "",
+        "planner_fallback_used": False,
+        "policy_normalization_changed": False,
+        "planner_skipped": planner_skipped,
+        "planner_skip_reason": skip_reason,
+        "allowed_policy_ids": allowed_final,
+        "allowed_policy_ids_base": allowed_base,
+        "allowed_policy_ids_after_precedence": allowed_prec,
+        "allowed_policy_ids_after_intent": allowed_final,
+        "allowed_policy_ids_after_required_inputs": required_filtered,
+        "intent_preferred_policy_ids": preferred,
+        "allowed_ids_hash": allowed_hash,
+        "allowed_ids_hash_prev": prev_allowed_hash,
+        "allowed_ids_hash_stable_count": stable_count,
+    }
+    planner_meta.update(prec_meta)
+    planner_meta.update(intent_meta)
+
+    if planner_skipped:
+        chosen_id, skip_mode = select_policy_id_on_skip(
+            last_policy_chosen=progress_state.get("last_chosen_policy_id", ""),
+            allowed_policy_ids=allowed_final,
+            policy_attempts=progress_state.get("policy_attempts", {}),
+            loop_flags=loop_flags_current,
+            safe_neutral_policy_id=safe_neutral_policy_id(),
+            max_attempts=int(os.getenv("PLANNER_SKIP_MAX_ATTEMPTS", "3")),
+        )
+        policy_decision = {
+            "policy_id": chosen_id,
+            "reason": "Planner skipped; fallback policy selected.",
+            "micro_goal": "Mantener conversación abierta con una pregunta breve.",
+            "risk_posture": "low",
+            "why_short": "",
+            "inputs_used": [],
+        }
+        planner_meta["planner_skip_mode"] = skip_mode
+    else:
+        phase_candidate, policy_decision, planner_call_meta = deps.plan_phase_policy(
+            world_state=state["world_state"],
+            world_diff=state.get("world_diff", {}),
+            belief_state=state["belief_state"],
+            progress_state=progress_state,
+            intent_hint=state.get("intent_hint"),
+            precedence=state.get("precedence"),
+            objective=state["objective"],
+            constraints=state.get("constraints", ""),
+            constraints_struct=state.get("constraints_struct", {}),
+            recent_context=state.get("recent_history_text", ""),
+            allowed_policy_ids=allowed_final,
+        )
+        planner_meta.update(planner_call_meta)
+        phase_effective, phase_meta = postprocess_phase_candidate(
+            prev_phase_state=progress_state.get("phase_state"),
+            phase_candidate=phase_candidate,
+            turn_count=turn_count,
+            precedence=state.get("precedence"),
+        )
+        phase_effective["last_updated_turn"] = turn_count
+        policy_pre_repair = dict(policy_decision)
+        commitment = (state.get("intent_hint") or {}).get("commitment_level")
+        repaired_id, repair_meta = repair_policy_by_phase(
+            policy_decision.get("policy_id", ""),
+            allowed_final,
+            policy_phase_catalog(),
+            phase_effective.get("phase", "opening"),
+            preferred,
+            commitment,
+            policy_attempts=progress_state.get("policy_attempts", {}),
+        )
+        if repaired_id and repaired_id != policy_decision.get("policy_id"):
+            policy_decision["policy_id"] = repaired_id
+        planner_meta.update(repair_meta)
+        normalized_policy, issues = normalize_policy_decision(policy_decision, allowed_final)
+        if issues:
+            planner_meta["policy_normalization_changed"] = True
+            planner_meta["issues"] = planner_meta.get("issues", []) + issues
+        policy_decision = normalized_policy
+        policy_post_repair = dict(policy_decision)
+        state["phase_meta"] = phase_meta
+
+    if not phase_effective:
+        phase_effective = progress_state.get("phase_state") or default_progress_state()["phase_state"]
+    progress_state["phase_state"] = phase_effective
+
+    if planner_skipped:
+        gate_state["planner_skip_count"] = int(gate_state.get("planner_skip_count", 0) or 0) + 1
+    else:
+        gate_state["last_planner_refresh_turn"] = turn_count
+    gate_state["allowed_ids_hash_prev"] = allowed_hash
+    gate_state["allowed_ids_hash_stable_count"] = stable_count
+    gate_state["precedence_signature_prev"] = current_signature
+    gate_state["loop_flags_prev"] = list(loop_flags_current)
+    progress_state["gate_state"] = gate_state
+
+    if not state.get("phase_meta"):
+        state["phase_meta"] = {
+            "phase_update_used": False,
+            "phase_update_reason": "planner_skip" if planner_skipped else "planner",
+        }
     planner_meta["intent_meta"] = state.get("intent_meta", {})
     planner_meta["phase_meta"] = state.get("phase_meta", {})
-    planner_meta["phase_state"] = state.get("progress_state", {}).get("phase_state", {})
+    planner_meta["phase_state"] = progress_state.get("phase_state", {})
+
+    state["phase_candidate"] = phase_candidate
+    state["phase_effective"] = phase_effective
+    state["policy_pre_repair"] = policy_pre_repair
+    state["policy_post_repair"] = policy_post_repair or policy_decision
     state["policy_decision"] = policy_decision
     state["planner_meta"] = planner_meta
+    state["allowed_policy_ids"] = allowed_final
+    state["progress_state"] = progress_state
+    state["gate_meta"] = {
+        "world_skipped": state.get("extractor_meta", {}).get("extractor_skipped", False),
+        "belief_skipped": state.get("belief_update_meta", {}).get("belief_update_skipped", False),
+        "planner_skipped": planner_skipped,
+        "skip_reasons": {
+            "world": state.get("extractor_meta", {}).get("skip_reason", ""),
+            "belief": state.get("belief_update_meta", {}).get("skip_reason", ""),
+            "planner": skip_reason,
+        },
+        "skip_counters": {
+            "world": gate_state.get("world_skip_count", 0),
+            "belief": gate_state.get("belief_skip_count", 0),
+            "planner": gate_state.get("planner_skip_count", 0),
+        },
+        "last_refresh_turn": {
+            "world": gate_state.get("last_world_refresh_turn", 0),
+            "belief": gate_state.get("last_belief_refresh_turn", 0),
+            "planner": gate_state.get("last_planner_refresh_turn", 0),
+        },
+        "world_gate_features": state.get("extractor_meta", {}).get("world_gate_features", {}),
+        "allowed_ids_hash": allowed_hash,
+        "allowed_ids_hash_prev": prev_allowed_hash,
+        "allowed_ids_hash_stable_count": stable_count,
+    }
     return state
 
 
@@ -528,10 +770,6 @@ def executor_node(state: NegotiationTurn) -> NegotiationTurn:
 
     objective = state.get("objective") or ""
     constraints = state.get("constraints") or ""
-
-    # Hook opcional para tests / overrides controlados (paper-grade DI).
-    if deps.pre_execute_hook:
-        deps.pre_execute_hook(state)
 
     # --- Policy: fuente única ejecutada ---
     policy_decision = state.get("policy_decision") or default_policy_decision()
@@ -699,8 +937,16 @@ Tarea:
     )
     if violations:
         logger.info("executor_response_repaired=%s violations=%s", repaired_response, violations)
+    override_policy_id = validator_meta.get("override_policy_id")
+    override_reason = validator_meta.get("override_reason")
+    if override_policy_id:
+        executed = dict(executed)
+        executed["policy_id"] = override_policy_id
+        state["executed_policy"] = executed
     state["response"] = repaired_response
     state["executor_validator_meta"] = validator_meta
+    state["override_policy_id"] = override_policy_id
+    state["override_reason"] = override_reason
     return state
 
 
@@ -712,8 +958,7 @@ workflow.add_node("world_updater", world_updater_node)
 workflow.add_node("belief_updater", belief_updater_node)
 workflow.add_node("precedence", precedence_node)
 workflow.add_node("intent_manager", intent_manager_node)
-workflow.add_node("phase_updater", phase_updater_node)
-workflow.add_node("policy_planner", policy_planner_node)
+workflow.add_node("phase_policy_planner", phase_policy_planner_node)
 workflow.add_node("progress_updater", progress_updater_node)
 workflow.add_node("executor", executor_node)
 
@@ -722,9 +967,8 @@ workflow.add_edge(START, "world_updater")
 workflow.add_edge("world_updater", "belief_updater")
 workflow.add_edge("belief_updater", "precedence")
 workflow.add_edge("precedence", "intent_manager")
-workflow.add_edge("intent_manager", "phase_updater")
-workflow.add_edge("phase_updater", "policy_planner")
-workflow.add_edge("policy_planner", "progress_updater")
+workflow.add_edge("intent_manager", "phase_policy_planner")
+workflow.add_edge("phase_policy_planner", "progress_updater")
 workflow.add_edge("progress_updater", "executor")
 
 workflow.add_edge("executor", END)
@@ -824,6 +1068,10 @@ def run_negotiation_agent(
         "intent_hint": {},
         "intent_meta": {},
         "policy_decision": default_policy_decision(),
+        "policy_pre_repair": None,
+        "policy_post_repair": None,
+        "phase_candidate": None,
+        "phase_effective": None,
         "executed_policy": None,
         "last_policy_executed": last_policy_executed_input,
         "last_assistant_message": _last_assistant_message(state.history),
@@ -832,10 +1080,14 @@ def run_negotiation_agent(
         "phase_meta": {},
         "belief_update_meta": {},
         "extractor_meta": {},
+        "gate_meta": {},
         "precedence": {},
+        "precedence_signature": "",
         "turn_count": state.turn_count,
         "deps": deps,
         "response": "",
+        "override_policy_id": None,
+        "override_reason": None,
     }
 
     new_graph_state = negotiation_app.invoke(graph_state)
@@ -875,9 +1127,15 @@ def run_negotiation_agent(
             "belief_diff": _diff_belief_state(graph_state["belief_state"], new_belief_state),
             "allowed_policy_ids": new_graph_state.get("allowed_policy_ids", []),
             "policy_decision": new_policy_state,
+            "policy_pre_repair": new_graph_state.get("policy_pre_repair"),
+            "policy_post_repair": new_graph_state.get("policy_post_repair"),
+            "phase_candidate": new_graph_state.get("phase_candidate"),
+            "phase_effective": new_graph_state.get("phase_effective"),
             "executed_policy_raw": executed_policy_raw,
             "executed_policy_normalized": normalized_executed_policy,
             "executed_policy_issues": executed_policy_issues,
+            "override_policy_id": new_graph_state.get("override_policy_id"),
+            "override_reason": new_graph_state.get("override_reason"),
             "progress_state": new_progress_state,
             "intent_prev": new_graph_state.get("planner_meta", {}).get("intent_meta", {}).get(
                 "intent_prev", {}
@@ -909,6 +1167,7 @@ def run_negotiation_agent(
                 "intent_meta", {}
             ).get("commitment_level", ""),
             "planner_meta": new_graph_state.get("planner_meta", {}),
+            "gates": new_graph_state.get("gate_meta", {}),
             "belief_update_meta": new_graph_state.get("belief_update_meta", {}),
             "phase_state": new_graph_state.get("progress_state", {}).get("phase_state", {}),
             "phase_meta": new_graph_state.get("planner_meta", {}).get("phase_meta", {}),

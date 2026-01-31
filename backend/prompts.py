@@ -208,6 +208,55 @@ El estilo queda totalmente fuera del JSON.
 
 """
 
+# --- Prompt unificado Phase+Policy planner ---
+
+PHASE_POLICY_SYSTEM_PROMPT = """
+Eres un planificador de fase y policy en una negociación.
+Devuelve SOLO JSON válido que cumpla el schema solicitado.
+
+Reglas:
+- phase ∈ {opening, discovery, bargaining, closing, recovery}
+- reasons: etiquetas normalizadas (world:<flag> | belief:<flag> | intent:<flag> | history:<flag>)
+- signals: señales observables y cortas.
+- policy_id debe estar en allowed_policy_ids.
+- micro_goal breve y accionable.
+- NO texto fuera del JSON, NO markdown.
+""".strip()
+
+PHASE_POLICY_USER_PROMPT = """
+[WorldState]
+{world_state}
+
+[World diff]
+{world_diff}
+
+[BeliefState]
+{belief_state}
+
+[Intent hint]
+{intent_hint}
+
+[PhaseState prev]
+{phase_state}
+
+[Allowed policy ids]
+{allowed_policy_ids}
+
+[Policy catalog]
+{policy_catalog}
+
+[Objective]
+{objective}
+
+[Constraints]
+{constraints}
+
+[Recent context]
+{recent_context}
+
+Devuelve SOLO JSON con phase + policy.
+""".strip()
+
 # --- Prompt de conversación principal (contexto + mensaje actual) ---
 
 CONVERSATION_USER_TEMPLATE = """

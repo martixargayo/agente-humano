@@ -1305,6 +1305,7 @@ def update_world_state(
     recent_history: list[dict] | str | None = None,
     belief_state: dict | None = None,
     turn_count: int | None = None,
+    force_llm: bool = False,
 ) -> Tuple[WorldState, dict]:
     base = default_world_state()
     if prev_world:
@@ -1326,7 +1327,7 @@ def update_world_state(
     confidence_min = float(os.getenv("EVIDENCE_CONFIDENCE_MIN", "0.6"))
     base["world_state_meta"]["evidence_confidence_min"] = confidence_min
 
-    if use_llm and _should_call_llm_extractor(user_message, base):
+    if use_llm and (force_llm or _should_call_llm_extractor(user_message, base)):
         output = extract_state_patch_llm(base, belief_state, user_message, recent_history)
         decisions = output.get("decisions", {})
         patch = dict(output.get("world_patch", {}))

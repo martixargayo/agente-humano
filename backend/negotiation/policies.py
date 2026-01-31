@@ -27,6 +27,22 @@ class Policy:
 
 POLICIES: List[Policy] = [
     Policy(
+        policy_id="safe_neutral",
+        description="Respuesta segura y neutral para mantener la conversación.",
+        primary_when="No hay señales claras o se omite el planner.",
+        hard_constraints="No escalar ni presionar; mantener tono cordial.",
+        hard_constraints_rules=["avoid_reveal_own_numbers"],
+        rag_query_template="Frases neutrales y seguras para mantener la conversación.",
+        phase_hints=["opening", "recovery", "discovery"],
+        required_inputs=[],
+        target_slots=["rapport_signal"],
+        expected_effects=["keeps_dialogue_open"],
+        failure_modes=["seller_repeats_same_answer"],
+        capabilities={"probe_open"},
+        guards={"safe_when_tense", "avoid_mentioning_own_numbers"},
+        tags={"safe_neutral"},
+    ),
+    Policy(
         policy_id="rapport_build",
         description="Construir clima cordial y reducir fricciones.",
         primary_when="Inicio de la interacción o clima frío.",
@@ -195,6 +211,15 @@ def list_policy_ids() -> List[str]:
     return [policy.policy_id for policy in POLICIES]
 
 
+def safe_neutral_policy_id() -> str:
+    ids = list_policy_ids()
+    if "safe_neutral" in ids:
+        return "safe_neutral"
+    if "rapport_build" in ids:
+        return "rapport_build"
+    return ids[0] if ids else "safe_neutral"
+
+
 def policy_catalog_text() -> str:
     lines = []
     for policy in POLICIES:
@@ -206,6 +231,10 @@ def policy_catalog_text() -> str:
             f"Failure: {policy.failure_modes}"
         )
     return "\n".join(lines)
+
+
+def policy_phase_catalog() -> dict[str, list[str]]:
+    return {policy.policy_id: list(policy.phase_hints) for policy in POLICIES}
 
 
 def get_policy(policy_id: str) -> Policy | None:
