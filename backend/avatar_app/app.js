@@ -522,11 +522,23 @@ function buildTuningSnapshot() {
   };
 }
 
-function seamWeightsY(y, seamY, softness) {
+function seamWeightsY(y, seamY, softness, neckBand) {
   const half = Math.max(1e-6, softness) * 0.5;
-  const torsoW = 1.0 - smoothstepJS(seamY - half, seamY, y);
-  const headW = smoothstepJS(seamY, seamY + half, y);
-  const neckW = clamp01(1.0 - headW - torsoW);
+
+  let torsoW = 1.0 - smoothstepJS(seamY - half, seamY, y);
+  let headW = smoothstepJS(seamY, seamY + half, y);
+  let neckW0 = clamp01(1.0 - headW - torsoW);
+
+  const nb = Math.max(1e-6, neckBand);
+  const band = smoothstepJS(seamY - nb, seamY, y) * (1.0 - smoothstepJS(seamY, seamY + nb, y));
+
+  const neckW = neckW0 * band;
+  const removed = neckW0 - neckW;
+
+  const denom = Math.max(1e-6, headW + torsoW);
+  headW += removed * (headW / denom);
+  torsoW += removed * (torsoW / denom);
+
   return { headW, torsoW, neckW };
 }
 
@@ -564,7 +576,7 @@ function fillWeightsFromPositions(pos, count, out, snap) {
     const y = pos[i * 3 + 1];
     const z = pos[i * 3 + 2];
 
-    const { headW, torsoW, neckW } = seamWeightsY(y, seamY, seamSoft);
+    const { headW, torsoW, neckW } = seamWeightsY(y, seamY, seamSoft, neckBand);
 
     out.headArr[i] = headW;
     out.torsoArr[i] = torsoW;
@@ -669,7 +681,9 @@ function recomputeMasksNow() {
   mouthSideAttrRef.needsUpdate = true;
 
   const dt = performance.now() - t0;
-  console.info('[hbl] Máscaras recalculadas', { ms: dt.toFixed(2) });
+  if (!DebugEditor?.dragging && AudioDebug.enabled) {
+    console.info('[hbl] Máscaras recalculadas', { ms: dt.toFixed(2) });
+  }
 }
 
 function scheduleRecomputeMasks(reason = 'change', { immediate = false } = {}) {
