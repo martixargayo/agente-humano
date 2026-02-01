@@ -442,10 +442,12 @@ function ellipsoidWeightXYZ(x, y, z, cx, cy, cz, invRx, invRy, invRz, edge, gamm
   const dy = (y - cy) * invRy;
   const dz = (z - cz) * invRz;
   const d = dx * dx + dy * dy + dz * dz;
-  const base = 1 - (d < 0 ? 0 : d > 1 ? 1 : d);
-  const t = (base - 1) / ((1 - edge) - 1);
-  const tt = t < 0 ? 0 : t > 1 ? 1 : t;
-  const sm = tt * tt * (3 - 2 * tt);
+  const dc = d < 0 ? 0 : d > 1 ? 1 : d;
+  const s = 1.0 - dc;
+  const e = edge > 1e-6 ? edge : 1e-6;
+  let t = s / e;
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  const sm = t * t * (3.0 - 2.0 * t);
   return Math.pow(sm, gamma);
 }
 
@@ -520,16 +522,12 @@ function buildTuningSnapshot() {
   };
 }
 
-function seamMaskY(y, seamY, softness) {
+function seamWeightsY(y, seamY, softness) {
   const half = Math.max(1e-6, softness) * 0.5;
-  return smoothstepJS(seamY - half, seamY + half, y);
-}
-
-function neckBlendMaskY(y, seamY, band) {
-  const half = Math.max(1e-6, band) * 0.5;
-  const a = smoothstepJS(seamY - half, seamY, y);
-  const b = 1.0 - smoothstepJS(seamY, seamY + half, y);
-  return Math.min(a, b);
+  const torsoW = 1.0 - smoothstepJS(seamY - half, seamY, y);
+  const headW = smoothstepJS(seamY, seamY + half, y);
+  const neckW = clamp01(1.0 - headW - torsoW);
+  return { headW, torsoW, neckW };
 }
 
 function fillWeightsFromPositions(pos, count, out, snap) {
@@ -566,9 +564,7 @@ function fillWeightsFromPositions(pos, count, out, snap) {
     const y = pos[i * 3 + 1];
     const z = pos[i * 3 + 2];
 
-    const headW = seamMaskY(y, seamY, seamSoft);
-    const torsoW = 1.0 - headW;
-    const neckW = neckBlendMaskY(y, seamY, neckBand);
+    const { headW, torsoW, neckW } = seamWeightsY(y, seamY, seamSoft);
 
     out.headArr[i] = headW;
     out.torsoArr[i] = torsoW;
@@ -678,11 +674,16 @@ function recomputeMasksNow() {
 
 function scheduleRecomputeMasks(reason = 'change', { immediate = false } = {}) {
   _pendingReason = reason;
+  const shouldLog =
+    immediate ||
+    reason === 'manual' ||
+    reason === 'drag:final' ||
+    reason.startsWith('reset:');
   if (immediate) {
     _maskRecomputePending = false;
     _lastRecomputeMs = performance.now();
     recomputeMasksNow();
-    logTuningSnapshot(reason);
+    if (shouldLog) logTuningSnapshot(reason);
     return;
   }
 
@@ -698,7 +699,7 @@ function scheduleRecomputeMasks(reason = 'change', { immediate = false } = {}) {
     }
     _lastRecomputeMs = now;
     recomputeMasksNow();
-    logTuningSnapshot(_pendingReason);
+    if (shouldLog) logTuningSnapshot(_pendingReason);
   });
 }
 
@@ -911,6 +912,7 @@ uniform float uDebugMix;
 uniform float uIrisPreserve;
 uniform float uIrisPreservePupil;
 uniform float uIrisIntensity;
+uniform float uAlphaCut;
 
 varying vec2 vUv;
 varying float vIrisW;
@@ -925,14 +927,14 @@ void main() {
 
   float r = sqrt(r2);
   float circle = 1.0 - smoothstep(0.7, 1.0, r);
-  if (circle < 0.02) discard;
+  if (circle < uAlphaCut) discard;
 
   vec3 texColor = texture2D(uColorMap, vUv).rgb;
   float densityRaw = (texColor.r + texColor.g + texColor.b) / 3.0;
   float density = mix(1.0, densityRaw, uUseMap);
 
   float alpha = circle * density;
-  if (alpha < 0.02) discard;
+  if (alpha < uAlphaCut) discard;
 
   vec3 baseColor = uColor;
   vec3 finalColor = mix(baseColor * 0.6, baseColor, density);
@@ -1027,23 +1029,6 @@ function generateFaceParticlesFromVertices(srcGeometry) {
     const cx = Math.floor((x + 0.4) * 10.0);
     const cy = Math.floor((y + 0.4) * 10.0);
     clusterIds[i] = cx + cy * 10.0;
-
-    headWeights[i] = 0;
-    torsoWeights[i] = 0;
-    neckBlendWeights[i] = 0;
-    eyeLWeights[i] = 0;
-    eyeRWeights[i] = 0;
-    irisLWeights[i] = 0;
-    irisRWeights[i] = 0;
-    pupilLWeights[i] = 0;
-    pupilRWeights[i] = 0;
-    lidLWeights[i] = 0;
-    lidRWeights[i] = 0;
-    browLWeights[i] = 0;
-    browRWeights[i] = 0;
-    jawWeights[i] = 0;
-    mouthWeights[i] = 0;
-    mouthSides[i] = 0;
   }
 
   const snap = buildTuningSnapshot();
@@ -1171,6 +1156,28 @@ loader.load(
     mouthSideAttrRef = particlesGeo.getAttribute('aMouthSide');
     basePosAttrRef = particlesGeo.getAttribute('aBasePosition');
 
+    const dynamicAttrs = [
+      headWeightAttrRef,
+      torsoWeightAttrRef,
+      neckBlendAttrRef,
+      eyeLAttrRef,
+      eyeRAttrRef,
+      irisLAttrRef,
+      irisRAttrRef,
+      pupilLAttrRef,
+      pupilRAttrRef,
+      lidLAttrRef,
+      lidRAttrRef,
+      browLAttrRef,
+      browRAttrRef,
+      jawAttrRef,
+      mouthAttrRef,
+      mouthSideAttrRef,
+    ];
+    for (const attr of dynamicAttrs) {
+      attr.setUsage(THREE.DynamicDrawUsage);
+    }
+
     const depthWriteParam = URL_PARAMS.get('depthWrite');
     const alphaTestParam = parseFloat(URL_PARAMS.get('alphaTest'));
 
@@ -1224,6 +1231,7 @@ loader.load(
         uDebugMix: { value: window.BehaviorTuning.debugMix },
         uIrisPreserve: { value: window.BehaviorTuning.irisPreserve },
         uIrisPreservePupil: { value: window.BehaviorTuning.irisPreservePupil },
+        uAlphaCut: { value: Number.isFinite(alphaTestParam) ? alphaTestParam : 0.0 },
       },
     });
 
@@ -1983,7 +1991,8 @@ let testLipsBtn = null;
 function animate() {
   requestAnimationFrame(animate);
 
-  const delta = clock.getDelta();
+  let delta = clock.getDelta();
+  delta = Math.min(delta, 1 / 20);
   shaderTime += delta;
 
   if (particleMaterial) {
