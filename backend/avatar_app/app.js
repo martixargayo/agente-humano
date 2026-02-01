@@ -10,9 +10,9 @@ const URL_PARAMS = new URLSearchParams(window.location.search);
 const DEBUG_EDIT_ENABLED = URL_PARAMS.get('debugEdit') === '1';
 
 // ============================================================================
-// ✅ Debug Editor state (DEBE existir antes de animate() y keydown)
+// ✅ Neck Editor state (DEBE existir antes de animate() y keydown)
 // ============================================================================
-const DebugEditor = {
+const NeckEditor = {
   enabled: DEBUG_EDIT_ENABLED,
   visible: DEBUG_EDIT_ENABLED,
   overlay: null,
@@ -33,7 +33,6 @@ const AvatarState = {
   mode: 'BOOT', // BOOT | IDLE | LISTENING | THINKING | SPEAKING
   emotion: 'neutral',
   talkLevel: 0,
-  micRmsNorm: 0,
   speechIntensity: 1.0,
   idleMotionEnabled: true,
 };
@@ -61,11 +60,11 @@ const AudioDebug = {
 };
 
 // =========================
-// Debug visual: regiones (strict/blend)
-//   - Activa con ?debugRegions=strict | ?debugRegions=blend | ?debugRegions=1
-//   - Toggle con tecla M
+// Debug visual: pintar por aHeadWeight
+//   - Activa con ?debugNeck=1 o ?debugHead=1
+//   - Toggle con tecla N
 // =========================
-const DebugView = { mode: 0 }; // 0=off, 1=strict, 2=blend
+const DebugView = { headWeight: false };
 
 (() => {
   if (URL_PARAMS.get('audioDebug') === '1') AudioDebug.enabled = true;
@@ -76,17 +75,14 @@ const DebugView = { mode: 0 }; // 0=off, 1=strict, 2=blend
   const logIntervalMs = parseFloat(URL_PARAMS.get('logIntervalMs'));
   if (!Number.isNaN(logIntervalMs)) AudioDebug.logIntervalMs = logIntervalMs;
 
-  const debugRegionsParam = URL_PARAMS.get('debugRegions');
-  if (debugRegionsParam === '1' || debugRegionsParam === 'strict') {
-    DebugView.mode = 1;
-    console.info('[debug] Debug regiones strict. Pulsa M para alternar.');
-  } else if (debugRegionsParam === 'blend') {
-    DebugView.mode = 2;
-    console.info('[debug] Debug regiones blend. Pulsa M para alternar.');
+  // Debug cuello
+  if (URL_PARAMS.get('debugNeck') === '1' || URL_PARAMS.get('debugHead') === '1') {
+    DebugView.headWeight = true;
+    console.info('[debug] Debug cuello/cabeza activado (aHeadWeight). Pulsa N para alternar.');
   }
 
   if (DEBUG_EDIT_ENABLED) {
-    console.info('[debug-editor] Modo editor ACTIVADO (?debugEdit=1). Tecla E para ocultar/mostrar.');
+    console.info('[neck-editor] Modo editor ACTIVADO (?debugEdit=1). Tecla E para ocultar/mostrar.');
   }
 
   if (AudioDebug.enabled) {
@@ -101,39 +97,14 @@ const DebugView = { mode: 0 }; // 0=off, 1=strict, 2=blend
 })();
 
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'm' || e.key === 'M') {
-    DebugView.mode = (DebugView.mode + 1) % 3;
-    const label = DebugView.mode === 1 ? 'strict' : DebugView.mode === 2 ? 'blend' : 'off';
-    console.info('[debug] Debug regiones:', label);
+  if (e.key === 'n' || e.key === 'N') {
+    DebugView.headWeight = !DebugView.headWeight;
+    console.info('[debug] Debug cuello/cabeza (aHeadWeight):', DebugView.headWeight ? 'ON' : 'OFF');
   }
   if (DEBUG_EDIT_ENABLED && (e.key === 'e' || e.key === 'E')) {
-    DebugEditor.visible = !DebugEditor.visible;
-    setDebugEditorVisible(DebugEditor.visible);
-    console.info('[debug-editor] Visible:', DebugEditor.visible ? 'ON' : 'OFF');
-  }
-  if (DEBUG_EDIT_ENABLED) {
-    const key = e.key;
-    const groupMap = {
-      '1': 'eye',
-      '2': 'iris',
-      '3': 'lid',
-      '4': 'brow',
-      '5': 'mouth',
-      '6': 'jaw',
-      '7': 'pivot',
-      '8': 'seam',
-      '0': 'all',
-    };
-    if (groupMap[key]) {
-      DebugEditor.regionGroup = groupMap[key];
-      console.info('[debug-editor] Grupo activo:', DebugEditor.regionGroup);
-    }
-    if (key === 'c' || key === 'C') {
-      copyTuningJson();
-    }
-    if (key === 'r' || key === 'R') {
-      resetTuningGroup(DebugEditor.regionGroup);
-    }
+    NeckEditor.visible = !NeckEditor.visible;
+    setNeckEditorVisible(NeckEditor.visible);
+    console.info('[neck-editor] Visible:', NeckEditor.visible ? 'ON' : 'OFF');
   }
 });
 
@@ -204,7 +175,6 @@ camera.position.set(0, 0.25, 1.9);
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
-console.info('[three] maxAttributes:', renderer.capabilities.maxAttributes);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
@@ -223,149 +193,40 @@ const ambient = new THREE.AmbientLight(0xffffff, 0.2);
 scene.add(ambient);
 
 const clock = new THREE.Clock();
-let shaderTime = 0;
 
 // =========================
-// Tuning HBL (AJUSTABLE por editor)
+// Config boca (AJUSTABLE por editor)
 // =========================
-window.MaskTuning = window.MaskTuning || {
-  edge: 0.18,
-  gamma: 1.6,
-};
-
-window.EyeTuning = window.EyeTuning || {
-  leftCenterX: -0.105,
-  leftCenterY: 0.225,
-  leftCenterZ: 0.07,
-  rightCenterX: 0.02,
-  rightCenterY: 0.225,
-  rightCenterZ: 0.07,
-  rx: 0.055,
-  ry: 0.035,
-  rz: 0.025,
-};
-
-window.IrisTuning = window.IrisTuning || {
-  leftCenterX: -0.102,
-  leftCenterY: 0.222,
-  leftCenterZ: 0.075,
-  rightCenterX: 0.02,
-  rightCenterY: 0.222,
-  rightCenterZ: 0.075,
-  rx: 0.022,
-  ry: 0.016,
-  rz: 0.018,
-  pupilRx: 0.010,
-  pupilRy: 0.008,
-  pupilRz: 0.012,
-  intensityBase: 0.55,
-};
-
-window.LidTuning = window.LidTuning || {
-  leftCenterX: -0.105,
-  leftCenterY: 0.235,
-  leftCenterZ: 0.07,
-  rightCenterX: 0.02,
-  rightCenterY: 0.235,
-  rightCenterZ: 0.07,
-  rx: 0.06,
-  ry: 0.03,
-  rz: 0.028,
-  blinkCloseScale: 0.018,
-  blinkOpenScale: 0.010,
-};
-
-window.BrowTuning = window.BrowTuning || {
-  leftCenterX: -0.105,
-  leftCenterY: 0.27,
-  leftCenterZ: 0.06,
-  rightCenterX: 0.02,
-  rightCenterY: 0.27,
-  rightCenterZ: 0.06,
-  rx: 0.07,
-  ry: 0.028,
-  rz: 0.02,
-  raiseScale: 0.018,
-  furrowScale: 0.012,
-};
-
 window.MouthTuning = window.MouthTuning || {
-  centerX: -0.045,
-  centerY: 0.16,
-  centerZ: 0.08,
-  rx: 0.10,
-  ry: 0.05,
-  rz: 0.06,
-  forwardOffsetZ: 0.02,
-  mouthTensionBase: 0.06,
-  asymmetryScale: 0.08,
+  centerY: 0.16,   // posición vertical del centro de la boca
+  centerX: -0.045, // posición horizontal del centro de la boca
+  width: 0.18,     // ancho de la región de boca
+  height: 0.14,    // alto máximo (labios + hueco)
+  curve: 0.0,      // curvatura en U (0 = recto)
 };
 
-window.JawTuning = window.JawTuning || {
-  centerX: -0.045,
-  centerY: 0.135,
-  centerZ: 0.04,
-  rx: 0.14,
-  ry: 0.10,
-  rz: 0.10,
-  jawOpenScale: 0.08,
-  jawDirX: 0.0,
-  jawDirY: -1.0,
-  jawDirZ: 0.15,
-};
-
-window.PivotTuning = window.PivotTuning || {
-  headPivotX: 0.0,
-  headPivotY: -0.52,
-  headPivotZ: 0.0,
-  jawPivotX: 0.0,
-  jawPivotY: 0.08,
-  jawPivotZ: 0.02,
-  neckPivotX: 0.0,
-  neckPivotY: -0.52,
-  neckPivotZ: 0.0,
-  seamY: -0.30,
-  seamSoftness: 0.08,
-  neckBand: 0.12,
-};
-
-window.BehaviorTuning = window.BehaviorTuning || {
-  blinkRateIdle: 14,
-  blinkRateListening: 18,
-  blinkRateThinking: 12,
-  blinkRateSpeaking: 11,
-  blinkDurationMin: 0.18,
-  blinkDurationMax: 0.30,
-  gazeSmoothingHL: 0.12,
-  microSaccadeRate: 1.2,
-  microHoldMs: 90,
-  microSettleMs: 180,
-  microAmpDeg: 0.4,
-  breathPeriod: 4.5,
-  breathAmp: 0.12,
-  maxHeadDegPerSec: 40,
-  maxGazeDegPerSec: 120,
-  maxJawSpeed: 1.5,
-  rmsFloor: 0.01,
-  rmsGain: 18,
-  rmsSpeakThresh: 0.22,
-  rmsHoldMs: 220,
-  backchannelCooldownMin: 3.5,
-  backchannelCooldownMax: 5.5,
-  debugMix: 0.65,
-  irisPreserve: 0.45,
-  irisPreservePupil: 0.70,
+// =========================
+// Config cuello / separación cabeza-cuerpo (TUNED)
+// =========================
+window.NeckTuning = {
+  centerX: -0.05540768292619062,
+  width: 0.3289615614114691,
+  topY: -0.3029435623085454,
+  bottomY: -0.5299623850146092,
+  curve: -0.18449820086885416,
+  neckPivotY: -0.5299623850146092,
+  bodyPivotY: -0.6499623850146092
 };
 
 // =========================
 // Refs para recalcular pesos en caliente
 // =========================
 let particlesGeometryRef = null;
+let headWeightAttrRef = null;
 let basePosAttrRef = null;
-let w0AttrRef = null;
-let w1AttrRef = null;
-let w2AttrRef = null;
-let w3AttrRef = null;
+
+let mouthWeightAttrRef = null;
+let mouthSideAttrRef = null;
 
 // =========================
 // JS smoothstep (una sola vez)
@@ -377,322 +238,171 @@ function smoothstepJS(edge0, edge1, x) {
   return t * t * (3 - 2 * t);
 }
 
-function clamp01(x) {
-  return Math.max(0, Math.min(1, x));
-}
-
-function degToRad(d) {
-  return (d * Math.PI) / 180;
-}
-
-function mulberry32(seed) {
-  return function rand() {
-    let t = (seed += 0x6D2B79F5);
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function randRange(rand, a, b) {
-  return a + (b - a) * rand();
-}
-
-function hashStringToSeed(str) {
-  let h = 2166136261 >>> 0;
-  for (let i = 0; i < str.length; i++) {
-    h ^= str.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-
-function emaHalfLife(dt, current, target, halfLife) {
-  const hl = Math.max(halfLife, 1e-4);
-  const a = 1 - Math.exp(-Math.log(2) * dt / hl);
-  return current + (target - current) * a;
-}
-
-function clampRate(current, target, maxRate, dt) {
-  const maxStep = maxRate * dt;
-  const delta = target - current;
-  const step = Math.max(-maxStep, Math.min(maxStep, delta));
-  return current + step;
-}
-
-function smoothCapped(dt, current, target, halfLife, maxRate, minVal, maxVal) {
-  const rateTarget = clampRate(current, target, maxRate, dt);
-  const smoothed = emaHalfLife(dt, current, rateTarget, halfLife);
-  return Math.max(minVal, Math.min(maxVal, smoothed));
-}
-
-function ellipsoidWeightXYZ(x, y, z, cx, cy, cz, invRx, invRy, invRz, edge, gamma) {
-  const dx = (x - cx) * invRx;
-  const dy = (y - cy) * invRy;
-  const dz = (z - cz) * invRz;
-  const d = dx * dx + dy * dy + dz * dz;
-  const dc = d < 0 ? 0 : d > 1 ? 1 : d;
-  const s = 1.0 - dc;
-  const e = edge > 1e-6 ? edge : 1e-6;
-  let t = s / e;
-  t = t < 0 ? 0 : t > 1 ? 1 : t;
-  const sm = t * t * (3.0 - 2.0 * t);
-  return Math.pow(sm, gamma);
-}
-
-function buildTuningSnapshot() {
-  const mask = window.MaskTuning;
-  const pivot = window.PivotTuning;
-  const eye = window.EyeTuning;
-  const iris = window.IrisTuning;
-  const lid = window.LidTuning;
-  const brow = window.BrowTuning;
-  const mouth = window.MouthTuning;
-  const jaw = window.JawTuning;
-
-  return {
-    edge: mask.edge,
-    gamma: mask.gamma,
-    seamY: pivot.seamY,
-    seamSoft: pivot.seamSoftness,
-    neckBand: pivot.neckBand,
-    mouthCenterX: mouth.centerX,
-    eyeLCx: eye.leftCenterX,
-    eyeLCy: eye.leftCenterY,
-    eyeLCz: eye.leftCenterZ,
-    eyeRCx: eye.rightCenterX,
-    eyeRCy: eye.rightCenterY,
-    eyeRCz: eye.rightCenterZ,
-    eyeInvRx: 1 / Math.max(eye.rx, 1e-6),
-    eyeInvRy: 1 / Math.max(eye.ry, 1e-6),
-    eyeInvRz: 1 / Math.max(eye.rz, 1e-6),
-    irisLCx: iris.leftCenterX,
-    irisLCy: iris.leftCenterY,
-    irisLCz: iris.leftCenterZ,
-    irisRCx: iris.rightCenterX,
-    irisRCy: iris.rightCenterY,
-    irisRCz: iris.rightCenterZ,
-    irisInvRx: 1 / Math.max(iris.rx, 1e-6),
-    irisInvRy: 1 / Math.max(iris.ry, 1e-6),
-    irisInvRz: 1 / Math.max(iris.rz, 1e-6),
-    pupilInvRx: 1 / Math.max(iris.pupilRx, 1e-6),
-    pupilInvRy: 1 / Math.max(iris.pupilRy, 1e-6),
-    pupilInvRz: 1 / Math.max(iris.pupilRz, 1e-6),
-    lidLCx: lid.leftCenterX,
-    lidLCy: lid.leftCenterY,
-    lidLCz: lid.leftCenterZ,
-    lidRCx: lid.rightCenterX,
-    lidRCy: lid.rightCenterY,
-    lidRCz: lid.rightCenterZ,
-    lidInvRx: 1 / Math.max(lid.rx, 1e-6),
-    lidInvRy: 1 / Math.max(lid.ry, 1e-6),
-    lidInvRz: 1 / Math.max(lid.rz, 1e-6),
-    browLCx: brow.leftCenterX,
-    browLCy: brow.leftCenterY,
-    browLCz: brow.leftCenterZ,
-    browRCx: brow.rightCenterX,
-    browRCy: brow.rightCenterY,
-    browRCz: brow.rightCenterZ,
-    browInvRx: 1 / Math.max(brow.rx, 1e-6),
-    browInvRy: 1 / Math.max(brow.ry, 1e-6),
-    browInvRz: 1 / Math.max(brow.rz, 1e-6),
-    jawCx: jaw.centerX,
-    jawCy: jaw.centerY,
-    jawCz: jaw.centerZ,
-    jawInvRx: 1 / Math.max(jaw.rx, 1e-6),
-    jawInvRy: 1 / Math.max(jaw.ry, 1e-6),
-    jawInvRz: 1 / Math.max(jaw.rz, 1e-6),
-    mouthCx: mouth.centerX,
-    mouthCy: mouth.centerY,
-    mouthCz: mouth.centerZ,
-    mouthInvRx: 1 / Math.max(mouth.rx, 1e-6),
-    mouthInvRy: 1 / Math.max(mouth.ry, 1e-6),
-    mouthInvRz: 1 / Math.max(mouth.rz, 1e-6),
-  };
-}
-
-function seamWeightsY(y, seamY, softness, neckBand) {
-  const half = Math.max(1e-6, softness) * 0.5;
-
-  let torsoW = 1.0 - smoothstepJS(seamY - half, seamY, y);
-  let headW = smoothstepJS(seamY, seamY + half, y);
-  let neckW0 = clamp01(1.0 - headW - torsoW);
-
-  const nb = Math.max(1e-6, neckBand);
-  const band = smoothstepJS(seamY - nb, seamY, y) * (1.0 - smoothstepJS(seamY, seamY + nb, y));
-
-  const neckW = neckW0 * band;
-  const removed = neckW0 - neckW;
-
-  const denom = Math.max(1e-6, headW + torsoW);
-  headW += removed * (headW / denom);
-  torsoW += removed * (torsoW / denom);
-
-  return { headW, torsoW, neckW };
-}
-
-function fillWeightsFromPositions(pos, count, out, snap) {
-  const {
-    edge,
-    gamma,
-    seamY,
-    seamSoft,
-    neckBand,
-    mouthCenterX,
-    eyeLCx, eyeLCy, eyeLCz,
-    eyeRCx, eyeRCy, eyeRCz,
-    eyeInvRx, eyeInvRy, eyeInvRz,
-    irisLCx, irisLCy, irisLCz,
-    irisRCx, irisRCy, irisRCz,
-    irisInvRx, irisInvRy, irisInvRz,
-    pupilInvRx, pupilInvRy, pupilInvRz,
-    lidLCx, lidLCy, lidLCz,
-    lidRCx, lidRCy, lidRCz,
-    lidInvRx, lidInvRy, lidInvRz,
-    browLCx, browLCy, browLCz,
-    browRCx, browRCy, browRCz,
-    browInvRx, browInvRy, browInvRz,
-    jawCx, jawCy, jawCz,
-    jawInvRx, jawInvRy, jawInvRz,
-    mouthCx, mouthCy, mouthCz,
-    mouthInvRx, mouthInvRy, mouthInvRz,
-  } = snap;
-
-  const mouthSideK = 25.0;
-
-  for (let i = 0; i < count; i++) {
-    const x = pos[i * 3 + 0];
-    const y = pos[i * 3 + 1];
-    const z = pos[i * 3 + 2];
-
-    const { headW, torsoW, neckW } = seamWeightsY(y, seamY, seamSoft, neckBand);
-
-    const idx = i * 4;
-
-    const eyeLW = ellipsoidWeightXYZ(x, y, z, eyeLCx, eyeLCy, eyeLCz, eyeInvRx, eyeInvRy, eyeInvRz, edge, gamma) * headW;
-    const eyeRW = ellipsoidWeightXYZ(x, y, z, eyeRCx, eyeRCy, eyeRCz, eyeInvRx, eyeInvRy, eyeInvRz, edge, gamma) * headW;
-    const irisLW = ellipsoidWeightXYZ(x, y, z, irisLCx, irisLCy, irisLCz, irisInvRx, irisInvRy, irisInvRz, edge, gamma) * eyeLW;
-    const irisRW = ellipsoidWeightXYZ(x, y, z, irisRCx, irisRCy, irisRCz, irisInvRx, irisInvRy, irisInvRz, edge, gamma) * eyeRW;
-    const pupilLW = ellipsoidWeightXYZ(x, y, z, irisLCx, irisLCy, irisLCz, pupilInvRx, pupilInvRy, pupilInvRz, edge, gamma) * irisLW;
-    const pupilRW = ellipsoidWeightXYZ(x, y, z, irisRCx, irisRCy, irisRCz, pupilInvRx, pupilInvRy, pupilInvRz, edge, gamma) * irisRW;
-    const lidLW = ellipsoidWeightXYZ(x, y, z, lidLCx, lidLCy, lidLCz, lidInvRx, lidInvRy, lidInvRz, edge, gamma) * eyeLW * (1 - irisLW);
-    const lidRW = ellipsoidWeightXYZ(x, y, z, lidRCx, lidRCy, lidRCz, lidInvRx, lidInvRy, lidInvRz, edge, gamma) * eyeRW * (1 - irisRW);
-    const browLW = ellipsoidWeightXYZ(x, y, z, browLCx, browLCy, browLCz, browInvRx, browInvRy, browInvRz, edge, gamma) * headW * (1 - lidLW) * (1 - irisLW);
-    const browRW = ellipsoidWeightXYZ(x, y, z, browRCx, browRCy, browRCz, browInvRx, browInvRy, browInvRz, edge, gamma) * headW * (1 - lidRW) * (1 - irisRW);
-    const jawW = ellipsoidWeightXYZ(x, y, z, jawCx, jawCy, jawCz, jawInvRx, jawInvRy, jawInvRz, edge, gamma) * headW;
-    const mouthW = ellipsoidWeightXYZ(x, y, z, mouthCx, mouthCy, mouthCz, mouthInvRx, mouthInvRy, mouthInvRz, edge, gamma) * jawW;
-
-    const mouthSideW = Math.tanh((x - mouthCenterX) * mouthSideK);
-
-    out.w0Arr[idx + 0] = headW;
-    out.w0Arr[idx + 1] = torsoW;
-    out.w0Arr[idx + 2] = neckW;
-    out.w0Arr[idx + 3] = eyeLW;
-
-    out.w1Arr[idx + 0] = eyeRW;
-    out.w1Arr[idx + 1] = irisLW;
-    out.w1Arr[idx + 2] = irisRW;
-    out.w1Arr[idx + 3] = pupilLW;
-
-    out.w2Arr[idx + 0] = pupilRW;
-    out.w2Arr[idx + 1] = lidLW;
-    out.w2Arr[idx + 2] = lidRW;
-    out.w2Arr[idx + 3] = browLW;
-
-    out.w3Arr[idx + 0] = browRW;
-    out.w3Arr[idx + 1] = jawW;
-    out.w3Arr[idx + 2] = mouthW;
-    out.w3Arr[idx + 3] = mouthSideW;
-  }
-}
-
 // =========================
-// Recalcular máscaras (API pública)
+// Recalcular aHeadWeight en caliente (API pública)
 // =========================
-let _maskRecomputePending = false;
-let _lastRecomputeMs = 0;
-let _pendingReason = null;
+let _neckRecomputePending = false;
 
-function logTuningSnapshot(reason = 'update') {
-  console.info(`[hbl] ${reason}`);
-  console.log('[hbl] Pega esto en app.js:');
-  console.log('window.MaskTuning = ' + JSON.stringify(window.MaskTuning, null, 2) + ';');
-  console.log('window.EyeTuning = ' + JSON.stringify(window.EyeTuning, null, 2) + ';');
-  console.log('window.IrisTuning = ' + JSON.stringify(window.IrisTuning, null, 2) + ';');
-  console.log('window.LidTuning = ' + JSON.stringify(window.LidTuning, null, 2) + ';');
-  console.log('window.BrowTuning = ' + JSON.stringify(window.BrowTuning, null, 2) + ';');
-  console.log('window.MouthTuning = ' + JSON.stringify(window.MouthTuning, null, 2) + ';');
-  console.log('window.JawTuning = ' + JSON.stringify(window.JawTuning, null, 2) + ';');
-  console.log('window.PivotTuning = ' + JSON.stringify(window.PivotTuning, null, 2) + ';');
+function logNeckTuning(reason = 'update') {
+  const t = window.NeckTuning;
+  console.info(`[neck] ${reason}`, {
+    centerX: t.centerX,
+    width: t.width,
+    topY: t.topY,
+    bottomY: t.bottomY,
+    curve: t.curve,
+    neckPivotY: t.neckPivotY,
+    bodyPivotY: t.bodyPivotY,
+  });
+  console.log('[neck] Pega esto en app.js:\nwindow.NeckTuning = ' + JSON.stringify(t, null, 2) + ';');
 }
 
-function recomputeMasksNow() {
-  if (!basePosAttrRef || !w0AttrRef) {
-    console.warn('[hbl] Atributos no listos (espera a que cargue el GLB).');
+function recomputeHeadWeightsNow() {
+  if (!headWeightAttrRef || !basePosAttrRef) {
+    console.warn('[neck] aHeadWeight todavía no está listo (espera a que cargue el GLB).');
     return;
   }
 
   const t0 = performance.now();
+  const t = window.NeckTuning;
+
+  const arr = headWeightAttrRef.array;
   const pos = basePosAttrRef.array;
-  const count = basePosAttrRef.count;
-  const snap = buildTuningSnapshot();
 
-  fillWeightsFromPositions(pos, count, {
-    w0Arr: w0AttrRef.array,
-    w1Arr: w1AttrRef.array,
-    w2Arr: w2AttrRef.array,
-    w3Arr: w3AttrRef.array,
-  }, snap);
+  const wAbs = Math.max(1e-6, Math.abs(t.width));
 
-  w0AttrRef.needsUpdate = true;
-  w1AttrRef.needsUpdate = true;
-  w2AttrRef.needsUpdate = true;
-  w3AttrRef.needsUpdate = true;
+  for (let i = 0; i < headWeightAttrRef.count; i++) {
+    const x = pos[i * 3 + 0];
+    const y = pos[i * 3 + 1];
 
-  const dt = performance.now() - t0;
-  if (!DebugEditor?.dragging && AudioDebug.enabled) {
-    console.info('[hbl] Máscaras recalculadas', { ms: dt.toFixed(2) });
+    const dx = x - t.centerX;
+    const insideWidth = Math.abs(dx) <= wAbs;
+
+    const nx = dx / wAbs;
+    const nxClamped = Math.max(-1, Math.min(1, nx));
+    const curve = t.curve * nxClamped * nxClamped;
+
+    let yTop = insideWidth ? (t.topY - curve) : t.topY;
+    let yBot = insideWidth ? (t.bottomY - curve) : t.bottomY;
+
+    if (yTop < yBot) { const tmp = yTop; yTop = yBot; yBot = tmp; }
+
+    let hw = 0.0;
+    if (y >= yTop) hw = 1.0;
+    else if (y <= yBot) hw = 0.0;
+    else hw = smoothstepJS(yBot, yTop, y);
+
+    arr[i] = hw;
   }
+
+  headWeightAttrRef.needsUpdate = true;
+  const dt = performance.now() - t0;
+  console.info('[neck] aHeadWeight recalculado', { ms: dt.toFixed(2) });
 }
 
-function scheduleRecomputeMasks(reason = 'change', { immediate = false } = {}) {
-  _pendingReason = reason;
-  const shouldLog =
-    immediate ||
-    reason === 'manual' ||
-    reason === 'drag:final' ||
-    reason.startsWith('reset:');
-  if (immediate) {
-    _maskRecomputePending = false;
-    _lastRecomputeMs = performance.now();
-    recomputeMasksNow();
-    if (shouldLog) logTuningSnapshot(reason);
-    return;
-  }
-
-  if (_maskRecomputePending) return;
-  _maskRecomputePending = true;
+function scheduleRecomputeHeadWeights(reason = 'change') {
+  if (_neckRecomputePending) return;
+  _neckRecomputePending = true;
   requestAnimationFrame(() => {
-    _maskRecomputePending = false;
-    const now = performance.now();
-    const minInterval = DebugEditor?.dragging ? 70 : 0;
-    if (now - _lastRecomputeMs < minInterval) {
-      scheduleRecomputeMasks(_pendingReason);
-      return;
-    }
-    _lastRecomputeMs = now;
-    recomputeMasksNow();
-    if (shouldLog) logTuningSnapshot(_pendingReason);
+    _neckRecomputePending = false;
+    recomputeHeadWeightsNow();
+    logNeckTuning(reason);
   });
 }
 
-window.recomputeMasks = () => scheduleRecomputeMasks('manual');
+window.recomputeHeadWeights = () => scheduleRecomputeHeadWeights('manual');
+
+// =========================
+// Recalcular aMouthWeight/aMouthSide en caliente (API pública)
+// =========================
+let _mouthRecomputePending = false;
+
+function logMouthTuning(reason = 'update') {
+  const t = window.MouthTuning;
+  console.info(`[mouth] ${reason}`, {
+    centerX: t.centerX,
+    centerY: t.centerY,
+    width: t.width,
+    height: t.height,
+    curve: t.curve,
+  });
+  console.log('[mouth] Pega esto en app.js:\nwindow.MouthTuning = ' + JSON.stringify(t, null, 2) + ';');
+}
+
+function recomputeMouthWeightsNow() {
+  if (!mouthWeightAttrRef || !mouthSideAttrRef || !basePosAttrRef) {
+    console.warn('[mouth] aMouthWeight/aMouthSide todavía no está listo (espera a que cargue el GLB).');
+    return;
+  }
+
+  const t0 = performance.now();
+  const t = window.MouthTuning;
+
+  const wArr = mouthWeightAttrRef.array;
+  const sArr = mouthSideAttrRef.array;
+  const pos = basePosAttrRef.array;
+
+  const wAbs = Math.max(1e-6, Math.abs(t.width));
+  const hAbs = Math.max(1e-6, Math.abs(t.height));
+
+  for (let i = 0; i < mouthWeightAttrRef.count; i++) {
+    const x = pos[i * 3 + 0];
+    const y = pos[i * 3 + 1];
+
+    let dx = x - t.centerX;
+    let ax = Math.abs(dx);
+
+    let weight = 0.0;
+    let side = 0.0;
+
+    if (ax <= wAbs) {
+      let normX = dx / wAbs;
+      let curveY = t.centerY - t.curve * normX * normX;
+      let dy = y - curveY;
+      let ay = Math.abs(dy);
+
+      if (ay <= hAbs) {
+        let wx = 1.0 - ax / wAbs;
+        let wy = 1.0 - ay / hAbs;
+        weight = wx * wy;
+
+        if (weight < 0.0) weight = 0.0;
+        if (weight > 1.0) weight = 1.0;
+
+        if (dy > 0.0) side = 1.0;
+        else if (dy < 0.0) side = -1.0;
+        else side = 0.0;
+      }
+    }
+
+    wArr[i] = weight;
+    sArr[i] = side;
+  }
+
+  mouthWeightAttrRef.needsUpdate = true;
+  mouthSideAttrRef.needsUpdate = true;
+
+  const dt = performance.now() - t0;
+  console.info('[mouth] aMouthWeight recalculado', { ms: dt.toFixed(2) });
+}
+
+function scheduleRecomputeMouthWeights(reason = 'change') {
+  if (_mouthRecomputePending) return;
+  _mouthRecomputePending = true;
+  requestAnimationFrame(() => {
+    _mouthRecomputePending = false;
+    recomputeMouthWeightsNow();
+    logMouthTuning(reason);
+  });
+}
+
+window.recomputeMouthWeights = () => scheduleRecomputeMouthWeights('manual');
 
 // =========================
 // 2. Shaders de partículas
 // =========================
 
-// Vertex: micro offsets + HBL (jaw/eyes/head) + tamaño fijo
+// Vertex: movimiento tipo “campo” + respiración + boca hablando + rig cabeza/cuerpo + tamaño fijo
 const vertexShader = /* glsl */ `
 precision highp float;
 
@@ -702,45 +412,39 @@ uniform float uGlobalAmp;
 uniform float uClusterAmp;
 uniform float uNoiseAmp;
 
-uniform float uBreath;
-uniform vec2 uTorsoSway;
+// habla
+uniform float uTalk;
+uniform float uTalkAmpTop;
+uniform float uTalkAmpBot;
+uniform float uTalkFreq;
+uniform float uLipDepthAmp;
+uniform float uRestOpen;
 
-uniform float uHeadYaw;
-uniform float uHeadPitch;
-uniform float uHeadRoll;
-uniform vec3 uHeadPivot;
-uniform float uNeckBlendW;
+// respiración
+uniform float uBreathAmp;
+uniform float uBreathFreq;
 
-uniform float uJawOpen;
-uniform vec3 uJawDir;
-uniform vec3 uMouthDir;
-uniform vec3 uMouthSideDir;
-uniform float uMouthTension;
-uniform float uMouthAsym;
+// rig procedural cabeza/cuerpo
+uniform vec3 uHeadRot;
+uniform vec3 uBodyRot;
+uniform vec3 uBodyOffset;
+uniform vec3 uNeckPivot;
+uniform vec3 uBodyPivot;
 
-uniform float uBlinkL;
-uniform float uBlinkR;
-uniform vec2 uGazeYawPitch;
-uniform vec2 uMicroSaccade;
-uniform vec2 uIrisOffset;
-uniform float uBrowRaiseL;
-uniform float uBrowRaiseR;
-uniform float uBrowFurrow;
-uniform float uSquintL;
-uniform float uSquintR;
-
+attribute vec3 aBasePosition;
+attribute vec3 aRandom;
+attribute float aClusterId;
 attribute vec2 aUv;
-attribute vec4 aRand;
-attribute vec4 aW0;
-attribute vec4 aW1;
-attribute vec4 aW2;
-attribute vec4 aW3;
+
+// boca
+attribute float aMouthWeight;
+attribute float aMouthSide;
+
+// peso cabeza (0=cuerpo, 1=cabeza)
+attribute float aHeadWeight;
 
 varying vec2 vUv;
-varying float vIrisW;
-varying float vPupilW;
-varying vec3 vDebugColor;
-varying float vDebugWeight;
+varying float vHeadWeight;
 
 float hash11(float p) {
   return fract(sin(p * 127.1) * 43758.5453123);
@@ -783,132 +487,94 @@ mat3 rotZ(float a) {
   );
 }
 
+vec3 rotateAroundPivot(vec3 p, vec3 pivot, vec3 r) {
+  vec3 q = p - pivot;
+  q = rotY(r.y) * rotX(r.x) * rotZ(r.z) * q;
+  return q + pivot;
+}
+
 void main() {
   vUv = aUv;
-  // Packing:
-  // aW0 = (headW, torsoW, neckBlendW, eyeLW)
-  // aW1 = (eyeRW, irisLW, irisRW, pupilLW)
-  // aW2 = (pupilRW, lidLW, lidRW, browLW)
-  // aW3 = (browRW, jawW, mouthW, mouthSide)
-  // aRand = (random.xyz, clusterId)
-  float aHeadW = aW0.x;
-  float aTorsoW = aW0.y;
-  float aNeckBlendW = aW0.z;
-  float aEyeLW = aW0.w;
-  float aEyeRW = aW1.x;
-  float aIrisLW = aW1.y;
-  float aIrisRW = aW1.z;
-  float aPupilLW = aW1.w;
-  float aPupilRW = aW2.x;
-  float aLidLW = aW2.y;
-  float aLidRW = aW2.z;
-  float aBrowLW = aW2.w;
-  float aBrowRW = aW3.x;
-  float aJawW = aW3.y;
-  float aMouthW = aW3.z;
-  float aMouthSide = aW3.w;
+  vHeadWeight = aHeadWeight;
 
-  vIrisW = aIrisLW + aIrisRW;
-  vPupilW = aPupilLW + aPupilRW;
-
-  vec3 pos = position;
+  vec3 pos = aBasePosition;
   float t = uTime;
 
   float globalPhase = t * 0.5;
-  float swayX = sin(globalPhase + aRand.x * 6.2831);
-  float swayY = cos(globalPhase * 0.8 + aRand.y * 6.2831);
-  vec3 globalOffset = vec3(swayX * 0.002, swayY * 0.0016, 0.0);
+  float swayX = sin(globalPhase + aRandom.x * 6.2831);
+  float swayY = cos(globalPhase * 0.8 + aRandom.y * 6.2831);
 
-  float clusterPhase = hash11(aRand.w + 10.0) * 6.2831;
+  vec3 globalOffset = vec3(
+    swayX * 0.003,
+    swayY * 0.002,
+    0.0
+  );
+
+  float clusterPhase = hash11(aClusterId + 10.0) * 6.2831;
   float clusterAnim = sin(t * 0.8 + clusterPhase);
+
   vec3 clusterDir = normalize(vec3(
-    hash11(aRand.w + 1.0) - 0.5,
-    hash11(aRand.w + 2.0) - 0.5,
-    hash11(aRand.w + 3.0) - 0.5
+    hash11(aClusterId + 1.0) - 0.5,
+    hash11(aClusterId + 2.0) - 0.5,
+    hash11(aClusterId + 3.0) - 0.5
   ));
-  vec3 clusterOffset = clusterDir * clusterAnim * 0.0035;
 
-  float n = simpleNoise(position * 1.5, t * 0.6);
+  vec3 clusterOffset = clusterDir * clusterAnim * 0.004;
+
+  float n = simpleNoise(aBasePosition * 1.5, t * 0.6);
   float micro = (n - 0.5);
-  vec3 microDir = normalize(aRand.xyz * 2.0 - 1.0);
-  vec3 microOffset = microDir * micro * 0.0016;
+  vec3 microDir = normalize(aRandom * 2.0 - 1.0);
+  vec3 microOffset = microDir * micro * 0.002;
 
-  vec3 torsoOffset = vec3(uTorsoSway.x, uTorsoSway.y, 0.0) * aTorsoW;
-  vec3 breathOffset = vec3(0.0, uBreath * 0.01, uBreath * 0.005) * aTorsoW;
+  float breathPhase = sin(uTime * uBreathFreq) * 0.5 + 0.5;
+  float heightFactor = clamp(1.0 - (aBasePosition.y + 0.3) * 2.0, 0.0, 1.0);
+  float breath = breathPhase * heightFactor * uBreathAmp;
+  vec3 breathOffset = vec3(0.0, breath * 0.01, breath * 0.005);
 
-  vec3 gazeOffset = vec3(uIrisOffset + uMicroSaccade, 0.0);
-  vec3 irisOffset = gazeOffset * (aIrisLW + aIrisRW);
+  float phase = sin(uTime * uTalkFreq);
+  float talkOpen = max(phase, 0.0) * uTalk;
 
-  float blinkL = uBlinkL * aLidLW;
-  float blinkR = uBlinkR * aLidRW;
-  float squintL = uSquintL * aLidLW;
-  float squintR = uSquintR * aLidRW;
-  vec3 lidOffset = vec3(0.0, -(blinkL + blinkR + squintL + squintR), 0.0);
+  float totalOpen = uRestOpen + talkOpen;
+  totalOpen = clamp(totalOpen, 0.0, 1.0);
 
-  float browL = (uBrowRaiseL - uBrowFurrow) * aBrowLW;
-  float browR = (uBrowRaiseR - uBrowFurrow) * aBrowRW;
-  vec3 browOffset = vec3(0.0, browL + browR, 0.0);
+  float side = aMouthSide;
+  float lipAmp = mix(uTalkAmpBot, uTalkAmpTop, step(0.0, side));
 
-  vec3 jawOffset = uJawDir * uJawOpen * aJawW;
-  vec3 mouthOffset = uMouthDir * uMouthTension * aMouthW;
-  vec3 mouthSideOffset = uMouthSideDir * (uMouthAsym * aMouthSide) * aMouthW;
+  float mouthFactor = aMouthWeight * totalOpen;
+
+  float verticalOffset = side * lipAmp * mouthFactor;
+  float depthOffset = -uLipDepthAmp * mouthFactor;
+  vec3 mouthOffset = vec3(0.0, verticalOffset, depthOffset);
 
   vec3 displaced = pos
     + globalOffset * uGlobalAmp
     + clusterOffset * uClusterAmp
     + microOffset * uNoiseAmp
-    + torsoOffset
     + breathOffset
-    + jawOffset
-    + mouthOffset
-    + mouthSideOffset
-    + lidOffset
-    + browOffset
-    + irisOffset;
+    + mouthOffset;
 
-  mat3 headR = rotY(uHeadYaw) * rotX(uHeadPitch) * rotZ(uHeadRoll);
-  vec3 headPos = uHeadPivot + headR * (displaced - uHeadPivot);
-  float headMix = clamp(aHeadW + aNeckBlendW * uNeckBlendW, 0.0, 1.0);
-  vec3 finalPos = mix(displaced, headPos, headMix);
-
-  float dbgMax = aHeadW;
-  vec3 dbgColor = vec3(0.25, 0.25, 0.25);
-  if (aTorsoW > dbgMax) { dbgMax = aTorsoW; dbgColor = vec3(0.25, 0.1, 0.1); }
-  if (aEyeLW > dbgMax || aEyeRW > dbgMax) { dbgMax = max(aEyeLW, aEyeRW); dbgColor = vec3(0.1, 0.4, 0.9); }
-  if (aIrisLW > dbgMax || aIrisRW > dbgMax) { dbgMax = max(aIrisLW, aIrisRW); dbgColor = vec3(0.1, 0.9, 0.6); }
-  if (aPupilLW > dbgMax || aPupilRW > dbgMax) { dbgMax = max(aPupilLW, aPupilRW); dbgColor = vec3(0.05, 0.05, 0.05); }
-  if (aLidLW > dbgMax || aLidRW > dbgMax) { dbgMax = max(aLidLW, aLidRW); dbgColor = vec3(0.8, 0.4, 0.1); }
-  if (aBrowLW > dbgMax || aBrowRW > dbgMax) { dbgMax = max(aBrowLW, aBrowRW); dbgColor = vec3(0.9, 0.7, 0.1); }
-  if (aJawW > dbgMax) { dbgMax = aJawW; dbgColor = vec3(0.6, 0.25, 0.7); }
-  if (aMouthW > dbgMax) { dbgMax = aMouthW; dbgColor = vec3(0.3, 0.9, 0.9); }
-  vDebugColor = dbgColor;
-  vDebugWeight = dbgMax;
+  vec3 bodyPos = rotateAroundPivot(displaced, uBodyPivot, uBodyRot) + uBodyOffset;
+  vec3 headPos = rotateAroundPivot(bodyPos, uNeckPivot, uHeadRot);
+  vec3 finalPos = mix(bodyPos, headPos, aHeadWeight);
 
   vec4 mvPosition = modelViewMatrix * vec4(finalPos, 1.0);
+
   gl_PointSize = uPointSize;
   gl_Position = projectionMatrix * mvPosition;
 }
 `;
 
-// Fragment: disco suave + shading iris/pupil + debug regiones
+// Fragment: disco suave + modulación por textura (normal) + debug por aHeadWeight
 const fragmentShader = /* glsl */ `
 precision highp float;
 
 uniform vec3 uColor;
 uniform sampler2D uColorMap;
 uniform float uUseMap;
-uniform int uDebugMode; // 0=off,1=strict,2=blend
-uniform float uDebugMix;
-uniform float uIrisPreserve;
-uniform float uIrisPreservePupil;
-uniform float uIrisIntensity;
-uniform float uAlphaCut;
+uniform float uDebugHeadWeight;
 
 varying vec2 vUv;
-varying float vIrisW;
-varying float vPupilW;
-varying vec3 vDebugColor;
-varying float vDebugWeight;
+varying float vHeadWeight;
 
 void main() {
   vec2 p = gl_PointCoord * 2.0 - 1.0;
@@ -917,37 +583,23 @@ void main() {
 
   float r = sqrt(r2);
   float circle = 1.0 - smoothstep(0.7, 1.0, r);
-  if (circle < uAlphaCut) discard;
+  if (circle < 0.02) discard;
+
+  if (uDebugHeadWeight > 0.5) {
+    vec3 dbg = vec3(clamp(vHeadWeight, 0.0, 1.0));
+    gl_FragColor = vec4(dbg, circle);
+    return;
+  }
 
   vec3 texColor = texture2D(uColorMap, vUv).rgb;
   float densityRaw = (texColor.r + texColor.g + texColor.b) / 3.0;
   float density = mix(1.0, densityRaw, uUseMap);
 
   float alpha = circle * density;
-  if (alpha < uAlphaCut) discard;
+  if (alpha < 0.02) discard;
 
   vec3 baseColor = uColor;
   vec3 finalColor = mix(baseColor * 0.6, baseColor, density);
-
-  float irisW = clamp(vIrisW, 0.0, 1.0);
-  float pupilW = clamp(vPupilW, 0.0, 1.0);
-  vec3 irisColor = mix(finalColor, finalColor * 0.25, irisW * uIrisIntensity);
-  irisColor = mix(irisColor, vec3(0.04), pupilW);
-
-  if (uDebugMode == 1) {
-    vec3 dbg = mix(vec3(0.0), vDebugColor, clamp(vDebugWeight, 0.0, 1.0));
-    gl_FragColor = vec4(dbg, alpha);
-    return;
-  }
-
-  if (uDebugMode == 2) {
-    vec3 dbgMix = mix(finalColor, vDebugColor, uDebugMix);
-    float preserve = mix(uIrisPreserve, uIrisPreservePupil, pupilW);
-    finalColor = mix(dbgMix, irisColor, preserve);
-  } else {
-    finalColor = irisColor;
-  }
-
   gl_FragColor = vec4(finalColor, alpha);
 }
 `;
@@ -985,48 +637,100 @@ function generateFaceParticlesFromVertices(srcGeometry) {
   const uvs = new Float32Array(uvArray);
   const count = positions.length / 3;
 
-  // Packing:
-  // aW0 = (headW, torsoW, neckBlendW, eyeLW)
-  // aW1 = (eyeRW, irisLW, irisRW, pupilLW)
-  // aW2 = (pupilRW, lidLW, lidRW, browLW)
-  // aW3 = (browRW, jawW, mouthW, mouthSide)
-  // aRand = (random.xyz, clusterId)
-  const randPack = new Float32Array(count * 4);
-  const w0Pack = new Float32Array(count * 4);
-  const w1Pack = new Float32Array(count * 4);
-  const w2Pack = new Float32Array(count * 4);
-  const w3Pack = new Float32Array(count * 4);
+  const basePositions = new Float32Array(positions.length);
+  basePositions.set(positions);
+
+  const randoms = new Float32Array(count * 3);
+  const clusterIds = new Float32Array(count);
+
+  const mouthWeights = new Float32Array(count);
+  const mouthSides = new Float32Array(count);
+
+  const headWeights = new Float32Array(count);
 
   for (let i = 0; i < count; i++) {
-    const r = i * 4;
-    randPack[r + 0] = Math.random();
-    randPack[r + 1] = Math.random();
-    randPack[r + 2] = Math.random();
+    randoms[i * 3 + 0] = Math.random();
+    randoms[i * 3 + 1] = Math.random();
+    randoms[i * 3 + 2] = Math.random();
 
     const x = positions[i * 3 + 0];
     const y = positions[i * 3 + 1];
 
     const cx = Math.floor((x + 0.4) * 10.0);
     const cy = Math.floor((y + 0.4) * 10.0);
-    randPack[r + 3] = cx + cy * 10.0;
-  }
+    clusterIds[i] = cx + cy * 10.0;
 
-  const snap = buildTuningSnapshot();
-  fillWeightsFromPositions(positions, count, {
-    w0Arr: w0Pack,
-    w1Arr: w1Pack,
-    w2Arr: w2Pack,
-    w3Arr: w3Pack,
-  }, snap);
+    // ------- Boca (desde window.MouthTuning) -------
+    const mt = window.MouthTuning;
+    const mwAbs = Math.max(1e-6, Math.abs(mt.width));
+    const mhAbs = Math.max(1e-6, Math.abs(mt.height));
+
+    let dx = x - mt.centerX;
+    let ax = Math.abs(dx);
+
+    let weight = 0.0;
+    let side = 0.0;
+
+    if (ax <= mwAbs) {
+      let normX = dx / mwAbs;
+      let curveY = mt.centerY - mt.curve * normX * normX;
+      let dy = y - curveY;
+      let ay = Math.abs(dy);
+
+      if (ay <= mhAbs) {
+        let wx = 1.0 - ax / mwAbs;
+        let wy = 1.0 - ay / mhAbs;
+        weight = wx * wy;
+
+        if (weight < 0.0) weight = 0.0;
+        if (weight > 1.0) weight = 1.0;
+
+        if (dy > 0.0) side = 1.0;
+        else if (dy < 0.0) side = -1.0;
+        else side = 0.0;
+      }
+    }
+
+    mouthWeights[i] = weight;
+    mouthSides[i] = side;
+
+    // ------- Cuello (desde window.NeckTuning) -------
+    const t = window.NeckTuning;
+    const wAbs = Math.max(1e-6, Math.abs(t.width));
+
+    const dxN = x - t.centerX;
+    const insideWidth = Math.abs(dxN) <= wAbs;
+
+    const nx = dxN / wAbs;
+    const nxClamped = Math.max(-1, Math.min(1, nx));
+    const curve = t.curve * nxClamped * nxClamped;
+
+    let yTop = insideWidth ? (t.topY - curve) : t.topY;
+    let yBot = insideWidth ? (t.bottomY - curve) : t.bottomY;
+
+    if (yTop < yBot) {
+      const tmp = yTop;
+      yTop = yBot;
+      yBot = tmp;
+    }
+
+    let hw = 0.0;
+    if (y >= yTop) hw = 1.0;
+    else if (y <= yBot) hw = 0.0;
+    else hw = smoothstepJS(yBot, yTop, y);
+
+    headWeights[i] = hw;
+  }
 
   const particlesGeo = new THREE.BufferGeometry();
   particlesGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   particlesGeo.setAttribute('aUv', new THREE.BufferAttribute(uvs, 2));
-  particlesGeo.setAttribute('aRand', new THREE.BufferAttribute(randPack, 4));
-  particlesGeo.setAttribute('aW0', new THREE.BufferAttribute(w0Pack, 4));
-  particlesGeo.setAttribute('aW1', new THREE.BufferAttribute(w1Pack, 4));
-  particlesGeo.setAttribute('aW2', new THREE.BufferAttribute(w2Pack, 4));
-  particlesGeo.setAttribute('aW3', new THREE.BufferAttribute(w3Pack, 4));
+  particlesGeo.setAttribute('aBasePosition', new THREE.BufferAttribute(basePositions, 3));
+  particlesGeo.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 3));
+  particlesGeo.setAttribute('aClusterId', new THREE.BufferAttribute(clusterIds, 1));
+  particlesGeo.setAttribute('aMouthWeight', new THREE.BufferAttribute(mouthWeights, 1));
+  particlesGeo.setAttribute('aMouthSide', new THREE.BufferAttribute(mouthSides, 1));
+  particlesGeo.setAttribute('aHeadWeight', new THREE.BufferAttribute(headWeights, 1));
 
   return particlesGeo;
 }
@@ -1092,27 +796,19 @@ loader.load(
 
     // refs para edición / recompute
     particlesGeometryRef = particlesGeo;
-    w0AttrRef = particlesGeo.getAttribute('aW0');
-    w1AttrRef = particlesGeo.getAttribute('aW1');
-    w2AttrRef = particlesGeo.getAttribute('aW2');
-    w3AttrRef = particlesGeo.getAttribute('aW3');
-    basePosAttrRef = particlesGeo.getAttribute('position');
+    headWeightAttrRef = particlesGeo.getAttribute('aHeadWeight');
+    basePosAttrRef = particlesGeo.getAttribute('aBasePosition');
 
-    const dynamicAttrs = [w0AttrRef, w1AttrRef, w2AttrRef, w3AttrRef];
-    for (const attr of dynamicAttrs) {
-      attr.setUsage(THREE.DynamicDrawUsage);
-    }
+    mouthWeightAttrRef = particlesGeo.getAttribute('aMouthWeight');
+    mouthSideAttrRef = particlesGeo.getAttribute('aMouthSide');
 
-    const depthWriteParam = URL_PARAMS.get('depthWrite');
-    const alphaTestParam = parseFloat(URL_PARAMS.get('alphaTest'));
+    const t = window.NeckTuning;
 
     particleMaterial = new THREE.ShaderMaterial({
       vertexShader,
       fragmentShader,
       transparent: true,
-      depthTest: true,
-      depthWrite: depthWriteParam === null ? false : depthWriteParam === '1',
-      alphaTest: Number.isFinite(alphaTestParam) ? alphaTestParam : 0.0,
+      depthWrite: true,
       blending: THREE.NormalBlending,
       uniforms: {
         uPointSize: { value: POINT_SIZE },
@@ -1125,38 +821,27 @@ loader.load(
         uClusterAmp: { value: 1.5 },
         uNoiseAmp: { value: 1.6 },
 
-        // HBL
-        uBreath: { value: 0.0 },
-        uTorsoSway: { value: new THREE.Vector2(0, 0) },
-        uHeadYaw: { value: 0.0 },
-        uHeadPitch: { value: 0.0 },
-        uHeadRoll: { value: 0.0 },
-        uHeadPivot: { value: new THREE.Vector3(0, 0, 0) },
-        uNeckBlendW: { value: 1.0 },
-        uJawOpen: { value: 0.0 },
-        uJawDir: { value: new THREE.Vector3(0, -1, 0.1) },
-        uMouthDir: { value: new THREE.Vector3(0, -1, 0.0) },
-        uMouthSideDir: { value: new THREE.Vector3(1, 0, 0) },
-        uMouthTension: { value: 0.0 },
-        uMouthAsym: { value: 0.0 },
-        uBlinkL: { value: 0.0 },
-        uBlinkR: { value: 0.0 },
-        uGazeYawPitch: { value: new THREE.Vector2(0, 0) },
-        uMicroSaccade: { value: new THREE.Vector2(0, 0) },
-        uIrisOffset: { value: new THREE.Vector2(0, 0) },
-        uIrisIntensity: { value: 0.5 },
-        uBrowRaiseL: { value: 0.0 },
-        uBrowRaiseR: { value: 0.0 },
-        uBrowFurrow: { value: 0.0 },
-        uSquintL: { value: 0.0 },
-        uSquintR: { value: 0.0 },
+        // habla
+        uTalk: { value: 0.0 },
+        uTalkAmpTop: { value: 0.024 },
+        uTalkAmpBot: { value: 0.075 },
+        uTalkFreq: { value: 24.0 },
+        uLipDepthAmp: { value: 0.1 },
+        uRestOpen: { value: 0.30 },
+
+        // respiración
+        uBreathAmp: { value: 1.0 },
+        uBreathFreq: { value: 0.6 },
+
+        // rig procedural
+        uHeadRot: { value: new THREE.Vector3(0, 0, 0) },
+        uBodyRot: { value: new THREE.Vector3(0, 0, 0) },
+        uBodyOffset: { value: new THREE.Vector3(0, 0, 0) },
+        uNeckPivot: { value: new THREE.Vector3(0.0, t.neckPivotY, 0.0) },
+        uBodyPivot: { value: new THREE.Vector3(0.0, t.bodyPivotY, 0.0) },
 
         // DEBUG
-        uDebugMode: { value: DebugView.mode },
-        uDebugMix: { value: window.BehaviorTuning.debugMix },
-        uIrisPreserve: { value: window.BehaviorTuning.irisPreserve },
-        uIrisPreservePupil: { value: window.BehaviorTuning.irisPreservePupil },
-        uAlphaCut: { value: Number.isFinite(alphaTestParam) ? alphaTestParam : 0.0 },
+        uDebugHeadWeight: { value: DebugView.headWeight ? 1.0 : 0.0 },
       },
     });
 
@@ -1164,15 +849,12 @@ loader.load(
     particlePoints.frustumCulled = false;
     scene.add(particlePoints);
 
-    const seedSource = URL_PARAMS.get('seed') || 'default';
-    const seed = hashStringToSeed(seedSource);
-    hbl = new HumanBehaviorLayer({ seed, uniformsRef: particleMaterial.uniforms });
-
     controls.target.set(0, 0.15, 0);
     controls.update();
 
     // por si se tocó NeckTuning/MouthTuning antes de cargar
-    scheduleRecomputeMasks('after_load');
+    scheduleRecomputeHeadWeights('after_load');
+    scheduleRecomputeMouthWeights('after_load');
   },
   undefined,
   (err) => {
@@ -1189,7 +871,7 @@ window.addEventListener('resize', () => {
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   renderer.setSize(w, h);
-  resizeDebugEditorOverlay();
+  resizeNeckEditorOverlay();
 });
 
 // =========================
@@ -1480,7 +1162,7 @@ async function enterThinking() {
   setMode('THINKING');
 }
 
-function getTalkLevelFromAudio(dt) {
+function getTalkLevelFromAudio() {
   if (!(analyser && analyserData)) {
     if (AudioDebug.enabled) {
       const now = performance.now();
@@ -1506,10 +1188,10 @@ function getTalkLevelFromAudio(dt) {
   const rms = Math.sqrt(sum / analyserData.length);
   const intensity = AvatarState.speechIntensity || 1.0;
 
-  const minRms = AudioDebug.minRms;
-  const scale = AudioDebug.scale;
+  const SILENCE_RMS = 0.01;
+  const VOICE_RMS = 0.12;
 
-  if (rms < minRms) silentFrameCount++;
+  if (rms < SILENCE_RMS) silentFrameCount++;
   else silentFrameCount = 0;
 
   let target = 0.0;
@@ -1518,8 +1200,8 @@ function getTalkLevelFromAudio(dt) {
     if (silentFrameCount >= 2) {
       target = 0.0;
     } else {
-      let t = (rms - minRms) * scale;
-      t = clamp01(t);
+      let t = (rms - SILENCE_RMS) / (VOICE_RMS - SILENCE_RMS);
+      t = Math.max(0, Math.min(1, t));
       t *= intensity;
 
       if (t > 0) {
@@ -1532,8 +1214,9 @@ function getTalkLevelFromAudio(dt) {
     target = 0.0;
   }
 
+  const dt = 1 / 60;
   const speed = target > lipsyncLevel ? LipsyncConfig.attack : LipsyncConfig.release;
-  const smoothing = 1 - Math.exp(-Math.max(dt, 1e-4) * speed);
+  const smoothing = 1 - Math.exp(-dt * speed);
   lipsyncLevel += (target - lipsyncLevel) * smoothing;
 
   if (AudioDebug.enabled) {
@@ -1544,7 +1227,7 @@ function getTalkLevelFromAudio(dt) {
     debugStats.targetMin = Math.min(debugStats.targetMin, target);
     debugStats.targetMax = Math.max(debugStats.targetMax, target);
 
-    if (rms >= minRms) debugStats.speakingFrames += 1;
+    if (rms >= SILENCE_RMS) debugStats.speakingFrames += 1;
     else debugStats.silentFrames += 1;
 
     const now = performance.now();
@@ -1582,329 +1265,68 @@ function getTalkLevelFromAudio(dt) {
 }
 
 // =========================
-// Human Behavior Layer (HBL)
+// Movimiento humano "espontáneo" (targets + pausas)
 // =========================
-class HumanBehaviorLayer {
-  constructor({ seed, uniformsRef }) {
-    this.uniforms = uniformsRef;
-    this.rand = mulberry32(seed);
-    this.time = 0;
-    this.mode = 'BOOT';
-    this.outputs = {
-      blinkL: 0,
-      blinkR: 0,
-      gaze: new THREE.Vector2(),
-      micro: new THREE.Vector2(),
-      irisOffset: new THREE.Vector2(),
-      irisIntensity: 0.5,
-      jawOpen: 0,
-      mouthTension: 0,
-      mouthAsym: 0,
-      browRaiseL: 0,
-      browRaiseR: 0,
-      browFurrow: 0,
-      squintL: 0,
-      squintR: 0,
-      breath: 0,
-      headYaw: 0,
-      headPitch: 0,
-      headRoll: 0,
-      torsoSway: new THREE.Vector2(),
-    };
-    this.state = {
-      blink: { next: 0, active: false, phase: 0, dur: 0.2, asym: 0 },
-      gaze: {
-        current: new THREE.Vector2(),
-        target: new THREE.Vector2(),
-        thinkTimer: 0,
-        microState: 'idle',
-        microTimer: 0,
-        microHold: 0,
-        microSettle: 0,
-        microTarget: new THREE.Vector2(),
-        microCurrent: new THREE.Vector2(),
-      },
-      breath: { phase: 0 },
-      backchannel: { pending: false, triggerTime: 0, cooldownUntil: 0, holdMs: 0, nodPhase: 0, nodDur: 0.28, nodAmp: 0.012 },
-      speech: { env: 0, prevEnv: 0, lastBoundary: -10, lastBeat: -10, energyStart: 0, energy: 0, beatAmp: 0 },
-    };
-    this.zeroVec2 = new THREE.Vector2();
-    this.jawDirCache = new THREE.Vector3(0, -1, 0.1);
-    this.mouthDirCache = new THREE.Vector3(0, -1, 0.0);
-    this.jawDirLast = { x: null, y: null, z: null };
-    this.mouthDirLast = { z: null };
-  }
-
-  update(dt, signals) {
-    this.time += dt;
-    const mode = signals.mode;
-    const tuning = window.BehaviorTuning;
-    const lidTuning = window.LidTuning;
-    const browTuning = window.BrowTuning;
-    const jawTuning = window.JawTuning;
-    const mouthTuning = window.MouthTuning;
-    const irisTuning = window.IrisTuning;
-
-    if (this.mode !== mode) {
-      if (this.mode === 'THINKING' && mode === 'SPEAKING') {
-        if (this.rand() < 0.45) {
-          this.state.blink.next = Math.min(this.state.blink.next, this.time + randRange(this.rand, 0.08, 0.2));
-        }
-      }
-      this.mode = mode;
-    }
-
-    const blinkRate = mode === 'LISTENING'
-      ? tuning.blinkRateListening
-      : mode === 'THINKING'
-        ? tuning.blinkRateThinking
-        : mode === 'SPEAKING'
-          ? tuning.blinkRateSpeaking
-          : tuning.blinkRateIdle;
-
-    const lambda = Math.max(0.01, blinkRate / 60);
-    if (!this.state.blink.active && this.time >= this.state.blink.next) {
-      this.state.blink.active = true;
-      this.state.blink.phase = 0;
-      this.state.blink.dur = randRange(this.rand, tuning.blinkDurationMin, tuning.blinkDurationMax);
-      const u = Math.max(1e-6, 1 - this.rand());
-      const interval = -Math.log(u) / lambda;
-      this.state.blink.next = this.time + interval;
-      this.state.blink.asym = randRange(this.rand, -0.03, 0.03);
-    }
-
-    const envPrev = this.state.speech.env;
-    const env = emaHalfLife(dt, envPrev, signals.talkLevel, 0.05);
-    const dEnv = (env - envPrev) / Math.max(dt, 1e-4);
-    this.state.speech.prevEnv = envPrev;
-    this.state.speech.env = env;
-    if (mode === 'SPEAKING' && dEnv < -2.5 && env < 0.25 && (this.time - this.state.speech.lastBoundary) > 0.6) {
-      this.state.blink.next = Math.min(this.state.blink.next, this.time + randRange(this.rand, 0.08, 0.2));
-      this.state.speech.lastBoundary = this.time;
-    }
-
-    let blinkAmount = 0;
-    if (this.state.blink.active) {
-      this.state.blink.phase += dt;
-      const t01 = clamp01(this.state.blink.phase / this.state.blink.dur);
-      if (t01 < 0.35) {
-        const u = t01 / 0.35;
-        blinkAmount = 1 - Math.pow(1 - u, 3);
-      } else {
-        const u = (t01 - 0.35) / 0.65;
-        blinkAmount = 1 - (u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2);
-      }
-      if (t01 >= 1.0) {
-        this.state.blink.active = false;
-        blinkAmount = 0;
-      }
-    }
-
-    this.outputs.blinkL = clamp01(blinkAmount + this.state.blink.asym) * lidTuning.blinkCloseScale;
-    this.outputs.blinkR = clamp01(blinkAmount - this.state.blink.asym) * lidTuning.blinkCloseScale;
-
-    const gazeMaxYaw = degToRad(12);
-    const gazeMaxPitch = degToRad(8);
-    const gazeTarget = this.state.gaze.target;
-
-    if (mode === 'THINKING') {
-      if (this.state.gaze.thinkTimer <= 0) {
-        this.state.gaze.thinkTimer = randRange(this.rand, 0.5, 1.2);
-        gazeTarget.set(randRange(this.rand, -0.08, 0.08), randRange(this.rand, -0.12, -0.04));
-      }
-      this.state.gaze.thinkTimer -= dt;
-      if (this.state.gaze.thinkTimer <= 0) {
-        gazeTarget.set(0, 0);
-      }
-    } else if (mode === 'LISTENING') {
-      gazeTarget.set(0, 0);
-    } else if (mode === 'SPEAKING') {
-      gazeTarget.set(0, 0);
-    } else {
-      gazeTarget.set(randRange(this.rand, -0.03, 0.03), randRange(this.rand, -0.02, 0.02));
-    }
-
-    const maxGazeRate = degToRad(tuning.maxGazeDegPerSec);
-    this.state.gaze.current.x = smoothCapped(dt, this.state.gaze.current.x, gazeTarget.x, tuning.gazeSmoothingHL, maxGazeRate, -gazeMaxYaw, gazeMaxYaw);
-    this.state.gaze.current.y = smoothCapped(dt, this.state.gaze.current.y, gazeTarget.y, tuning.gazeSmoothingHL, maxGazeRate, -gazeMaxPitch, gazeMaxPitch);
-
-    if (this.state.gaze.microTimer <= 0 && this.state.gaze.microState === 'idle') {
-      this.state.gaze.microState = 'step';
-      this.state.gaze.microTimer = 0.06;
-      const ampRad = degToRad(tuning.microAmpDeg);
-      const a = randRange(this.rand, 0, Math.PI * 2);
-      const r = randRange(this.rand, 0.4, 1.0) * ampRad;
-      this.state.gaze.microTarget.set(Math.cos(a) * r, Math.sin(a) * r);
-    }
-
-    if (this.state.gaze.microState === 'step') {
-      this.state.gaze.microTimer -= dt;
-      const t01 = clamp01(1 - this.state.gaze.microTimer / 0.06);
-      this.state.gaze.microCurrent.lerp(this.state.gaze.microTarget, t01);
-      if (this.state.gaze.microTimer <= 0) {
-        this.state.gaze.microState = 'hold';
-        this.state.gaze.microTimer = tuning.microHoldMs / 1000;
-      }
-    } else if (this.state.gaze.microState === 'hold') {
-      this.state.gaze.microTimer -= dt;
-      if (this.state.gaze.microTimer <= 0) {
-        this.state.gaze.microState = 'settle';
-        this.state.gaze.microTimer = tuning.microSettleMs / 1000;
-      }
-    } else if (this.state.gaze.microState === 'settle') {
-      this.state.gaze.microTimer -= dt;
-      const t01 = clamp01(1 - this.state.gaze.microTimer / (tuning.microSettleMs / 1000));
-      this.state.gaze.microCurrent.lerp(this.zeroVec2, t01);
-      if (this.state.gaze.microTimer <= 0) {
-        this.state.gaze.microState = 'idle';
-        this.state.gaze.microTimer = 1 / tuning.microSaccadeRate;
-        this.state.gaze.microTarget.set(0, 0);
-      }
-    } else {
-      this.state.gaze.microTimer -= dt;
-    }
-
-    this.outputs.gaze.copy(this.state.gaze.current);
-    this.outputs.micro.copy(this.state.gaze.microCurrent);
-
-    const irisScale = Math.max(irisTuning.rx, irisTuning.ry) * 0.6;
-    this.outputs.irisOffset.set(
-      (this.outputs.gaze.x + this.outputs.micro.x) * irisScale,
-      (this.outputs.gaze.y + this.outputs.micro.y) * irisScale,
-    );
-    this.outputs.irisIntensity = irisTuning.intensityBase;
-
-    const talkMapped = clamp01(signals.talkLevel);
-    const mouthIdle = mode === 'LISTENING' ? 0.06 : 0.02;
-    const jawTarget = Math.max(talkMapped, mouthIdle);
-    this.outputs.jawOpen = smoothCapped(dt, this.outputs.jawOpen, jawTarget, 0.08, tuning.maxJawSpeed, 0, 1) * jawTuning.jawOpenScale;
-
-    const micBoost = mode === 'LISTENING' ? signals.micRmsNorm * 0.05 : 0;
-    const tensionTarget = mouthTuning.mouthTensionBase + micBoost;
-    this.outputs.mouthTension = smoothCapped(dt, this.outputs.mouthTension, tensionTarget, 0.2, 1.0, 0, 1);
-    this.outputs.mouthAsym = Math.sin(this.time * 1.7 + 1.3) * mouthTuning.asymmetryScale * 0.25;
-
-    const breathSpeed = (Math.PI * 2) / Math.max(0.01, tuning.breathPeriod);
-    this.state.breath.phase += dt * breathSpeed;
-    this.outputs.breath = Math.sin(this.state.breath.phase) * tuning.breathAmp;
-    this.outputs.torsoSway.set(0, this.outputs.breath * 0.25);
-
-    let nod = 0;
-    if (mode === 'LISTENING') {
-      if (signals.micRmsNorm > tuning.rmsSpeakThresh) {
-        this.state.backchannel.holdMs += dt * 1000;
-      } else {
-        this.state.backchannel.holdMs = 0;
-      }
-      if (!this.state.backchannel.pending && this.time > this.state.backchannel.cooldownUntil) {
-        if (this.state.backchannel.holdMs >= tuning.rmsHoldMs) {
-          this.state.backchannel.pending = true;
-          this.state.backchannel.triggerTime = this.time + randRange(this.rand, 0.3, 0.6);
-          this.state.backchannel.holdMs = 0;
-        }
-      }
-      if (this.state.backchannel.pending && this.time >= this.state.backchannel.triggerTime) {
-        this.state.backchannel.pending = false;
-        this.state.backchannel.nodPhase = 0;
-        this.state.backchannel.nodDur = randRange(this.rand, 0.28, 0.4);
-        this.state.backchannel.nodAmp = randRange(this.rand, 0.010, 0.014);
-        this.state.backchannel.cooldownUntil = this.time + randRange(this.rand, tuning.backchannelCooldownMin, tuning.backchannelCooldownMax);
-      }
-      if (this.state.backchannel.nodPhase < this.state.backchannel.nodDur) {
-        this.state.backchannel.nodPhase += dt;
-        const u = clamp01(this.state.backchannel.nodPhase / this.state.backchannel.nodDur);
-        nod = -this.state.backchannel.nodAmp * Math.sin(u * 3.14159);
-      }
-    }
-
-    let beatPitch = 0;
-    if (mode === 'SPEAKING') {
-      if (this.time - this.state.speech.energyStart > 1.5) {
-        this.state.speech.energyStart = this.time;
-        this.state.speech.energy = 0;
-      }
-      if (env > 0.6 && dEnv > 1.6 && (this.time - this.state.speech.lastBeat) > 0.5) {
-        const energyScale = this.state.speech.energy >= 2 ? 0.35 : 1.0;
-        beatPitch = -0.008 * energyScale;
-        this.state.speech.energy += 1;
-        this.state.speech.lastBeat = this.time;
-      }
-    }
-
-    const headYawTarget = this.outputs.gaze.x * 0.25;
-    const headPitchTarget = -this.outputs.gaze.y * 0.15 + nod + beatPitch;
-    this.outputs.headYaw = smoothCapped(dt, this.outputs.headYaw, headYawTarget, 0.3, degToRad(tuning.maxHeadDegPerSec), -0.35, 0.35);
-    this.outputs.headPitch = smoothCapped(dt, this.outputs.headPitch, headPitchTarget, 0.3, degToRad(tuning.maxHeadDegPerSec), -0.35, 0.35);
-    this.outputs.headRoll = smoothCapped(dt, this.outputs.headRoll, this.outputs.gaze.x * 0.08, 0.4, degToRad(tuning.maxHeadDegPerSec), -0.25, 0.25);
-
-    const browBase = mode === 'THINKING' ? 0.06 : mode === 'SPEAKING' ? 0.04 : 0.02;
-    const browRaise = browBase + (signals.emotion === 'excited' ? 0.05 : 0);
-    const browFurrow = mode === 'THINKING' ? 0.08 : 0.02;
-    const asym = Math.sin(this.time * 0.7) * 0.03;
-
-    this.outputs.browRaiseL = smoothCapped(dt, this.outputs.browRaiseL, (browRaise + asym) * browTuning.raiseScale, 0.3, 1.0, 0, 1);
-    this.outputs.browRaiseR = smoothCapped(dt, this.outputs.browRaiseR, (browRaise - asym) * browTuning.raiseScale, 0.3, 1.0, 0, 1);
-    this.outputs.browFurrow = smoothCapped(dt, this.outputs.browFurrow, browFurrow * browTuning.furrowScale, 0.3, 1.0, 0, 1);
-
-    const squintTarget = mode === 'LISTENING' ? signals.micRmsNorm * 0.04 : 0.02;
-    this.outputs.squintL = smoothCapped(dt, this.outputs.squintL, squintTarget * lidTuning.blinkOpenScale, 0.3, 1.0, 0, 1);
-    this.outputs.squintR = smoothCapped(dt, this.outputs.squintR, squintTarget * lidTuning.blinkOpenScale, 0.3, 1.0, 0, 1);
-
-    return this.outputs;
-  }
-
-  apply(outputs) {
-    const u = this.uniforms;
-    if (!u) return;
-    const pivot = window.PivotTuning;
-    const jawT = window.JawTuning;
-    const mouthT = window.MouthTuning;
-
-    if (jawT.jawDirX !== this.jawDirLast.x || jawT.jawDirY !== this.jawDirLast.y || jawT.jawDirZ !== this.jawDirLast.z) {
-      this.jawDirLast = { x: jawT.jawDirX, y: jawT.jawDirY, z: jawT.jawDirZ };
-      this.jawDirCache.set(jawT.jawDirX, jawT.jawDirY, jawT.jawDirZ);
-      if (this.jawDirCache.lengthSq() < 1e-6) this.jawDirCache.set(0, -1, 0.1);
-      this.jawDirCache.normalize();
-    }
-    if (mouthT.forwardOffsetZ !== this.mouthDirLast.z) {
-      this.mouthDirLast = { z: mouthT.forwardOffsetZ };
-      this.mouthDirCache.set(0, -1, mouthT.forwardOffsetZ);
-      if (this.mouthDirCache.lengthSq() < 1e-6) this.mouthDirCache.set(0, -1, 0.0);
-      this.mouthDirCache.normalize();
-    }
-
-    u.uBlinkL.value = outputs.blinkL;
-    u.uBlinkR.value = outputs.blinkR;
-    u.uGazeYawPitch.value.copy(outputs.gaze);
-    u.uMicroSaccade.value.copy(outputs.micro);
-    u.uIrisOffset.value.copy(outputs.irisOffset);
-    u.uIrisIntensity.value = outputs.irisIntensity;
-    u.uJawOpen.value = outputs.jawOpen;
-    u.uMouthTension.value = outputs.mouthTension;
-    u.uMouthAsym.value = outputs.mouthAsym;
-    u.uBrowRaiseL.value = outputs.browRaiseL;
-    u.uBrowRaiseR.value = outputs.browRaiseR;
-    u.uBrowFurrow.value = outputs.browFurrow;
-    u.uSquintL.value = outputs.squintL;
-    u.uSquintR.value = outputs.squintR;
-    u.uBreath.value = outputs.breath;
-    u.uTorsoSway.value.copy(outputs.torsoSway);
-    u.uHeadYaw.value = outputs.headYaw;
-    u.uHeadPitch.value = outputs.headPitch;
-    u.uHeadRoll.value = outputs.headRoll;
-    u.uHeadPivot.value.set(pivot.headPivotX, pivot.headPivotY, pivot.headPivotZ);
-    u.uNeckBlendW.value = 1.0;
-    u.uJawDir.value.copy(this.jawDirCache);
-    u.uMouthDir.value.copy(this.mouthDirCache);
-    u.uMouthSideDir.value.set(1, 0, 0);
-    u.uDebugMode.value = DebugView.mode;
-    u.uDebugMix.value = window.BehaviorTuning.debugMix;
-    u.uIrisPreserve.value = window.BehaviorTuning.irisPreserve;
-    u.uIrisPreservePupil.value = window.BehaviorTuning.irisPreservePupil;
-  }
+function randRange(a, b) {
+  return a + (b - a) * Math.random();
 }
 
-let hbl = null;
+const MotionConfig = {
+  head: { ampYaw: 0.055, ampPitch: 0.050, ampRoll: 0.030, holdMin: 1.0, holdMax: 3.2, smooth: 10.0 },
+  body: { ampYaw: 0.012, ampPitch: 0.010, ampRoll: 0.010, holdMin: 1.2, holdMax: 4.0, smooth: 6.0 },
+  micro: { yaw: 0.006, pitch: 0.004, roll: 0.004 },
+};
+
+const MotionState = {
+  seed: Math.random() * 1000.0,
+  head: { current: new THREE.Vector3(0, 0, 0), target: new THREE.Vector3(0, 0, 0), nextSwitch: 0 },
+  body: { current: new THREE.Vector3(0, 0, 0), target: new THREE.Vector3(0, 0, 0), nextSwitch: 0 },
+  nod: { active: false, t0: 0, dur: 0.32, amp: 0.012 },
+};
+
+function pickTarget(cfg) {
+  const bias = 0.65;
+  const s = () => (Math.random() * 2 - 1);
+  const soften = () => (Math.random() < bias ? 0.35 : 1.0) * randRange(0.4, 1.0);
+
+  return new THREE.Vector3(
+    s() * cfg.ampPitch * soften(),
+    s() * cfg.ampYaw * soften(),
+    s() * cfg.ampRoll * soften(),
+  );
+}
+
+function updateChannel(ch, cfg, t, dt) {
+  if (t >= ch.nextSwitch) {
+    ch.target.copy(pickTarget(cfg));
+    ch.nextSwitch = t + randRange(cfg.holdMin, cfg.holdMax);
+  }
+  const k = 1.0 - Math.exp(-dt * cfg.smooth);
+  ch.current.lerp(ch.target, k);
+}
+
+function updateNod(t, dt) {
+  if (!MotionState.nod.active && AvatarState.mode === 'LISTENING') {
+    const p = 0.18;
+    if (Math.random() < p * dt) {
+      MotionState.nod.active = true;
+      MotionState.nod.t0 = t;
+      MotionState.nod.dur = randRange(0.28, 0.40);
+      MotionState.nod.amp = randRange(0.010, 0.014);
+    }
+  }
+
+  if (!MotionState.nod.active) return 0.0;
+
+  const u = (t - MotionState.nod.t0) / MotionState.nod.dur;
+  if (u >= 1.0) {
+    MotionState.nod.active = false;
+    return 0.0;
+  }
+
+  const s = Math.sin(u * 3.14159);
+  return -MotionState.nod.amp * s;
+}
 
 // =========================
 // 7. Loop + modo test labios
@@ -1916,27 +1338,65 @@ let testLipsBtn = null;
 function animate() {
   requestAnimationFrame(animate);
 
-  let delta = clock.getDelta();
-  delta = Math.min(delta, 1 / 20);
-  shaderTime += delta;
+  const elapsed = clock.getElapsedTime();
+  const delta = clock.getDelta();
 
   if (particleMaterial) {
-    particleMaterial.uniforms.uTime.value = shaderTime;
+    particleMaterial.uniforms.uTime.value = elapsed;
 
     let targetTalk = 0.0;
     if (lipHoldActive) targetTalk = 1.0;
-    else targetTalk = getTalkLevelFromAudio(delta);
+    else targetTalk = getTalkLevelFromAudio();
 
     AvatarState.talkLevel = targetTalk;
-    if (hbl) {
-      const outputs = hbl.update(delta, {
-        mode: AvatarState.mode,
-        talkLevel: AvatarState.talkLevel,
-        micRmsNorm: AvatarState.micRmsNorm,
-        emotion: AvatarState.emotion,
-        intensity: AvatarState.speechIntensity,
-      });
-      hbl.apply(outputs);
+    particleMaterial.uniforms.uTalk.value = AvatarState.talkLevel;
+
+    particleMaterial.uniforms.uRestOpen.value = 0.03;
+
+    particleMaterial.uniforms.uDebugHeadWeight.value = DebugView.headWeight ? 1.0 : 0.0;
+
+    updateChannel(MotionState.head, MotionConfig.head, elapsed, delta);
+    updateChannel(MotionState.body, MotionConfig.body, elapsed, delta);
+
+    const microYaw =
+      (Math.sin(elapsed * 2.1 + MotionState.seed) * MotionConfig.micro.yaw) +
+      (Math.sin(elapsed * 3.7 + MotionState.seed * 0.3) * MotionConfig.micro.yaw * 0.45);
+
+    const microPitch =
+      (Math.sin(elapsed * 1.8 + MotionState.seed * 0.7) * MotionConfig.micro.pitch) +
+      (Math.sin(elapsed * 3.2 + MotionState.seed * 0.2) * MotionConfig.micro.pitch * 0.45);
+
+    const microRoll =
+      (Math.sin(elapsed * 1.5 + MotionState.seed * 1.3) * MotionConfig.micro.roll) +
+      (Math.sin(elapsed * 2.9 + MotionState.seed * 0.4) * MotionConfig.micro.roll * 0.45);
+
+    const nodPitch = updateNod(elapsed, delta);
+
+    const head = MotionState.head.current;
+    particleMaterial.uniforms.uHeadRot.value.set(
+      head.x + microPitch + nodPitch,
+      head.y + microYaw,
+      head.z + microRoll
+    );
+
+    const body = MotionState.body.current;
+    particleMaterial.uniforms.uBodyRot.value.set(
+      body.x + microPitch * 0.25,
+      body.y + microYaw * 0.25,
+      body.z + microRoll * 0.25
+    );
+
+    let offY = 0.0;
+    if (AvatarState.idleMotionEnabled) {
+      offY = 0.01 * Math.sin(elapsed * 0.9) + 0.005 * Math.sin(elapsed * 0.37);
+    }
+    particleMaterial.uniforms.uBodyOffset.value.set(0.0, offY, 0.0);
+
+    // ✅ (CAMBIO #1) pivotes live SOLO cuando estás en modo editor
+    if (DEBUG_EDIT_ENABLED) {
+      const t = window.NeckTuning;
+      particleMaterial.uniforms.uNeckPivot.value.set(0.0, t.neckPivotY, 0.0);
+      particleMaterial.uniforms.uBodyPivot.value.set(0.0, t.bodyPivotY, 0.0);
     }
   }
 
@@ -1948,7 +1408,7 @@ function animate() {
   controls.update();
   renderer.render(scene, camera);
 
-  if (DebugEditor && DebugEditor.visible) drawDebugEditorOverlay();
+  if (NeckEditor && NeckEditor.visible) drawNeckEditorOverlay();
 }
 
 animate();
@@ -2114,12 +1574,8 @@ function updateInputOrb() {
       sum += v * v;
     }
     const rms = Math.sqrt(sum / waveDataArray.length);
-    const tuning = window.BehaviorTuning;
-    const rmsNorm = clamp01((rms - tuning.rmsFloor) * tuning.rmsGain);
-    AvatarState.micRmsNorm = rmsNorm;
+    const rmsNorm = Math.min(1, rms * 6);
     level = Math.max(rmsNorm, idle);
-  } else {
-    AvatarState.micRmsNorm = 0;
   }
 
   orbLevel += (level - orbLevel) * 0.18;
@@ -2437,32 +1893,20 @@ if (URL_PARAMS.get('debugTalk') === '1') {
 }
 
 
-function setDebugEditorVisible(v) {
-  if (!DebugEditor.enabled) return;
-  if (!DebugEditor.overlay) initDebugEditorOverlay();
-  DebugEditor.visible = !!v;
-  DebugEditor.overlay.style.display = DebugEditor.visible ? 'block' : 'none';
-  if (DebugEditor.infoEl) DebugEditor.infoEl.style.display = DebugEditor.visible ? 'block' : 'none';
-  DebugEditor.overlay.style.pointerEvents = DebugEditor.visible ? 'auto' : 'none';
+function setNeckEditorVisible(v) {
+  if (!NeckEditor.enabled) return;
+  if (!NeckEditor.overlay) initNeckEditorOverlay();
+  NeckEditor.visible = !!v;
+  NeckEditor.overlay.style.display = NeckEditor.visible ? 'block' : 'none';
+  if (NeckEditor.infoEl) NeckEditor.infoEl.style.display = NeckEditor.visible ? 'block' : 'none';
+  NeckEditor.overlay.style.pointerEvents = NeckEditor.visible ? 'auto' : 'none';
 }
 
-function initDebugEditorOverlay() {
-  if (!DebugEditor.enabled || DebugEditor.overlay) return;
-
-  DebugEditor.regionGroup = 'all';
-  DebugEditor.defaults = {
-    MaskTuning: JSON.parse(JSON.stringify(window.MaskTuning)),
-    EyeTuning: JSON.parse(JSON.stringify(window.EyeTuning)),
-    IrisTuning: JSON.parse(JSON.stringify(window.IrisTuning)),
-    LidTuning: JSON.parse(JSON.stringify(window.LidTuning)),
-    BrowTuning: JSON.parse(JSON.stringify(window.BrowTuning)),
-    MouthTuning: JSON.parse(JSON.stringify(window.MouthTuning)),
-    JawTuning: JSON.parse(JSON.stringify(window.JawTuning)),
-    PivotTuning: JSON.parse(JSON.stringify(window.PivotTuning)),
-  };
+function initNeckEditorOverlay() {
+  if (!NeckEditor.enabled || NeckEditor.overlay) return;
 
   const overlay = document.createElement('canvas');
-  overlay.id = 'debug-editor-overlay';
+  overlay.id = 'neck-editor-overlay';
   Object.assign(overlay.style, {
     position: 'fixed',
     top: '0px',
@@ -2474,8 +1918,8 @@ function initDebugEditorOverlay() {
   });
 
   document.body.appendChild(overlay);
-  DebugEditor.overlay = overlay;
-  DebugEditor.ctx = overlay.getContext('2d');
+  NeckEditor.overlay = overlay;
+  NeckEditor.ctx = overlay.getContext('2d');
 
   const info = document.createElement('div');
   Object.assign(info.style, {
@@ -2490,42 +1934,42 @@ function initDebugEditorOverlay() {
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
     fontSize: '12px',
     lineHeight: '1.35',
-    maxWidth: '520px',
+    maxWidth: '420px',
     userSelect: 'none',
   });
   info.innerHTML = `
-    <div style="font-weight:700; margin-bottom:6px;">HBL Debug Editor</div>
+    <div style="font-weight:700; margin-bottom:6px;">Neck + Mouth Editor</div>
     <div>Arrastra handles. Tecla <b>E</b> ocultar/mostrar.</div>
     <div style="margin-top:6px; opacity:.9">
-      <div><b>1</b> Eye <b>2</b> Iris <b>3</b> Lid <b>4</b> Brow <b>5</b> Mouth <b>6</b> Jaw <b>7</b> Pivot <b>8</b> Seam <b>0</b> All</div>
-      <div><b>C</b> copy JSON · <b>R</b> reset group · <b>M</b> debugRegions strict/blend/off</div>
+      <div><span style="color:#ff6b6b">■</span> Neck: <b>center</b>, <b>top</b>, <b>bottom</b>, <b>left</b>, <b>right</b>, <b>curve</b>, <b>neckPivot</b>, <b>bodyPivot</b></div>
+      <div style="margin-top:4px;"><span style="color:#67e8f9">■</span> Mouth: <b>mouth_center</b>, <b>mouth_left</b>, <b>mouth_right</b>, <b>mouth_top</b>, <b>mouth_bottom</b>, <b>mouth_curve</b></div>
     </div>
-    <div style="margin-top:6px; opacity:.85">Handles: center, rx/ry, rz (drag vertical), cz (centerZ).</div>
+    <div style="margin-top:8px; opacity:.85">Cada cambio imprime JSON en consola (neck y/o mouth).</div>
   `;
   document.body.appendChild(info);
-  DebugEditor.infoEl = info;
+  NeckEditor.infoEl = info;
 
-  overlay.addEventListener('mousemove', onDebugEditorMove);
-  overlay.addEventListener('mousedown', onDebugEditorDown);
-  window.addEventListener('mouseup', onDebugEditorUp);
+  overlay.addEventListener('mousemove', onNeckEditorMove);
+  overlay.addEventListener('mousedown', onNeckEditorDown);
+  window.addEventListener('mouseup', onNeckEditorUp);
 
-  overlay.addEventListener('touchstart', onDebugEditorTouchStart, { passive: false });
-  overlay.addEventListener('touchmove', onDebugEditorTouchMove, { passive: false });
-  overlay.addEventListener('touchend', onDebugEditorTouchEnd, { passive: false });
+  overlay.addEventListener('touchstart', onNeckEditorTouchStart, { passive: false });
+  overlay.addEventListener('touchmove', onNeckEditorTouchMove, { passive: false });
+  overlay.addEventListener('touchend', onNeckEditorTouchEnd, { passive: false });
 
-  resizeDebugEditorOverlay();
-  setDebugEditorVisible(true);
+  resizeNeckEditorOverlay();
+  setNeckEditorVisible(true);
 }
 
-function resizeDebugEditorOverlay() {
-  if (!DebugEditor.overlay) return;
+function resizeNeckEditorOverlay() {
+  if (!NeckEditor.overlay) return;
   const dpr = Math.max(1, window.devicePixelRatio || 1);
-  DebugEditor.dpr = dpr;
-  DebugEditor.overlay.width = Math.floor(window.innerWidth * dpr);
-  DebugEditor.overlay.height = Math.floor(window.innerHeight * dpr);
-  DebugEditor.overlay.style.width = '100vw';
-  DebugEditor.overlay.style.height = '100vh';
-  const ctx = DebugEditor.ctx;
+  NeckEditor.dpr = dpr;
+  NeckEditor.overlay.width = Math.floor(window.innerWidth * dpr);
+  NeckEditor.overlay.height = Math.floor(window.innerHeight * dpr);
+  NeckEditor.overlay.style.width = '100vw';
+  NeckEditor.overlay.style.height = '100vh';
+  const ctx = NeckEditor.ctx;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
@@ -2546,290 +1990,236 @@ function screenProject(x, y, z = 0) {
 
 function rayToPlane(clientX, clientY) {
   const ndc = getMouseNDC(clientX, clientY);
-  DebugEditor.raycaster.setFromCamera(ndc, camera);
+  NeckEditor.raycaster.setFromCamera(ndc, camera);
   const out = new THREE.Vector3();
-  const hit = DebugEditor.raycaster.ray.intersectPlane(DebugEditor.plane, out);
+  const hit = NeckEditor.raycaster.ray.intersectPlane(NeckEditor.plane, out);
   return hit ? out.clone() : null;
 }
 
-function copyTuningJson() {
-  const payload = {
-    MaskTuning: window.MaskTuning,
-    EyeTuning: window.EyeTuning,
-    IrisTuning: window.IrisTuning,
-    LidTuning: window.LidTuning,
-    BrowTuning: window.BrowTuning,
-    MouthTuning: window.MouthTuning,
-    JawTuning: window.JawTuning,
-    PivotTuning: window.PivotTuning,
-    BehaviorTuning: window.BehaviorTuning,
-  };
-  const text = JSON.stringify(payload, null, 2);
-  if (navigator.clipboard?.writeText) {
-    navigator.clipboard.writeText(text).then(() => {
-      console.info('[debug-editor] JSON copiado al portapapeles.');
-    }).catch(() => {
-      console.info('[debug-editor] Copia manual:\n', text);
-    });
-  } else {
-    console.info('[debug-editor] Copia manual:\n', text);
-  }
-}
-
-function resetTuningGroup(group) {
-  const d = DebugEditor.defaults;
-  if (!d) return;
-  const restore = (key) => { window[key] = JSON.parse(JSON.stringify(d[key])); };
-  if (group === 'eye') restore('EyeTuning');
-  if (group === 'iris') restore('IrisTuning');
-  if (group === 'lid') restore('LidTuning');
-  if (group === 'brow') restore('BrowTuning');
-  if (group === 'mouth') restore('MouthTuning');
-  if (group === 'jaw') restore('JawTuning');
-  if (group === 'pivot' || group === 'seam') restore('PivotTuning');
-  if (group === 'all') {
-    restore('MaskTuning');
-    restore('EyeTuning');
-    restore('IrisTuning');
-    restore('LidTuning');
-    restore('BrowTuning');
-    restore('MouthTuning');
-    restore('JawTuning');
-    restore('PivotTuning');
-  }
-  scheduleRecomputeMasks(`reset:${group}`);
-}
-
-function buildRegionDefs() {
-  return [
-    { key: 'eyeL', group: 'eye', color: 'rgba(80,180,255,0.95)', tuning: window.EyeTuning, prefix: 'left' },
-    { key: 'eyeR', group: 'eye', color: 'rgba(80,180,255,0.95)', tuning: window.EyeTuning, prefix: 'right' },
-    { key: 'irisL', group: 'iris', color: 'rgba(80,255,170,0.95)', tuning: window.IrisTuning, prefix: 'left' },
-    { key: 'irisR', group: 'iris', color: 'rgba(80,255,170,0.95)', tuning: window.IrisTuning, prefix: 'right' },
-    { key: 'lidL', group: 'lid', color: 'rgba(255,170,80,0.95)', tuning: window.LidTuning, prefix: 'left' },
-    { key: 'lidR', group: 'lid', color: 'rgba(255,170,80,0.95)', tuning: window.LidTuning, prefix: 'right' },
-    { key: 'browL', group: 'brow', color: 'rgba(255,220,80,0.95)', tuning: window.BrowTuning, prefix: 'left' },
-    { key: 'browR', group: 'brow', color: 'rgba(255,220,80,0.95)', tuning: window.BrowTuning, prefix: 'right' },
-    { key: 'mouth', group: 'mouth', color: 'rgba(90,230,230,0.95)', tuning: window.MouthTuning, prefix: null },
-    { key: 'jaw', group: 'jaw', color: 'rgba(180,120,240,0.95)', tuning: window.JawTuning, prefix: null },
-  ];
-}
-
-function getCenter(tuning, prefix) {
-  const pre = prefix ? `${prefix}Center` : 'center';
-  return {
-    x: tuning[`${pre}X`],
-    y: tuning[`${pre}Y`],
-    z: tuning[`${pre}Z`],
-  };
-}
-
-function setCenter(tuning, prefix, val) {
-  const pre = prefix ? `${prefix}Center` : 'center';
-  tuning[`${pre}X`] = val.x;
-  tuning[`${pre}Y`] = val.y;
-  tuning[`${pre}Z`] = val.z;
-}
-
-function getRadius(tuning) {
-  return { rx: tuning.rx, ry: tuning.ry, rz: tuning.rz };
-}
-
-function setRadius(tuning, r) {
-  tuning.rx = Math.max(1e-6, r.rx);
-  tuning.ry = Math.max(1e-6, r.ry);
-  tuning.rz = Math.max(1e-6, r.rz);
-}
-
 function getHandlesModel() {
-  const handles = [];
-  const group = DebugEditor.regionGroup;
+  const t = window.NeckTuning;
+  const midY = (t.topY + t.bottomY) * 0.5;
+  const wAbs = Math.max(1e-6, Math.abs(t.width));
 
-  for (const def of buildRegionDefs()) {
-    if (group !== 'all' && group !== def.group) continue;
-    const c = getCenter(def.tuning, def.prefix);
-    const r = getRadius(def.tuning);
-    handles.push({ key: `${def.key}_center`, color: def.color, type: 'center', def, pos: { x: c.x, y: c.y, z: c.z } });
-    handles.push({ key: `${def.key}_rx`, color: def.color, type: 'rx', def, pos: { x: c.x + r.rx, y: c.y, z: c.z } });
-    handles.push({ key: `${def.key}_ry`, color: def.color, type: 'ry', def, pos: { x: c.x, y: c.y + r.ry, z: c.z } });
-    handles.push({ key: `${def.key}_rz`, color: def.color, type: 'rz', def, pos: { x: c.x, y: c.y - r.ry, z: c.z } });
-    handles.push({ key: `${def.key}_cz`, color: def.color, type: 'cz', def, pos: { x: c.x - r.rx, y: c.y, z: c.z } });
-  }
+  // curve handle: lo ponemos en el borde derecho del top (x = centerX + width)
+  const curveX = t.centerX + wAbs;
+  const curveY = t.topY - t.curve; // coincide con fórmula en el borde (nx=1)
 
-  if (group === 'pivot' || group === 'all') {
-    const p = window.PivotTuning;
-    handles.push({ key: 'headPivot', color: 'rgba(255,80,80,0.95)', type: 'pivot', pos: { x: p.headPivotX, y: p.headPivotY, z: p.headPivotZ } });
-    handles.push({ key: 'jawPivot', color: 'rgba(255,120,120,0.95)', type: 'pivot', pos: { x: p.jawPivotX, y: p.jawPivotY, z: p.jawPivotZ } });
-    handles.push({ key: 'neckPivot', color: 'rgba(255,160,160,0.95)', type: 'pivot', pos: { x: p.neckPivotX, y: p.neckPivotY, z: p.neckPivotZ } });
-  }
+  // Mouth handles
+  const m = window.MouthTuning;
+  const mwAbs = Math.max(1e-6, Math.abs(m.width));
+  const mhAbs = Math.max(1e-6, Math.abs(m.height));
+  const mCurveX = m.centerX + mwAbs;
+  const mCurveY = m.centerY - m.curve; // en el borde (nx=1), centro de la banda
 
-  if (group === 'seam' || group === 'all') {
-    const p = window.PivotTuning;
-    handles.push({ key: 'seamY', color: 'rgba(255,200,200,0.95)', type: 'seam', pos: { x: 0, y: p.seamY, z: 0 } });
-    handles.push({ key: 'seamSoft', color: 'rgba(255,200,200,0.95)', type: 'seamSoft', pos: { x: 0.05, y: p.seamY + p.seamSoftness, z: 0 } });
-    handles.push({ key: 'neckBand', color: 'rgba(255,200,200,0.95)', type: 'neckBand', pos: { x: -0.05, y: p.seamY - p.neckBand, z: 0 } });
-  }
+  return {
+    // Neck
+    center: { x: t.centerX, y: midY },
+    top: { x: t.centerX, y: t.topY },
+    bottom: { x: t.centerX, y: t.bottomY },
+    left: { x: t.centerX - wAbs, y: midY },
+    right: { x: t.centerX + wAbs, y: midY },
+    curve: { x: curveX, y: curveY },
+    neckPivot: { x: t.centerX, y: t.neckPivotY },
+    bodyPivot: { x: t.centerX, y: t.bodyPivotY },
 
-  return handles;
+    // Mouth
+    mouth_center: { x: m.centerX, y: m.centerY },
+    mouth_left: { x: m.centerX - mwAbs, y: m.centerY },
+    mouth_right: { x: m.centerX + mwAbs, y: m.centerY },
+    mouth_top: { x: m.centerX, y: m.centerY + mhAbs },
+    mouth_bottom: { x: m.centerX, y: m.centerY - mhAbs },
+    mouth_curve: { x: mCurveX, y: mCurveY },
+  };
 }
 
 function pickHandle(clientX, clientY) {
   const handles = getHandlesModel();
   let best = null;
   let bestD = Infinity;
-  for (const handle of handles) {
-    const s = screenProject(handle.pos.x, handle.pos.y, handle.pos.z || 0);
+  for (const key of Object.keys(handles)) {
+    const s = screenProject(handles[key].x, handles[key].y, 0);
     const dx = s.x - clientX;
     const dy = s.y - clientY;
     const d = Math.sqrt(dx * dx + dy * dy);
-    if (d < DebugEditor.handlesRadius && d < bestD) {
+    if (d < NeckEditor.handlesRadius && d < bestD) {
       bestD = d;
-      best = handle.key;
+      best = key;
     }
   }
   return best;
 }
 
-function applyDrag(key, worldPoint, startPoint, startSnapshot) {
-  const handles = getHandlesModel();
-  const handle = handles.find((h) => h.key === key);
-  if (!handle) return;
+function applyDrag(key, worldPoint, startPoint, startNeckTuning, startMouthTuning) {
+  const minBand = 1e-4;
 
-  if (handle.type === 'pivot') {
-    const p = window.PivotTuning;
-    if (key === 'headPivot') {
-      p.headPivotX = startSnapshot.PivotTuning.headPivotX + (worldPoint.x - startPoint.x);
-      p.headPivotY = startSnapshot.PivotTuning.headPivotY + (worldPoint.y - startPoint.y);
-    } else if (key === 'jawPivot') {
-      p.jawPivotX = startSnapshot.PivotTuning.jawPivotX + (worldPoint.x - startPoint.x);
-      p.jawPivotY = startSnapshot.PivotTuning.jawPivotY + (worldPoint.y - startPoint.y);
-    } else if (key === 'neckPivot') {
-      p.neckPivotX = startSnapshot.PivotTuning.neckPivotX + (worldPoint.x - startPoint.x);
-      p.neckPivotY = startSnapshot.PivotTuning.neckPivotY + (worldPoint.y - startPoint.y);
+  // ======================
+  // NECK
+  // ======================
+  if (!key.startsWith('mouth_')) {
+    const t = window.NeckTuning;
+
+    if (key === 'center') {
+      const dx = worldPoint.x - startPoint.x;
+      const dy = worldPoint.y - startPoint.y;
+
+      t.centerX = startNeckTuning.centerX + dx;
+      t.topY = startNeckTuning.topY + dy;
+      t.bottomY = startNeckTuning.bottomY + dy;
+      t.neckPivotY = startNeckTuning.neckPivotY + dy;
+      t.bodyPivotY = startNeckTuning.bodyPivotY + dy;
     }
-    scheduleRecomputeMasks(`drag:${key}`);
+
+    if (key === 'top') {
+      t.topY = worldPoint.y;
+      if (t.topY < t.bottomY + minBand) t.topY = t.bottomY + minBand;
+    }
+
+    if (key === 'bottom') {
+      t.bottomY = worldPoint.y;
+      if (t.bottomY > t.topY - minBand) t.bottomY = t.topY - minBand;
+
+      // si quieres que pivotes sigan al bottom por defecto:
+      // (comenta estas dos líneas si NO quieres auto-follow)
+      t.neckPivotY = t.bottomY;
+      t.bodyPivotY = t.bottomY - 0.12;
+    }
+
+    if (key === 'left') {
+      const w = startNeckTuning.centerX - worldPoint.x;
+      t.width = Math.max(1e-6, Math.abs(w));
+    }
+
+    if (key === 'right') {
+      const w = worldPoint.x - startNeckTuning.centerX;
+      t.width = Math.max(1e-6, Math.abs(w));
+    }
+
+    if (key === 'curve') {
+      // curve = topY - y_en_el_borde (nx=1)
+      const newCurve = (t.topY - worldPoint.y);
+      t.curve = newCurve;
+    }
+
+    if (key === 'neckPivot') {
+      t.neckPivotY = worldPoint.y;
+    }
+
+    if (key === 'bodyPivot') {
+      t.bodyPivotY = worldPoint.y;
+    }
+
+    scheduleRecomputeHeadWeights(`drag:${key}`);
     return;
   }
 
-  if (handle.type === 'seam') {
-    const p = window.PivotTuning;
-    p.seamY = startSnapshot.PivotTuning.seamY + (worldPoint.y - startPoint.y);
-    scheduleRecomputeMasks(`drag:${key}`);
-    return;
+  // ======================
+  // MOUTH
+  // ======================
+  const m = window.MouthTuning;
+
+  if (key === 'mouth_center') {
+    const dx = worldPoint.x - startPoint.x;
+    const dy = worldPoint.y - startPoint.y;
+
+    m.centerX = startMouthTuning.centerX + dx;
+    m.centerY = startMouthTuning.centerY + dy;
   }
 
-  if (handle.type === 'seamSoft') {
-    const p = window.PivotTuning;
-    p.seamSoftness = Math.max(1e-4, startSnapshot.PivotTuning.seamSoftness + (worldPoint.y - startPoint.y));
-    scheduleRecomputeMasks(`drag:${key}`);
-    return;
+  if (key === 'mouth_left') {
+    const w = startMouthTuning.centerX - worldPoint.x;
+    m.width = Math.max(1e-6, Math.abs(w));
   }
 
-  if (handle.type === 'neckBand') {
-    const p = window.PivotTuning;
-    p.neckBand = Math.max(1e-4, startSnapshot.PivotTuning.neckBand + (worldPoint.y - startPoint.y));
-    scheduleRecomputeMasks(`drag:${key}`);
-    return;
+  if (key === 'mouth_right') {
+    const w = worldPoint.x - startMouthTuning.centerX;
+    m.width = Math.max(1e-6, Math.abs(w));
   }
 
-  const def = handle.def;
-  const tuning = def.tuning;
-  const prefix = def.prefix;
-  const center = getCenter(tuning, prefix);
-  const radius = getRadius(tuning);
-  const dx = worldPoint.x - startPoint.x;
-  const dy = worldPoint.y - startPoint.y;
-
-  if (handle.type === 'center') {
-    setCenter(tuning, prefix, { x: center.x + dx, y: center.y + dy, z: center.z });
-  } else if (handle.type === 'cz') {
-    setCenter(tuning, prefix, { x: center.x, y: center.y, z: center.z + dy });
-  } else if (handle.type === 'rx') {
-    setRadius(tuning, { rx: radius.rx + dx, ry: radius.ry, rz: radius.rz });
-  } else if (handle.type === 'ry') {
-    setRadius(tuning, { rx: radius.rx, ry: radius.ry + dy, rz: radius.rz });
-  } else if (handle.type === 'rz') {
-    setRadius(tuning, { rx: radius.rx, ry: radius.ry, rz: radius.rz + dy });
+  if (key === 'mouth_top') {
+    const h = worldPoint.y - startMouthTuning.centerY;
+    m.height = Math.max(1e-6, Math.abs(h));
   }
 
-  scheduleRecomputeMasks(`drag:${key}`);
+  if (key === 'mouth_bottom') {
+    const h = startMouthTuning.centerY - worldPoint.y;
+    m.height = Math.max(1e-6, Math.abs(h));
+  }
+
+  if (key === 'mouth_curve') {
+    // en el borde (nx=1): y = centerY - curve  => curve = centerY - y
+    m.curve = (m.centerY - worldPoint.y);
+  }
+
+  scheduleRecomputeMouthWeights(`drag:${key}`);
 }
 
-function onDebugEditorDown(e) {
-  if (!DebugEditor.visible) return;
+function onNeckEditorDown(e) {
+  if (!NeckEditor.visible) return;
   const key = pickHandle(e.clientX, e.clientY);
   if (!key) return;
 
   const p = rayToPlane(e.clientX, e.clientY);
   if (!p) return;
 
-  DebugEditor.dragging = {
+  NeckEditor.dragging = {
     key,
     startPoint: p,
-    startSnapshot: {
-      MaskTuning: { ...window.MaskTuning },
-      EyeTuning: { ...window.EyeTuning },
-      IrisTuning: { ...window.IrisTuning },
-      LidTuning: { ...window.LidTuning },
-      BrowTuning: { ...window.BrowTuning },
-      MouthTuning: { ...window.MouthTuning },
-      JawTuning: { ...window.JawTuning },
-      PivotTuning: { ...window.PivotTuning },
-    },
+    startNeckTuning: { ...window.NeckTuning },
+    startMouthTuning: { ...window.MouthTuning },
   };
 
   controls.enabled = false;
   e.preventDefault();
 }
 
-function onDebugEditorMove(e) {
-  if (!DebugEditor.visible) return;
+function onNeckEditorMove(e) {
+  if (!NeckEditor.visible) return;
 
-  if (!DebugEditor.dragging) {
-    DebugEditor.hoverKey = pickHandle(e.clientX, e.clientY);
+  if (!NeckEditor.dragging) {
+    NeckEditor.hoverKey = pickHandle(e.clientX, e.clientY);
     return;
   }
 
-  const { key, startPoint, startSnapshot } = DebugEditor.dragging;
+  const { key, startPoint, startNeckTuning, startMouthTuning } = NeckEditor.dragging;
   const p = rayToPlane(e.clientX, e.clientY);
   if (!p) return;
 
-  applyDrag(key, p, startPoint, startSnapshot);
+  applyDrag(key, p, startPoint, startNeckTuning, startMouthTuning);
   e.preventDefault();
 }
 
-function onDebugEditorUp() {
-  if (!DebugEditor.dragging) return;
-  DebugEditor.dragging = null;
+function onNeckEditorUp() {
+  if (!NeckEditor.dragging) return;
+  NeckEditor.dragging = null;
   controls.enabled = true;
-  scheduleRecomputeMasks('drag:final', { immediate: true });
 }
 
-function onDebugEditorTouchStart(e) {
-  if (!DebugEditor.visible) return;
+function onNeckEditorTouchStart(e) {
+  if (!NeckEditor.visible) return;
   if (!e.touches?.length) return;
   const t = e.touches[0];
-  onDebugEditorDown({ clientX: t.clientX, clientY: t.clientY, preventDefault: () => {} });
+  onNeckEditorDown({ clientX: t.clientX, clientY: t.clientY, preventDefault: () => {} });
   e.preventDefault();
 }
 
-function onDebugEditorTouchMove(e) {
-  if (!DebugEditor.visible) return;
+function onNeckEditorTouchMove(e) {
+  if (!NeckEditor.visible) return;
   if (!e.touches?.length) return;
   const t = e.touches[0];
-  onDebugEditorMove({ clientX: t.clientX, clientY: t.clientY, preventDefault: () => {} });
+  onNeckEditorMove({ clientX: t.clientX, clientY: t.clientY, preventDefault: () => {} });
   e.preventDefault();
 }
 
-function onDebugEditorTouchEnd(e) {
-  onDebugEditorUp(e);
+function onNeckEditorTouchEnd(e) {
+  onNeckEditorUp(e);
   e.preventDefault();
 }
 
 function drawHandle(ctx, key, color, filled, clientX, clientY) {
-  const r = DebugEditor.handlesRadius;
-  const isHover = DebugEditor.hoverKey === key;
-  const isDrag = DebugEditor.dragging?.key === key;
+  const r = NeckEditor.handlesRadius;
+  const isHover = NeckEditor.hoverKey === key;
+  const isDrag = NeckEditor.dragging?.key === key;
 
   ctx.save();
   ctx.beginPath();
@@ -2847,25 +2237,168 @@ function drawHandle(ctx, key, color, filled, clientX, clientY) {
   ctx.restore();
 }
 
-function drawDebugEditorOverlay() {
-  if (!DebugEditor.enabled || !DebugEditor.visible) return;
-  if (!DebugEditor.overlay) initDebugEditorOverlay();
+function drawNeckEditorOverlay() {
+  if (!NeckEditor.enabled || !NeckEditor.visible) return;
+  if (!NeckEditor.overlay) initNeckEditorOverlay();
 
-  const ctx = DebugEditor.ctx;
+  const ctx = NeckEditor.ctx;
   ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+
+  // =========================
+  // NECK CURVES (rojo)
+  // =========================
+  {
+    const t = window.NeckTuning;
+    const wAbs = Math.max(1e-6, Math.abs(t.width));
+
+    const segments = 64;
+    const x0 = t.centerX - wAbs;
+    const x1 = t.centerX + wAbs;
+
+    const topPts = [];
+    const botPts = [];
+
+    for (let i = 0; i <= segments; i++) {
+      const u = i / segments;
+      const x = x0 + (x1 - x0) * u;
+
+      const dx = x - t.centerX;
+      const nx = dx / wAbs;
+      const nxClamped = Math.max(-1, Math.min(1, nx));
+      const c = t.curve * nxClamped * nxClamped;
+
+      const yTop = t.topY - c;
+      const yBot = t.bottomY - c;
+
+      topPts.push(screenProject(x, yTop, 0));
+      botPts.push(screenProject(x, yBot, 0));
+    }
+
+    ctx.save();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(255,0,0,0.95)';
+
+    // top
+    ctx.beginPath();
+    ctx.moveTo(topPts[0].x, topPts[0].y);
+    for (let i = 1; i < topPts.length; i++) ctx.lineTo(topPts[i].x, topPts[i].y);
+    ctx.stroke();
+
+    // bottom
+    ctx.beginPath();
+    ctx.moveTo(botPts[0].x, botPts[0].y);
+    for (let i = 1; i < botPts.length; i++) ctx.lineTo(botPts[i].x, botPts[i].y);
+    ctx.stroke();
+
+    // bordes verticales (aprox)
+    const leftTop = topPts[0], leftBot = botPts[0];
+    const rightTop = topPts[topPts.length - 1], rightBot = botPts[botPts.length - 1];
+
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(leftTop.x, leftTop.y); ctx.lineTo(leftBot.x, leftBot.y);
+    ctx.moveTo(rightTop.x, rightTop.y); ctx.lineTo(rightBot.x, rightBot.y);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  // =========================
+  // MOUTH REGION (cyan)
+  // =========================
+  {
+    const m = window.MouthTuning;
+    const wAbs = Math.max(1e-6, Math.abs(m.width));
+    const hAbs = Math.max(1e-6, Math.abs(m.height));
+
+    const segments = 64;
+    const x0 = m.centerX - wAbs;
+    const x1 = m.centerX + wAbs;
+
+    const midPts = [];
+    const topPts = [];
+    const botPts = [];
+
+    for (let i = 0; i <= segments; i++) {
+      const u = i / segments;
+      const x = x0 + (x1 - x0) * u;
+
+      const dx = x - m.centerX;
+      const nx = dx / wAbs;
+      const nxClamped = Math.max(-1, Math.min(1, nx));
+      const c = m.curve * nxClamped * nxClamped;
+
+      const yMid = m.centerY - c;
+      const yTop = yMid + hAbs;
+      const yBot = yMid - hAbs;
+
+      midPts.push(screenProject(x, yMid, 0));
+      topPts.push(screenProject(x, yTop, 0));
+      botPts.push(screenProject(x, yBot, 0));
+    }
+
+    ctx.save();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(103,232,249,0.95)';
+
+    // mid (centerline)
+    ctx.beginPath();
+    ctx.moveTo(midPts[0].x, midPts[0].y);
+    for (let i = 1; i < midPts.length; i++) ctx.lineTo(midPts[i].x, midPts[i].y);
+    ctx.stroke();
+
+    // top
+    ctx.beginPath();
+    ctx.moveTo(topPts[0].x, topPts[0].y);
+    for (let i = 1; i < topPts.length; i++) ctx.lineTo(topPts[i].x, topPts[i].y);
+    ctx.stroke();
+
+    // bottom
+    ctx.beginPath();
+    ctx.moveTo(botPts[0].x, botPts[0].y);
+    for (let i = 1; i < botPts.length; i++) ctx.lineTo(botPts[i].x, botPts[i].y);
+    ctx.stroke();
+
+    // bordes verticales
+    const leftTop = topPts[0], leftBot = botPts[0];
+    const rightTop = topPts[topPts.length - 1], rightBot = botPts[botPts.length - 1];
+
+    ctx.lineWidth = 1.25;
+    ctx.beginPath();
+    ctx.moveTo(leftTop.x, leftTop.y); ctx.lineTo(leftBot.x, leftBot.y);
+    ctx.moveTo(rightTop.x, rightTop.y); ctx.lineTo(rightBot.x, rightBot.y);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  // =========================
+  // HANDLES (neck + mouth)
+  // =========================
   const handles = getHandlesModel();
-  for (const handle of handles) {
-    const s = screenProject(handle.pos.x, handle.pos.y, handle.pos.z || 0);
-    drawHandle(ctx, handle.key, handle.color, true, s.x, s.y);
+  for (const key of Object.keys(handles)) {
+    const s = screenProject(handles[key].x, handles[key].y, 0);
+
+    const isMouth = key.startsWith('mouth_');
+    const isPivot = (key === 'neckPivot' || key === 'bodyPivot');
+    const isCurve = (key === 'curve' || key === 'mouth_curve');
+
+    const color = isMouth
+      ? 'rgba(103,232,249,0.95)'
+      : (isPivot ? 'rgba(255,0,0,0.75)' : (isCurve ? 'rgba(255,0,0,0.95)' : 'rgba(255,0,0,0.95)'));
+
+    drawHandle(ctx, key, color, true, s.x, s.y);
+
+    // labels chiquitas
     ctx.save();
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
     ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
-    ctx.fillText(handle.key, s.x + 12, s.y - 10);
+    ctx.fillText(key, s.x + 12, s.y - 10);
     ctx.restore();
   }
 }
 
 // init overlay si aplica
 if (DEBUG_EDIT_ENABLED) {
-  initDebugEditorOverlay();
+  initNeckEditorOverlay();
 }
