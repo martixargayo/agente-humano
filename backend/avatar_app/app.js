@@ -222,6 +222,7 @@ const ambient = new THREE.AmbientLight(0xffffff, 0.2);
 scene.add(ambient);
 
 const clock = new THREE.Clock();
+let shaderTime = 0;
 
 // =========================
 // Tuning HBL (AJUSTABLE por editor)
@@ -436,35 +437,87 @@ function smoothCapped(dt, current, target, halfLife, maxRate, minVal, maxVal) {
   return Math.max(minVal, Math.min(maxVal, smoothed));
 }
 
-// =========================
-// Recalcular máscaras (API pública)
-// =========================
-let _maskRecomputePending = false;
-
-function logTuningSnapshot(reason = 'update') {
-  console.info(`[hbl] ${reason}`);
-  console.log('[hbl] Pega esto en app.js:');
-  console.log('window.MaskTuning = ' + JSON.stringify(window.MaskTuning, null, 2) + ';');
-  console.log('window.EyeTuning = ' + JSON.stringify(window.EyeTuning, null, 2) + ';');
-  console.log('window.IrisTuning = ' + JSON.stringify(window.IrisTuning, null, 2) + ';');
-  console.log('window.LidTuning = ' + JSON.stringify(window.LidTuning, null, 2) + ';');
-  console.log('window.BrowTuning = ' + JSON.stringify(window.BrowTuning, null, 2) + ';');
-  console.log('window.MouthTuning = ' + JSON.stringify(window.MouthTuning, null, 2) + ';');
-  console.log('window.JawTuning = ' + JSON.stringify(window.JawTuning, null, 2) + ';');
-  console.log('window.PivotTuning = ' + JSON.stringify(window.PivotTuning, null, 2) + ';');
+function ellipsoidWeightXYZ(x, y, z, cx, cy, cz, invRx, invRy, invRz, edge, gamma) {
+  const dx = (x - cx) * invRx;
+  const dy = (y - cy) * invRy;
+  const dz = (z - cz) * invRz;
+  const d = dx * dx + dy * dy + dz * dz;
+  const base = 1 - (d < 0 ? 0 : d > 1 ? 1 : d);
+  const t = (base - 1) / ((1 - edge) - 1);
+  const tt = t < 0 ? 0 : t > 1 ? 1 : t;
+  const sm = tt * tt * (3 - 2 * tt);
+  return Math.pow(sm, gamma);
 }
 
-function ellipsoidWeight(p, c, r, edge, gamma) {
-  const rx = Math.max(r.rx, 1e-6);
-  const ry = Math.max(r.ry, 1e-6);
-  const rz = Math.max(r.rz, 1e-6);
-  const dx = (p.x - c.x) / rx;
-  const dy = (p.y - c.y) / ry;
-  const dz = (p.z - c.z) / rz;
-  const d = dx * dx + dy * dy + dz * dz;
-  const base = 1 - Math.min(Math.max(d, 0), 1);
-  const sm = smoothstepJS(1, 1 - edge, base);
-  return Math.pow(sm, gamma);
+function buildTuningSnapshot() {
+  const mask = window.MaskTuning;
+  const pivot = window.PivotTuning;
+  const eye = window.EyeTuning;
+  const iris = window.IrisTuning;
+  const lid = window.LidTuning;
+  const brow = window.BrowTuning;
+  const mouth = window.MouthTuning;
+  const jaw = window.JawTuning;
+
+  return {
+    edge: mask.edge,
+    gamma: mask.gamma,
+    seamY: pivot.seamY,
+    seamSoft: pivot.seamSoftness,
+    neckBand: pivot.neckBand,
+    mouthCenterX: mouth.centerX,
+    eyeLCx: eye.leftCenterX,
+    eyeLCy: eye.leftCenterY,
+    eyeLCz: eye.leftCenterZ,
+    eyeRCx: eye.rightCenterX,
+    eyeRCy: eye.rightCenterY,
+    eyeRCz: eye.rightCenterZ,
+    eyeInvRx: 1 / Math.max(eye.rx, 1e-6),
+    eyeInvRy: 1 / Math.max(eye.ry, 1e-6),
+    eyeInvRz: 1 / Math.max(eye.rz, 1e-6),
+    irisLCx: iris.leftCenterX,
+    irisLCy: iris.leftCenterY,
+    irisLCz: iris.leftCenterZ,
+    irisRCx: iris.rightCenterX,
+    irisRCy: iris.rightCenterY,
+    irisRCz: iris.rightCenterZ,
+    irisInvRx: 1 / Math.max(iris.rx, 1e-6),
+    irisInvRy: 1 / Math.max(iris.ry, 1e-6),
+    irisInvRz: 1 / Math.max(iris.rz, 1e-6),
+    pupilInvRx: 1 / Math.max(iris.pupilRx, 1e-6),
+    pupilInvRy: 1 / Math.max(iris.pupilRy, 1e-6),
+    pupilInvRz: 1 / Math.max(iris.pupilRz, 1e-6),
+    lidLCx: lid.leftCenterX,
+    lidLCy: lid.leftCenterY,
+    lidLCz: lid.leftCenterZ,
+    lidRCx: lid.rightCenterX,
+    lidRCy: lid.rightCenterY,
+    lidRCz: lid.rightCenterZ,
+    lidInvRx: 1 / Math.max(lid.rx, 1e-6),
+    lidInvRy: 1 / Math.max(lid.ry, 1e-6),
+    lidInvRz: 1 / Math.max(lid.rz, 1e-6),
+    browLCx: brow.leftCenterX,
+    browLCy: brow.leftCenterY,
+    browLCz: brow.leftCenterZ,
+    browRCx: brow.rightCenterX,
+    browRCy: brow.rightCenterY,
+    browRCz: brow.rightCenterZ,
+    browInvRx: 1 / Math.max(brow.rx, 1e-6),
+    browInvRy: 1 / Math.max(brow.ry, 1e-6),
+    browInvRz: 1 / Math.max(brow.rz, 1e-6),
+    jawCx: jaw.centerX,
+    jawCy: jaw.centerY,
+    jawCz: jaw.centerZ,
+    jawInvRx: 1 / Math.max(jaw.rx, 1e-6),
+    jawInvRy: 1 / Math.max(jaw.ry, 1e-6),
+    jawInvRz: 1 / Math.max(jaw.rz, 1e-6),
+    mouthCx: mouth.centerX,
+    mouthCy: mouth.centerY,
+    mouthCz: mouth.centerZ,
+    mouthInvRx: 1 / Math.max(mouth.rx, 1e-6),
+    mouthInvRy: 1 / Math.max(mouth.ry, 1e-6),
+    mouthInvRz: 1 / Math.max(mouth.rz, 1e-6),
+  };
 }
 
 function seamMaskY(y, seamY, softness) {
@@ -479,6 +532,99 @@ function neckBlendMaskY(y, seamY, band) {
   return Math.min(a, b);
 }
 
+function fillWeightsFromPositions(pos, count, out, snap) {
+  const {
+    edge,
+    gamma,
+    seamY,
+    seamSoft,
+    neckBand,
+    mouthCenterX,
+    eyeLCx, eyeLCy, eyeLCz,
+    eyeRCx, eyeRCy, eyeRCz,
+    eyeInvRx, eyeInvRy, eyeInvRz,
+    irisLCx, irisLCy, irisLCz,
+    irisRCx, irisRCy, irisRCz,
+    irisInvRx, irisInvRy, irisInvRz,
+    pupilInvRx, pupilInvRy, pupilInvRz,
+    lidLCx, lidLCy, lidLCz,
+    lidRCx, lidRCy, lidRCz,
+    lidInvRx, lidInvRy, lidInvRz,
+    browLCx, browLCy, browLCz,
+    browRCx, browRCy, browRCz,
+    browInvRx, browInvRy, browInvRz,
+    jawCx, jawCy, jawCz,
+    jawInvRx, jawInvRy, jawInvRz,
+    mouthCx, mouthCy, mouthCz,
+    mouthInvRx, mouthInvRy, mouthInvRz,
+  } = snap;
+
+  const mouthSideK = 25.0;
+
+  for (let i = 0; i < count; i++) {
+    const x = pos[i * 3 + 0];
+    const y = pos[i * 3 + 1];
+    const z = pos[i * 3 + 2];
+
+    const headW = seamMaskY(y, seamY, seamSoft);
+    const torsoW = 1.0 - headW;
+    const neckW = neckBlendMaskY(y, seamY, neckBand);
+
+    out.headArr[i] = headW;
+    out.torsoArr[i] = torsoW;
+    out.neckArr[i] = neckW;
+
+    const eyeLW = ellipsoidWeightXYZ(x, y, z, eyeLCx, eyeLCy, eyeLCz, eyeInvRx, eyeInvRy, eyeInvRz, edge, gamma) * headW;
+    const eyeRW = ellipsoidWeightXYZ(x, y, z, eyeRCx, eyeRCy, eyeRCz, eyeInvRx, eyeInvRy, eyeInvRz, edge, gamma) * headW;
+    const irisLW = ellipsoidWeightXYZ(x, y, z, irisLCx, irisLCy, irisLCz, irisInvRx, irisInvRy, irisInvRz, edge, gamma) * eyeLW;
+    const irisRW = ellipsoidWeightXYZ(x, y, z, irisRCx, irisRCy, irisRCz, irisInvRx, irisInvRy, irisInvRz, edge, gamma) * eyeRW;
+    const pupilLW = ellipsoidWeightXYZ(x, y, z, irisLCx, irisLCy, irisLCz, pupilInvRx, pupilInvRy, pupilInvRz, edge, gamma) * irisLW;
+    const pupilRW = ellipsoidWeightXYZ(x, y, z, irisRCx, irisRCy, irisRCz, pupilInvRx, pupilInvRy, pupilInvRz, edge, gamma) * irisRW;
+    const lidLW = ellipsoidWeightXYZ(x, y, z, lidLCx, lidLCy, lidLCz, lidInvRx, lidInvRy, lidInvRz, edge, gamma) * eyeLW * (1 - irisLW);
+    const lidRW = ellipsoidWeightXYZ(x, y, z, lidRCx, lidRCy, lidRCz, lidInvRx, lidInvRy, lidInvRz, edge, gamma) * eyeRW * (1 - irisRW);
+    const browLW = ellipsoidWeightXYZ(x, y, z, browLCx, browLCy, browLCz, browInvRx, browInvRy, browInvRz, edge, gamma) * headW * (1 - lidLW) * (1 - irisLW);
+    const browRW = ellipsoidWeightXYZ(x, y, z, browRCx, browRCy, browRCz, browInvRx, browInvRy, browInvRz, edge, gamma) * headW * (1 - lidRW) * (1 - irisRW);
+    const jawW = ellipsoidWeightXYZ(x, y, z, jawCx, jawCy, jawCz, jawInvRx, jawInvRy, jawInvRz, edge, gamma) * headW;
+    const mouthW = ellipsoidWeightXYZ(x, y, z, mouthCx, mouthCy, mouthCz, mouthInvRx, mouthInvRy, mouthInvRz, edge, gamma) * jawW;
+
+    out.eyeLArr[i] = eyeLW;
+    out.eyeRArr[i] = eyeRW;
+    out.irisLArr[i] = irisLW;
+    out.irisRArr[i] = irisRW;
+    out.pupilLArr[i] = pupilLW;
+    out.pupilRArr[i] = pupilRW;
+    out.lidLArr[i] = lidLW;
+    out.lidRArr[i] = lidRW;
+    out.browLArr[i] = browLW;
+    out.browRArr[i] = browRW;
+    out.jawArr[i] = jawW;
+    out.mouthArr[i] = mouthW;
+
+    const d = x - mouthCenterX;
+    out.mouthSideArr[i] = Math.tanh(d * mouthSideK);
+  }
+}
+
+// =========================
+// Recalcular máscaras (API pública)
+// =========================
+let _maskRecomputePending = false;
+let _lastRecomputeMs = 0;
+let _pendingReason = null;
+
+function logTuningSnapshot(reason = 'update') {
+  console.info(`[hbl] ${reason}`);
+  console.log('[hbl] Pega esto en app.js:');
+  console.log('window.MaskTuning = ' + JSON.stringify(window.MaskTuning, null, 2) + ';');
+  console.log('window.EyeTuning = ' + JSON.stringify(window.EyeTuning, null, 2) + ';');
+  console.log('window.IrisTuning = ' + JSON.stringify(window.IrisTuning, null, 2) + ';');
+  console.log('window.LidTuning = ' + JSON.stringify(window.LidTuning, null, 2) + ';');
+  console.log('window.BrowTuning = ' + JSON.stringify(window.BrowTuning, null, 2) + ';');
+  console.log('window.MouthTuning = ' + JSON.stringify(window.MouthTuning, null, 2) + ';');
+  console.log('window.JawTuning = ' + JSON.stringify(window.JawTuning, null, 2) + ';');
+  console.log('window.PivotTuning = ' + JSON.stringify(window.PivotTuning, null, 2) + ';');
+}
+
 function recomputeMasksNow() {
   if (!basePosAttrRef || !headWeightAttrRef) {
     console.warn('[hbl] Atributos no listos (espera a que cargue el GLB).');
@@ -486,157 +632,28 @@ function recomputeMasksNow() {
   }
 
   const t0 = performance.now();
-  const mask = window.MaskTuning;
-  const pivot = window.PivotTuning;
-
   const pos = basePosAttrRef.array;
   const count = basePosAttrRef.count;
+  const snap = buildTuningSnapshot();
 
-  const headArr = headWeightAttrRef.array;
-  const torsoArr = torsoWeightAttrRef.array;
-  const neckArr = neckBlendAttrRef.array;
-  const eyeLArr = eyeLAttrRef.array;
-  const eyeRArr = eyeRAttrRef.array;
-  const irisLArr = irisLAttrRef.array;
-  const irisRArr = irisRAttrRef.array;
-  const pupilLArr = pupilLAttrRef.array;
-  const pupilRArr = pupilRAttrRef.array;
-  const lidLArr = lidLAttrRef.array;
-  const lidRArr = lidRAttrRef.array;
-  const browLArr = browLAttrRef.array;
-  const browRArr = browRAttrRef.array;
-  const jawArr = jawAttrRef.array;
-  const mouthArr = mouthAttrRef.array;
-  const mouthSideArr = mouthSideAttrRef.array;
-
-  const eyeL = window.EyeTuning;
-  const eyeR = window.EyeTuning;
-  const irisT = window.IrisTuning;
-  const lidT = window.LidTuning;
-  const browT = window.BrowTuning;
-  const mouthT = window.MouthTuning;
-  const jawT = window.JawTuning;
-
-  const p = new THREE.Vector3();
-
-  for (let i = 0; i < count; i++) {
-    p.set(pos[i * 3 + 0], pos[i * 3 + 1], pos[i * 3 + 2]);
-
-    const headW = seamMaskY(p.y, pivot.seamY, pivot.seamSoftness);
-    const torsoW = 1.0 - headW;
-    const neckW = neckBlendMaskY(p.y, pivot.seamY, pivot.neckBand);
-
-    headArr[i] = headW;
-    torsoArr[i] = torsoW;
-    neckArr[i] = neckW;
-
-    const eyeLW = ellipsoidWeight(
-      p,
-      { x: eyeL.leftCenterX, y: eyeL.leftCenterY, z: eyeL.leftCenterZ },
-      { rx: eyeL.rx, ry: eyeL.ry, rz: eyeL.rz },
-      mask.edge,
-      mask.gamma,
-    ) * headW;
-    const eyeRW = ellipsoidWeight(
-      p,
-      { x: eyeR.rightCenterX, y: eyeR.rightCenterY, z: eyeR.rightCenterZ },
-      { rx: eyeR.rx, ry: eyeR.ry, rz: eyeR.rz },
-      mask.edge,
-      mask.gamma,
-    ) * headW;
-
-    const irisLW = ellipsoidWeight(
-      p,
-      { x: irisT.leftCenterX, y: irisT.leftCenterY, z: irisT.leftCenterZ },
-      { rx: irisT.rx, ry: irisT.ry, rz: irisT.rz },
-      mask.edge,
-      mask.gamma,
-    ) * eyeLW;
-    const irisRW = ellipsoidWeight(
-      p,
-      { x: irisT.rightCenterX, y: irisT.rightCenterY, z: irisT.rightCenterZ },
-      { rx: irisT.rx, ry: irisT.ry, rz: irisT.rz },
-      mask.edge,
-      mask.gamma,
-    ) * eyeRW;
-
-    const pupilLW = ellipsoidWeight(
-      p,
-      { x: irisT.leftCenterX, y: irisT.leftCenterY, z: irisT.leftCenterZ },
-      { rx: irisT.pupilRx, ry: irisT.pupilRy, rz: irisT.pupilRz },
-      mask.edge,
-      mask.gamma,
-    ) * irisLW;
-    const pupilRW = ellipsoidWeight(
-      p,
-      { x: irisT.rightCenterX, y: irisT.rightCenterY, z: irisT.rightCenterZ },
-      { rx: irisT.pupilRx, ry: irisT.pupilRy, rz: irisT.pupilRz },
-      mask.edge,
-      mask.gamma,
-    ) * irisRW;
-
-    const lidLW = ellipsoidWeight(
-      p,
-      { x: lidT.leftCenterX, y: lidT.leftCenterY, z: lidT.leftCenterZ },
-      { rx: lidT.rx, ry: lidT.ry, rz: lidT.rz },
-      mask.edge,
-      mask.gamma,
-    ) * eyeLW * (1 - irisLW);
-    const lidRW = ellipsoidWeight(
-      p,
-      { x: lidT.rightCenterX, y: lidT.rightCenterY, z: lidT.rightCenterZ },
-      { rx: lidT.rx, ry: lidT.ry, rz: lidT.rz },
-      mask.edge,
-      mask.gamma,
-    ) * eyeRW * (1 - irisRW);
-
-    const browLW = ellipsoidWeight(
-      p,
-      { x: browT.leftCenterX, y: browT.leftCenterY, z: browT.leftCenterZ },
-      { rx: browT.rx, ry: browT.ry, rz: browT.rz },
-      mask.edge,
-      mask.gamma,
-    ) * headW * (1 - lidLW) * (1 - irisLW);
-    const browRW = ellipsoidWeight(
-      p,
-      { x: browT.rightCenterX, y: browT.rightCenterY, z: browT.rightCenterZ },
-      { rx: browT.rx, ry: browT.ry, rz: browT.rz },
-      mask.edge,
-      mask.gamma,
-    ) * headW * (1 - lidRW) * (1 - irisRW);
-
-    const jawW = ellipsoidWeight(
-      p,
-      { x: jawT.centerX, y: jawT.centerY, z: jawT.centerZ },
-      { rx: jawT.rx, ry: jawT.ry, rz: jawT.rz },
-      mask.edge,
-      mask.gamma,
-    ) * headW;
-
-    const mouthW = ellipsoidWeight(
-      p,
-      { x: mouthT.centerX, y: mouthT.centerY, z: mouthT.centerZ },
-      { rx: mouthT.rx, ry: mouthT.ry, rz: mouthT.rz },
-      mask.edge,
-      mask.gamma,
-    ) * jawW;
-
-    eyeLArr[i] = eyeLW;
-    eyeRArr[i] = eyeRW;
-    irisLArr[i] = irisLW;
-    irisRArr[i] = irisRW;
-    pupilLArr[i] = pupilLW;
-    pupilRArr[i] = pupilRW;
-    lidLArr[i] = lidLW;
-    lidRArr[i] = lidRW;
-    browLArr[i] = browLW;
-    browRArr[i] = browRW;
-    jawArr[i] = jawW;
-    mouthArr[i] = mouthW;
-
-    const side = Math.sign(p.x - mouthT.centerX) || 0;
-    mouthSideArr[i] = side;
-  }
+  fillWeightsFromPositions(pos, count, {
+    headArr: headWeightAttrRef.array,
+    torsoArr: torsoWeightAttrRef.array,
+    neckArr: neckBlendAttrRef.array,
+    eyeLArr: eyeLAttrRef.array,
+    eyeRArr: eyeRAttrRef.array,
+    irisLArr: irisLAttrRef.array,
+    irisRArr: irisRAttrRef.array,
+    pupilLArr: pupilLAttrRef.array,
+    pupilRArr: pupilRAttrRef.array,
+    lidLArr: lidLAttrRef.array,
+    lidRArr: lidRAttrRef.array,
+    browLArr: browLAttrRef.array,
+    browRArr: browRAttrRef.array,
+    jawArr: jawAttrRef.array,
+    mouthArr: mouthAttrRef.array,
+    mouthSideArr: mouthSideAttrRef.array,
+  }, snap);
 
   headWeightAttrRef.needsUpdate = true;
   torsoWeightAttrRef.needsUpdate = true;
@@ -659,13 +676,29 @@ function recomputeMasksNow() {
   console.info('[hbl] Máscaras recalculadas', { ms: dt.toFixed(2) });
 }
 
-function scheduleRecomputeMasks(reason = 'change') {
+function scheduleRecomputeMasks(reason = 'change', { immediate = false } = {}) {
+  _pendingReason = reason;
+  if (immediate) {
+    _maskRecomputePending = false;
+    _lastRecomputeMs = performance.now();
+    recomputeMasksNow();
+    logTuningSnapshot(reason);
+    return;
+  }
+
   if (_maskRecomputePending) return;
   _maskRecomputePending = true;
   requestAnimationFrame(() => {
     _maskRecomputePending = false;
+    const now = performance.now();
+    const minInterval = DebugEditor?.dragging ? 70 : 0;
+    if (now - _lastRecomputeMs < minInterval) {
+      scheduleRecomputeMasks(_pendingReason);
+      return;
+    }
+    _lastRecomputeMs = now;
     recomputeMasksNow();
-    logTuningSnapshot(reason);
+    logTuningSnapshot(_pendingReason);
   });
 }
 
@@ -995,81 +1028,43 @@ function generateFaceParticlesFromVertices(srcGeometry) {
     const cy = Math.floor((y + 0.4) * 10.0);
     clusterIds[i] = cx + cy * 10.0;
 
-    const mask = window.MaskTuning;
-    const pivot = window.PivotTuning;
-    const eyeT = window.EyeTuning;
-    const irisT = window.IrisTuning;
-    const lidT = window.LidTuning;
-    const browT = window.BrowTuning;
-    const mouthT = window.MouthTuning;
-    const jawT = window.JawTuning;
-
-    const headW = seamMaskY(y, pivot.seamY, pivot.seamSoftness);
-    const torsoW = 1.0 - headW;
-    const neckW = neckBlendMaskY(y, pivot.seamY, pivot.neckBand);
-
-    const p = { x, y, z: positions[i * 3 + 2] };
-
-    const eyeLW = ellipsoidWeight(p, {
-      x: eyeT.leftCenterX, y: eyeT.leftCenterY, z: eyeT.leftCenterZ,
-    }, { rx: eyeT.rx, ry: eyeT.ry, rz: eyeT.rz }, mask.edge, mask.gamma) * headW;
-    const eyeRW = ellipsoidWeight(p, {
-      x: eyeT.rightCenterX, y: eyeT.rightCenterY, z: eyeT.rightCenterZ,
-    }, { rx: eyeT.rx, ry: eyeT.ry, rz: eyeT.rz }, mask.edge, mask.gamma) * headW;
-
-    const irisLW = ellipsoidWeight(p, {
-      x: irisT.leftCenterX, y: irisT.leftCenterY, z: irisT.leftCenterZ,
-    }, { rx: irisT.rx, ry: irisT.ry, rz: irisT.rz }, mask.edge, mask.gamma) * eyeLW;
-    const irisRW = ellipsoidWeight(p, {
-      x: irisT.rightCenterX, y: irisT.rightCenterY, z: irisT.rightCenterZ,
-    }, { rx: irisT.rx, ry: irisT.ry, rz: irisT.rz }, mask.edge, mask.gamma) * eyeRW;
-
-    const pupilLW = ellipsoidWeight(p, {
-      x: irisT.leftCenterX, y: irisT.leftCenterY, z: irisT.leftCenterZ,
-    }, { rx: irisT.pupilRx, ry: irisT.pupilRy, rz: irisT.pupilRz }, mask.edge, mask.gamma) * irisLW;
-    const pupilRW = ellipsoidWeight(p, {
-      x: irisT.rightCenterX, y: irisT.rightCenterY, z: irisT.rightCenterZ,
-    }, { rx: irisT.pupilRx, ry: irisT.pupilRy, rz: irisT.pupilRz }, mask.edge, mask.gamma) * irisRW;
-
-    const lidLW = ellipsoidWeight(p, {
-      x: lidT.leftCenterX, y: lidT.leftCenterY, z: lidT.leftCenterZ,
-    }, { rx: lidT.rx, ry: lidT.ry, rz: lidT.rz }, mask.edge, mask.gamma) * eyeLW * (1 - irisLW);
-    const lidRW = ellipsoidWeight(p, {
-      x: lidT.rightCenterX, y: lidT.rightCenterY, z: lidT.rightCenterZ,
-    }, { rx: lidT.rx, ry: lidT.ry, rz: lidT.rz }, mask.edge, mask.gamma) * eyeRW * (1 - irisRW);
-
-    const browLW = ellipsoidWeight(p, {
-      x: browT.leftCenterX, y: browT.leftCenterY, z: browT.leftCenterZ,
-    }, { rx: browT.rx, ry: browT.ry, rz: browT.rz }, mask.edge, mask.gamma) * headW * (1 - lidLW) * (1 - irisLW);
-    const browRW = ellipsoidWeight(p, {
-      x: browT.rightCenterX, y: browT.rightCenterY, z: browT.rightCenterZ,
-    }, { rx: browT.rx, ry: browT.ry, rz: browT.rz }, mask.edge, mask.gamma) * headW * (1 - lidRW) * (1 - irisRW);
-
-    const jawW = ellipsoidWeight(p, {
-      x: jawT.centerX, y: jawT.centerY, z: jawT.centerZ,
-    }, { rx: jawT.rx, ry: jawT.ry, rz: jawT.rz }, mask.edge, mask.gamma) * headW;
-
-    const mouthW = ellipsoidWeight(p, {
-      x: mouthT.centerX, y: mouthT.centerY, z: mouthT.centerZ,
-    }, { rx: mouthT.rx, ry: mouthT.ry, rz: mouthT.rz }, mask.edge, mask.gamma) * jawW;
-
-    headWeights[i] = headW;
-    torsoWeights[i] = torsoW;
-    neckBlendWeights[i] = neckW;
-    eyeLWeights[i] = eyeLW;
-    eyeRWeights[i] = eyeRW;
-    irisLWeights[i] = irisLW;
-    irisRWeights[i] = irisRW;
-    pupilLWeights[i] = pupilLW;
-    pupilRWeights[i] = pupilRW;
-    lidLWeights[i] = lidLW;
-    lidRWeights[i] = lidRW;
-    browLWeights[i] = browLW;
-    browRWeights[i] = browRW;
-    jawWeights[i] = jawW;
-    mouthWeights[i] = mouthW;
-    mouthSides[i] = Math.sign(x - mouthT.centerX) || 0;
+    headWeights[i] = 0;
+    torsoWeights[i] = 0;
+    neckBlendWeights[i] = 0;
+    eyeLWeights[i] = 0;
+    eyeRWeights[i] = 0;
+    irisLWeights[i] = 0;
+    irisRWeights[i] = 0;
+    pupilLWeights[i] = 0;
+    pupilRWeights[i] = 0;
+    lidLWeights[i] = 0;
+    lidRWeights[i] = 0;
+    browLWeights[i] = 0;
+    browRWeights[i] = 0;
+    jawWeights[i] = 0;
+    mouthWeights[i] = 0;
+    mouthSides[i] = 0;
   }
+
+  const snap = buildTuningSnapshot();
+  fillWeightsFromPositions(positions, count, {
+    headArr: headWeights,
+    torsoArr: torsoWeights,
+    neckArr: neckBlendWeights,
+    eyeLArr: eyeLWeights,
+    eyeRArr: eyeRWeights,
+    irisLArr: irisLWeights,
+    irisRArr: irisRWeights,
+    pupilLArr: pupilLWeights,
+    pupilRArr: pupilRWeights,
+    lidLArr: lidLWeights,
+    lidRArr: lidRWeights,
+    browLArr: browLWeights,
+    browRArr: browRWeights,
+    jawArr: jawWeights,
+    mouthArr: mouthWeights,
+    mouthSideArr: mouthSides,
+  }, snap);
 
   const particlesGeo = new THREE.BufferGeometry();
   particlesGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -1176,11 +1171,16 @@ loader.load(
     mouthSideAttrRef = particlesGeo.getAttribute('aMouthSide');
     basePosAttrRef = particlesGeo.getAttribute('aBasePosition');
 
+    const depthWriteParam = URL_PARAMS.get('depthWrite');
+    const alphaTestParam = parseFloat(URL_PARAMS.get('alphaTest'));
+
     particleMaterial = new THREE.ShaderMaterial({
       vertexShader,
       fragmentShader,
       transparent: true,
-      depthWrite: true,
+      depthTest: true,
+      depthWrite: depthWriteParam === null ? false : depthWriteParam === '1',
+      alphaTest: Number.isFinite(alphaTestParam) ? alphaTestParam : 0.0,
       blending: THREE.NormalBlending,
       uniforms: {
         uPointSize: { value: POINT_SIZE },
@@ -1547,7 +1547,7 @@ async function enterThinking() {
   setMode('THINKING');
 }
 
-function getTalkLevelFromAudio() {
+function getTalkLevelFromAudio(dt) {
   if (!(analyser && analyserData)) {
     if (AudioDebug.enabled) {
       const now = performance.now();
@@ -1573,10 +1573,10 @@ function getTalkLevelFromAudio() {
   const rms = Math.sqrt(sum / analyserData.length);
   const intensity = AvatarState.speechIntensity || 1.0;
 
-  const SILENCE_RMS = 0.01;
-  const VOICE_RMS = 0.12;
+  const minRms = AudioDebug.minRms;
+  const scale = AudioDebug.scale;
 
-  if (rms < SILENCE_RMS) silentFrameCount++;
+  if (rms < minRms) silentFrameCount++;
   else silentFrameCount = 0;
 
   let target = 0.0;
@@ -1585,8 +1585,8 @@ function getTalkLevelFromAudio() {
     if (silentFrameCount >= 2) {
       target = 0.0;
     } else {
-      let t = (rms - SILENCE_RMS) / (VOICE_RMS - SILENCE_RMS);
-      t = Math.max(0, Math.min(1, t));
+      let t = (rms - minRms) * scale;
+      t = clamp01(t);
       t *= intensity;
 
       if (t > 0) {
@@ -1599,9 +1599,8 @@ function getTalkLevelFromAudio() {
     target = 0.0;
   }
 
-  const dt = 1 / 60;
   const speed = target > lipsyncLevel ? LipsyncConfig.attack : LipsyncConfig.release;
-  const smoothing = 1 - Math.exp(-dt * speed);
+  const smoothing = 1 - Math.exp(-Math.max(dt, 1e-4) * speed);
   lipsyncLevel += (target - lipsyncLevel) * smoothing;
 
   if (AudioDebug.enabled) {
@@ -1612,7 +1611,7 @@ function getTalkLevelFromAudio() {
     debugStats.targetMin = Math.min(debugStats.targetMin, target);
     debugStats.targetMax = Math.max(debugStats.targetMax, target);
 
-    if (rms >= SILENCE_RMS) debugStats.speakingFrames += 1;
+    if (rms >= minRms) debugStats.speakingFrames += 1;
     else debugStats.silentFrames += 1;
 
     const now = performance.now();
@@ -1697,6 +1696,10 @@ class HumanBehaviorLayer {
       speech: { env: 0, prevEnv: 0, lastBoundary: -10, lastBeat: -10, energyStart: 0, energy: 0, beatAmp: 0 },
     };
     this.zeroVec2 = new THREE.Vector2();
+    this.jawDirCache = new THREE.Vector3(0, -1, 0.1);
+    this.mouthDirCache = new THREE.Vector3(0, -1, 0.0);
+    this.jawDirLast = { x: null, y: null, z: null };
+    this.mouthDirLast = { z: null };
   }
 
   update(dt, signals) {
@@ -1924,6 +1927,19 @@ class HumanBehaviorLayer {
     const jawT = window.JawTuning;
     const mouthT = window.MouthTuning;
 
+    if (jawT.jawDirX !== this.jawDirLast.x || jawT.jawDirY !== this.jawDirLast.y || jawT.jawDirZ !== this.jawDirLast.z) {
+      this.jawDirLast = { x: jawT.jawDirX, y: jawT.jawDirY, z: jawT.jawDirZ };
+      this.jawDirCache.set(jawT.jawDirX, jawT.jawDirY, jawT.jawDirZ);
+      if (this.jawDirCache.lengthSq() < 1e-6) this.jawDirCache.set(0, -1, 0.1);
+      this.jawDirCache.normalize();
+    }
+    if (mouthT.forwardOffsetZ !== this.mouthDirLast.z) {
+      this.mouthDirLast = { z: mouthT.forwardOffsetZ };
+      this.mouthDirCache.set(0, -1, mouthT.forwardOffsetZ);
+      if (this.mouthDirCache.lengthSq() < 1e-6) this.mouthDirCache.set(0, -1, 0.0);
+      this.mouthDirCache.normalize();
+    }
+
     u.uBlinkL.value = outputs.blinkL;
     u.uBlinkR.value = outputs.blinkR;
     u.uGazeYawPitch.value.copy(outputs.gaze);
@@ -1945,8 +1961,8 @@ class HumanBehaviorLayer {
     u.uHeadRoll.value = outputs.headRoll;
     u.uHeadPivot.value.set(pivot.headPivotX, pivot.headPivotY, pivot.headPivotZ);
     u.uNeckBlendW.value = 1.0;
-    u.uJawDir.value.set(jawT.jawDirX, jawT.jawDirY, jawT.jawDirZ).normalize();
-    u.uMouthDir.value.set(0, -1, mouthT.forwardOffsetZ).normalize();
+    u.uJawDir.value.copy(this.jawDirCache);
+    u.uMouthDir.value.copy(this.mouthDirCache);
     u.uMouthSideDir.value.set(1, 0, 0);
     u.uDebugMode.value = DebugView.mode;
     u.uDebugMix.value = window.BehaviorTuning.debugMix;
@@ -1967,15 +1983,15 @@ let testLipsBtn = null;
 function animate() {
   requestAnimationFrame(animate);
 
-  const elapsed = clock.getElapsedTime();
   const delta = clock.getDelta();
+  shaderTime += delta;
 
   if (particleMaterial) {
-    particleMaterial.uniforms.uTime.value = elapsed;
+    particleMaterial.uniforms.uTime.value = shaderTime;
 
     let targetTalk = 0.0;
     if (lipHoldActive) targetTalk = 1.0;
-    else targetTalk = getTalkLevelFromAudio();
+    else targetTalk = getTalkLevelFromAudio(delta);
 
     AvatarState.talkLevel = targetTalk;
     if (hbl) {
@@ -2852,6 +2868,7 @@ function onDebugEditorUp() {
   if (!DebugEditor.dragging) return;
   DebugEditor.dragging = null;
   controls.enabled = true;
+  scheduleRecomputeMasks('drag:final', { immediate: true });
 }
 
 function onDebugEditorTouchStart(e) {
