@@ -204,6 +204,7 @@ camera.position.set(0, 0.25, 1.9);
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
+console.info('[three] maxAttributes:', renderer.capabilities.maxAttributes);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
@@ -361,22 +362,10 @@ window.BehaviorTuning = window.BehaviorTuning || {
 // =========================
 let particlesGeometryRef = null;
 let basePosAttrRef = null;
-let headWeightAttrRef = null;
-let torsoWeightAttrRef = null;
-let neckBlendAttrRef = null;
-let eyeLAttrRef = null;
-let eyeRAttrRef = null;
-let irisLAttrRef = null;
-let irisRAttrRef = null;
-let pupilLAttrRef = null;
-let pupilRAttrRef = null;
-let lidLAttrRef = null;
-let lidRAttrRef = null;
-let browLAttrRef = null;
-let browRAttrRef = null;
-let jawAttrRef = null;
-let mouthAttrRef = null;
-let mouthSideAttrRef = null;
+let w0AttrRef = null;
+let w1AttrRef = null;
+let w2AttrRef = null;
+let w3AttrRef = null;
 
 // =========================
 // JS smoothstep (una sola vez)
@@ -578,9 +567,7 @@ function fillWeightsFromPositions(pos, count, out, snap) {
 
     const { headW, torsoW, neckW } = seamWeightsY(y, seamY, seamSoft, neckBand);
 
-    out.headArr[i] = headW;
-    out.torsoArr[i] = torsoW;
-    out.neckArr[i] = neckW;
+    const idx = i * 4;
 
     const eyeLW = ellipsoidWeightXYZ(x, y, z, eyeLCx, eyeLCy, eyeLCz, eyeInvRx, eyeInvRy, eyeInvRz, edge, gamma) * headW;
     const eyeRW = ellipsoidWeightXYZ(x, y, z, eyeRCx, eyeRCy, eyeRCz, eyeInvRx, eyeInvRy, eyeInvRz, edge, gamma) * headW;
@@ -595,21 +582,27 @@ function fillWeightsFromPositions(pos, count, out, snap) {
     const jawW = ellipsoidWeightXYZ(x, y, z, jawCx, jawCy, jawCz, jawInvRx, jawInvRy, jawInvRz, edge, gamma) * headW;
     const mouthW = ellipsoidWeightXYZ(x, y, z, mouthCx, mouthCy, mouthCz, mouthInvRx, mouthInvRy, mouthInvRz, edge, gamma) * jawW;
 
-    out.eyeLArr[i] = eyeLW;
-    out.eyeRArr[i] = eyeRW;
-    out.irisLArr[i] = irisLW;
-    out.irisRArr[i] = irisRW;
-    out.pupilLArr[i] = pupilLW;
-    out.pupilRArr[i] = pupilRW;
-    out.lidLArr[i] = lidLW;
-    out.lidRArr[i] = lidRW;
-    out.browLArr[i] = browLW;
-    out.browRArr[i] = browRW;
-    out.jawArr[i] = jawW;
-    out.mouthArr[i] = mouthW;
+    const mouthSideW = Math.tanh((x - mouthCenterX) * mouthSideK);
 
-    const d = x - mouthCenterX;
-    out.mouthSideArr[i] = Math.tanh(d * mouthSideK);
+    out.w0Arr[idx + 0] = headW;
+    out.w0Arr[idx + 1] = torsoW;
+    out.w0Arr[idx + 2] = neckW;
+    out.w0Arr[idx + 3] = eyeLW;
+
+    out.w1Arr[idx + 0] = eyeRW;
+    out.w1Arr[idx + 1] = irisLW;
+    out.w1Arr[idx + 2] = irisRW;
+    out.w1Arr[idx + 3] = pupilLW;
+
+    out.w2Arr[idx + 0] = pupilRW;
+    out.w2Arr[idx + 1] = lidLW;
+    out.w2Arr[idx + 2] = lidRW;
+    out.w2Arr[idx + 3] = browLW;
+
+    out.w3Arr[idx + 0] = browRW;
+    out.w3Arr[idx + 1] = jawW;
+    out.w3Arr[idx + 2] = mouthW;
+    out.w3Arr[idx + 3] = mouthSideW;
   }
 }
 
@@ -634,7 +627,7 @@ function logTuningSnapshot(reason = 'update') {
 }
 
 function recomputeMasksNow() {
-  if (!basePosAttrRef || !headWeightAttrRef) {
+  if (!basePosAttrRef || !w0AttrRef) {
     console.warn('[hbl] Atributos no listos (espera a que cargue el GLB).');
     return;
   }
@@ -645,40 +638,16 @@ function recomputeMasksNow() {
   const snap = buildTuningSnapshot();
 
   fillWeightsFromPositions(pos, count, {
-    headArr: headWeightAttrRef.array,
-    torsoArr: torsoWeightAttrRef.array,
-    neckArr: neckBlendAttrRef.array,
-    eyeLArr: eyeLAttrRef.array,
-    eyeRArr: eyeRAttrRef.array,
-    irisLArr: irisLAttrRef.array,
-    irisRArr: irisRAttrRef.array,
-    pupilLArr: pupilLAttrRef.array,
-    pupilRArr: pupilRAttrRef.array,
-    lidLArr: lidLAttrRef.array,
-    lidRArr: lidRAttrRef.array,
-    browLArr: browLAttrRef.array,
-    browRArr: browRAttrRef.array,
-    jawArr: jawAttrRef.array,
-    mouthArr: mouthAttrRef.array,
-    mouthSideArr: mouthSideAttrRef.array,
+    w0Arr: w0AttrRef.array,
+    w1Arr: w1AttrRef.array,
+    w2Arr: w2AttrRef.array,
+    w3Arr: w3AttrRef.array,
   }, snap);
 
-  headWeightAttrRef.needsUpdate = true;
-  torsoWeightAttrRef.needsUpdate = true;
-  neckBlendAttrRef.needsUpdate = true;
-  eyeLAttrRef.needsUpdate = true;
-  eyeRAttrRef.needsUpdate = true;
-  irisLAttrRef.needsUpdate = true;
-  irisRAttrRef.needsUpdate = true;
-  pupilLAttrRef.needsUpdate = true;
-  pupilRAttrRef.needsUpdate = true;
-  lidLAttrRef.needsUpdate = true;
-  lidRAttrRef.needsUpdate = true;
-  browLAttrRef.needsUpdate = true;
-  browRAttrRef.needsUpdate = true;
-  jawAttrRef.needsUpdate = true;
-  mouthAttrRef.needsUpdate = true;
-  mouthSideAttrRef.needsUpdate = true;
+  w0AttrRef.needsUpdate = true;
+  w1AttrRef.needsUpdate = true;
+  w2AttrRef.needsUpdate = true;
+  w3AttrRef.needsUpdate = true;
 
   const dt = performance.now() - t0;
   if (!DebugEditor?.dragging && AudioDebug.enabled) {
@@ -760,28 +729,12 @@ uniform float uBrowFurrow;
 uniform float uSquintL;
 uniform float uSquintR;
 
-attribute vec3 aBasePosition;
-attribute vec3 aRandom;
-attribute float aClusterId;
 attribute vec2 aUv;
-
-attribute float aHeadW;
-attribute float aTorsoW;
-attribute float aNeckBlendW;
-
-attribute float aEyeLW;
-attribute float aEyeRW;
-attribute float aIrisLW;
-attribute float aIrisRW;
-attribute float aPupilLW;
-attribute float aPupilRW;
-attribute float aLidLW;
-attribute float aLidRW;
-attribute float aBrowLW;
-attribute float aBrowRW;
-attribute float aJawW;
-attribute float aMouthW;
-attribute float aMouthSide;
+attribute vec4 aRand;
+attribute vec4 aW0;
+attribute vec4 aW1;
+attribute vec4 aW2;
+attribute vec4 aW3;
 
 varying vec2 vUv;
 varying float vIrisW;
@@ -832,29 +785,52 @@ mat3 rotZ(float a) {
 
 void main() {
   vUv = aUv;
+  // Packing:
+  // aW0 = (headW, torsoW, neckBlendW, eyeLW)
+  // aW1 = (eyeRW, irisLW, irisRW, pupilLW)
+  // aW2 = (pupilRW, lidLW, lidRW, browLW)
+  // aW3 = (browRW, jawW, mouthW, mouthSide)
+  // aRand = (random.xyz, clusterId)
+  float aHeadW = aW0.x;
+  float aTorsoW = aW0.y;
+  float aNeckBlendW = aW0.z;
+  float aEyeLW = aW0.w;
+  float aEyeRW = aW1.x;
+  float aIrisLW = aW1.y;
+  float aIrisRW = aW1.z;
+  float aPupilLW = aW1.w;
+  float aPupilRW = aW2.x;
+  float aLidLW = aW2.y;
+  float aLidRW = aW2.z;
+  float aBrowLW = aW2.w;
+  float aBrowRW = aW3.x;
+  float aJawW = aW3.y;
+  float aMouthW = aW3.z;
+  float aMouthSide = aW3.w;
+
   vIrisW = aIrisLW + aIrisRW;
   vPupilW = aPupilLW + aPupilRW;
 
-  vec3 pos = aBasePosition;
+  vec3 pos = position;
   float t = uTime;
 
   float globalPhase = t * 0.5;
-  float swayX = sin(globalPhase + aRandom.x * 6.2831);
-  float swayY = cos(globalPhase * 0.8 + aRandom.y * 6.2831);
+  float swayX = sin(globalPhase + aRand.x * 6.2831);
+  float swayY = cos(globalPhase * 0.8 + aRand.y * 6.2831);
   vec3 globalOffset = vec3(swayX * 0.002, swayY * 0.0016, 0.0);
 
-  float clusterPhase = hash11(aClusterId + 10.0) * 6.2831;
+  float clusterPhase = hash11(aRand.w + 10.0) * 6.2831;
   float clusterAnim = sin(t * 0.8 + clusterPhase);
   vec3 clusterDir = normalize(vec3(
-    hash11(aClusterId + 1.0) - 0.5,
-    hash11(aClusterId + 2.0) - 0.5,
-    hash11(aClusterId + 3.0) - 0.5
+    hash11(aRand.w + 1.0) - 0.5,
+    hash11(aRand.w + 2.0) - 0.5,
+    hash11(aRand.w + 3.0) - 0.5
   ));
   vec3 clusterOffset = clusterDir * clusterAnim * 0.0035;
 
-  float n = simpleNoise(aBasePosition * 1.5, t * 0.6);
+  float n = simpleNoise(position * 1.5, t * 0.6);
   float micro = (n - 0.5);
-  vec3 microDir = normalize(aRandom * 2.0 - 1.0);
+  vec3 microDir = normalize(aRand.xyz * 2.0 - 1.0);
   vec3 microOffset = microDir * micro * 0.0016;
 
   vec3 torsoOffset = vec3(uTorsoSway.x, uTorsoSway.y, 0.0) * aTorsoW;
@@ -1009,84 +985,48 @@ function generateFaceParticlesFromVertices(srcGeometry) {
   const uvs = new Float32Array(uvArray);
   const count = positions.length / 3;
 
-  const basePositions = new Float32Array(positions.length);
-  basePositions.set(positions);
-
-  const randoms = new Float32Array(count * 3);
-  const clusterIds = new Float32Array(count);
-
-  const headWeights = new Float32Array(count);
-  const torsoWeights = new Float32Array(count);
-  const neckBlendWeights = new Float32Array(count);
-  const eyeLWeights = new Float32Array(count);
-  const eyeRWeights = new Float32Array(count);
-  const irisLWeights = new Float32Array(count);
-  const irisRWeights = new Float32Array(count);
-  const pupilLWeights = new Float32Array(count);
-  const pupilRWeights = new Float32Array(count);
-  const lidLWeights = new Float32Array(count);
-  const lidRWeights = new Float32Array(count);
-  const browLWeights = new Float32Array(count);
-  const browRWeights = new Float32Array(count);
-  const jawWeights = new Float32Array(count);
-  const mouthWeights = new Float32Array(count);
-  const mouthSides = new Float32Array(count);
+  // Packing:
+  // aW0 = (headW, torsoW, neckBlendW, eyeLW)
+  // aW1 = (eyeRW, irisLW, irisRW, pupilLW)
+  // aW2 = (pupilRW, lidLW, lidRW, browLW)
+  // aW3 = (browRW, jawW, mouthW, mouthSide)
+  // aRand = (random.xyz, clusterId)
+  const randPack = new Float32Array(count * 4);
+  const w0Pack = new Float32Array(count * 4);
+  const w1Pack = new Float32Array(count * 4);
+  const w2Pack = new Float32Array(count * 4);
+  const w3Pack = new Float32Array(count * 4);
 
   for (let i = 0; i < count; i++) {
-    randoms[i * 3 + 0] = Math.random();
-    randoms[i * 3 + 1] = Math.random();
-    randoms[i * 3 + 2] = Math.random();
+    const r = i * 4;
+    randPack[r + 0] = Math.random();
+    randPack[r + 1] = Math.random();
+    randPack[r + 2] = Math.random();
 
     const x = positions[i * 3 + 0];
     const y = positions[i * 3 + 1];
 
     const cx = Math.floor((x + 0.4) * 10.0);
     const cy = Math.floor((y + 0.4) * 10.0);
-    clusterIds[i] = cx + cy * 10.0;
+    randPack[r + 3] = cx + cy * 10.0;
   }
 
   const snap = buildTuningSnapshot();
   fillWeightsFromPositions(positions, count, {
-    headArr: headWeights,
-    torsoArr: torsoWeights,
-    neckArr: neckBlendWeights,
-    eyeLArr: eyeLWeights,
-    eyeRArr: eyeRWeights,
-    irisLArr: irisLWeights,
-    irisRArr: irisRWeights,
-    pupilLArr: pupilLWeights,
-    pupilRArr: pupilRWeights,
-    lidLArr: lidLWeights,
-    lidRArr: lidRWeights,
-    browLArr: browLWeights,
-    browRArr: browRWeights,
-    jawArr: jawWeights,
-    mouthArr: mouthWeights,
-    mouthSideArr: mouthSides,
+    w0Arr: w0Pack,
+    w1Arr: w1Pack,
+    w2Arr: w2Pack,
+    w3Arr: w3Pack,
   }, snap);
 
   const particlesGeo = new THREE.BufferGeometry();
   particlesGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   particlesGeo.setAttribute('aUv', new THREE.BufferAttribute(uvs, 2));
-  particlesGeo.setAttribute('aBasePosition', new THREE.BufferAttribute(basePositions, 3));
-  particlesGeo.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 3));
-  particlesGeo.setAttribute('aClusterId', new THREE.BufferAttribute(clusterIds, 1));
-  particlesGeo.setAttribute('aHeadW', new THREE.BufferAttribute(headWeights, 1));
-  particlesGeo.setAttribute('aTorsoW', new THREE.BufferAttribute(torsoWeights, 1));
-  particlesGeo.setAttribute('aNeckBlendW', new THREE.BufferAttribute(neckBlendWeights, 1));
-  particlesGeo.setAttribute('aEyeLW', new THREE.BufferAttribute(eyeLWeights, 1));
-  particlesGeo.setAttribute('aEyeRW', new THREE.BufferAttribute(eyeRWeights, 1));
-  particlesGeo.setAttribute('aIrisLW', new THREE.BufferAttribute(irisLWeights, 1));
-  particlesGeo.setAttribute('aIrisRW', new THREE.BufferAttribute(irisRWeights, 1));
-  particlesGeo.setAttribute('aPupilLW', new THREE.BufferAttribute(pupilLWeights, 1));
-  particlesGeo.setAttribute('aPupilRW', new THREE.BufferAttribute(pupilRWeights, 1));
-  particlesGeo.setAttribute('aLidLW', new THREE.BufferAttribute(lidLWeights, 1));
-  particlesGeo.setAttribute('aLidRW', new THREE.BufferAttribute(lidRWeights, 1));
-  particlesGeo.setAttribute('aBrowLW', new THREE.BufferAttribute(browLWeights, 1));
-  particlesGeo.setAttribute('aBrowRW', new THREE.BufferAttribute(browRWeights, 1));
-  particlesGeo.setAttribute('aJawW', new THREE.BufferAttribute(jawWeights, 1));
-  particlesGeo.setAttribute('aMouthW', new THREE.BufferAttribute(mouthWeights, 1));
-  particlesGeo.setAttribute('aMouthSide', new THREE.BufferAttribute(mouthSides, 1));
+  particlesGeo.setAttribute('aRand', new THREE.BufferAttribute(randPack, 4));
+  particlesGeo.setAttribute('aW0', new THREE.BufferAttribute(w0Pack, 4));
+  particlesGeo.setAttribute('aW1', new THREE.BufferAttribute(w1Pack, 4));
+  particlesGeo.setAttribute('aW2', new THREE.BufferAttribute(w2Pack, 4));
+  particlesGeo.setAttribute('aW3', new THREE.BufferAttribute(w3Pack, 4));
 
   return particlesGeo;
 }
@@ -1152,42 +1092,13 @@ loader.load(
 
     // refs para edición / recompute
     particlesGeometryRef = particlesGeo;
-    headWeightAttrRef = particlesGeo.getAttribute('aHeadW');
-    torsoWeightAttrRef = particlesGeo.getAttribute('aTorsoW');
-    neckBlendAttrRef = particlesGeo.getAttribute('aNeckBlendW');
-    eyeLAttrRef = particlesGeo.getAttribute('aEyeLW');
-    eyeRAttrRef = particlesGeo.getAttribute('aEyeRW');
-    irisLAttrRef = particlesGeo.getAttribute('aIrisLW');
-    irisRAttrRef = particlesGeo.getAttribute('aIrisRW');
-    pupilLAttrRef = particlesGeo.getAttribute('aPupilLW');
-    pupilRAttrRef = particlesGeo.getAttribute('aPupilRW');
-    lidLAttrRef = particlesGeo.getAttribute('aLidLW');
-    lidRAttrRef = particlesGeo.getAttribute('aLidRW');
-    browLAttrRef = particlesGeo.getAttribute('aBrowLW');
-    browRAttrRef = particlesGeo.getAttribute('aBrowRW');
-    jawAttrRef = particlesGeo.getAttribute('aJawW');
-    mouthAttrRef = particlesGeo.getAttribute('aMouthW');
-    mouthSideAttrRef = particlesGeo.getAttribute('aMouthSide');
-    basePosAttrRef = particlesGeo.getAttribute('aBasePosition');
+    w0AttrRef = particlesGeo.getAttribute('aW0');
+    w1AttrRef = particlesGeo.getAttribute('aW1');
+    w2AttrRef = particlesGeo.getAttribute('aW2');
+    w3AttrRef = particlesGeo.getAttribute('aW3');
+    basePosAttrRef = particlesGeo.getAttribute('position');
 
-    const dynamicAttrs = [
-      headWeightAttrRef,
-      torsoWeightAttrRef,
-      neckBlendAttrRef,
-      eyeLAttrRef,
-      eyeRAttrRef,
-      irisLAttrRef,
-      irisRAttrRef,
-      pupilLAttrRef,
-      pupilRAttrRef,
-      lidLAttrRef,
-      lidRAttrRef,
-      browLAttrRef,
-      browRAttrRef,
-      jawAttrRef,
-      mouthAttrRef,
-      mouthSideAttrRef,
-    ];
+    const dynamicAttrs = [w0AttrRef, w1AttrRef, w2AttrRef, w3AttrRef];
     for (const attr of dynamicAttrs) {
       attr.setUsage(THREE.DynamicDrawUsage);
     }
