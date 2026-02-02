@@ -1,10 +1,30 @@
 from __future__ import annotations
 
 from copy import deepcopy
-import os
 from dataclasses import dataclass
 from typing import List, Tuple
 
+from .elementos.strategy_definitions import (
+    INTENT_CLOSE_STEP,
+    INTENT_CONTRACTS,
+    INTENT_CONFIDENCE_DECAY,
+    INTENT_COST_REPEAT,
+    INTENT_COST_TENSION,
+    INTENT_COST_URGENCY,
+    INTENT_FIRMNESS_REPLAN_THRESHOLD,
+    INTENT_MAX_ATTEMPTS_PER_STEP,
+    INTENT_MAX_TURNS,
+    INTENT_NO_PROGRESS_ABORT_TURNS,
+    INTENT_START_UTILITY_THRESHOLD,
+    INTENT_STEP_SEQUENCE,
+    INTENT_WEIGHT_OPEN_FACTORS,
+    INTENT_WEIGHT_SLOTS,
+    INTENT_WEIGHT_UNCERTAINTY,
+    KNOWN_SUCCESS_CRITERIA,
+    OPEN_FACTOR_SIGNALS,
+    PIVOT_KIND_MAPPING,
+    URGENCY_DEADLINE_DAYS,
+)
 from .schemas import (
     BeliefState,
     IntentHint,
@@ -49,56 +69,32 @@ def build_intent_contract(
     belief_state: BeliefState,
 ) -> tuple[list[str], list[str], str, list[str]]:
     if intent_type == "credibility_check" and world_state.get("other_buyer_claimed"):
-        goal = (
-            "Verificar si el 'otro comprador' es real y extraer detalles verificables sin revelar "
-            "mi límite."
+        contract = INTENT_CONTRACTS["credibility_check"]
+        return (
+            list(contract["required"]),
+            list(contract["optional"]),
+            contract["goal"],
+            list(contract["success_criteria"]),
         )
-        required = ["other_buyer_details", "evidence_offered"]
-        optional = ["deadline_real", "price_firm"]
-        return required, optional, goal, ["slots_required_complete", "evidence_offered"]
 
-    if intent_type == "closing":
-        goal = "Confirmar si el precio es firme y definir condiciones mínimas antes de cerrar."
-        required = ["price", "price_firm"]
-        optional = ["concession", "docs"]
-        return required, optional, goal, ["slots_required_complete", "firm_price_detected"]
-
-    if intent_type == "concession":
-        goal = "Aclarar concesiones reales y margen sin comprometerse."
-        required = ["concession"]
-        optional = ["price", "seller_min_acceptable"]
-        return required, optional, goal, ["slots_required_complete"]
-
-    if intent_type == "relationship":
-        goal = "Bajar tensión y restablecer señales de cooperación."
-        required = ["tone_signal"]
-        optional = ["rapport_signal"]
-        return required, optional, goal, ["slots_required_complete"]
-
-    goal = "Descubrir la urgencia real y la alternativa del vendedor (BATNA) para calibrar margen."
-    required = ["seller_batna", "seller_urgency_reason"]
-    optional = ["seller_min_acceptable", "price_firm"]
-    return required, optional, goal, ["slots_required_complete"]
+    contract = INTENT_CONTRACTS.get(intent_type, INTENT_CONTRACTS["info_extract"])
+    return (
+        list(contract["required"]),
+        list(contract["optional"]),
+        contract["goal"],
+        list(contract["success_criteria"]),
+    )
 
 
 def build_steps(intent_type: str, missing: list[str]) -> list[IntentStep]:
     # P0: missing vacío debe producir un plan válido (sin slot fantasma)
     if not missing:
-        return [
-            {
-                "kind": "close_next",
-                "target_slot": "",
-                "success_if_filled": [],
-            }
-        ]
+        return [dict(INTENT_CLOSE_STEP)]
 
     target = missing[0]
     return [
-        {"kind": "probe_open", "target_slot": target, "success_if_filled": [target]},
-        {"kind": "probe_narrow", "target_slot": target, "success_if_filled": [target]},
-        {"kind": "request_evidence", "target_slot": target, "success_if_filled": [target]},
-        {"kind": "trade_incentive", "target_slot": target, "success_if_filled": [target]},
-        {"kind": "pressure_soft", "target_slot": target, "success_if_filled": [target]},
+        {"kind": step, "target_slot": target, "success_if_filled": [target]}
+        for step in INTENT_STEP_SEQUENCE
     ]
 
 
@@ -184,17 +180,7 @@ def _slots_missing(intent_state: IntentState) -> list[str]:
 
 
 def _world_has_multiple_open_factors(world_state: WorldState) -> bool:
-    signals = [
-        world_state.get("price_mentioned"),
-        world_state.get("docs_claimed"),
-        world_state.get("deadline_claimed"),
-        world_state.get("other_buyer_claimed"),
-        world_state.get("batna_claimed"),
-        world_state.get("urgency_claimed"),
-        world_state.get("min_price_claimed"),
-        world_state.get("price_firm"),
-        world_state.get("evidence_offered"),
-    ]
+    signals = [world_state.get(signal) for signal in OPEN_FACTOR_SIGNALS]
     return sum(1 for signal in signals if signal) >= 2
 
 
@@ -217,40 +203,28 @@ def score_multi_turn_start(
     reasons: list[str] = []
 
     slots_missing_count = len(slots_missing)
-    open_factors = sum(
-        1 for signal in [
-            world_state.get("price_mentioned"),
-            world_state.get("docs_claimed"),
-            world_state.get("deadline_claimed"),
-            world_state.get("other_buyer_claimed"),
-            world_state.get("batna_claimed"),
-            world_state.get("urgency_claimed"),
-            world_state.get("min_price_claimed"),
-            world_state.get("price_firm"),
-            world_state.get("evidence_offered"),
-        ] if signal
-    )
+    open_factors = sum(1 for signal in OPEN_FACTOR_SIGNALS if world_state.get(signal))
     signal_quality = _signal_quality(world_state)
 
     benefit = (
-        float(os.getenv("INTENT_WEIGHT_SLOTS", "0.6")) * slots_missing_count
-        + float(os.getenv("INTENT_WEIGHT_OPEN_FACTORS", "0.3")) * open_factors
-        + float(os.getenv("INTENT_WEIGHT_UNCERTAINTY", "0.4")) * (1.0 - signal_quality)
+        INTENT_WEIGHT_SLOTS * slots_missing_count
+        + INTENT_WEIGHT_OPEN_FACTORS * open_factors
+        + INTENT_WEIGHT_UNCERTAINTY * (1.0 - signal_quality)
     )
 
     tension = 1.0 if belief_state.get("dynamics", {}).get("interaction_health") in {
         "tense",
         "stalled",
     } else 0.0
-    urgency_pressure = 1.0 if world_state.get("deadline_days") in {0, 1, 2} else 0.0
+    urgency_pressure = 1.0 if world_state.get("deadline_days") in URGENCY_DEADLINE_DAYS else 0.0
     cost = (
-        float(os.getenv("INTENT_COST_TENSION", "0.7")) * tension
-        + float(os.getenv("INTENT_COST_REPEAT", "0.4")) * (1.0 if slots_missing_count <= 1 else 0.0)
-        + float(os.getenv("INTENT_COST_URGENCY", "0.6")) * urgency_pressure
+        INTENT_COST_TENSION * tension
+        + INTENT_COST_REPEAT * (1.0 if slots_missing_count <= 1 else 0.0)
+        + INTENT_COST_URGENCY * urgency_pressure
     )
 
     utility = benefit - cost
-    threshold = float(os.getenv("INTENT_START_UTILITY_THRESHOLD", "1.0"))
+    threshold = INTENT_START_UTILITY_THRESHOLD
     reasons.append(f"utility:{utility:.2f}")
     reasons.append(f"benefit:{benefit:.2f}")
     reasons.append(f"cost:{cost:.2f}")
@@ -290,15 +264,7 @@ def _next_action_hint(step_kind: str, target_slot: str, slots_missing: list[str]
 
 
 def _pivot_strategy_from_kind(step_kind: str) -> str:
-    mapping = {
-        "probe_open": "open",
-        "probe_narrow": "narrow",
-        "request_evidence": "evidence",
-        "trade_incentive": "incentive",
-        "pressure_soft": "soft_pressure",
-        "close_next": "narrow",
-    }
-    return mapping.get(step_kind, "open")
+    return PIVOT_KIND_MAPPING.get(step_kind, "open")
 
 
 def _pivot_strategy_from_transition(prev_kind: str, new_kind: str) -> str:
@@ -308,13 +274,7 @@ def _pivot_strategy_from_transition(prev_kind: str, new_kind: str) -> str:
 
 
 def choose_pivot_kind(current_kind: StepKind) -> StepKind:
-    order: list[StepKind] = [
-        "probe_open",
-        "probe_narrow",
-        "request_evidence",
-        "trade_incentive",
-        "pressure_soft",
-    ]
+    order: list[StepKind] = list(INTENT_STEP_SEQUENCE)
     if current_kind in order:
         idx = order.index(current_kind)
         return order[min(idx + 1, len(order) - 1)]
@@ -370,9 +330,7 @@ def evaluate_success(
         return False, []
 
     known = {
-        "slots_required_complete",
-        "firm_price_detected",
-        "evidence_offered",
+        *KNOWN_SUCCESS_CRITERIA,
     }
     for criterion in criteria:
         if criterion not in known:
@@ -444,13 +402,7 @@ def _ensure_steps_hydrated(
     ):
         missing = _slots_missing(intent)
         if not missing:
-            intent["steps"] = [
-                {
-                    "kind": "close_next",
-                    "target_slot": "",
-                    "success_if_filled": [],
-                }
-            ]
+            intent["steps"] = [dict(INTENT_CLOSE_STEP)]
         else:
             intent["steps"] = build_steps(intent.get("intent_type", "info_extract"), missing)
         intent["step_idx"] = 0
@@ -463,7 +415,7 @@ def _should_replan(
     intent: IntentState, world_state: WorldState, precedence: dict | None
 ) -> str | None:
     evidence_items = world_state.get("evidence_items", [])
-    threshold = float(os.getenv("INTENT_FIRMNESS_REPLAN_THRESHOLD", "0.6"))
+    threshold = INTENT_FIRMNESS_REPLAN_THRESHOLD
     strong_firmness = any(
         item.get("type") == "FIRMNESS"
         and (item.get("field") in {"price_firm", "", None})
@@ -570,9 +522,7 @@ def update_intent_state(
             intent["steps"] = build_steps(intent_type, slots_missing)
             intent["step_idx"] = 0
             intent["step_attempts"] = 0
-            intent["max_attempts_per_step"] = int(
-                os.getenv("INTENT_MAX_ATTEMPTS_PER_STEP", "2")
-            )
+            intent["max_attempts_per_step"] = INTENT_MAX_ATTEMPTS_PER_STEP
             intent["success_criteria"] = success_criteria or ["slots_required_complete"]
             intent["confidence"] = 0.4
             intent["created_turn"] = turn_count
@@ -642,7 +592,7 @@ def update_intent_state(
         intent["steps"] = build_steps(intent_type, slots_missing)
         intent["step_idx"] = 0
         intent["step_attempts"] = 0
-        intent["max_attempts_per_step"] = 2
+            intent["max_attempts_per_step"] = INTENT_MAX_ATTEMPTS_PER_STEP
         intent["success_criteria"] = success_criteria or ["slots_required_complete"]
         intent["confidence"] = 0.4
         intent["created_turn"] = turn_count
@@ -691,7 +641,7 @@ def update_intent_state(
     if not progress_made:
         intent["confidence"] = max(
             0.0,
-            base_confidence - float(os.getenv("INTENT_CONFIDENCE_DECAY", "0.1")),
+            base_confidence - INTENT_CONFIDENCE_DECAY,
         )
     else:
         intent["confidence"] = base_confidence
@@ -734,7 +684,7 @@ def update_intent_state(
         meta["intent_new"] = deepcopy(intent)
         return intent, meta, _build_intent_hint(intent, slots_missing, commitment)
 
-    max_total_turns = int(os.getenv("INTENT_MAX_TURNS", "6"))
+    max_total_turns = INTENT_MAX_TURNS
     if turn_count - intent.get("created_turn", turn_count) >= max_total_turns:
         intent["status"] = "abandoned"
         intent["abandon_reasons"] = list(intent.get("abandon_reasons", [])) + [
@@ -792,7 +742,7 @@ def update_intent_state(
             else:
                 meta["intent_decision"] = "continue"
 
-    no_progress_limit = int(os.getenv("INTENT_NO_PROGRESS_ABORT_TURNS", "2"))
+    no_progress_limit = INTENT_NO_PROGRESS_ABORT_TURNS
     steps = intent.get("steps", [])
     is_last_step = bool(steps) and intent.get("step_idx", 0) >= len(steps) - 1
     if (

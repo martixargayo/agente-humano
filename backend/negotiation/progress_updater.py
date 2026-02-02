@@ -1,25 +1,20 @@
 # backend/negotiation/progress_updater.py
 from __future__ import annotations
 
+from .elementos.execution_definitions import (
+    INFO_DELTA_KEYS,
+    OUTCOME_BAD,
+    OUTCOME_GOOD,
+    OUTCOME_NEUTRAL,
+)
 from .gate_utils import _split_world_diff
 from .schemas import BeliefState, PolicyDecision, ProgressState, WorldState, default_progress_state
 from .world_state_updater import diff_world_state
 
 
 def _has_info_delta(world_diff: dict) -> bool:
-    info_keys = {
-        "docs_claimed",
-        "docs_types",
-        "deadline_claimed",
-        "deadline_text",
-        "other_buyer_claimed",
-        "concession_made",
-        "concession_text",
-        "price_mentioned",
-        "price_value",
-    }
     domain, _interaction = _split_world_diff(world_diff)
-    return any(key in domain for key in info_keys)
+    return any(key in domain for key in INFO_DELTA_KEYS)
 
 
 def _evaluate_outcome(
@@ -30,7 +25,7 @@ def _evaluate_outcome(
     belief_state: BeliefState,
 ) -> str:
     if not policy_id:
-        return "neutral"
+        return OUTCOME_NEUTRAL
 
     health = belief_state.get("dynamics", {}).get("interaction_health", "stable")
     prev_health = (
@@ -42,49 +37,49 @@ def _evaluate_outcome(
 
     if policy_id == "info_extract_critical":
         if _has_info_delta(world_diff):
-            return "good"
-        return "neutral"
+            return OUTCOME_GOOD
+        return OUTCOME_NEUTRAL
 
     if policy_id == "delay_price_discussion":
         if world_state.get("price_mentioned") and not prev_world_state.get("price_mentioned"):
-            return "bad"
+            return OUTCOME_BAD
         if _has_info_delta(world_diff):
-            return "good"
-        return "neutral"
+            return OUTCOME_GOOD
+        return OUTCOME_NEUTRAL
 
     if policy_id == "deescalate_tension":
         if health == "stable" and prev_health != "stable":
-            return "good"
+            return OUTCOME_GOOD
         if health == "tense":
-            return "bad"
-        return "neutral"
+            return OUTCOME_BAD
+        return OUTCOME_NEUTRAL
 
     if policy_id == "rapport_build":
         if health == "stable" and prev_health != "stable":
-            return "good"
-        return "neutral"
+            return OUTCOME_GOOD
+        return OUTCOME_NEUTRAL
 
     if policy_id == "test_credibility":
         if _has_info_delta(world_diff):
-            return "good"
-        return "neutral"
+            return OUTCOME_GOOD
+        return OUTCOME_NEUTRAL
 
     if policy_id in {"tradeoff_offer", "hold_position"}:
         if world_state.get("concession_made") and not prev_world_state.get("concession_made"):
-            return "good"
-        return "neutral"
+            return OUTCOME_GOOD
+        return OUTCOME_NEUTRAL
 
     if policy_id == "challenge_anchor_indirect":
         if belief_state.get("stance", {}).get("seller_flexibility", 0.0) > 0.6:
-            return "good"
-        return "neutral"
+            return OUTCOME_GOOD
+        return OUTCOME_NEUTRAL
 
     if policy_id == "close_with_conditions":
         if world_state.get("concession_made") and not prev_world_state.get("concession_made"):
-            return "good"
-        return "neutral"
+            return OUTCOME_GOOD
+        return OUTCOME_NEUTRAL
 
-    return "neutral"
+    return OUTCOME_NEUTRAL
 
 
 def update_progress_state(
@@ -133,7 +128,7 @@ def update_progress_state(
     loop_flags = list(progress.get("loop_flags", []))
     if (
         progress.get("turns_in_same_mode", 0) >= 2
-        and progress.get("last_executed_policy_outcome") != "good"
+        and progress.get("last_executed_policy_outcome") != OUTCOME_GOOD
     ):
         if "stuck_in_policy" not in loop_flags:
             loop_flags.append("stuck_in_policy")

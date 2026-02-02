@@ -38,6 +38,14 @@ from .context_utils import (
     format_memory_block,
     maybe_refresh_summary,
 )
+from .elementos.execution_definitions import (
+    EMBEDDINGS_MODEL,
+    EXECUTOR_MODEL,
+    EXECUTOR_TEMPERATURE,
+    RAG_DIR,
+    SUMMARY_MODEL,
+    SUMMARY_TEMPERATURE,
+)
 from .gate_utils import (
     gate_belief,
     gate_phase_policy,
@@ -89,18 +97,6 @@ from .world_state_updater import (
 
 load_dotenv()
 logger = logging.getLogger(__name__)
-
-# ---- Configuración RAG para técnicas de negociación por policy ----
-
-EMBEDDINGS_MODEL = os.getenv("EMBEDDINGS_MODEL_NAME", "text-embedding-3-small")
-
-DEFAULT_RAG_DIR = os.path.join(
-    os.path.dirname(__file__),
-    "policy_docs",
-)
-
-RAG_DIR = os.getenv("NEGOTIATION_RAG_DIR", DEFAULT_RAG_DIR)
-
 
 def _load_negotiation_rag_index():
     if not os.path.isdir(RAG_DIR):
@@ -162,28 +158,12 @@ def get_negotiation_rag_index():
 
     return _NEGOTIATION_RAG_INDEX
 
-# ---- Modelo principal (executor) ----
-
-EXECUTOR_MODEL = os.getenv(
-    "EXECUTOR_MODEL_NAME",
-    os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini"),
-)
-
-EXECUTOR_TEMPERATURE = float(os.getenv("EXECUTOR_TEMPERATURE", "0.7"))
-
 executor_llm = ChatOpenAI(
     model=EXECUTOR_MODEL,
     temperature=EXECUTOR_TEMPERATURE,
 )
 
 # ---- Modelo de resumen ----
-
-SUMMARY_MODEL = os.getenv(
-    "SUMMARY_MODEL_NAME",
-    os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini"),
-)
-SUMMARY_TEMPERATURE = float(os.getenv("SUMMARY_TEMPERATURE", "0.2"))
-
 summary_llm = ChatOpenAI(
     model=SUMMARY_MODEL,
     temperature=SUMMARY_TEMPERATURE,

@@ -1,15 +1,22 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
 
-Mode = Literal[
-    "recovery_guard",
-    "closing_push",
-    "bargaining",
-    "discovery",
-    "opening_or_other",
-]
+from .elementos.strategy_definitions import (
+    MODE_BARGAINING,
+    MODE_CLOSING_PUSH,
+    MODE_DISCOVERY,
+    MODE_OPENING_OR_OTHER,
+    MODE_RECOVERY_GUARD,
+    Mode,
+    PHASE_CLOSING,
+    PHASE_RECOVERY,
+    PRECEDENCE_BARGAINING_MIN_TAGS,
+    PRECEDENCE_CLOSING_PUSH_MIN_TAGS,
+    PRECEDENCE_DISCOVERY_MIN_TAGS,
+    PRECEDENCE_RECOVERY_BLOCK_TAGS,
+    PRECEDENCE_RECOVERY_MIN_TAGS,
+)
 
 
 @dataclass(frozen=True)
@@ -35,19 +42,19 @@ def compute_precedence(
 
     if health in {"tense", "stalled"}:
         return PrecedenceResult(
-            mode="recovery_guard",
-            reason=_normalized_reason("recovery_guard", f"belief:health_{health}"),
-            min_policy_tags=("safe_when_tense", "deescalation"),
-            block_policy_tags=("aggressive",),
-            phase_floor="recovery",
+            mode=MODE_RECOVERY_GUARD,
+            reason=_normalized_reason(MODE_RECOVERY_GUARD, f"belief:health_{health}"),
+            min_policy_tags=PRECEDENCE_RECOVERY_MIN_TAGS,
+            block_policy_tags=PRECEDENCE_RECOVERY_BLOCK_TAGS,
+            phase_floor=PHASE_RECOVERY,
             allow_closing=False,
         )
 
     if world.get("other_buyer_claimed") or world.get("deadline_claimed"):
         return PrecedenceResult(
-            mode="discovery",
-            reason=_normalized_reason("discovery", "world:credibility_signal"),
-            min_policy_tags=("credibility_check",),
+            mode=MODE_DISCOVERY,
+            reason=_normalized_reason(MODE_DISCOVERY, "world:credibility_signal"),
+            min_policy_tags=PRECEDENCE_DISCOVERY_MIN_TAGS,
         )
 
     if world.get("price_firm") is True:
@@ -57,27 +64,27 @@ def compute_precedence(
         )
         if closing_ok:
             return PrecedenceResult(
-                mode="closing_push",
-                reason=_normalized_reason("closing_push", "world:price_firm"),
-                min_policy_tags=("closing",),
-                phase_floor="closing",
+                mode=MODE_CLOSING_PUSH,
+                reason=_normalized_reason(MODE_CLOSING_PUSH, "world:price_firm"),
+                min_policy_tags=PRECEDENCE_CLOSING_PUSH_MIN_TAGS,
+                phase_floor=PHASE_CLOSING,
                 allow_closing=True,
             )
         return PrecedenceResult(
-            mode="bargaining",
-            reason=_normalized_reason("bargaining", "world:price_firm_without_requirements"),
-            min_policy_tags=("bargaining",),
+            mode=MODE_BARGAINING,
+            reason=_normalized_reason(MODE_BARGAINING, "world:price_firm_without_requirements"),
+            min_policy_tags=PRECEDENCE_BARGAINING_MIN_TAGS,
             allow_closing=False,
         )
 
     if world.get("price_mentioned") and world.get("concession_made"):
         return PrecedenceResult(
-            mode="bargaining",
-            reason=_normalized_reason("bargaining", "world:concession_made"),
-            min_policy_tags=("bargaining",),
+            mode=MODE_BARGAINING,
+            reason=_normalized_reason(MODE_BARGAINING, "world:concession_made"),
+            min_policy_tags=PRECEDENCE_BARGAINING_MIN_TAGS,
         )
 
     return PrecedenceResult(
-        mode="opening_or_other",
-        reason=_normalized_reason("opening_or_other", "history:default"),
+        mode=MODE_OPENING_OR_OTHER,
+        reason=_normalized_reason(MODE_OPENING_OR_OTHER, "history:default"),
     )

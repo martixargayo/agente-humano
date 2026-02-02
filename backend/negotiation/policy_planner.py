@@ -1,8 +1,7 @@
 # backend/negotiation/policy_planner.py
 from __future__ import annotations
 
-from typing import Literal
-
+from .elementos.strategy_definitions import PHASE_INDEX
 from .policies import POLICIES, list_policy_ids
 from .schemas import (
     BeliefState,
@@ -13,8 +12,6 @@ from .schemas import (
 )
 
 
-_PHASE_ORDER: list[NegotiationPhase] = ["opening", "discovery", "bargaining", "closing"]
-_PHASE_INDEX: dict[NegotiationPhase, int] = {phase: idx for idx, phase in enumerate(_PHASE_ORDER)}
 _POLICY_BY_ID = {policy.policy_id: policy for policy in POLICIES}
 
 
@@ -29,10 +26,10 @@ def _phase_bonus(policy_phases: list[str], current_phase: str) -> int:
         return 2
     if "recovery" in policy_phases:
         return 1
-    if current_phase in _PHASE_INDEX:
-        cur_i = _PHASE_INDEX[current_phase]  # type: ignore[index]
+    if current_phase in PHASE_INDEX:
+        cur_i = PHASE_INDEX[current_phase]  # type: ignore[index]
         for phase in policy_phases:
-            if phase in _PHASE_INDEX and abs(_PHASE_INDEX[phase] - cur_i) == 1:
+            if phase in PHASE_INDEX and abs(PHASE_INDEX[phase] - cur_i) == 1:
                 return 1
     return 0
 
