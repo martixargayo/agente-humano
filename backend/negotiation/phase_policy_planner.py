@@ -3,13 +3,12 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Literal
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
-from pydantic import BaseModel, ConfigDict, Field, confloat, conlist
 
 from prompts import PHASE_POLICY_SYSTEM_PROMPT, PHASE_POLICY_USER_PROMPT
+from .elementos.strategy_definitions import PhasePolicyDecisionModel, REASON_PREFIXES
 from .policies import policy_catalog_text, safe_neutral_policy_id
 from .schemas import (
     BeliefState,
@@ -36,34 +35,6 @@ _planner_prompt = ChatPromptTemplate.from_messages(
 )
 
 
-class PhaseSignal(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    source: Literal["world", "belief", "intent", "history"]
-    key: str = Field(max_length=48)
-    value: str = Field(max_length=120)
-
-
-class PhasePolicyDecisionModel(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    phase: Literal["opening", "discovery", "bargaining", "closing", "recovery"]
-    confidence: confloat(ge=0.0, le=1.0) = 0.6
-    reasons: conlist(str, max_length=8) = Field(default_factory=list)
-    signals: conlist(PhaseSignal, max_length=8) = Field(default_factory=list)
-    alternatives: conlist(
-        Literal["opening", "discovery", "bargaining", "closing", "recovery"],
-        max_length=3,
-    ) = Field(default_factory=list)
-    policy_id: str = ""
-    reason: str = Field(default="", max_length=180)
-    micro_goal: str = Field(default="", max_length=140)
-    risk_posture: Literal["low", "mid", "high"] = Field(default="low")
-    why_short: str = Field(default="", max_length=140)
-    inputs_used: list[str] = Field(default_factory=list, max_length=8)
-
-
-_REASON_PREFIXES = {"world", "belief", "intent", "history"}
-
-
 def _normalize_reasons(reasons: list[str]) -> list[str]:
     normalized: list[str] = []
     for reason in reasons or []:
@@ -72,7 +43,7 @@ def _normalize_reasons(reasons: list[str]) -> list[str]:
             continue
         if ":" in raw:
             prefix, rest = raw.split(":", 1)
-            if prefix in _REASON_PREFIXES and rest.strip():
+            if prefix in REASON_PREFIXES and rest.strip():
                 normalized.append(f"{prefix}:{rest.strip()}"[:64])
                 continue
         key = raw.replace(" ", "_")[:48] or "unspecified"
@@ -86,7 +57,7 @@ def _normalize_signals(signals: list[dict]) -> list[dict]:
         if not isinstance(signal, dict):
             continue
         source = str(signal.get("source", "")).strip()
-        if source not in {"world", "belief", "intent", "history"}:
+        if source not in REASON_PREFIXES:
             continue
         key = str(signal.get("key", "")).strip()[:48]
         value = str(signal.get("value", "")).strip()[:120]

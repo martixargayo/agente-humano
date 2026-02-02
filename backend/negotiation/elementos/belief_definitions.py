@@ -1,0 +1,89 @@
+import os
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, confloat, conlist, field_validator
+
+from ..schemas import ReasonKey
+
+BELIEF_MODEL = os.getenv("BELIEF_MODEL_NAME", os.getenv("SUMMARY_MODEL_NAME", "gpt-4o-mini"))
+BELIEF_TEMPERATURE = float(os.getenv("BELIEF_TEMPERATURE", "0.0"))
+
+REASON_PRIORITY = {
+    "price_signal": 0,
+    "deadline_signal": 1,
+    "other_buyer_signal": 2,
+    "concession_signal": 3,
+    "docs_signal": 4,
+    "tone_signal": 5,
+}
+
+
+class BeliefReasonModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    weight: confloat(ge=0.0, le=1.0) = 0.5
+    confidence: confloat(ge=0.0, le=1.0) = 0.5
+    evidence: str = ""
+
+
+class BeliefStanceModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    deal_feasibility: confloat(ge=0.0, le=1.0) = 0.5
+    seller_flexibility: confloat(ge=0.0, le=1.0) = 0.5
+
+
+class BeliefDynamicsModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    interaction_health: Literal["stable", "tense", "stalled"] = "stable"
+    last_update_evidence: str = ""
+
+
+class BeliefToMModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    seller_goals: conlist(str, max_length=6) = Field(default_factory=list)
+    seller_tactics: conlist(str, max_length=6) = Field(default_factory=list)
+    seller_belief_about_me: conlist(str, max_length=6) = Field(default_factory=list)
+    confidence: confloat(ge=0.0, le=1.0) = 0.4
+
+
+class BeliefStateModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    stance: BeliefStanceModel
+    reasons: dict[ReasonKey, BeliefReasonModel] = Field(default_factory=dict)
+    hypotheses: conlist(str, max_length=5) = Field(default_factory=list)
+    hypotheses_structural: conlist(str, max_length=5) = Field(default_factory=list)
+    hypotheses_observational: conlist(str, max_length=5) = Field(default_factory=list)
+    evaluations: dict[str, confloat(ge=0.0, le=1.0)] = Field(default_factory=dict)
+    dynamics: BeliefDynamicsModel
+    tom: BeliefToMModel
+
+    @field_validator("reasons")
+    @classmethod
+    def limit_reasons(
+        cls, value: dict[ReasonKey, BeliefReasonModel]
+    ) -> dict[ReasonKey, BeliefReasonModel]:
+        if not isinstance(value, dict):
+            return {}
+        items = sorted(
+            value.items(),
+            key=lambda kv: (
+                -(kv[1].weight * kv[1].confidence),
+                REASON_PRIORITY.get(str(kv[0]), 999),
+                str(kv[0]),
+            ),
+        )
+        return dict(items[:6])
+
+
+CRITICAL_FLAGS = (
+    "price_mentioned",
+    "deadline_claimed",
+    "other_buyer_claimed",
+    "docs_claimed",
+    "concession_made",
+    "message_is_vague",
+    "batna_claimed",
+    "urgency_claimed",
+    "min_price_claimed",
+    "price_firm",
+    "evidence_offered",
+)

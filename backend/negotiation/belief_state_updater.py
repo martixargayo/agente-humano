@@ -3,28 +3,25 @@ from __future__ import annotations
 
 import json
 import logging
-import os
-
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
-from typing import Literal
-
-from pydantic import BaseModel, ConfigDict, Field, confloat, conlist, field_validator
 
 from prompts import BELIEF_UPDATE_SYSTEM_PROMPT, BELIEF_UPDATE_USER_PROMPT
 from .gate_utils import _split_world_diff
+from .elementos.belief_definitions import (
+    BELIEF_MODEL,
+    BELIEF_TEMPERATURE,
+    BeliefStateModel,
+    CRITICAL_FLAGS,
+)
 from .schemas import (
     BeliefState,
     PolicyDecision,
-    ReasonKey,
     WorldState,
     default_belief_state,
 )
 from .validation import normalize_belief_state
 
-
-BELIEF_MODEL = os.getenv("BELIEF_MODEL_NAME", os.getenv("SUMMARY_MODEL_NAME", "gpt-4o-mini"))
-BELIEF_TEMPERATURE = float(os.getenv("BELIEF_TEMPERATURE", "0.0"))
 
 _belief_llm = ChatOpenAI(model=BELIEF_MODEL, temperature=BELIEF_TEMPERATURE)
 logger = logging.getLogger(__name__)
@@ -34,84 +31,6 @@ _belief_prompt = ChatPromptTemplate.from_messages(
         ("system", BELIEF_UPDATE_SYSTEM_PROMPT),
         ("user", BELIEF_UPDATE_USER_PROMPT),
     ]
-)
-
-class _BeliefReasonModel(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    weight: confloat(ge=0.0, le=1.0) = 0.5
-    confidence: confloat(ge=0.0, le=1.0) = 0.5
-    evidence: str = ""
-
-
-class _BeliefStanceModel(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    deal_feasibility: confloat(ge=0.0, le=1.0) = 0.5
-    seller_flexibility: confloat(ge=0.0, le=1.0) = 0.5
-
-
-class _BeliefDynamicsModel(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    interaction_health: Literal["stable", "tense", "stalled"] = "stable"
-    last_update_evidence: str = ""
-
-
-class _BeliefToMModel(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    seller_goals: conlist(str, max_length=6) = Field(default_factory=list)
-    seller_tactics: conlist(str, max_length=6) = Field(default_factory=list)
-    seller_belief_about_me: conlist(str, max_length=6) = Field(default_factory=list)
-    confidence: confloat(ge=0.0, le=1.0) = 0.4
-
-
-class _BeliefStateModel(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    stance: _BeliefStanceModel
-    reasons: dict[ReasonKey, _BeliefReasonModel] = Field(default_factory=dict)
-    hypotheses: conlist(str, max_length=5) = Field(default_factory=list)
-    hypotheses_structural: conlist(str, max_length=5) = Field(default_factory=list)
-    hypotheses_observational: conlist(str, max_length=5) = Field(default_factory=list)
-    evaluations: dict[str, confloat(ge=0.0, le=1.0)] = Field(default_factory=dict)
-    dynamics: _BeliefDynamicsModel
-    tom: _BeliefToMModel
-
-    @field_validator("reasons")
-    @classmethod
-    def _limit_reasons(
-        cls, value: dict[ReasonKey, _BeliefReasonModel]
-    ) -> dict[ReasonKey, _BeliefReasonModel]:
-        if not isinstance(value, dict):
-            return {}
-        reason_priority = {
-            "price_signal": 0,
-            "deadline_signal": 1,
-            "other_buyer_signal": 2,
-            "concession_signal": 3,
-            "docs_signal": 4,
-            "tone_signal": 5,
-        }
-        items = sorted(
-            value.items(),
-            key=lambda kv: (
-                -(kv[1].weight * kv[1].confidence),
-                reason_priority.get(str(kv[0]), 999),
-                str(kv[0]),
-            ),
-        )
-        return dict(items[:6])
-
-
-_CRITICAL_FLAGS = (
-    "price_mentioned",
-    "deadline_claimed",
-    "other_buyer_claimed",
-    "docs_claimed",
-    "concession_made",
-    "message_is_vague",
-    "batna_claimed",
-    "urgency_claimed",
-    "min_price_claimed",
-    "price_firm",
-    "evidence_offered",
 )
 
 
@@ -131,7 +50,7 @@ def has_belief_evidence_delta(
     domain, interaction = _split_world_diff(world_diff)
     if domain or interaction:
         return True
-    for key in _CRITICAL_FLAGS:
+    for key in CRITICAL_FLAGS:
         if world.get(key) != prev_world.get(key):
             return True
     if world.get("tone_signal") != prev_world.get("tone_signal"):
@@ -195,7 +114,7 @@ def update_belief_state(
     )
 
     try:
-        structured_llm = _belief_llm.with_structured_output(_BeliefStateModel)
+        structured_llm = _belief_llm.with_structured_output(BeliefStateModel)
         result = structured_llm.invoke(messages)
         data = result.model_dump()
         normalized, issues = normalize_belief_state(data, previous)

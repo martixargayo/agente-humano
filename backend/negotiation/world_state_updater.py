@@ -1,12 +1,37 @@
 # backend/negotiation/world_state_updater.py
 from __future__ import annotations
 
+import os
 import hashlib
 import re
 import unicodedata
-import os
 from typing import Any, List, Tuple
 
+from .elementos.world_definitions import (
+    ACCEPT_PATTERNS,
+    BATNA_PATTERNS,
+    CONCESSION_PATTERNS,
+    CONFLICT_MARKERS,
+    CONF,
+    DEADLINE_PATTERNS,
+    DOCS_MAP,
+    EVIDENCE_PATTERNS,
+    EVIDENCE_V2_MAX_CLAIMS,
+    EVIDENCE_V2_MAX_UNKNOWN,
+    EVIDENCE_V2_RECENT_K,
+    EVASION_MARKERS,
+    FRIENDLY_MARKERS,
+    MIN_PRICE_PATTERNS,
+    NEGATION_AFTER,
+    NEGATION_WINDOW,
+    OTHER_BUYER_PATTERNS,
+    PRICE_FIRM_PATTERNS,
+    PRICE_KEYWORDS,
+    SOFT_COMMITMENT_MARKERS,
+    TENSE_MARKERS,
+    TIMING_PATTERNS,
+    URGENCY_PATTERNS_STRONG,
+)
 from .evidence_registry import get_spec
 from .schemas import EvidenceItem, WorldState, default_world_state
 from .llm_state_extractor import (
@@ -14,167 +39,6 @@ from .llm_state_extractor import (
     extract_state_patch_llm,
     validate_extractor_output,
 )
-
-
-_PRICE_KEYWORDS = [
-    "precio",
-    "€",
-    "euros",
-    "eur",
-    "pido",
-    "ofrezco",
-    "lo dejo",
-    "último",
-    "ultima",
-    "última",
-    "rebajo",
-    "descuento",
-    "negociable",
-]
-
-CONF = {
-    "PRICE_NUMERIC": float(os.getenv("CONF_PRICE_NUMERIC", "0.80")),
-    "PRICE_KEYWORD": float(os.getenv("CONF_PRICE_KEYWORD", "0.45")),
-    "FIRMNESS_STRONG": float(os.getenv("CONF_FIRMNESS_STRONG", "0.80")),
-    "FIRMNESS_WEAK": float(os.getenv("CONF_FIRMNESS_WEAK", "0.45")),
-    "DEADLINE_STRONG": float(os.getenv("CONF_DEADLINE_STRONG", "0.70")),
-    "DEADLINE_WEAK": float(os.getenv("CONF_DEADLINE_WEAK", "0.50")),
-    "URGENCY_STRONG": float(os.getenv("CONF_URGENCY_STRONG", "0.70")),
-    "URGENCY_WEAK": float(os.getenv("CONF_URGENCY_WEAK", "0.40")),
-}
-
-EVIDENCE_V2_MAX_CLAIMS = int(os.getenv("EVIDENCE_V2_MAX_CLAIMS", "200"))
-EVIDENCE_V2_RECENT_K = int(os.getenv("EVIDENCE_V2_RECENT_K", "3"))
-EVIDENCE_V2_MAX_UNKNOWN = int(os.getenv("EVIDENCE_V2_MAX_UNKNOWN", "50"))
-
-_DEADLINE_PATTERNS = [
-    r"\bhoy\b",
-    r"\bmañana\b",
-    r"\besta semana\b",
-    r"\beste finde\b",
-    r"\bantes de\b",
-    r"\bpara el\b",
-    r"\ben \d+ días\b",
-    r"\ben \d+ semanas\b",
-]
-
-_TIMING_PATTERNS = [
-    r"\bhoy\b",
-    r"\bmañana\b",
-    r"\besta semana\b",
-    r"\beste finde\b",
-    r"\bantes de\b",
-    r"\bpara el\b",
-    r"\ben \d+ días\b",
-    r"\ben \d+ semanas\b",
-]
-
-_OTHER_BUYER_PATTERNS = [
-    r"otro comprador",
-    r"otra persona",
-    r"otro interesado",
-    r"hay interesados",
-    r"me han ofrecido",
-    r"ya tengo oferta",
-]
-
-_BATNA_PATTERNS = [
-    r"tengo otro interesado",
-    r"otro interesado",
-    r"otro comprador",
-    r"me lo quedo",
-    r"me lo quedar[ée]",
-    r"lo llevo a compraventa",
-    r"me lo compra mi primo",
-]
-
-_URGENCY_PATTERNS_STRONG = [
-    r"me urge",
-    r"tengo prisa",
-    r"necesito vender ya",
-    r"necesito el dinero",
-    r"me viene la reforma",
-]
-
-_MIN_PRICE_PATTERNS = [
-    r"de\s+\d+.*no bajo",
-    r"mi mínimo es",
-    r"mi minimo es",
-    r"no bajo de",
-]
-
-_PRICE_FIRM_PATTERNS = [
-    r"precio fijo",
-    r"no negociable",
-    r"no negocio",
-    r"precio cerrado",
-]
-
-_EVIDENCE_PATTERNS = [
-    r"tengo factura",
-    r"tengo informe",
-    r"te enseño papeles",
-    r"tengo papeles",
-    r"te puedo mostrar",
-]
-
-_CONCESSION_PATTERNS = [
-    r"te lo dejo",
-    r"lo dejo en",
-    r"último precio",
-    r"ultima oferta",
-    r"última oferta",
-    r"puedo bajar",
-    r"rebajo",
-    r"descuento",
-    r"me ajusto",
-]
-
-_DOCS_MAP = {
-    "itv": "ITV",
-    "factura": "facturas",
-    "facturas": "facturas",
-    "libro": "libro",
-    "mantenimiento": "libro",
-    "informe": "informe",
-    "dgt": "DGT",
-    "historial": "historial",
-}
-
-_FRIENDLY_MARKERS = ["gracias", "sin problema", "encantado", "perfecto"]
-_TENSE_MARKERS = ["no tengo tiempo", "último", "ultima", "ya", "prisa", "urge"]
-_CONFLICT_MARKERS = ["no pienso", "ni de broma", "no voy a", "olvídalo"]
-_ACCEPT_PATTERNS = [
-    r"\bvale\b",
-    r"\bde acuerdo\b",
-    r"\bok(?:ay)?\b",
-    r"\bperfecto\b",
-    r"\bme parece bien\b",
-    r"\bme sirve\b",
-]
-_NEGATION_WINDOW = r"(?:\bno\b|\bpero\s+no\b|\bpara\s+nada\b|\bni\s+de\s+broma\b)"
-_NEGATION_AFTER = re.compile(
-    r"^\s*(?:,?\s*)?(?:no\b|pero\s+no\b|para\s+nada\b|ni\s+de\s+broma\b)",
-    flags=re.IGNORECASE,
-)
-_EVASION_MARKERS = [
-    "no sé",
-    "no se",
-    "como quieras",
-    "da igual",
-    "lo que tú digas",
-    "no estoy seguro",
-    "depende",
-]
-_SOFT_COMMITMENT_MARKERS = [
-    "podría",
-    "quizá",
-    "quizas",
-    "me lo pensaría",
-    "me lo pensare",
-    "podemos verlo",
-    "si me lo dejas",
-]
 
 
 def _normalize_text(text: str) -> str:
@@ -189,15 +53,15 @@ def _normalize_short(text: str) -> str:
 
 
 def _match_affirmation(text_lower: str) -> bool:
-    for pat in _ACCEPT_PATTERNS:
+    for pat in ACCEPT_PATTERNS:
         match = re.search(pat, text_lower)
         if not match:
             continue
         before = text_lower[max(0, match.start() - 20) : match.start()]
         after = text_lower[match.end() : match.end() + 25]
-        if re.search(_NEGATION_WINDOW + r"\s*$", before):
+        if re.search(NEGATION_WINDOW + r"\s*$", before):
             continue
-        if _NEGATION_AFTER.search(after):
+        if NEGATION_AFTER.search(after):
             continue
         return True
     return False
@@ -222,13 +86,13 @@ def _previous_user_message(recent_history: list[dict]) -> str:
 def _tone_hits_from_message(text: str) -> list[str]:
     lower = text.lower()
     hits: list[str] = []
-    for marker in _FRIENDLY_MARKERS:
+    for marker in FRIENDLY_MARKERS:
         if marker in lower:
             hits.append(f"friendly:{marker}")
-    for marker in _TENSE_MARKERS:
+    for marker in TENSE_MARKERS:
         if marker in lower:
             hits.append(f"tense:{marker}")
-    for marker in _CONFLICT_MARKERS:
+    for marker in CONFLICT_MARKERS:
         if marker in lower:
             hits.append(f"tense:{marker}")
     return hits
@@ -251,8 +115,8 @@ def extract_interaction_signals(
         tone_signal = _derive_tone_signal(tone_hits)
 
     implicit_acceptance = _match_affirmation(lower)
-    evasion_detected = any(marker in lower for marker in _EVASION_MARKERS)
-    soft_commitment = any(marker in lower for marker in _SOFT_COMMITMENT_MARKERS)
+    evasion_detected = any(marker in lower for marker in EVASION_MARKERS)
+    soft_commitment = any(marker in lower for marker in SOFT_COMMITMENT_MARKERS)
     prev_user = _normalize_short(_previous_user_message(recent_history))
     loop_hint = bool(prev_user and prev_user == _normalize_short(text))
 
@@ -463,7 +327,7 @@ def _extract_sentence(text: str, match_span: tuple[int, int]) -> str:
 
 
 def _extract_timing_phrase(text: str) -> str:
-    match = _detect_keywords(text.lower(), _TIMING_PATTERNS)
+    match = _detect_keywords(text.lower(), TIMING_PATTERNS)
     if not match:
         return ""
     return _extract_sentence(text, match.span())
@@ -756,7 +620,7 @@ def _legacy_regex_update(prev_world: WorldState, user_message: str) -> WorldStat
     observed_fields: dict[str, Any] = {}
 
     price_value, price_span, price_raw = _extract_price_match(lower)
-    has_price_context = any(keyword in lower for keyword in _PRICE_KEYWORDS)
+    has_price_context = any(keyword in lower for keyword in PRICE_KEYWORDS)
     if price_value is not None:
         observed_fields["price_value"] = float(price_value)
         confidence = CONF["PRICE_NUMERIC"] if has_price_context else CONF["PRICE_KEYWORD"]
@@ -792,7 +656,7 @@ def _legacy_regex_update(prev_world: WorldState, user_message: str) -> WorldStat
             window_turns,
         )
 
-    deadline_match = _detect_keywords(lower, _DEADLINE_PATTERNS)
+    deadline_match = _detect_keywords(lower, DEADLINE_PATTERNS)
     if deadline_match:
         deadline_text = _extract_sentence(text, deadline_match.span())
         observed_fields["deadline_text"] = deadline_text
@@ -822,7 +686,7 @@ def _legacy_regex_update(prev_world: WorldState, user_message: str) -> WorldStat
             window_turns,
         )
 
-    other_buyer_match = _detect_keywords(lower, _OTHER_BUYER_PATTERNS)
+    other_buyer_match = _detect_keywords(lower, OTHER_BUYER_PATTERNS)
     if other_buyer_match:
         other_buyer_text = _extract_sentence(text, other_buyer_match.span())
         observed_fields["other_buyer_text"] = other_buyer_text
@@ -847,7 +711,7 @@ def _legacy_regex_update(prev_world: WorldState, user_message: str) -> WorldStat
             window_turns,
         )
 
-    batna_match = _detect_keywords(lower, _BATNA_PATTERNS)
+    batna_match = _detect_keywords(lower, BATNA_PATTERNS)
     if batna_match:
         batna_text = _extract_sentence(text, batna_match.span())
         observed_fields["batna_text"] = batna_text
@@ -859,7 +723,7 @@ def _legacy_regex_update(prev_world: WorldState, user_message: str) -> WorldStat
             window_turns,
         )
 
-    urgency_match = _detect_keywords(lower, _URGENCY_PATTERNS_STRONG)
+    urgency_match = _detect_keywords(lower, URGENCY_PATTERNS_STRONG)
     if urgency_match:
         urgency_text = _extract_sentence(text, urgency_match.span())
         observed_fields["urgency_text"] = urgency_text
@@ -879,7 +743,7 @@ def _legacy_regex_update(prev_world: WorldState, user_message: str) -> WorldStat
             window_turns,
         )
 
-    min_price_match = _detect_keywords(lower, _MIN_PRICE_PATTERNS)
+    min_price_match = _detect_keywords(lower, MIN_PRICE_PATTERNS)
     if min_price_match:
         min_price_text = _extract_sentence(text, min_price_match.span())
         observed_fields["min_price_text"] = min_price_text
@@ -898,7 +762,7 @@ def _legacy_regex_update(prev_world: WorldState, user_message: str) -> WorldStat
             window_turns,
         )
 
-    price_firm_match = _detect_keywords(lower, _PRICE_FIRM_PATTERNS)
+    price_firm_match = _detect_keywords(lower, PRICE_FIRM_PATTERNS)
     if price_firm_match:
         price_firm_text = _extract_sentence(text, price_firm_match.span())
         observed_fields["price_firm_text"] = price_firm_text
@@ -923,7 +787,7 @@ def _legacy_regex_update(prev_world: WorldState, user_message: str) -> WorldStat
             window_turns,
         )
 
-    evidence_match = _detect_keywords(lower, _EVIDENCE_PATTERNS)
+    evidence_match = _detect_keywords(lower, EVIDENCE_PATTERNS)
     if evidence_match:
         evidence_text = _extract_sentence(text, evidence_match.span())
         observed_fields["evidence_text"] = evidence_text
@@ -942,7 +806,7 @@ def _legacy_regex_update(prev_world: WorldState, user_message: str) -> WorldStat
             window_turns,
         )
 
-    concession_match = _detect_keywords(lower, _CONCESSION_PATTERNS)
+    concession_match = _detect_keywords(lower, CONCESSION_PATTERNS)
     if concession_match:
         concession_text = _extract_sentence(text, concession_match.span())
         observed_fields["concession_text"] = concession_text
@@ -962,7 +826,7 @@ def _legacy_regex_update(prev_world: WorldState, user_message: str) -> WorldStat
         )
 
     docs_found: List[str] = []
-    for key, label in _DOCS_MAP.items():
+    for key, label in DOCS_MAP.items():
         if re.search(rf"\b{re.escape(key)}\b", lower):
             docs_found.append(label)
     if docs_found:
@@ -982,14 +846,14 @@ def _legacy_regex_update(prev_world: WorldState, user_message: str) -> WorldStat
         )
 
     tone_hits: List[str] = []
-    for marker in _TENSE_MARKERS:
+    for marker in TENSE_MARKERS:
         if marker in lower:
             tone_hits.append(f"tense:{marker}")
-    for marker in _FRIENDLY_MARKERS:
+    for marker in FRIENDLY_MARKERS:
         if marker in lower:
             tone_hits.append(f"friendly:{marker}")
     conflict_hits: List[str] = []
-    for marker in _CONFLICT_MARKERS:
+    for marker in CONFLICT_MARKERS:
         if marker in lower:
             conflict_hits.append(marker)
     if tone_hits:

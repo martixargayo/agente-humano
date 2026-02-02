@@ -4,25 +4,13 @@ import hashlib
 import re
 from typing import Any, Dict, Iterable, Tuple
 
-
-_EMAIL_PATTERN = re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")
-_PHONE_PATTERN = re.compile(r"\b\d{2,4}[-.\s]?\d{2,4}[-.\s]?\d{2,4}\b")
-_URL_PATTERN = re.compile(r"(https?://\S+|www\.\S+)", re.IGNORECASE)
-_SYMBOL_PATTERN = re.compile(r"[%€$@#\+\-]")
-_ATTACHMENT_HINTS = (
-    "foto",
-    "fotos",
-    "pdf",
-    "documento",
-    "documentos",
-    "adjunto",
-    "adjunta",
-    "archivo",
-    "archivos",
-    "imagen",
-    "imágenes",
+from .elementos.world_definitions import (
+    ATTACHMENT_HINTS,
+    EMAIL_PATTERN,
+    PHONE_PATTERN,
+    SYMBOL_PATTERN,
+    URL_PATTERN,
 )
-
 
 def stable_allowed_ids_hash(allowed_ids: Iterable[str]) -> str:
     joined = "|".join(sorted(set(allowed_ids)))
@@ -67,11 +55,11 @@ def input_shape_features(text: str) -> Dict[str, Any]:
         "has_currency": any(sym in raw for sym in ("€", "$")),
         "has_question": "?" in raw,
         "has_exclamation": "!" in raw,
-        "has_url": bool(_URL_PATTERN.search(raw)),
-        "has_attachment": any(hint in lowered for hint in _ATTACHMENT_HINTS),
-        "has_email": bool(_EMAIL_PATTERN.search(raw)),
-        "has_phone": bool(_PHONE_PATTERN.search(raw)),
-        "has_symbol": bool(_SYMBOL_PATTERN.search(raw)),
+        "has_url": bool(URL_PATTERN.search(raw)),
+        "has_attachment": any(hint in lowered for hint in ATTACHMENT_HINTS),
+        "has_email": bool(EMAIL_PATTERN.search(raw)),
+        "has_phone": bool(PHONE_PATTERN.search(raw)),
+        "has_symbol": bool(SYMBOL_PATTERN.search(raw)),
     }
 
 

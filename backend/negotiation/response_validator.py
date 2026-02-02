@@ -3,31 +3,26 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 from typing import Tuple
 
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
+from .elementos.execution_definitions import (
+    NUMBER_PATTERN,
+    OWN_NUMBER_CONTEXT,
+    PRICE_CONTEXT,
+)
 from .policies import safe_neutral_policy_id
 from .schemas import PolicyDecision, WorldState
 
-
-_NUMBER_PATTERN = re.compile(r"\b(\d{1,3}(?:[.,]\d{3})+|\d+(?:[.,]\d+)?)\b")
-_OWN_NUMBER_CONTEXT = re.compile(
-    r"\b(mi|mío|mios|mi presupuesto|puedo pagar|pago|te doy|mi oferta)\b",
-    re.IGNORECASE,
-)
-_PRICE_CONTEXT = re.compile(
-    r"(€|euros|precio|pagar|oferta|te doy|me quedo en|lo dejo en)", re.IGNORECASE
-)
 
 logger = logging.getLogger(__name__)
 
 
 def _parse_numbers(text: str) -> list[float]:
     values: list[float] = []
-    for match in _NUMBER_PATTERN.findall(text):
+    for match in NUMBER_PATTERN.findall(text):
         cleaned = match.replace(".", "").replace(",", ".")
         try:
             values.append(float(cleaned))
@@ -38,10 +33,10 @@ def _parse_numbers(text: str) -> list[float]:
 
 def _extract_price_like_numbers(text: str) -> list[float]:
     values: list[float] = []
-    for match in _NUMBER_PATTERN.finditer(text):
+    for match in NUMBER_PATTERN.finditer(text):
         span = match.span()
         window = text[max(0, span[0] - 25) : min(len(text), span[1] + 25)]
-        if _PRICE_CONTEXT.search(window):
+        if PRICE_CONTEXT.search(window):
             cleaned = match.group(0).replace(".", "").replace(",", ".")
             try:
                 values.append(float(cleaned))
@@ -51,7 +46,7 @@ def _extract_price_like_numbers(text: str) -> list[float]:
 
 
 def _violates_own_number_rule(text: str) -> bool:
-    if not _OWN_NUMBER_CONTEXT.search(text):
+    if not OWN_NUMBER_CONTEXT.search(text):
         return False
     return bool(_parse_numbers(text))
 
