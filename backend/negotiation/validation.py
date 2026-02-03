@@ -18,6 +18,8 @@ from .schemas import (
     PolicyDecision,
     PhaseState,
     ProgressState,
+    RenderConstraints,
+    RenderState,
     RiskPosture,
     SceneProfile,
     StyleContract,
@@ -25,9 +27,11 @@ from .schemas import (
     WorldState,
     default_belief_state,
     default_intent_state,
+    default_constraints_struct,
     default_policy_decision,
     default_persona_profile,
     default_progress_state,
+    default_render_state,
     default_scene_profile,
     default_style_contract,
     default_world_state,
@@ -718,13 +722,13 @@ def _normalize_persona_profile(raw: object) -> Tuple[PersonaProfile, List[str]]:
         issues.append("persona_voice_register_invalid")
         voice_register = base["voice_register"]
     base["voice_register"] = voice_register
-    base["base_language"] = str(raw.get("base_language", base["base_language"]))
     base["values"] = _unique_list(_coerce_str_list(raw.get("values", base["values"])), max_items=6)
     base["hard_limits"] = _unique_list(
         _coerce_str_list(raw.get("hard_limits", base["hard_limits"])), max_items=8
     )
     base["do"] = _unique_list(_coerce_str_list(raw.get("do", base["do"])), max_items=8)
     base["dont"] = _unique_list(_coerce_str_list(raw.get("dont", base["dont"])), max_items=8)
+    base["signature_line"] = str(raw.get("signature_line", base.get("signature_line", ""))).strip()[:140]
     return base, issues
 
 
@@ -739,6 +743,9 @@ def _normalize_scene_profile(raw: object) -> Tuple[SceneProfile, List[str]]:
     base["macro_goal"] = str(raw.get("macro_goal", base["macro_goal"]))
     base["operational_context"] = _unique_list(
         _coerce_str_list(raw.get("operational_context", base["operational_context"])), max_items=8
+    )
+    base["disclaimers"] = _unique_list(
+        _coerce_str_list(raw.get("disclaimers", base.get("disclaimers", []))), max_items=8
     )
     return base, issues
 
@@ -771,6 +778,62 @@ def _normalize_style_contract(raw: object) -> Tuple[StyleContract, List[str]]:
         emoji_policy = base["emoji_policy"]
     base["emoji_policy"] = emoji_policy
     base["markdown_allowed"] = bool(raw.get("markdown_allowed", base["markdown_allowed"]))
+    try:
+        bullets_max = int(raw.get("bullets_max", base.get("bullets_max", 4)))
+        base["bullets_max"] = max(0, min(8, bullets_max))
+    except (TypeError, ValueError):
+        issues.append("style_bullets_max_invalid")
+    return base, issues
+
+
+def _normalize_render_state(raw: object) -> Tuple[RenderState, List[str]]:
+    base = default_render_state()
+    issues: List[str] = []
+    if not isinstance(raw, dict):
+        issues.append("render_state_no_dict")
+        return base, issues
+    base["persona_id"] = str(raw.get("persona_id", base["persona_id"])) or base["persona_id"]
+    base["scene_id"] = str(raw.get("scene_id", base["scene_id"])) or base["scene_id"]
+    base["style_id"] = str(raw.get("style_id", base["style_id"])) or base["style_id"]
+    base["language"] = str(raw.get("language", base["language"])) or base["language"]
+    persona_profile = raw.get("persona_profile")
+    if isinstance(persona_profile, dict):
+        base["persona_profile"] = persona_profile
+    scene_profile = raw.get("scene_profile")
+    if isinstance(scene_profile, dict):
+        base["scene_profile"] = scene_profile
+    style_contract = raw.get("style_contract")
+    if isinstance(style_contract, dict):
+        base["style_contract"] = style_contract
+    return base, issues
+
+
+def _normalize_constraints_struct(raw: object) -> Tuple[RenderConstraints, List[str]]:
+    base = default_constraints_struct()
+    issues: List[str] = []
+    if not isinstance(raw, dict):
+        issues.append("constraints_struct_no_dict")
+        return base, issues
+    base["forbid_claims"] = _unique_list(
+        _coerce_str_list(raw.get("forbid_claims", base["forbid_claims"])), max_items=8
+    )
+    base["forbid_formats"] = _unique_list(
+        _coerce_str_list(raw.get("forbid_formats", base["forbid_formats"])), max_items=6
+    )
+    base["disallow_numbers"] = bool(raw.get("disallow_numbers", base["disallow_numbers"]))
+    base["require_ask_if_missing"] = _unique_list(
+        _coerce_str_list(raw.get("require_ask_if_missing", base["require_ask_if_missing"])),
+        max_items=6,
+    )
+    max_questions = raw.get("max_questions", base.get("max_questions"))
+    if max_questions is None:
+        base["max_questions"] = None
+    else:
+        try:
+            base["max_questions"] = max(0, min(6, int(max_questions)))
+        except (TypeError, ValueError):
+            issues.append("constraints_struct_max_questions_invalid")
+            base["max_questions"] = base.get("max_questions", 2)
     return base, issues
 
 
@@ -786,21 +849,39 @@ def normalize_progress_state(raw: object) -> Tuple[ProgressState, List[str]]:
         issues.append("progress_conversation_mode_invalid")
         conversation_mode = base.get("conversation_mode", "general")
     base["conversation_mode"] = conversation_mode  # type: ignore[assignment]
+    try:
+        base["mode_confidence"] = _clamp(
+            _coerce_float(raw.get("mode_confidence", base.get("mode_confidence", 0.0)), 0.0)
+        )
+    except (TypeError, ValueError):
+        issues.append("progress_mode_confidence_invalid")
+    try:
+        base["mode_last_switch_turn"] = max(
+            0, int(raw.get("mode_last_switch_turn", base.get("mode_last_switch_turn", 0)))
+        )
+    except (TypeError, ValueError):
+        issues.append("progress_mode_last_switch_turn_invalid")
     base["policy_pack_active"] = str(
         raw.get("policy_pack_active", base.get("policy_pack_active", "universal"))
     )
-    base["persona_profile"], persona_issues = _normalize_persona_profile(
-        raw.get("persona_profile", base.get("persona_profile", {}))
+    base["render_state"], render_issues = _normalize_render_state(
+        raw.get("render_state", base.get("render_state", {}))
     )
-    issues.extend(persona_issues)
-    base["scene_profile"], scene_issues = _normalize_scene_profile(
-        raw.get("scene_profile", base.get("scene_profile", {}))
+    issues.extend(render_issues)
+    base["constraints_struct"], constraints_issues = _normalize_constraints_struct(
+        raw.get("constraints_struct", base.get("constraints_struct", {}))
     )
-    issues.extend(scene_issues)
-    base["style_contract"], style_issues = _normalize_style_contract(
-        raw.get("style_contract", base.get("style_contract", {}))
-    )
-    issues.extend(style_issues)
+    issues.extend(constraints_issues)
+
+    persona_profile_raw = raw.get("persona_profile")
+    if isinstance(persona_profile_raw, dict):
+        base["render_state"]["persona_profile"] = persona_profile_raw
+    scene_profile_raw = raw.get("scene_profile")
+    if isinstance(scene_profile_raw, dict):
+        base["render_state"]["scene_profile"] = scene_profile_raw
+    style_contract_raw = raw.get("style_contract")
+    if isinstance(style_contract_raw, dict):
+        base["render_state"]["style_contract"] = style_contract_raw
 
     last_executed_policy_id = raw.get("last_executed_policy_id", raw.get("last_policy_id", ""))
     base["last_executed_policy_id"] = str(

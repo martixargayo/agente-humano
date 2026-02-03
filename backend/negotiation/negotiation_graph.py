@@ -71,12 +71,9 @@ from .policy_planner import (
     repair_policy_by_phase,
 )
 from .progress_updater import update_progress_state
-from .executor import (
-    build_constraints_struct,
-    build_strategy_summary,
-    normalize_executor_output,
-    render_executor_output,
-)
+from .executor import build_strategy_summary, normalize_executor_output, render_executor_output
+from .elementos.render import resolve_render_profiles
+from .elementos.render.constraints_builder import build_constraints_struct
 from .validator import validate_and_repair
 from .schemas import (
     BeliefState,
@@ -84,13 +81,13 @@ from .schemas import (
     ProgressState,
     WorldState,
     default_belief_state,
+    default_constraints_struct,
     default_policy_decision,
     default_progress_state,
-    default_persona_profile,
-    default_scene_profile,
-    default_style_contract,
+    default_render_state,
     default_world_state,
 )
+from .mode_inference import update_conversation_mode
 from .validation import (
     normalize_belief_state,
     normalize_policy_decision,
@@ -419,13 +416,13 @@ Objetivo: recuperar tácticas concretas para ejecutar esta policy.
 def world_updater_node(state: NegotiationTurn) -> NegotiationTurn:
     prev_world = state.get("world_state") or default_world_state()
     state["prev_world_state"] = prev_world
-    gate_state = (state.get("progress_state") or {}).get(
-        "gate_state", default_progress_state()["gate_state"]
-    )
+    progress_state = state.get("progress_state") or default_progress_state()
+    gate_state = progress_state.get("gate_state", default_progress_state()["gate_state"])
     user_message = state.get("user_message", "")
     turn_count = state.get("turn_count", 0) or 0
     modality = state.get("input_modality", "text")
-    conversation_mode = state.get("conversation_mode", "negotiation") or "negotiation"
+    conversation_mode = progress_state.get("conversation_mode", "general") or "general"
+    state["conversation_mode"] = conversation_mode
     prev_text = gate_state.get("prev_user_message", "")
     recent_history = state.get("recent_history")
     if isinstance(recent_history, list):
@@ -491,6 +488,9 @@ def world_updater_node(state: NegotiationTurn) -> NegotiationTurn:
         extractor_meta["extractor_skipped"] = False
         extractor_meta["interaction_updated"] = True
         state["extractor_meta"] = extractor_meta
+    progress_state = update_conversation_mode(progress_state, state.get("world_state", {}), turn_count)
+    state["progress_state"] = progress_state
+    state["conversation_mode"] = progress_state.get("conversation_mode", conversation_mode)
     gate_state["universal_state_fingerprint_prev"] = universal_state_fingerprint(
         state.get("world_state", {}).get("universal_state")
     )
@@ -514,7 +514,7 @@ def belief_updater_node(state: NegotiationTurn) -> NegotiationTurn:
         "gate_state", default_progress_state()["gate_state"]
     )
     turn_count = state.get("turn_count", 0) or 0
-    conversation_mode = state.get("conversation_mode", "negotiation") or "negotiation"
+    conversation_mode = state.get("conversation_mode", "general") or "general"
     belief_skipped, skip_reason = gate_belief(
         world_diff=state.get("world_diff", {}),
         prev_world=state.get("prev_world_state", {}),
@@ -810,7 +810,7 @@ def phase_policy_planner_node(state: NegotiationTurn) -> NegotiationTurn:
 
 
 def progress_updater_node(state: NegotiationTurn) -> NegotiationTurn:
-    state["progress_state"] = update_progress_state(
+    progress_state = update_progress_state(
         prev_progress=state.get("progress_state"),
         policy_decision=state["policy_decision"],
         last_policy_executed=state.get("last_policy_executed"),
@@ -819,6 +819,19 @@ def progress_updater_node(state: NegotiationTurn) -> NegotiationTurn:
         prev_belief_state=state.get("prev_belief_state"),
         belief_state=state["belief_state"],
     )
+    render_state = progress_state.get("render_state") or default_render_state()
+    persona, scene, style = resolve_render_profiles(render_state)
+    constraints_struct = build_constraints_struct(
+        world=state.get("world_state", {}),
+        belief=state.get("belief_state", {}),
+        progress=progress_state,
+        decision=state.get("policy_decision", {}),
+        persona=persona,
+        scene=scene,
+        style=style,
+    )
+    progress_state["constraints_struct"] = constraints_struct
+    state["progress_state"] = progress_state
     return state
 
 
@@ -843,18 +856,14 @@ def executor_node(state: NegotiationTurn) -> NegotiationTurn:
     conversation_mode = progress_state.get("conversation_mode", "general")
     policy_pack_active = progress_state.get("policy_pack_active", "universal")
 
-    persona_profile = progress_state.get("persona_profile") or default_persona_profile()
-    scene_profile = progress_state.get("scene_profile") or default_scene_profile()
-    style_contract = progress_state.get("style_contract") or default_style_contract()
+    render_state = progress_state.get("render_state") or default_render_state()
+    persona_profile, scene_profile, style_contract = resolve_render_profiles(render_state)
 
     strategy_summary = build_strategy_summary(
         state, conversation_mode, policy_pack_active, policy_id
     )
     state["strategy_summary"] = strategy_summary
-
-    constraints_struct = build_constraints_struct(
-        state, progress_state, executed, conversation_mode
-    )
+    constraints_struct = progress_state.get("constraints_struct") or default_constraints_struct()
 
     executor_output = render_executor_output(
         state,
@@ -882,11 +891,16 @@ def executor_node(state: NegotiationTurn) -> NegotiationTurn:
         "persona_id": (persona_profile or {}).get("persona_id", "default"),
         "scene_id": (scene_profile or {}).get("scene_id", "default_chat"),
         "style_id": (style_contract or {}).get("style_id", "default"),
+        "mode_confidence": progress_state.get("mode_confidence", 0.0),
+        "constraints": {
+            "disallow_numbers": constraints_struct.get("disallow_numbers", False),
+            "max_questions": constraints_struct.get("max_questions"),
+        },
     }
 
     repaired_response, violations, validator_meta = validate_and_repair(
         state["assistant_message"],
-        state.get("constraints_struct", {}),
+        constraints_struct,
         executed,
         state.get("world_state", {}),
         persona_profile=persona_profile,
@@ -1014,6 +1028,7 @@ def run_negotiation_agent(
         "memory_meta": memory_meta,
         "refresh_meta": refresh_meta,
         "user_message": user_message,
+        "conversation_mode": progress_state_input.get("conversation_mode", "general"),
         "objective": objective,
         "constraints": constraints,
         "constraints_struct": constraints_struct,

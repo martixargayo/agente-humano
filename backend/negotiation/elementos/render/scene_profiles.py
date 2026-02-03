@@ -11,17 +11,19 @@ _SCENES: Dict[str, SceneProfile] = {
         "setting": "chat app",
         "macro_goal": "help the user with their objective",
         "operational_context": ["chat_only", "no_internal_systems"],
+        "disclaimers": ["chat_only", "no_internal_systems"],
     },
     "in_person_negotiation": {
         "scene_id": "in_person_negotiation",
         "setting": "in-person negotiation",
         "macro_goal": "reach a fair agreement",
         "operational_context": ["in_person", "no_internal_systems"],
+        "disclaimers": ["no_internal_systems"],
     },
 }
 
 
-def get_scene(scene_id: str | None) -> SceneProfile:
+def get_scene_profile(scene_id: str | None) -> SceneProfile:
     if not scene_id:
         return dict(_SCENES["default_chat"])
     return dict(_SCENES.get(scene_id, _SCENES["default_chat"]))

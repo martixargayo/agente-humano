@@ -10,11 +10,8 @@ from .elementos.render.executor_prompts import (
     EXECUTOR_SYSTEM_PROMPT,
     EXECUTOR_USER_PROMPT,
 )
-from .elementos.render.persona_profiles import get_persona
-from .elementos.render.scene_profiles import get_scene
-from .elementos.render.style_contracts import get_style
+from .elementos.render import resolve_render_profiles
 from .elementos.render.render_contracts import RENDER_LIMITS
-from .policies import get_policy
 from .schemas import ExecutorOutput, RenderConstraints
 
 
@@ -64,38 +61,6 @@ def build_strategy_summary(state: dict, conversation_mode: str, policy_pack_acti
         "conversation_mode": conversation_mode,
         "policy_pack_active": policy_pack_active,
     }
-
-
-def build_constraints_struct(
-    state: dict,
-    progress_state: dict,
-    policy_decision: dict,
-    conversation_mode: str,
-) -> RenderConstraints:
-    constraints_struct = state.get("constraints_struct") or {}
-    style_contract = progress_state.get("style_contract") or {}
-    constraints: RenderConstraints = {
-        "forbid_claims": ["access_to_internal_systems", "physical_actions_done"],
-        "forbid_formats": [],
-        "require_ask_if_missing": [],
-        "disallow_numbers": False,
-    }
-    if not bool(style_contract.get("markdown_allowed", False)):
-        constraints["forbid_formats"] = ["markdown"]
-    intent_hint = state.get("intent_hint") or {}
-    missing = intent_hint.get("slots_missing") or []
-    if isinstance(missing, list):
-        constraints["require_ask_if_missing"] = [str(x) for x in missing if str(x).strip()]
-
-    policy_id = policy_decision.get("policy_id", "")
-    policy = get_policy(policy_id)
-    guards = set(policy.guards or []) if policy else set()
-    if constraints_struct.get("avoid_reveal_own_numbers"):
-        constraints["disallow_numbers"] = True
-    if conversation_mode == "negotiation" and "avoid_mentioning_own_numbers" in guards:
-        constraints["disallow_numbers"] = True
-
-    return constraints
 
 
 def _safe_neutral_fallback() -> str:
@@ -167,19 +132,15 @@ def render_executor_output(
     world_state: dict,
     user_message: str,
 ) -> ExecutorOutput:
-    persona_id = persona_profile.get("persona_id")
-    scene_id = scene_profile.get("scene_id")
-    style_id = style_contract.get("style_id")
-
-    persona_base = get_persona(persona_id)
-    scene_base = get_scene(scene_id)
-    style_base = get_style(style_id)
-
-    persona = dict(persona_base)
+    persona, scene, style = resolve_render_profiles(
+        {
+            "persona_id": persona_profile.get("persona_id", "default"),
+            "scene_id": scene_profile.get("scene_id", "default_chat"),
+            "style_id": style_contract.get("style_id", "default"),
+        }
+    )
     persona.update(persona_profile)
-    scene = dict(scene_base)
     scene.update(scene_profile)
-    style = dict(style_base)
     style.update(style_contract)
 
     prompt = EXECUTOR_USER_PROMPT.format(
