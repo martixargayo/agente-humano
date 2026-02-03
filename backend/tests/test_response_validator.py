@@ -2,61 +2,35 @@ from negotiation.response_validator import validate_and_repair, validate_respons
 
 
 def test_validate_response_flags_violations():
-    constraints = {"avoid_reveal_own_numbers": True, "respect_batna": True, "max_total_cost": 10000}
-    violations = validate_response("Puedo pagar 12000 ahora mismo.", constraints)
-    assert "reveal_own_numbers" in violations
-    assert "exceed_max_total_cost" in violations
+    violations = validate_response("Tengo acceso a tu cuenta para revisarlo.", {})
+    assert "claims_internal_access" in violations
 
 
-def test_validate_and_repair_uses_llm(monkeypatch):
-    class FakeLLM:
-        def __init__(self, *args, **kwargs):
-            pass
-
-        def invoke(self, _messages):
-            class Result:
-                content = "No puedo pasarme de mi límite, ¿podemos ajustar condiciones?"
-
-            return Result()
-
-    monkeypatch.setattr("negotiation.response_validator.ChatOpenAI", FakeLLM)
-    constraints = {"avoid_reveal_own_numbers": True, "respect_batna": True, "max_total_cost": 10000}
+def test_validate_and_repair_fallback_on_critical():
     new_text, violations, meta = validate_and_repair(
-        "Puedo pagar 12000 ahora mismo.",
-        constraints,
+        "He accedido a tu cuenta y ya lo hice.",
+        {},
         {"policy_id": "hold_position", "reason": "", "micro_goal": "", "risk_posture": "low", "capabilities": None, "why_short": "", "inputs_used": []},
         {},
     )
     assert violations
-    assert meta["repaired_used"] is True
-    assert "12000" not in new_text
+    assert meta["fallback_applied"] is True
+    assert new_text != "He accedido a tu cuenta y ya lo hice."
 
 
 def test_validate_response_ignores_non_price_numbers():
-    constraints = {"avoid_reveal_own_numbers": True, "respect_batna": True, "max_total_cost": 10000}
     text = "Tiene 120.000 km, es de 2018 y 150cv."
-    violations = validate_response(text, constraints)
-    assert "exceed_max_total_cost" not in violations
+    violations = validate_response(text, {})
+    assert not violations
 
 
-def test_validate_and_repair_fallback_when_still_violating(monkeypatch):
-    class FakeLLM:
-        def __init__(self, *args, **kwargs):
-            pass
-
-        def invoke(self, _messages):
-            class Result:
-                content = "Puedo pagar 15000 ahora mismo."
-
-            return Result()
-
-    monkeypatch.setattr("negotiation.response_validator.ChatOpenAI", FakeLLM)
-    constraints = {"avoid_reveal_own_numbers": True, "respect_batna": True, "max_total_cost": 10000}
-    new_text, violations, _meta = validate_and_repair(
-        "Puedo pagar 12000 ahora mismo.",
-        constraints,
+def test_validate_and_repair_shadow_mode_no_rewrite():
+    new_text, violations, meta = validate_and_repair(
+        "Podemos hablar de condiciones si quieres.",
+        {},
         {"policy_id": "hold_position", "reason": "", "micro_goal": "", "risk_posture": "low", "capabilities": None, "why_short": "", "inputs_used": []},
         {},
     )
-    assert violations
-    assert "Prefiero no comprometer cifras ahora" in new_text
+    assert not violations
+    assert meta["fallback_applied"] is False
+    assert new_text == "Podemos hablar de condiciones si quieres."

@@ -11,11 +11,10 @@ from dotenv import load_dotenv
 from typing_extensions import TypedDict
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, START, END
 
 from normalizer import normalize_text
-from prompts import BASE_PERSONALITY_PROMPT, SUMMARY_SYSTEM_PROMPT, SUMMARY_USER_PROMPT
+from prompts import SUMMARY_SYSTEM_PROMPT, SUMMARY_USER_PROMPT
 from state import (
     SessionState,
     Message,
@@ -72,7 +71,13 @@ from .policy_planner import (
     repair_policy_by_phase,
 )
 from .progress_updater import update_progress_state
-from .response_validator import validate_and_repair
+from .executor import (
+    build_constraints_struct,
+    build_strategy_summary,
+    normalize_executor_output,
+    render_executor_output,
+)
+from .validator import validate_and_repair
 from .schemas import (
     BeliefState,
     PolicyDecision,
@@ -81,6 +86,9 @@ from .schemas import (
     default_belief_state,
     default_policy_decision,
     default_progress_state,
+    default_persona_profile,
+    default_scene_profile,
+    default_style_contract,
     default_world_state,
 )
 from .validation import (
@@ -262,6 +270,10 @@ class NegotiationTurn(TypedDict):
     deps: AgentDeps
 
     response: str
+    assistant_message: str
+    executor_output: dict
+    executor_render_meta: dict
+    strategy_summary: dict
     override_policy_id: str | None
     override_reason: str | None
 
@@ -814,15 +826,10 @@ def executor_node(state: NegotiationTurn) -> NegotiationTurn:
     deps = state.get("deps", DEFAULT_DEPS)
     _ensure_objective(state)
 
-    summary_text = state.get("summary") or "Aún no hay resumen de la conversación."
-    history_text = state.get("history_text") or "(sin historial reciente)"
     long_memory = state.get("long_memory") or ""
     short_memory = state.get("short_memory") or ""
     memory_block = format_memory_block(long_memory, short_memory)
     user_message = state.get("user_message") or ""
-
-    objective = state.get("objective") or ""
-    constraints = state.get("constraints") or ""
 
     # --- Policy: fuente única ejecutada ---
     policy_decision = state.get("policy_decision") or default_policy_decision()
@@ -831,175 +838,75 @@ def executor_node(state: NegotiationTurn) -> NegotiationTurn:
     state["executed_policy"] = state.get("executed_policy") or policy_decision
     executed = state["executed_policy"] or default_policy_decision()
 
-    policy_id = executed.get("policy_id", "rapport_build")
-    micro_goal = executed.get("micro_goal", "")
-    risk_posture = executed.get("risk_posture", "low")
+    policy_id = executed.get("policy_id", "safe_neutral")
+    progress_state = state.get("progress_state") or default_progress_state()
+    conversation_mode = progress_state.get("conversation_mode", "general")
+    policy_pack_active = progress_state.get("policy_pack_active", "universal")
 
-    phase_state = state.get("progress_state", {}).get("phase_state", {})
-    phase = phase_state.get("phase", "opening")
-    phase_confidence = phase_state.get("confidence", 0.6)
-    phase_reasons = phase_state.get("reasons", [])
-    policy = get_policy(policy_id)
-    policy_phase_hints = (policy.phase_hints if policy else [])
-    policy_target_slots = policy.target_slots if policy else []
-    policy_expected_effects = policy.expected_effects if policy else []
-    policy_failure_modes = policy.failure_modes if policy else []
+    persona_profile = progress_state.get("persona_profile") or default_persona_profile()
+    scene_profile = progress_state.get("scene_profile") or default_scene_profile()
+    style_contract = progress_state.get("style_contract") or default_style_contract()
 
-    rag_context = f"""
-Resumen: {summary_text}
-Historial reciente:
-{history_text}
+    strategy_summary = build_strategy_summary(
+        state, conversation_mode, policy_pack_active, policy_id
+    )
+    state["strategy_summary"] = strategy_summary
 
-Policy actual: {policy_id}
-Micro-objetivo: {micro_goal}
-Riesgo: {risk_posture}
-"""
+    constraints_struct = build_constraints_struct(
+        state, progress_state, executed, conversation_mode
+    )
 
-    techniques_text = get_policy_tactics(policy_id, rag_context)
+    executor_output = render_executor_output(
+        state,
+        deps=deps,
+        conversation_mode=conversation_mode,
+        policy_pack_active=policy_pack_active,
+        policy_id=policy_id,
+        persona_profile=persona_profile,
+        scene_profile=scene_profile,
+        style_contract=style_contract,
+        constraints_struct=constraints_struct,
+        strategy_summary=strategy_summary,
+        memory_block=memory_block,
+        world_state=state.get("world_state", {}),
+        user_message=user_message,
+    )
 
-    posture_instructions = {
-        "low": "Mantén prudencia y suavidad, sin ceder de más.",
-        "mid": "Equilibra firmeza y cordialidad.",
-        "high": "Sé más firme y directo, sin agresividad.",
+    state["executor_output"] = executor_output
+    state["assistant_message"] = executor_output.get("response_text", "")
+    state["response"] = state["assistant_message"]
+    state["executor_render_meta"] = {
+        "policy_id": policy_id,
+        "conversation_mode": conversation_mode,
+        "policy_pack_active": policy_pack_active,
+        "persona_id": (persona_profile or {}).get("persona_id", "default"),
+        "scene_id": (scene_profile or {}).get("scene_id", "default_chat"),
+        "style_id": (style_contract or {}).get("style_id", "default"),
     }
 
-    prec = state.get("precedence", {}) or {}
-    prec_mode = prec.get("mode", "unknown")
-    prec_reason = prec.get("reason", "n/a")
-    precedence_line = f"Control precedence: {prec_mode} ({prec_reason})."
-    phase_context_line = f"Current phase: {phase} (conf {phase_confidence})."
-    phase_reasons_line = f"Phase reasons: {phase_reasons}."
-    policy_phase_line = f"Policy phase hints: {policy_phase_hints}."
-    policy_targets_line = f"Policy target slots: {policy_target_slots}."
-    policy_effects_line = f"Expected effects: {policy_expected_effects}."
-    policy_failures_line = f"Failure modes: {policy_failure_modes}."
-    intent_hint = state.get("intent_hint", {}) or {}
-    intent_goal = intent_hint.get("intent_goal", "")
-    step_kind = intent_hint.get("step_kind", "")
-    target_slot = intent_hint.get("target_slot", "")
-    next_action_hint = intent_hint.get("next_action_hint", "")
-    slots_missing = intent_hint.get("slots_missing", [])
-    commitment_level = intent_hint.get("commitment_level", "")
-
-    exit_option = state.get("exit_option") or {}
-    max_total_cost = state.get("max_total_cost") or exit_option.get("total_cost", 0.0)
-    executor_system = f"""
-{BASE_PERSONALITY_PROMPT}
-
-<scene_context>
-Escenario de la negociación:
-- Estás en persona con el vendedor, frente a frente.
-- Os habéis reunido para ver un coche de segunda mano que te interesa.
-- Estáis hablando cara a cara, en un entorno tranquilo (por ejemplo, el concesionario o un parking).
-- Has visto el coche físicamente y podéis comentar detalles mirando el coche, sus papeles, etc.
-
-Reglas de escena:
-- Toda la interacción ocurre como una conversación oral, presencial.
-- No hables de "chat", "pantalla", "mensajes", "escribir" ni nada digital,
-  a menos que el usuario lo introduzca explícitamente.
-- Si el usuario escribe como si fuera chat, interprétalo como palabras
-  que te dice en voz alta.
-- Habla siempre como si estuvieras allí, mirándole a los ojos y respondiendo en tiempo real.
-</scene_context>
-
-<role_context>
-Contexto personal interno:
-- Tienes una alternativa segura: {exit_option.get("label", "una alternativa de salida")}.
-- Ese coche cuesta {float(exit_option.get("total_cost", 0.0)):.0f}€ en total.
-- Preferirías evitar esa opción si encuentras algo mejor aquí.
-
-Límites y objetivos:
-- Tu límite mental es no superar {float(max_total_cost):.0f}€ de coste total con este coche
-  (precio + posibles arreglos/sorpresas).
-- Quieres conseguir un acuerdo que esté por debajo de ese umbral.
-- Quieres que la negociación sea cordial y razonable, sin conflicto.
-
-Directrices adicionales:
-- Tu intención actual es la policy "{policy_id}".
-- Tu micro-objetivo inmediato: {micro_goal}
-- {posture_instructions.get(risk_posture, posture_instructions["low"])}
-- {precedence_line}
-- {phase_context_line}
-- {phase_reasons_line}
-- {policy_phase_line}
-- {policy_targets_line}
-- {policy_effects_line}
-- {policy_failures_line}
-- Intención activa: {intent_goal}
-- Paso actual: {step_kind}
-- Slot objetivo: {target_slot}
-- Siguiente foco: {next_action_hint}
-- Slots pendientes: {slots_missing}
-- Compromiso: {commitment_level}
-- Regla: 2 frases, 1 pregunta, y la pregunta debe pedir {target_slot}.
-- Si {target_slot} está vacío, pregunta por el primer slot de {slots_missing} o pide un detalle verificable alineado con el paso actual.
-
-Manual táctico de RAG para esta policy:
-{techniques_text}
-
-Reglas de estilo para tus respuestas al vendedor:
-- Debes obedecer siempre las <style_rules_absolute>.
-- Hablas como Daniel-comprador, nunca como IA.
-- Responde como si estuvierais hablando en persona, cara a cara.
-- No uses listas ni bullets en tu respuesta al vendedor.
-- Evita sonar académico o técnico; habla como una persona normal.
-</role_context>
-"""
-
-    executor_user = f"""
-[MEMORY]
-{memory_block}
-
-[OBJETIVO INTERNO]
-{objective}
-
-[CONSTRAINTS INTERNOS]
-{constraints}
-
-[DECISIÓN OPERATIVA]
-{policy_decision}
-
-[MENSAJE ACTUAL DEL VENDEDOR]
-{user_message}
-
-Tarea:
-1) Responde como Daniel-comprador al vendedor, cumpliendo la policy actual.
-2) Sé humano, estratégico y colaborativo.
-3) No digas que sigues un plan ni hables de "policies".
-"""
-
-    messages = [
-        SystemMessage(content=executor_system),
-        HumanMessage(content=executor_user),
-    ]
-
-    full_text = deps.execute(messages).strip()
-
-    logger.info("raw_executor_output=%s", full_text)
-
-    normalized_response = normalize_text(full_text, user_message)
-
-    logger.info("normalized_executor_output=%s", normalized_response)
-
-    constraints_struct = state.get("constraints_struct", {})
     repaired_response, violations, validator_meta = validate_and_repair(
-        normalized_response,
-        constraints_struct,
+        state["assistant_message"],
+        state.get("constraints_struct", {}),
         executed,
         state.get("world_state", {}),
+        persona_profile=persona_profile,
+        scene_profile=scene_profile,
+        style_contract=style_contract,
     )
+    if validator_meta.get("fallback_applied"):
+        executor_output = dict(executor_output)
+        executor_output["response_text"] = repaired_response
+        executor_output = normalize_executor_output(executor_output)
+        state["executor_output"] = executor_output
+        state["assistant_message"] = executor_output.get("response_text", "")
+        state["response"] = state["assistant_message"]
+
     if violations:
-        logger.info("executor_response_repaired=%s violations=%s", repaired_response, violations)
-    override_policy_id = validator_meta.get("override_policy_id")
-    override_reason = validator_meta.get("override_reason")
-    if override_policy_id:
-        executed = dict(executed)
-        executed["policy_id"] = override_policy_id
-        state["executed_policy"] = executed
-    state["response"] = repaired_response
+        logger.info("executor_response_validated=%s violations=%s", repaired_response, violations)
+
     state["executor_validator_meta"] = validator_meta
-    state["override_policy_id"] = override_policy_id
-    state["override_reason"] = override_reason
+    state["override_policy_id"] = None
+    state["override_reason"] = validator_meta.get("override_reason")
     return state
 
 
@@ -1139,6 +1046,10 @@ def run_negotiation_agent(
         "turn_count": state.turn_count,
         "deps": deps,
         "response": "",
+        "assistant_message": "",
+        "executor_output": {},
+        "executor_render_meta": {},
+        "strategy_summary": {},
         "override_policy_id": None,
         "override_reason": None,
     }
