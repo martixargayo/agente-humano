@@ -56,6 +56,7 @@ from .gate_utils import (
     precedence_signature,
     select_policy_id_on_skip,
     stable_allowed_ids_hash,
+    universal_state_fingerprint,
 )
 from .intent_manager import update_intent_state
 from .phase_policy_planner import plan_phase_policy
@@ -89,6 +90,7 @@ from .validation import (
     normalize_world_state,
 )
 from .world_state_updater import (
+    _previous_user_message,
     diff_world_state,
     extract_interaction_signals,
     update_world_state,
@@ -224,6 +226,8 @@ class NegotiationTurn(TypedDict):
     refresh_meta: dict
     user_message: str
     turn_count: int
+    input_modality: str
+    conversation_mode: str
 
     objective: str
     constraints: str
@@ -408,7 +412,18 @@ def world_updater_node(state: NegotiationTurn) -> NegotiationTurn:
     )
     user_message = state.get("user_message", "")
     turn_count = state.get("turn_count", 0) or 0
-    current_features = input_shape_features(user_message)
+    modality = state.get("input_modality", "text")
+    conversation_mode = state.get("conversation_mode", "negotiation") or "negotiation"
+    prev_text = gate_state.get("prev_user_message", "")
+    recent_history = state.get("recent_history")
+    if isinstance(recent_history, list):
+        prev_text = _previous_user_message(recent_history) or prev_text
+    current_features = input_shape_features(
+        user_message,
+        modality=modality,
+        prev_text=prev_text,
+        conversation_mode=conversation_mode,
+    )
     interaction_current = extract_interaction_signals(
         user_message,
         prev_world,
@@ -428,6 +443,8 @@ def world_updater_node(state: NegotiationTurn) -> NegotiationTurn:
             gate_state.get("interaction_fingerprint_version", 1) or 1
         ),
         interval=int(os.getenv("WORLD_REFRESH_INTERVAL_TURNS", "3")),
+        modality=modality,
+        conversation_mode=conversation_mode,
     )
     if world_skipped:
         gate_state["world_skip_count"] = int(gate_state.get("world_skip_count", 0) or 0) + 1
@@ -444,6 +461,7 @@ def world_updater_node(state: NegotiationTurn) -> NegotiationTurn:
         }
     else:
         force_llm = skip_reason == "interval_expired"
+        extractor_mode = gate_meta.get("extractor_mode", "regex")
         world_state, extractor_meta = update_world_state(
             prev_world,
             user_message,
@@ -451,6 +469,8 @@ def world_updater_node(state: NegotiationTurn) -> NegotiationTurn:
             belief_state=state.get("belief_state") or {},
             turn_count=turn_count,
             force_llm=force_llm,
+            extractor_mode=extractor_mode,
+            conversation_mode=conversation_mode,
         )
         gate_state["last_world_refresh_turn"] = turn_count
         state["world_state"] = world_state
@@ -459,6 +479,9 @@ def world_updater_node(state: NegotiationTurn) -> NegotiationTurn:
         extractor_meta["extractor_skipped"] = False
         extractor_meta["interaction_updated"] = True
         state["extractor_meta"] = extractor_meta
+    gate_state["universal_state_fingerprint_prev"] = universal_state_fingerprint(
+        state.get("world_state", {}).get("universal_state")
+    )
     gate_state["input_shape_prev"] = current_features
     gate_state["interaction_fingerprint_prev"] = interaction_fingerprint(
         state.get("world_state", {}).get("interaction", {})
@@ -466,6 +489,7 @@ def world_updater_node(state: NegotiationTurn) -> NegotiationTurn:
     gate_state["interaction_fingerprint_version"] = int(
         gate_state.get("interaction_fingerprint_version", 1) or 1
     )
+    gate_state["prev_user_message"] = user_message
     state["progress_state"]["gate_state"] = gate_state
     return state
 
@@ -478,6 +502,7 @@ def belief_updater_node(state: NegotiationTurn) -> NegotiationTurn:
         "gate_state", default_progress_state()["gate_state"]
     )
     turn_count = state.get("turn_count", 0) or 0
+    conversation_mode = state.get("conversation_mode", "negotiation") or "negotiation"
     belief_skipped, skip_reason = gate_belief(
         world_diff=state.get("world_diff", {}),
         prev_world=state.get("prev_world_state", {}),
@@ -486,6 +511,7 @@ def belief_updater_node(state: NegotiationTurn) -> NegotiationTurn:
         turn_count=turn_count,
         last_refresh_turn=int(gate_state.get("last_belief_refresh_turn", 0) or 0),
         interval=int(os.getenv("BELIEF_REFRESH_INTERVAL_TURNS", "3")),
+        prev_universal_fingerprint=str(gate_state.get("universal_state_fingerprint_prev", "")),
     )
     if belief_skipped:
         gate_state["belief_skip_count"] = int(gate_state.get("belief_skip_count", 0) or 0) + 1
@@ -508,6 +534,7 @@ def belief_updater_node(state: NegotiationTurn) -> NegotiationTurn:
             context_snippet=state.get("recent_history_text", ""),
             extractor_meta=state.get("extractor_meta", {}),
             force_update=True,
+            conversation_mode=conversation_mode,
         )
         gate_state["last_belief_refresh_turn"] = turn_count
     state["belief_state"] = belief_state

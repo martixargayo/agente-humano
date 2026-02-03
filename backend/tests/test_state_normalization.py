@@ -151,32 +151,32 @@ def test_has_belief_evidence_delta_respects_decision_flag():
 
 
 def test_belief_reasons_tiebreak_is_deterministic_with_real_keys():
-    from negotiation.belief_state_updater import _BeliefReasonModel, _BeliefStateModel
+    from negotiation.belief_state_updater import _limit_reasons
 
     reasons = {
-        "tone_signal": _BeliefReasonModel(weight=0.5, confidence=0.5, evidence="x"),
-        "docs_signal": _BeliefReasonModel(weight=0.5, confidence=0.5, evidence="x"),
+        "tone_signal": {"weight": 0.5, "confidence": 0.5, "evidence": "x"},
+        "docs_signal": {"weight": 0.5, "confidence": 0.5, "evidence": "x"},
     }
 
-    limited = _BeliefStateModel._limit_reasons(reasons)
+    limited = _limit_reasons(reasons)
 
     assert list(limited.keys()) == ["docs_signal", "tone_signal"]
 
 
 def test_belief_reasons_limit_to_top_six():
-    from negotiation.belief_state_updater import _BeliefReasonModel, _BeliefStateModel
+    from negotiation.belief_state_updater import _limit_reasons
 
     reasons = {
-        "price_signal": _BeliefReasonModel(weight=0.9, confidence=0.9, evidence="x"),
-        "deadline_signal": _BeliefReasonModel(weight=0.8, confidence=0.8, evidence="x"),
-        "other_buyer_signal": _BeliefReasonModel(weight=0.7, confidence=0.7, evidence="x"),
-        "concession_signal": _BeliefReasonModel(weight=0.6, confidence=0.6, evidence="x"),
-        "docs_signal": _BeliefReasonModel(weight=0.5, confidence=0.5, evidence="x"),
-        "tone_signal": _BeliefReasonModel(weight=0.4, confidence=0.4, evidence="x"),
-        "extra_signal": _BeliefReasonModel(weight=0.3, confidence=0.3, evidence="x"),
+        "price_signal": {"weight": 0.9, "confidence": 0.9, "evidence": "x"},
+        "deadline_signal": {"weight": 0.8, "confidence": 0.8, "evidence": "x"},
+        "other_buyer_signal": {"weight": 0.7, "confidence": 0.7, "evidence": "x"},
+        "concession_signal": {"weight": 0.6, "confidence": 0.6, "evidence": "x"},
+        "docs_signal": {"weight": 0.5, "confidence": 0.5, "evidence": "x"},
+        "tone_signal": {"weight": 0.4, "confidence": 0.4, "evidence": "x"},
+        "extra_signal": {"weight": 0.3, "confidence": 0.3, "evidence": "x"},
     }
 
-    limited = _BeliefStateModel._limit_reasons(reasons)
+    limited = _limit_reasons(reasons)
 
     assert len(limited) == 6
     assert "extra_signal" not in limited
