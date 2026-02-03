@@ -1,6 +1,7 @@
 # backend/negotiation/world_state_updater.py
 from __future__ import annotations
 
+import json
 import os
 import hashlib
 import re
@@ -39,6 +40,16 @@ from .llm_state_extractor import (
     extract_state_patch_llm,
     validate_extractor_output,
 )
+from .validation import normalize_open_claims, normalize_universal_state
+from .elementos.world_extractor_v2_prompts import (
+    WORLD_EXTRACTOR_V2_SYSTEM_PROMPT,
+    WORLD_EXTRACTOR_V2_USER_PROMPT,
+    ALLOWED_DOMAIN_WORLD_KEYS,
+    UNIVERSAL_SPEC,
+    OPEN_CLAIMS_SPEC,
+    NEGOTIATION_SPEC,
+    OUTPUT_SCHEMA,
+)
 
 
 def _normalize_text(text: str) -> str:
@@ -50,6 +61,168 @@ def _normalize_short(text: str) -> str:
     normalized = "".join(ch for ch in normalized if not unicodedata.combining(ch))
     cleaned = re.sub(r"[^\w\s€]", "", normalized.lower())
     return re.sub(r"\s+", " ", cleaned).strip()[:80]
+
+
+def _safe_json_load(s: str) -> dict:
+    try:
+        return json.loads(s)
+    except Exception:
+        s2 = (s or "").strip()
+        i = s2.find("{")
+        j = s2.rfind("}")
+        if i >= 0 and j > i:
+            return json.loads(s2[i : j + 1])
+        raise
+
+
+class _NullLLM:
+    def invoke(self, messages: list[dict]) -> str:
+        del messages
+        return json.dumps(
+            {
+                "schema_version": "world_extractor_v2",
+                "domain_patch": {},
+                "universal_patch": {},
+                "open_claims": [],
+            },
+            ensure_ascii=False,
+        )
+
+
+def extract_world_patch_llm_v2(
+    deps,
+    user_message: str,
+    prev_world_state: dict,
+    belief_state: dict,
+    conversation_mode: str,
+    turn_idx: int,
+) -> tuple[dict, dict, list, dict]:
+    prev_world_state_json = json.dumps(prev_world_state or {}, ensure_ascii=False)
+    belief_state_json = json.dumps(belief_state or {}, ensure_ascii=False)
+
+    user_prompt = WORLD_EXTRACTOR_V2_USER_PROMPT.format(
+        conversation_mode=conversation_mode,
+        user_message=user_message or "",
+        prev_world_state_json=prev_world_state_json,
+        belief_state_json=belief_state_json,
+        output_schema=OUTPUT_SCHEMA.strip(),
+        universal_spec=UNIVERSAL_SPEC.strip(),
+        open_claims_spec=OPEN_CLAIMS_SPEC.strip(),
+        negotiation_spec=NEGOTIATION_SPEC.strip(),
+    )
+
+    messages = [
+        {"role": "system", "content": WORLD_EXTRACTOR_V2_SYSTEM_PROMPT.strip()},
+        {"role": "user", "content": user_prompt.strip()},
+    ]
+
+    raw = deps.llm.invoke(messages)
+    text = raw if isinstance(raw, str) else getattr(raw, "content", "")
+
+    data = _safe_json_load(text or "{}")
+
+    schema_version = data.get("schema_version", "")
+    if schema_version != "world_extractor_v2":
+        raise ValueError(f"extractor_v2 schema_version invalid: {schema_version}")
+
+    domain_patch = dict(data.get("domain_patch") or {})
+    universal_patch = dict(data.get("universal_patch") or {})
+    open_claims = list(data.get("open_claims") or [])
+
+    allowed = set(ALLOWED_DOMAIN_WORLD_KEYS)
+    for k in list(domain_patch.keys()):
+        if k not in allowed:
+            domain_patch.pop(k, None)
+
+    if conversation_mode != "negotiation":
+        domain_patch = {}
+
+    for c in open_claims:
+        if isinstance(c, dict):
+            c.setdefault("turn_idx", turn_idx)
+            c.setdefault("source", "llm")
+
+    meta = {
+        "extractor_version": "world_extractor_v2",
+        "schema_ok": True,
+        "domain_patch_keys": sorted(list(domain_patch.keys()))[:50],
+        "open_claims_count": len(open_claims),
+    }
+    return domain_patch, universal_patch, open_claims, meta
+
+
+def _dedupe_append(items: list[dict], new_items: list[dict], key_fn, max_n: int) -> list[dict]:
+    out = list(items or [])
+    seen = set()
+    for it in out:
+        try:
+            seen.add(key_fn(it))
+        except Exception:
+            continue
+    for it in (new_items or []):
+        try:
+            k = key_fn(it)
+        except Exception:
+            continue
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(it)
+        if len(out) >= max_n:
+            break
+    return out[:max_n]
+
+
+def merge_universal_state(prev_u: dict | None, patch_u: dict | None) -> dict:
+    prev_u = dict(prev_u or {})
+    patch_u = dict(patch_u or {})
+
+    prev_u_n = normalize_universal_state(prev_u)
+    patch_u_n = normalize_universal_state(patch_u)
+
+    out = dict(prev_u_n)
+
+    prev_goal = dict(prev_u_n.get("goal") or {})
+    patch_goal = dict(patch_u_n.get("goal") or {})
+    if patch_goal.get("summary"):
+        if (not prev_goal.get("summary")) or (
+            float(patch_goal.get("confidence", 0.0))
+            >= float(prev_goal.get("confidence", 0.0))
+        ):
+            out["goal"] = patch_goal
+
+    out["constraints"] = _dedupe_append(
+        out.get("constraints", []),
+        patch_u_n.get("constraints", []),
+        lambda d: f"{d.get('kind')}|{d.get('key')}|{d.get('value')}|{d.get('polarity')}",
+        10,
+    )
+    out["preferences"] = _dedupe_append(
+        out.get("preferences", []),
+        patch_u_n.get("preferences", []),
+        lambda d: f"{d.get('topic')}|{d.get('value')}|{d.get('strength')}",
+        10,
+    )
+    out["commitments"] = _dedupe_append(
+        out.get("commitments", []),
+        patch_u_n.get("commitments", []),
+        lambda d: f"{d.get('who')}|{d.get('action')}|{d.get('due')}|{d.get('status')}",
+        10,
+    )
+    out["entities"] = _dedupe_append(
+        out.get("entities", []),
+        patch_u_n.get("entities", []),
+        lambda d: f"{d.get('type')}|{d.get('name')}|{d.get('role')}",
+        12,
+    )
+    out["speech_acts"] = _dedupe_append(
+        out.get("speech_acts", []),
+        patch_u_n.get("speech_acts", []),
+        lambda d: f"{d.get('act')}|{d.get('target')}|{d.get('evidence_text')[:40]}",
+        6,
+    )
+
+    return normalize_universal_state(out)
 
 
 def _match_affirmation(text_lower: str) -> bool:
@@ -1281,6 +1454,9 @@ def update_world_state(
     belief_state: dict | None = None,
     turn_count: int | None = None,
     force_llm: bool = False,
+    extractor_mode: str = "regex",
+    conversation_mode: str = "negotiation",
+    deps: Any | None = None,
 ) -> Tuple[WorldState, dict]:
     base = default_world_state()
     if prev_world:
@@ -1301,6 +1477,45 @@ def update_world_state(
     use_legacy = os.getenv("USE_LEGACY_MATCHERS", "true").lower() in {"1", "true", "yes"}
     confidence_min = float(os.getenv("EVIDENCE_CONFIDENCE_MIN", "0.6"))
     base["world_state_meta"]["evidence_confidence_min"] = confidence_min
+
+    if extractor_mode == "llm" and use_llm:
+        llm_deps = deps or type("Deps", (), {"llm": _NullLLM()})()
+        domain_patch, universal_patch, open_claims, v2_meta = extract_world_patch_llm_v2(
+            llm_deps,
+            user_message,
+            base,
+            belief_state,
+            conversation_mode,
+            turn_idx,
+        )
+        world = dict(base)
+        for key, value in domain_patch.items():
+            world[key] = value
+        world["universal_state"] = merge_universal_state(
+            base.get("universal_state"), universal_patch
+        )
+        open_claims_new = normalize_open_claims(open_claims, max_total=8)
+        world["open_claims"] = normalize_open_claims(
+            list(base.get("open_claims", []) or []) + open_claims_new, max_total=50
+        )
+        world["world_state_meta"]["last_update_source"] = "llm"
+        world["world_state_meta"]["updated_fields"] = sorted(
+            [key for key in world.keys() if world.get(key) != base.get(key)]
+        )
+        world["interaction"] = extract_interaction_signals(
+            user_message,
+            base,
+            recent_history=recent_history,
+            tone_signal=world.get("tone_signal"),
+        )
+        v2_meta.update(
+            {
+                "extractor_used": True,
+                "extractor_world_patch_keys": sorted(domain_patch.keys()),
+                "extractor_mode": "llm",
+            }
+        )
+        return world, v2_meta
 
     if use_llm and (force_llm or _should_call_llm_extractor(user_message, base)):
         output = extract_state_patch_llm(base, belief_state, user_message, recent_history)
@@ -1350,6 +1565,7 @@ def update_world_state(
             world["evidence_items"] = items
             world["world_state_meta"]["last_update_source"] = "llm"
         meta = build_extractor_meta(output)
+        meta["extractor_mode"] = "llm"
         unknown_claims = list(base.get("world_state_meta", {}).get("unknown_claims", []))
         claims = list((base.get("world_observations_v2") or {}).get("claims", []) or [])
         claims = _build_v2_from_evidence(
@@ -1411,6 +1627,7 @@ def update_world_state(
             "extractor_reasons": ["legacy_fallback"],
             "extractor_world_patch_keys": [],
             "extractor_confidence_summary": {"min": 0.0, "avg": 0.0},
+            "extractor_mode": "regex",
         }
 
     base["world_observations_v2"]["index"] = _rebuild_v2_index(
@@ -1433,6 +1650,7 @@ def update_world_state(
         "extractor_reasons": ["skipped"],
         "extractor_world_patch_keys": [],
         "extractor_confidence_summary": {"min": 0.0, "avg": 0.0},
+        "extractor_mode": "none",
     }
 
 

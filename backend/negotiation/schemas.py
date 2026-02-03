@@ -1,7 +1,7 @@
 # backend/negotiation/schemas.py
 from __future__ import annotations
 
-from typing import Any, Dict, List, Literal, Set, TypedDict
+from typing import Any, Dict, List, Literal, Optional, Set, TypedDict
 InteractionHealth = Literal["stable", "tense", "stalled"]
 RiskPosture = Literal["low", "mid", "high"]
 PolicyOutcome = Literal["good", "neutral", "bad", ""]
@@ -84,6 +84,112 @@ class IntentState(TypedDict):
     next_action_hint: str
 
 
+# ---------- UniversalState v1 (universal) ----------
+ConstraintKind = Literal["time", "money", "availability", "logistics", "capability", "rule", "safety", "other"]
+ConstraintPolarity = Literal["must", "must_not", "prefer", "avoid"]
+PreferenceStrength = Literal["low", "medium", "high"]
+CommitmentWho = Literal["user", "agent", "other"]
+CommitmentStatus = Literal["proposed", "agreed", "cancelled", "done"]
+EntityType = Literal["person", "place", "product", "org", "event", "document", "other"]
+SpeechActType = Literal[
+    "ask",
+    "inform",
+    "refuse",
+    "accept",
+    "offer",
+    "counter",
+    "stall",
+    "repair",
+    "threaten",
+    "confirm",
+]
+
+
+class UniversalGoal(TypedDict, total=False):
+    summary: str  # <= 120 chars
+    confidence: float  # 0..1
+    evidence_text: str  # <= 180 chars
+
+
+class UniversalConstraint(TypedDict, total=False):
+    kind: ConstraintKind
+    key: str  # <= 48 chars (id lógico tipo "availability")
+    value: str  # <= 120 chars
+    polarity: ConstraintPolarity
+    confidence: float  # 0..1
+    evidence_text: str  # <= 180 chars
+
+
+class UniversalPreference(TypedDict, total=False):
+    topic: str  # <= 48 chars
+    value: str  # <= 120 chars
+    strength: PreferenceStrength
+    confidence: float
+    evidence_text: str
+
+
+class UniversalCommitment(TypedDict, total=False):
+    who: CommitmentWho
+    action: str  # <= 120 chars
+    due: str  # <= 60 chars (string simple por ahora)
+    status: CommitmentStatus
+    confidence: float
+    evidence_text: str
+
+
+class UniversalEntity(TypedDict, total=False):
+    name: str  # <= 120 chars
+    type: EntityType
+    role: str  # <= 48 chars
+    confidence: float
+    evidence_text: str
+
+
+class UniversalSpeechAct(TypedDict, total=False):
+    act: SpeechActType
+    target: str  # <= 48 chars (p.ej. "price" / "planning")
+    strength: PreferenceStrength
+    confidence: float
+    evidence_text: str
+
+
+class UniversalState(TypedDict, total=False):
+    goal: UniversalGoal
+    constraints: List[UniversalConstraint]  # max 10
+    preferences: List[UniversalPreference]  # max 10
+    commitments: List[UniversalCommitment]  # max 10
+    entities: List[UniversalEntity]  # max 12
+    speech_acts: List[UniversalSpeechAct]  # max 6
+
+
+# ---------- OpenClaim (open-world, cerrado) ----------
+OpenClaimScope = Literal["universal", "negotiation", "other_domain"]
+OpenClaimCategory = Literal[
+    "emotion",
+    "social_dynamics",
+    "tactic",
+    "risk",
+    "identity",
+    "preference",
+    "constraint",
+    "context",
+    "quality",
+    "other",
+]
+
+
+class OpenClaim(TypedDict, total=False):
+    scope: OpenClaimScope
+    category: OpenClaimCategory
+    label: str  # snake_case ASCII, 1-32, regex ^[a-z][a-z0-9_]{0,31}$
+    value: str  # <= 160 chars (string only v1)
+    confidence: float  # 0..1
+    evidence_text: str  # <= 180 chars
+    turn_idx: int
+    source: Literal["llm", "regex", "manual"]
+    dedupe_key: str  # computed backend preferred (llm can send, but ignore)
+
+
 class WorldState(TypedDict):
     price_mentioned: bool
     price_value: float | None
@@ -116,6 +222,8 @@ class WorldState(TypedDict):
     tone_marker_hits: List[str]
     conflict_markers: List[str]
     interaction: "InteractionState"
+    universal_state: "UniversalState"
+    open_claims: List["OpenClaim"]
     evidence_items: List["EvidenceItem"]
     world_observations: "WorldObservations"
     world_observations_v2: "WorldObservationsV2"
@@ -200,38 +308,72 @@ class WorldStateMeta(TypedDict):
     unknown_claims: List[Dict[str, Any]]
 
 
-class BeliefReason(TypedDict):
-    weight: float
-    confidence: float
-    evidence: str
+# ============ UNIVERSAL (para cualquier conversación) ============
+EscalationSignal = Literal["up", "down", "none"]
+CommitmentSignal = Literal["hard", "soft", "none"]
 
 
-class BeliefStance(TypedDict):
-    deal_feasibility: float
-    seller_flexibility: float
+class BeliefUniversalMetrics(TypedDict, total=False):
+    trust: float
+    cooperation: float
+    clarity: float
+    engagement: float
 
 
-class BeliefDynamics(TypedDict):
+class BeliefUniversalDynamics(TypedDict, total=False):
     interaction_health: InteractionHealth
-    last_update_evidence: str
+    escalation: EscalationSignal
+    looping: bool
+    evasion: bool
+    commitment: CommitmentSignal
 
 
-class BeliefToM(TypedDict):
-    seller_goals: List[str]
-    seller_tactics: List[str]
-    seller_belief_about_me: List[str]
-    confidence: float
+class BeliefUniversalToM(TypedDict, total=False):
+    other_goals: List[str]  # <= 6, each <= 80
+    other_tactics: List[str]  # <= 6, each <= 80
+    other_belief_about_me: List[str]  # <= 6, each <= 80
+    confidence: float  # 0..1
 
 
-class BeliefState(TypedDict):
-    stance: BeliefStance
-    reasons: Dict["ReasonKey", BeliefReason]
+class BeliefReasonItem(TypedDict, total=False):
+    weight: float  # 0..1
+    confidence: float  # 0..1
+    evidence: str  # <= 180
+
+
+class BeliefUniversalState(TypedDict, total=False):
+    metrics: BeliefUniversalMetrics
+    dynamics: BeliefUniversalDynamics
+    tom: BeliefUniversalToM
+    reasons: Dict[str, BeliefReasonItem]  # validado por allowlist
+
+
+# ============ NEGOTIATION (plugin mental) ============
+class BeliefNegotiationState(TypedDict, total=False):
+    stance: Dict[str, Any]
+    reasons: Dict[str, Any]
     hypotheses: List[str]
     hypotheses_structural: List[str]
     hypotheses_observational: List[str]
-    evaluations: Dict[str, float]
-    dynamics: BeliefDynamics
-    tom: BeliefToM
+    evaluations: Dict[str, Any]
+    tom: Dict[str, Any]
+
+
+# ============ BeliefState principal v2 ============
+class BeliefState(TypedDict, total=False):
+    # v2
+    universal: BeliefUniversalState
+    negotiation: BeliefNegotiationState
+
+    # mirrors legacy (compat)
+    dynamics: BeliefUniversalDynamics
+    tom: BeliefUniversalToM
+    stance: Dict[str, Any]
+    reasons: Dict[str, Any]
+    hypotheses: List[str]
+    hypotheses_structural: List[str]
+    hypotheses_observational: List[str]
+    evaluations: Dict[str, Any]
 
 
 class PolicyDecision(TypedDict):
@@ -300,6 +442,19 @@ class GateState(TypedDict):
     input_shape_prev: Dict[str, object]
     interaction_fingerprint_prev: Dict[str, object]
     interaction_fingerprint_version: int
+    prev_user_message: str
+    universal_state_fingerprint_prev: str
+
+
+def default_universal_state() -> UniversalState:
+    return {
+        "goal": {},
+        "constraints": [],
+        "preferences": [],
+        "commitments": [],
+        "entities": [],
+        "speech_acts": [],
+    }
 
 
 def default_world_state() -> WorldState:
@@ -341,6 +496,8 @@ def default_world_state() -> WorldState:
             "evasion_detected": False,
             "soft_commitment": False,
         },
+        "universal_state": default_universal_state(),
+        "open_claims": [],
         "evidence_items": [],
         "world_observations": {
             "raw_fields": {},
@@ -366,26 +523,38 @@ def default_world_state() -> WorldState:
 
 
 def default_belief_state() -> BeliefState:
-    return {
-        "stance": {
-            "deal_feasibility": 0.5,
-            "seller_flexibility": 0.5,
+    uni: BeliefUniversalState = {
+        "metrics": {"trust": 0.5, "cooperation": 0.5, "clarity": 0.5, "engagement": 0.5},
+        "dynamics": {
+            "interaction_health": "stable",
+            "escalation": "none",
+            "looping": False,
+            "evasion": False,
+            "commitment": "none",
         },
+        "tom": {"other_goals": [], "other_tactics": [], "other_belief_about_me": [], "confidence": 0.0},
+        "reasons": {},
+    }
+    neg: BeliefNegotiationState = {
+        "stance": {},
         "reasons": {},
         "hypotheses": [],
         "hypotheses_structural": [],
         "hypotheses_observational": [],
         "evaluations": {},
-        "dynamics": {
-            "interaction_health": "stable",
-            "last_update_evidence": "",
-        },
-        "tom": {
-            "seller_goals": [],
-            "seller_tactics": [],
-            "seller_belief_about_me": [],
-            "confidence": 0.4,
-        },
+        "tom": {},
+    }
+    return {
+        "universal": uni,
+        "negotiation": neg,
+        "dynamics": dict(uni["dynamics"]),
+        "tom": dict(uni["tom"]),
+        "stance": dict(neg["stance"]),
+        "reasons": dict(neg["reasons"]),
+        "hypotheses": list(neg["hypotheses"]),
+        "hypotheses_structural": list(neg["hypotheses_structural"]),
+        "hypotheses_observational": list(neg["hypotheses_observational"]),
+        "evaluations": dict(neg["evaluations"]),
     }
 
 
@@ -419,6 +588,8 @@ def default_progress_state() -> ProgressState:
             "input_shape_prev": {},
             "interaction_fingerprint_prev": {},
             "interaction_fingerprint_version": 1,
+            "prev_user_message": "",
+            "universal_state_fingerprint_prev": "",
         },
     }
 
