@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from typing import Any, Dict, Iterable, Literal, Optional, Tuple
 
@@ -553,6 +554,12 @@ def _fingerprint_changed_fields(
     return out
 
 
+def universal_state_fingerprint(universal_state: dict) -> str:
+    norm = normalize_universal_state(universal_state)
+    payload = json.dumps(norm, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def gate_world(
     user_message: str,
     turn_count: int,
@@ -615,6 +622,7 @@ def gate_belief(
     last_refresh_turn: int,
     interval: int = 3,
     prev_belief: Dict[str, Any] | None = None,
+    prev_universal_fingerprint: str = "",
 ) -> Tuple[bool, str]:
     if last_refresh_turn == 0:
         return False, "initial_refresh"
@@ -639,21 +647,10 @@ def gate_belief(
         prev_health in {"tense", "stalled"}
         and (world.get("interaction") or {}).get("escalation_signal") == "down"
     )
-    prev_universal = normalize_universal_state(prev_world.get("universal_state"))
-    curr_universal = normalize_universal_state(world.get("universal_state"))
-    goal_changed = (prev_universal.get("goal") or {}).get("summary") != (
-        (curr_universal.get("goal") or {}).get("summary")
+    curr_universal_fp = universal_state_fingerprint(world.get("universal_state"))
+    fingerprint_changed = bool(
+        prev_universal_fingerprint and curr_universal_fp and prev_universal_fingerprint != curr_universal_fp
     )
-    constraints_added = len(curr_universal.get("constraints", [])) > len(
-        prev_universal.get("constraints", [])
-    )
-    preferences_added = len(curr_universal.get("preferences", [])) > len(
-        prev_universal.get("preferences", [])
-    )
-    commitments_added = len(curr_universal.get("commitments", [])) > len(
-        prev_universal.get("commitments", [])
-    )
-    universal_changed = bool(goal_changed or constraints_added or preferences_added or commitments_added)
     interval_expired = (turn_count - last_refresh_turn) >= interval
     if (
         world_diff_empty
@@ -661,7 +658,7 @@ def gate_belief(
         and not tone_change
         and not interaction_strong_for_belief
         and not interaction_universal_signal
-        and not universal_changed
+        and not fingerprint_changed
         and not health_should_refresh
         and not interval_expired
     ):

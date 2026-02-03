@@ -3,17 +3,11 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass
 
 from langchain_openai import ChatOpenAI
 
 from .gate_utils import _split_world_diff
-from .elementos.belief_definitions import (
-    BELIEF_MODEL,
-    BELIEF_TEMPERATURE,
-    CRITICAL_FLAGS,
-    REASON_PRIORITY,
-)
+from .elementos.belief_definitions import BELIEF_MODEL, BELIEF_TEMPERATURE, CRITICAL_FLAGS, REASON_PRIORITY
 from .elementos.belief.belief_updater_v2_prompts import (
     BELIEF_UPDATER_V2_SYSTEM_PROMPT,
     BELIEF_UPDATER_V2_USER_PROMPT,
@@ -28,28 +22,18 @@ from .validation import normalize_belief_state, normalize_belief_universal
 _belief_llm = ChatOpenAI(model=BELIEF_MODEL, temperature=BELIEF_TEMPERATURE)
 logger = logging.getLogger(__name__)
 
-
-@dataclass
-class _BeliefReasonModel:
-    weight: float = 0.5
-    confidence: float = 0.5
-    evidence: str = ""
-
-
-class _BeliefStateModel:
-    @staticmethod
-    def _limit_reasons(reasons: dict) -> dict:
-        if not isinstance(reasons, dict):
-            return {}
-        items = sorted(
-            reasons.items(),
-            key=lambda kv: (
-                -(float(kv[1].weight) * float(kv[1].confidence)),
-                REASON_PRIORITY.get(str(kv[0]), 999),
-                str(kv[0]),
-            ),
-        )
-        return dict(items[:6])
+def _limit_reasons(reasons: dict) -> dict:
+    if not isinstance(reasons, dict):
+        return {}
+    items = sorted(
+        reasons.items(),
+        key=lambda kv: (
+            -(float(kv[1].get("weight", 0.0)) * float(kv[1].get("confidence", 0.0))),
+            REASON_PRIORITY.get(str(kv[0]), 999),
+            str(kv[0]),
+        ),
+    )
+    return dict(items[:6])
 
 
 def has_belief_evidence_delta(
@@ -58,6 +42,7 @@ def has_belief_evidence_delta(
     world: WorldState,
     extractor_meta: dict | None = None,
 ) -> bool:
+    """API externa: se usa cuando force_update=False en flujos no-gated."""
     decisions = (extractor_meta or {}).get("decisions", {}) or {}
     if decisions.get("should_update_beliefs") is True:
         return True
@@ -194,7 +179,7 @@ def merge_belief_universal(
             float(item.get("confidence", 0.0)) >= float(pr[k].get("confidence", 0.0))
         ):
             pr[k] = item
-    out["reasons"] = pr
+    out["reasons"] = _limit_reasons(pr)
 
     return normalize_belief_universal(out)
 

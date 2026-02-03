@@ -592,7 +592,7 @@ def update_intent_state(
         intent["steps"] = build_steps(intent_type, slots_missing)
         intent["step_idx"] = 0
         intent["step_attempts"] = 0
-            intent["max_attempts_per_step"] = INTENT_MAX_ATTEMPTS_PER_STEP
+        intent["max_attempts_per_step"] = INTENT_MAX_ATTEMPTS_PER_STEP
         intent["success_criteria"] = success_criteria or ["slots_required_complete"]
         intent["confidence"] = 0.4
         intent["created_turn"] = turn_count

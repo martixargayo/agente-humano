@@ -56,6 +56,7 @@ from .gate_utils import (
     precedence_signature,
     select_policy_id_on_skip,
     stable_allowed_ids_hash,
+    universal_state_fingerprint,
 )
 from .intent_manager import update_intent_state
 from .phase_policy_planner import plan_phase_policy
@@ -478,6 +479,9 @@ def world_updater_node(state: NegotiationTurn) -> NegotiationTurn:
         extractor_meta["extractor_skipped"] = False
         extractor_meta["interaction_updated"] = True
         state["extractor_meta"] = extractor_meta
+    gate_state["universal_state_fingerprint_prev"] = universal_state_fingerprint(
+        state.get("world_state", {}).get("universal_state")
+    )
     gate_state["input_shape_prev"] = current_features
     gate_state["interaction_fingerprint_prev"] = interaction_fingerprint(
         state.get("world_state", {}).get("interaction", {})
@@ -507,6 +511,7 @@ def belief_updater_node(state: NegotiationTurn) -> NegotiationTurn:
         turn_count=turn_count,
         last_refresh_turn=int(gate_state.get("last_belief_refresh_turn", 0) or 0),
         interval=int(os.getenv("BELIEF_REFRESH_INTERVAL_TURNS", "3")),
+        prev_universal_fingerprint=str(gate_state.get("universal_state_fingerprint_prev", "")),
     )
     if belief_skipped:
         gate_state["belief_skip_count"] = int(gate_state.get("belief_skip_count", 0) or 0) + 1

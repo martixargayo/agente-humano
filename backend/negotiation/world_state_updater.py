@@ -8,6 +8,8 @@ import re
 import unicodedata
 from typing import Any, List, Tuple
 
+from langchain_openai import ChatOpenAI
+
 from .elementos.world_definitions import (
     ACCEPT_PATTERNS,
     BATNA_PATTERNS,
@@ -63,6 +65,13 @@ def _normalize_short(text: str) -> str:
     return re.sub(r"\s+", " ", cleaned).strip()[:80]
 
 
+def _default_world_llm():
+    model = os.getenv("WORLD_EXTRACTOR_MODEL", os.getenv("WORLD_MODEL", "gpt-4o-mini"))
+    temperature = float(os.getenv("WORLD_EXTRACTOR_TEMPERATURE", "0"))
+    timeout = int(os.getenv("WORLD_EXTRACTOR_TIMEOUT_S", "20"))
+    return ChatOpenAI(model=model, temperature=temperature, timeout=timeout)
+
+
 def _safe_json_load(s: str) -> dict:
     try:
         return json.loads(s)
@@ -73,20 +82,6 @@ def _safe_json_load(s: str) -> dict:
         if i >= 0 and j > i:
             return json.loads(s2[i : j + 1])
         raise
-
-
-class _NullLLM:
-    def invoke(self, messages: list[dict]) -> str:
-        del messages
-        return json.dumps(
-            {
-                "schema_version": "world_extractor_v2",
-                "domain_patch": {},
-                "universal_patch": {},
-                "open_claims": [],
-            },
-            ensure_ascii=False,
-        )
 
 
 def extract_world_patch_llm_v2(
@@ -151,26 +146,33 @@ def extract_world_patch_llm_v2(
     return domain_patch, universal_patch, open_claims, meta
 
 
-def _dedupe_append(items: list[dict], new_items: list[dict], key_fn, max_n: int) -> list[dict]:
-    out = list(items or [])
-    seen = set()
-    for it in out:
-        try:
-            seen.add(key_fn(it))
-        except Exception:
-            continue
-    for it in (new_items or []):
+def _merge_list_by_key(prev: list[dict], new: list[dict], key_fn, max_n: int) -> list[dict]:
+    def _score(d: dict) -> float:
+        c = float(d.get("confidence", 0.0) or 0.0)
+        ev = str(d.get("evidence_text", "") or "")
+        bonus = min(len(ev), 180) / 1000.0
+        return c + bonus
+
+    index: dict[str, dict] = {}
+    for it in (prev or []):
         try:
             k = key_fn(it)
         except Exception:
             continue
-        if k in seen:
+        index[k] = it
+    for it in (new or []):
+        try:
+            k = key_fn(it)
+        except Exception:
             continue
-        seen.add(k)
-        out.append(it)
-        if len(out) >= max_n:
-            break
-    return out[:max_n]
+        if k not in index:
+            index[k] = it
+        else:
+            if _score(it) >= _score(index[k]):
+                index[k] = it
+    items = list(index.values())
+    items.sort(key=_score, reverse=True)
+    return items[:max_n]
 
 
 def merge_universal_state(prev_u: dict | None, patch_u: dict | None) -> dict:
@@ -191,31 +193,31 @@ def merge_universal_state(prev_u: dict | None, patch_u: dict | None) -> dict:
         ):
             out["goal"] = patch_goal
 
-    out["constraints"] = _dedupe_append(
+    out["constraints"] = _merge_list_by_key(
         out.get("constraints", []),
         patch_u_n.get("constraints", []),
         lambda d: f"{d.get('kind')}|{d.get('key')}|{d.get('value')}|{d.get('polarity')}",
         10,
     )
-    out["preferences"] = _dedupe_append(
+    out["preferences"] = _merge_list_by_key(
         out.get("preferences", []),
         patch_u_n.get("preferences", []),
         lambda d: f"{d.get('topic')}|{d.get('value')}|{d.get('strength')}",
         10,
     )
-    out["commitments"] = _dedupe_append(
+    out["commitments"] = _merge_list_by_key(
         out.get("commitments", []),
         patch_u_n.get("commitments", []),
         lambda d: f"{d.get('who')}|{d.get('action')}|{d.get('due')}|{d.get('status')}",
         10,
     )
-    out["entities"] = _dedupe_append(
+    out["entities"] = _merge_list_by_key(
         out.get("entities", []),
         patch_u_n.get("entities", []),
         lambda d: f"{d.get('type')}|{d.get('name')}|{d.get('role')}",
         12,
     )
-    out["speech_acts"] = _dedupe_append(
+    out["speech_acts"] = _merge_list_by_key(
         out.get("speech_acts", []),
         patch_u_n.get("speech_acts", []),
         lambda d: f"{d.get('act')}|{d.get('target')}|{d.get('evidence_text')[:40]}",
@@ -1479,15 +1481,53 @@ def update_world_state(
     base["world_state_meta"]["evidence_confidence_min"] = confidence_min
 
     if extractor_mode == "llm" and use_llm:
-        llm_deps = deps or type("Deps", (), {"llm": _NullLLM()})()
-        domain_patch, universal_patch, open_claims, v2_meta = extract_world_patch_llm_v2(
-            llm_deps,
-            user_message,
-            base,
-            belief_state,
-            conversation_mode,
-            turn_idx,
-        )
+        llm = None
+        if deps is not None:
+            llm = getattr(deps, "llm", None)
+        try:
+            if llm is None:
+                llm = _default_world_llm()
+            llm_deps = type("Deps", (), {"llm": llm})()
+            domain_patch, universal_patch, open_claims, v2_meta = extract_world_patch_llm_v2(
+                llm_deps,
+                user_message,
+                base,
+                belief_state,
+                conversation_mode,
+                turn_idx,
+            )
+        except Exception as exc:
+            if use_legacy:
+                world = _legacy_regex_update(base, user_message)
+                world["world_state_meta"]["last_update_source"] = "regex"
+                world["interaction"] = extract_interaction_signals(
+                    user_message,
+                    base,
+                    recent_history=recent_history,
+                    tone_signal=world.get("tone_signal"),
+                )
+                return world, {
+                    "extractor_used": False,
+                    "extractor_failed": True,
+                    "extractor_error": str(exc)[:300],
+                    "extractor_mode": "llm",
+                    "extractor_reasons": ["llm_v2_failed_fallback_regex"],
+                }
+            base["world_state_meta"]["last_update_source"] = "regex"
+            base["world_state_meta"]["updated_fields"] = []
+            base["interaction"] = extract_interaction_signals(
+                user_message,
+                base,
+                recent_history=recent_history,
+                tone_signal=base.get("tone_signal"),
+            )
+            return base, {
+                "extractor_used": False,
+                "extractor_failed": True,
+                "extractor_error": str(exc)[:300],
+                "extractor_mode": "llm",
+                "extractor_reasons": ["llm_v2_failed_fallback_base"],
+            }
         world = dict(base)
         for key, value in domain_patch.items():
             world[key] = value
