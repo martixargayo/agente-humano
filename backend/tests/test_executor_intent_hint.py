@@ -34,10 +34,6 @@ def test_executor_receives_intent_hint(monkeypatch):
     )
 
     monkeypatch.setattr(
-        "negotiation.negotiation_graph.normalize_text",
-        lambda raw_reply, last_user_message=None: raw_reply,
-    )
-    monkeypatch.setattr(
         "negotiation.negotiation_graph.get_negotiation_rag_index",
         lambda: None,
     )
@@ -68,12 +64,11 @@ def test_executor_receives_intent_hint(monkeypatch):
     run_negotiation_agent(state, "hola", deps=deps)
 
     system_message = captured["messages"][0].content
-    assert "Intención activa" in system_message
-    assert "Paso actual" in system_message
-    assert "Slot objetivo" in system_message
-    assert "Policy target slots" in system_message
-    assert "Expected effects" in system_message
-    assert "Step:" not in system_message
+    user_message = captured["messages"][1].content
+    assert "universal message renderer" in system_message
+    assert "intent_next_hint" in user_message
+    assert "policy_id" in user_message
+    assert "STRATEGY SUMMARY" in user_message
 
 
 def test_executor_prompt_contract_no_step_name_no_step_colon(monkeypatch):
@@ -106,10 +101,6 @@ def test_executor_prompt_contract_no_step_name_no_step_colon(monkeypatch):
     )
 
     monkeypatch.setattr(
-        "negotiation.negotiation_graph.normalize_text",
-        lambda raw_reply, last_user_message=None: raw_reply,
-    )
-    monkeypatch.setattr(
         "negotiation.negotiation_graph.get_negotiation_rag_index",
         lambda: None,
     )
@@ -139,9 +130,9 @@ def test_executor_prompt_contract_no_step_name_no_step_colon(monkeypatch):
 
     run_negotiation_agent(state, "hola", deps=deps)
 
-    system_message = captured["messages"][0].content
-    assert "step_name" not in system_message
-    assert "Step:" not in system_message
+    user_message = captured["messages"][1].content
+    assert "step_name" not in user_message
+    assert "Step:" not in user_message
 
 
 def test_executor_prompt_close_next_includes_fallback_rule(monkeypatch):
@@ -174,10 +165,6 @@ def test_executor_prompt_close_next_includes_fallback_rule(monkeypatch):
     )
 
     monkeypatch.setattr(
-        "negotiation.negotiation_graph.normalize_text",
-        lambda raw_reply, last_user_message=None: raw_reply,
-    )
-    monkeypatch.setattr(
         "negotiation.negotiation_graph.get_negotiation_rag_index",
         lambda: None,
     )
@@ -207,5 +194,6 @@ def test_executor_prompt_close_next_includes_fallback_rule(monkeypatch):
 
     run_negotiation_agent(state, "hola", deps=deps)
 
-    system_message = captured["messages"][0].content
-    assert "está vacío" in system_message
+    user_message = captured["messages"][1].content
+    assert "CONSTRAINTS_STRUCT" in user_message
+    assert "\"require_ask_if_missing\"" in user_message

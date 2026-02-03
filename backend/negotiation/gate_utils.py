@@ -407,7 +407,7 @@ def input_shape_features(
     text: str,
     modality: VoiceModality = "text",
     prev_text: Optional[str] = None,
-    conversation_mode: ConversationMode = "negotiation",
+    conversation_mode: ConversationMode = "general",
 ) -> Dict[str, Any]:
     # Compat: si modality es "text", usa implementación actual EXACTA del repo.
     if modality != "voice":
@@ -439,7 +439,7 @@ def input_shape_changed_materially(
     prev_features: Dict[str, Any] | None,
     curr_features: Dict[str, Any],
     modality: VoiceModality = "text",
-    conversation_mode: ConversationMode = "negotiation",
+    conversation_mode: ConversationMode = "general",
 ) -> Tuple[bool, list[str]]:
     prev_features = prev_features or {}
     changed: list[str] = []
@@ -571,7 +571,7 @@ def gate_world(
     interaction_fingerprint_version: int = 1,
     interval: int = 3,
     modality: VoiceModality = "text",
-    conversation_mode: ConversationMode = "negotiation",
+    conversation_mode: ConversationMode = "general",
 ) -> Tuple[bool, str, Dict[str, Any]]:
     if not (user_message or "").strip():
         return True, "empty_message", {"extractor_mode": "none"}

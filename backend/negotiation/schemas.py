@@ -6,6 +6,11 @@ InteractionHealth = Literal["stable", "tense", "stalled"]
 RiskPosture = Literal["low", "mid", "high"]
 PolicyOutcome = Literal["good", "neutral", "bad", ""]
 ToneSignal = Literal["neutral", "friendly", "tense"]
+ToneUsed = Literal["friendly", "neutral", "tense"]
+ConversationMode = Literal["general", "negotiation"]
+StyleLength = Literal["short", "medium", "long"]
+StyleFormat = Literal["plain", "bullets", "qa"]
+EmojiPolicy = Literal["never", "rare", "allowed"]
 InteractionEscalation = Literal["up", "down", "none"]
 RequiredInputOp = Literal["exists", "true", "non_empty"]
 EvidenceType = Literal[
@@ -386,6 +391,62 @@ class PolicyDecision(TypedDict):
     inputs_used: List[str]
 
 
+class PersonaProfile(TypedDict, total=False):
+    persona_id: str
+    role: str
+    voice_register: Literal["formal", "neutral", "friendly", "technical"]
+    values: List[str]
+    hard_limits: List[str]
+    do: List[str]
+    dont: List[str]
+    signature_line: str
+
+
+class SceneProfile(TypedDict, total=False):
+    scene_id: str
+    setting: str
+    macro_goal: str
+    operational_context: List[str]
+    disclaimers: List[str]
+
+
+class StyleContract(TypedDict, total=False):
+    style_id: str
+    target_length: StyleLength
+    format: StyleFormat
+    max_questions: int
+    emoji_policy: EmojiPolicy
+    markdown_allowed: bool
+    bullets_max: int
+
+
+class RenderState(TypedDict, total=False):
+    persona_id: str
+    scene_id: str
+    style_id: str
+    language: str
+    persona_profile: Dict[str, Any]
+    scene_profile: Dict[str, Any]
+    style_contract: Dict[str, Any]
+
+
+class RenderConstraints(TypedDict, total=False):
+    forbid_claims: List[str]
+    forbid_formats: List[str]
+    disallow_numbers: bool
+    require_ask_if_missing: List[str]
+    max_questions: Optional[int]
+
+
+class ExecutorOutput(TypedDict, total=False):
+    response_text: str
+    asked_question: bool
+    requested_info_slots: List[str]
+    tone_used: ToneUsed
+    followup_intent: Optional[str]
+    render_meta: Dict[str, Any]
+
+
 class IntentHint(TypedDict):
     intent_active: bool
     intent_goal: str
@@ -416,6 +477,12 @@ ReasonKey = Literal[
 
 
 class ProgressState(TypedDict):
+    conversation_mode: ConversationMode
+    mode_confidence: float
+    mode_last_switch_turn: int
+    policy_pack_active: str
+    render_state: RenderState
+    constraints_struct: RenderConstraints
     last_executed_policy_id: str
     last_executed_policy_outcome: PolicyOutcome
     last_chosen_policy_id: str
@@ -558,8 +625,68 @@ def default_belief_state() -> BeliefState:
     }
 
 
+def default_persona_profile() -> PersonaProfile:
+    return {
+        "persona_id": "default",
+        "role": "virtual assistant",
+        "voice_register": "neutral",
+        "values": ["clarity", "precision"],
+        "hard_limits": ["no_internal_access", "no_physical_actions"],
+        "do": ["be concise", "ask for missing context"],
+        "dont": ["claim internal access", "pretend to act in the world"],
+        "signature_line": "",
+    }
+
+
+def default_scene_profile() -> SceneProfile:
+    return {
+        "scene_id": "default_chat",
+        "setting": "chat app",
+        "macro_goal": "help the user with their objective",
+        "operational_context": ["chat_only", "no_internal_systems"],
+        "disclaimers": ["chat_only", "no_internal_systems"],
+    }
+
+
+def default_style_contract() -> StyleContract:
+    return {
+        "style_id": "default",
+        "target_length": "short",
+        "format": "plain",
+        "max_questions": 2,
+        "emoji_policy": "rare",
+        "markdown_allowed": False,
+        "bullets_max": 4,
+    }
+
+
+def default_render_state() -> RenderState:
+    return {
+        "persona_id": "default",
+        "scene_id": "default_chat",
+        "style_id": "default",
+        "language": "es",
+    }
+
+
+def default_constraints_struct() -> RenderConstraints:
+    return {
+        "forbid_claims": ["access_internal_systems", "physical_actions_done"],
+        "forbid_formats": ["markdown"],
+        "disallow_numbers": False,
+        "require_ask_if_missing": [],
+        "max_questions": 2,
+    }
+
+
 def default_progress_state() -> ProgressState:
     return {
+        "conversation_mode": "general",
+        "mode_confidence": 0.0,
+        "mode_last_switch_turn": 0,
+        "policy_pack_active": "universal",
+        "render_state": default_render_state(),
+        "constraints_struct": default_constraints_struct(),
         "last_executed_policy_id": "",
         "last_executed_policy_outcome": "",
         "last_chosen_policy_id": "",

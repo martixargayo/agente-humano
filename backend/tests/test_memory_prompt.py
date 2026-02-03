@@ -81,10 +81,6 @@ def test_executor_prompt_memory_single_injection(monkeypatch):
     deps = _base_deps(captured)
 
     monkeypatch.setattr(
-        "negotiation.negotiation_graph.normalize_text",
-        lambda raw_reply, last_user_message=None: raw_reply,
-    )
-    monkeypatch.setattr(
         "negotiation.negotiation_graph.get_negotiation_rag_index",
         lambda: None,
     )
@@ -152,10 +148,6 @@ def test_summary_refresh_trims_and_updates(monkeypatch):
 
     deps = _base_deps(captured, summarize=fake_summarize)
 
-    monkeypatch.setattr(
-        "negotiation.negotiation_graph.normalize_text",
-        lambda raw_reply, last_user_message=None: raw_reply,
-    )
     monkeypatch.setattr(
         "negotiation.negotiation_graph.get_negotiation_rag_index",
         lambda: None,
