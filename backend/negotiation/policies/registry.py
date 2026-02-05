@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import List
 
-from .elementos.strategy_definitions import POLICIES, Policy
+from ..elementos.strategy_definitions import POLICIES, Policy
 
 
 def list_policy_ids() -> List[str]:

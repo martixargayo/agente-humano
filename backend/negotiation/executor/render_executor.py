@@ -5,14 +5,14 @@ from typing import Any, Dict, List
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from .elementos.render.executor_prompts import (
+from ..elementos.render.executor_prompts import (
     EXECUTOR_OUTPUT_SCHEMA,
     EXECUTOR_SYSTEM_PROMPT,
     EXECUTOR_USER_PROMPT,
 )
-from .elementos.render import resolve_render_profiles
-from .elementos.render.render_contracts import RENDER_LIMITS
-from .schemas import ExecutorOutput, RenderConstraints
+from ..elementos.render import resolve_render_profiles
+from ..elementos.render.render_contracts import RENDER_LIMITS
+from ..schemas import ExecutorOutput, RenderConstraints
 
 
 _ALLOWED_TONES = {"friendly", "neutral", "tense"}
