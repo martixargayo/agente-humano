@@ -5,7 +5,7 @@ from negotiation.schemas import default_progress_state, default_world_state
 def test_conversation_mode_hysteresis():
     progress = default_progress_state()
     world = default_world_state()
-    world.update(
+    world["negotiation"].update(
         {
             "price_mentioned": True,
             "min_price_claimed": True,

@@ -8,21 +8,11 @@ from ..perception.input_shape import (
     input_shape_changed_materially,
     input_shape_features,
 )
+from ..specs.world_keys import ALLOWED_NEGOTIATION_DOMAIN_KEYS
 
 
 def critical_world_flags() -> set[str]:
-    return {
-        "price_mentioned",
-        "deadline_claimed",
-        "other_buyer_claimed",
-        "concession_made",
-        "docs_claimed",
-        "batna_claimed",
-        "urgency_claimed",
-        "min_price_claimed",
-        "price_firm",
-        "evidence_offered",
-    }
+    return set(ALLOWED_NEGOTIATION_DOMAIN_KEYS) | {"message_is_vague"}
 
 
 def _split_world_diff(world_diff: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:

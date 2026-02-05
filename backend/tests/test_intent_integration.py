@@ -65,9 +65,9 @@ def test_integration_info_extract_retarget_path(monkeypatch):
     )
 
     world_turn1 = default_world_state()
-    world_turn1["message_is_vague"] = True
+    world_turn1["universal_domain"]["message_is_vague"] = True
     world_turn2 = default_world_state()
-    world_turn2.update(
+    world_turn2["negotiation"].update(
         {
             "batna_claimed": True,
             "batna_text": "Otra oferta",
@@ -75,7 +75,7 @@ def test_integration_info_extract_retarget_path(monkeypatch):
         }
     )
     world_turn3 = default_world_state()
-    world_turn3.update(
+    world_turn3["negotiation"].update(
         {
             "batna_claimed": True,
             "batna_text": "Otra oferta",
@@ -122,24 +122,24 @@ def test_integration_replan_to_closing(monkeypatch):
     )
 
     world_turn = default_world_state()
-    world_turn.update(
+    world_turn["negotiation"].update(
         {
             "price_firm_text": "Precio firme",
             "price_mentioned": True,
             "price_value": 9500,
-            "evidence_items": [
-                {
-                    "type": "FIRMNESS",
-                    "text": "Precio firme",
-                    "value": None,
-                    "source": "regex",
-                    "confidence": 0.8,
-                    "turn_idx": 1,
-                    "raw": None,
-                }
-            ],
         }
     )
+    world_turn["evidence_items"] = [
+        {
+            "type": "FIRMNESS",
+            "text": "Precio firme",
+            "value": None,
+            "source": "regex",
+            "confidence": 0.8,
+            "turn_idx": 1,
+            "raw": None,
+        }
+    ]
     _queue_world_states(monkeypatch, [world_turn])
 
     state = SessionState(user_id="u2", session_id="s2")

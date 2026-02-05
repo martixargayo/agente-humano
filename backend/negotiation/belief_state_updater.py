@@ -49,16 +49,18 @@ def has_belief_evidence_delta(
     domain, interaction = _split_world_diff(world_diff)
     if domain or interaction:
         return True
+    prev_neg = prev_world.get("negotiation", {}) if isinstance(prev_world, dict) else {}
+    prev_uni = prev_world.get("universal_domain", {}) if isinstance(prev_world, dict) else {}
+    neg = world.get("negotiation", {}) if isinstance(world, dict) else {}
+    uni = world.get("universal_domain", {}) if isinstance(world, dict) else {}
     for key in CRITICAL_FLAGS:
-        if world.get(key) != prev_world.get(key):
-            return True
-    if world.get("tone_signal") != prev_world.get("tone_signal"):
-        return True
-    if (world.get("interaction") or {}) != (prev_world.get("interaction") or {}):
-        return True
-    prev_hits = set(prev_world.get("tone_marker_hits", []) or [])
-    new_hits = set(world.get("tone_marker_hits", []) or []) - prev_hits
-    if new_hits:
+        if key in uni or key in prev_uni:
+            if uni.get(key) != prev_uni.get(key):
+                return True
+        elif key in neg or key in prev_neg:
+            if neg.get(key) != prev_neg.get(key):
+                return True
+    if uni.get("tone_signal") != prev_uni.get("tone_signal"):
         return True
     return False
 
@@ -81,13 +83,7 @@ def _step_clamp(prev: float, new: float, max_step: float) -> float:
 
 
 def _interaction_strong(world: dict, world_diff: dict | None) -> bool:
-    inter = world.get("interaction") or {}
-    if inter.get("loop_hint"):
-        return True
-    if inter.get("evasion_detected"):
-        return True
-    if inter.get("escalation_signal") == "up":
-        return True
+    del world, world_diff
     return False
 
 

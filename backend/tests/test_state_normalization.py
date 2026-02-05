@@ -31,7 +31,7 @@ def test_normalize_world_state_missing_tone_non_strict():
         validation._STRICT_NORMALIZATION = original
 
     assert world == default_world_state()
-    assert "tone_signal_missing" in issues
+    assert issues == []
 
 
 def test_normalize_world_state_invalid_tone_non_strict():
@@ -40,12 +40,14 @@ def test_normalize_world_state_invalid_tone_non_strict():
     original = validation._STRICT_NORMALIZATION
     validation._STRICT_NORMALIZATION = False
     try:
-        world, issues = normalize_world_state({"tone_signal": "extra", "price_mentioned": True})
+        world, issues = normalize_world_state(
+            {"universal_domain": {"tone_signal": "extra"}, "price_mentioned": True}
+        )
     finally:
         validation._STRICT_NORMALIZATION = original
 
-    assert world["tone_signal"] == "neutral"
-    assert world["price_mentioned"] is True
+    assert world["universal_domain"]["tone_signal"] == "neutral"
+    assert world["negotiation"]["price_mentioned"] is True
     assert "tone_signal_invalid" in issues
 
 
@@ -59,8 +61,8 @@ def test_normalize_world_state_missing_tone_strict_returns_defaults():
     finally:
         validation._STRICT_NORMALIZATION = original
 
-    assert world == default_world_state()
-    assert "tone_signal_missing" in issues
+    assert world["negotiation"]["price_mentioned"] is True
+    assert issues == []
 
 
 def test_normalize_policy_decision_invalid_policy_id_fallback():
@@ -116,7 +118,7 @@ def test_has_belief_evidence_delta_triggers_on_critical_flag_change():
     cur = default_world_state()
     world_diff = {}
 
-    cur["deadline_claimed"] = True
+    cur["negotiation"]["deadline_claimed"] = True
     assert has_belief_evidence_delta(world_diff, prev, cur) is True
 
 
@@ -126,7 +128,7 @@ def test_has_belief_evidence_delta_triggers_on_tone_change():
     prev = default_world_state()
     cur = default_world_state()
 
-    cur["tone_signal"] = "tense"
+    cur["universal_domain"]["tone_signal"] = "tense"
     assert has_belief_evidence_delta({}, prev, cur) is True
 
 
@@ -232,7 +234,7 @@ def test_allowed_policy_ids_uses_outcome_per_policy():
     world = default_world_state()
     belief = default_belief_state()
     belief["dynamics"]["interaction_health"] = "stable"
-    world["price_mentioned"] = False
+    world["negotiation"]["price_mentioned"] = False
     progress = default_progress_state()
     ids = policy_planner.list_policy_ids()
     assert len(ids) >= 2

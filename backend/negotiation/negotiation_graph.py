@@ -90,12 +90,7 @@ from .validation import (
     normalize_progress_state,
     normalize_world_state,
 )
-from .world_state_updater import (
-    _previous_user_message,
-    diff_world_state,
-    extract_interaction_signals,
-    update_world_state,
-)
+from .world_state_updater import diff_world_state, update_world_state
 from .nodes.world_node import world_updater_node
 from .nodes.belief_node import belief_updater_node
 from .nodes.precedence_node import precedence_node

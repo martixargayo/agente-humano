@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, confloat, conlist, field_validator
 
 from ..schemas import ReasonKey
+from ..specs.world_keys import ALLOWED_NEGOTIATION_DOMAIN_KEYS
 
 BELIEF_MODEL = os.getenv("BELIEF_MODEL_NAME", os.getenv("SUMMARY_MODEL_NAME", "gpt-4o-mini"))
 BELIEF_TEMPERATURE = float(os.getenv("BELIEF_TEMPERATURE", "0.0"))
@@ -74,16 +75,4 @@ class BeliefStateModel(BaseModel):
         return dict(items[:6])
 
 
-CRITICAL_FLAGS = (
-    "price_mentioned",
-    "deadline_claimed",
-    "other_buyer_claimed",
-    "docs_claimed",
-    "concession_made",
-    "message_is_vague",
-    "batna_claimed",
-    "urgency_claimed",
-    "min_price_claimed",
-    "price_firm",
-    "evidence_offered",
-)
+CRITICAL_FLAGS = tuple(list(ALLOWED_NEGOTIATION_DOMAIN_KEYS) + ["message_is_vague"])

@@ -9,7 +9,7 @@ from negotiation.schemas import (
 )
 def test_compute_precedence_recovery_guard_overrides_signals():
     world = default_world_state()
-    world["price_firm"] = True
+    world["negotiation"]["price_firm"] = True
     belief = default_belief_state()
     belief["dynamics"]["interaction_health"] = "tense"
 
@@ -22,7 +22,7 @@ def test_compute_precedence_recovery_guard_overrides_signals():
 
 def test_compute_precedence_discovery_on_claims():
     world = default_world_state()
-    world["other_buyer_claimed"] = True
+    world["negotiation"]["other_buyer_claimed"] = True
 
     prec = compute_precedence(world=world, belief=default_belief_state(), intent=None)
 
@@ -32,7 +32,7 @@ def test_compute_precedence_discovery_on_claims():
 
 def test_compute_precedence_price_firm_without_requirements():
     world = default_world_state()
-    world["price_firm"] = True
+    world["negotiation"]["price_firm"] = True
 
     prec = compute_precedence(world=world, belief=default_belief_state(), intent=None)
 
@@ -42,8 +42,8 @@ def test_compute_precedence_price_firm_without_requirements():
 
 def test_compute_precedence_price_firm_with_concession():
     world = default_world_state()
-    world["price_firm"] = True
-    world["concession_made"] = True
+    world["negotiation"]["price_firm"] = True
+    world["negotiation"]["concession_made"] = True
 
     prec = compute_precedence(world=world, belief=default_belief_state(), intent=None)
 
@@ -54,8 +54,8 @@ def test_compute_precedence_price_firm_with_concession():
 
 def test_compute_precedence_concession_bargaining():
     world = default_world_state()
-    world["price_mentioned"] = True
-    world["concession_made"] = True
+    world["negotiation"]["price_mentioned"] = True
+    world["negotiation"]["concession_made"] = True
 
     prec = compute_precedence(world=world, belief=default_belief_state(), intent=None)
 
@@ -103,7 +103,7 @@ def test_precedence_signature_stable_with_interaction_change():
     )
 
     world_changed = default_world_state()
-    world_changed["interaction"]["implicit_acceptance"] = True
+    world_changed["universal_domain"]["tone_signal"] = "friendly"
     prec_changed = compute_precedence(world=world_changed, belief=belief, intent=None)
     signature_changed = precedence_signature(
         {
@@ -135,7 +135,7 @@ def test_precedence_signature_changes_on_domain_change():
     )
 
     world_changed = default_world_state()
-    world_changed["price_firm"] = True
+    world_changed["negotiation"]["price_firm"] = True
     prec_changed = compute_precedence(world=world_changed, belief=belief, intent=None)
     signature_changed = precedence_signature(
         {

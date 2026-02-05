@@ -7,7 +7,7 @@ from negotiation.schemas import default_world_state
 
 def test_intent_starts_when_requires_multi_turn():
     world = default_world_state()
-    world["message_is_vague"] = True
+    world["universal_domain"]["message_is_vague"] = True
     belief = default_belief_state()
     progress = default_progress_state()
     intent, meta, hint = update_intent_state(
@@ -31,8 +31,8 @@ def test_intent_starts_when_requires_multi_turn():
 def test_intent_does_not_start_when_one_turn_sufficient(monkeypatch):
     monkeypatch.setenv("INTENT_START_UTILITY_THRESHOLD", "2.5")
     world = default_world_state()
-    world["price_mentioned"] = True
-    world["price_value"] = 9000
+    world["negotiation"]["price_mentioned"] = True
+    world["negotiation"]["price_value"] = 9000
     belief = default_belief_state()
     progress = default_progress_state()
 
@@ -61,7 +61,7 @@ def test_build_steps_missing_empty_returns_close_next():
 
 def test_step_advances_only_when_target_slot_progresses():
     world = default_world_state()
-    world["evidence_offered"] = True
+    world["negotiation"]["evidence_offered"] = True
     world["evidence_text"] = "tengo factura"
     belief = default_belief_state()
     progress = default_progress_state()
@@ -108,10 +108,10 @@ def test_step_advances_only_when_target_slot_progresses():
 
 def test_intent_succeeds_when_slots_complete():
     world = default_world_state()
-    world["price_mentioned"] = True
-    world["price_value"] = 9500
-    world["price_firm"] = True
-    world["price_firm_text"] = "precio fijo"
+    world["negotiation"]["price_mentioned"] = True
+    world["negotiation"]["price_value"] = 9500
+    world["negotiation"]["price_firm"] = True
+    world["negotiation"]["price_firm_text"] = "precio fijo"
     belief = default_belief_state()
     progress = default_progress_state()
     intent = default_intent_state()
@@ -165,7 +165,7 @@ def test_intent_progress_requires_new_evidence_key():
         }
     ]
     world = default_world_state()
-    world["price_mentioned"] = True
+    world["negotiation"]["price_mentioned"] = True
     world["evidence_items"] = list(prev_world["evidence_items"])
 
     assert intent_manager._evidence_delta_for_slot(prev_world, world, "price") is False
@@ -283,7 +283,7 @@ def test_planner_hard_no_forced_sets_fallback():
 
 def test_vague_response_triggers_pivot_sequence():
     world = default_world_state()
-    world["message_is_vague"] = True
+    world["universal_domain"]["message_is_vague"] = True
     belief = default_belief_state()
     progress = default_progress_state()
     intent = default_intent_state()
@@ -370,8 +370,8 @@ def test_multi_turn_scoring_single_impl():
 
 def test_slot_switch_retargets_next_missing():
     world = default_world_state()
-    world["batna_claimed"] = True
-    world["batna_text"] = "Tengo a mi primo interesado."
+    world["negotiation"]["batna_claimed"] = True
+    world["negotiation"]["batna_text"] = "Tengo a mi primo interesado."
     belief = default_belief_state()
     progress = default_progress_state()
     intent = default_intent_state()
@@ -393,7 +393,14 @@ def test_slot_switch_retargets_next_missing():
             "slots": {
                 "slots_required": ["seller_batna", "seller_urgency_reason"],
                 "slots_optional": [],
-                "slots_filled": {},
+                "slots_filled": {
+                    "seller_batna": {
+                        "value": "ok",
+                        "evidence": "Tengo a mi primo interesado.",
+                        "confidence": 0.6,
+                        "source": "world_state",
+                    }
+                },
             },
         }
     )
@@ -429,8 +436,8 @@ def test_retarget_guardrail_forces_step0_target(monkeypatch):
     monkeypatch.setattr(intent_manager, "build_steps", fake_build_steps)
 
     world = default_world_state()
-    world["batna_claimed"] = True
-    world["batna_text"] = "Tengo otra opción."
+    world["negotiation"]["batna_claimed"] = True
+    world["negotiation"]["batna_text"] = "Tengo otra opción."
     belief = default_belief_state()
     progress = default_progress_state()
     intent = default_intent_state()
@@ -452,7 +459,14 @@ def test_retarget_guardrail_forces_step0_target(monkeypatch):
             "slots": {
                 "slots_required": ["seller_batna", "seller_urgency_reason"],
                 "slots_optional": [],
-                "slots_filled": {},
+                "slots_filled": {
+                    "seller_batna": {
+                        "value": "ok",
+                        "evidence": "Tengo otra opción.",
+                        "confidence": 0.6,
+                        "source": "world_state",
+                    }
+                },
             },
         }
     )
@@ -476,9 +490,9 @@ def test_retarget_guardrail_forces_step0_target(monkeypatch):
 
 def test_other_buyer_details_has_text():
     world = default_world_state()
-    world["other_buyer_claimed"] = True
-    world["other_buyer_text"] = "Tengo otro comprador que ofrece 9.500€ esta semana."
-    world["message_is_vague"] = True
+    world["negotiation"]["other_buyer_claimed"] = True
+    world["negotiation"]["other_buyer_text"] = "Tengo otro comprador que ofrece 9.500€ esta semana."
+    world["universal_domain"]["message_is_vague"] = True
     belief = default_belief_state()
     progress = default_progress_state()
 
@@ -506,7 +520,7 @@ def test_other_buyer_details_has_text():
 
 def test_pivot_kind_progression():
     world = default_world_state()
-    world["message_is_vague"] = True
+    world["universal_domain"]["message_is_vague"] = True
     belief = default_belief_state()
     progress = default_progress_state()
     intent = default_intent_state()
@@ -560,9 +574,9 @@ def test_pivot_kind_progression():
 
 def test_replan_transition_when_price_firm_detected():
     world = default_world_state()
-    world["price_firm_text"] = "precio fijo"
-    world["price_mentioned"] = True
-    world["price_value"] = 9000
+    world["negotiation"]["price_firm_text"] = "precio fijo"
+    world["negotiation"]["price_mentioned"] = True
+    world["negotiation"]["price_value"] = 9000
     world["evidence_items"] = [
         {
             "type": "FIRMNESS",
@@ -768,8 +782,8 @@ def test_intent_abandons_after_no_progress(monkeypatch):
 def test_firmness_requires_confident_evidence_for_replan(monkeypatch):
     monkeypatch.setenv("INTENT_FIRMNESS_REPLAN_THRESHOLD", "0.7")
     world = default_world_state()
-    world["price_firm_text"] = "no negocio"
-    world["price_mentioned"] = False
+    world["negotiation"]["price_firm_text"] = "no negocio"
+    world["negotiation"]["price_mentioned"] = False
     world["evidence_items"] = [
         {
             "type": "FIRMNESS",

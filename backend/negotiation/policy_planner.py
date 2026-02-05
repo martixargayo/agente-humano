@@ -15,6 +15,30 @@ from .schemas import (
 _POLICY_BY_ID = {policy.policy_id: policy for policy in POLICIES}
 
 
+def _world_value(world_state: WorldState, key: str) -> object:
+    if not isinstance(world_state, dict):
+        return None
+    universal = world_state.get("universal_domain", {})
+    if isinstance(universal, dict) and key in universal:
+        return universal.get(key)
+    negotiation = world_state.get("negotiation", {})
+    if isinstance(negotiation, dict) and key in negotiation:
+        return negotiation.get(key)
+    return world_state.get(key)
+
+
+def _world_has_key(world_state: WorldState, key: str) -> bool:
+    if not isinstance(world_state, dict):
+        return False
+    universal = world_state.get("universal_domain", {})
+    if isinstance(universal, dict) and key in universal:
+        return True
+    negotiation = world_state.get("negotiation", {})
+    if isinstance(negotiation, dict) and key in negotiation:
+        return True
+    return key in world_state
+
+
 def _phase_bonus(policy_phases: list[str], current_phase: str) -> int:
     if not policy_phases:
         return 0
@@ -160,7 +184,7 @@ def _allowed_policy_ids(
         guards = policy.guards or set()
         if required_guards and not required_guards.issubset(guards):
             return True
-        if "requires_price_not_mentioned" in guards and world_state.get("price_mentioned"):
+        if "requires_price_not_mentioned" in guards and _world_value(world_state, "price_mentioned"):
             return True
         return False
 
@@ -196,13 +220,13 @@ def _required_inputs_met(policy_id: str, world_state: WorldState) -> bool:
         key = req.get("key", "")
         op = req.get("op", "exists")
         if op == "exists":
-            if key not in world_state:
+            if not _world_has_key(world_state, key):
                 return False
         elif op == "true":
-            if not bool(world_state.get(key)):
+            if not bool(_world_value(world_state, key)):
                 return False
         elif op == "non_empty":
-            value = world_state.get(key)
+            value = _world_value(world_state, key)
             if not value:
                 return False
             if isinstance(value, (list, dict)) and len(value) == 0:

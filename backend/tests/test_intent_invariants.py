@@ -189,9 +189,10 @@ def test_retarget_guardrail_forces_step0_target_and_success_if_filled(monkeypatc
 
 def test_replan_sets_transition_and_replan_to_closing():
     intent = _active_intent_with_step("probe_open", "seller_batna")
+    intent["created_turn"] = 1
     world_state = default_world_state()
-    world_state["price_mentioned"] = True
-    world_state["price_value"] = 9200
+    world_state["negotiation"]["price_mentioned"] = True
+    world_state["negotiation"]["price_value"] = 9200
     world_state["evidence_items"] = [
         {
             "type": "FIRMNESS",
@@ -225,8 +226,8 @@ def test_replan_sets_transition_and_replan_to_closing():
 def test_weak_firmness_does_not_replan():
     intent = _active_intent_with_step("probe_open", "seller_batna")
     world_state = default_world_state()
-    world_state["price_mentioned"] = True
-    world_state["price_value"] = 9200
+    world_state["negotiation"]["price_mentioned"] = True
+    world_state["negotiation"]["price_value"] = 9200
     world_state["evidence_items"] = [
         {
             "type": "FIRMNESS",

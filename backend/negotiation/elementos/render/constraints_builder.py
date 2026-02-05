@@ -36,7 +36,8 @@ def build_constraints_struct(
         out["disallow_numbers"] = True
 
     if progress.get("conversation_mode") == "negotiation":
-        if not world.get("price_mentioned"):
+        negotiation = world.get("negotiation", {}) if isinstance(world, dict) else {}
+        if not negotiation.get("price_mentioned"):
             out["require_ask_if_missing"].append("price")
 
     out["forbid_formats"] = sorted(set(out["forbid_formats"]))
