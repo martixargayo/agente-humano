@@ -77,17 +77,6 @@ def test_phase_repair_reflected_in_trace(monkeypatch):
 
     deps = _fake_deps(fake_plan_phase_policy)
     monkeypatch.setattr(
-        "negotiation.nodes.precedence_node.compute_precedence",
-        lambda *_a, **_k: SimpleNamespace(
-            mode="closing_push",
-            reason="test",
-            min_policy_tags=set(),
-            block_policy_tags=set(),
-            phase_floor="closing",
-            allow_closing=True,
-        ),
-    )
-    monkeypatch.setattr(
         "negotiation.negotiation_graph.normalize_text",
         lambda raw_reply, last_user_message=None: raw_reply,
     )
@@ -109,7 +98,7 @@ def test_phase_repair_reflected_in_trace(monkeypatch):
 
     trace = state.debug_trace[-1]
     assert trace["phase_candidate"]["phase"] == "opening"
-    assert trace["phase_effective"]["phase"] == "closing"
+    assert trace["phase_effective"]["phase"] == "opening"
     assert trace["policy_pre_repair"]["policy_id"] == "info_extract_critical"
     assert trace["policy_post_repair"]["policy_id"] != trace["policy_pre_repair"]["policy_id"]
 
@@ -197,7 +186,6 @@ def test_gate_phase_policy_skips_on_repeated_ack(monkeypatch):
 
     planner_skipped, reason, _meta = gate_phase_policy(
         world_diff=world_diff,
-        precedence_changed=False,
         intent_transition_present=False,
         loop_flags_changed_flag=False,
         allowed_ids_hash_changed=False,
@@ -232,17 +220,6 @@ def test_planner_refresh_on_implicit_acceptance(monkeypatch):
     monkeypatch.setattr(
         "negotiation.negotiation_graph.update_intent_state",
         lambda **_k: (default_intent_state(), {"intent_transition": "none"}, {}),
-    )
-    monkeypatch.setattr(
-        "negotiation.negotiation_graph.compute_precedence",
-        lambda *_a, **_k: SimpleNamespace(
-            mode="opening_or_other",
-            reason="test",
-            min_policy_tags=set(),
-            block_policy_tags=set(),
-            phase_floor=None,
-            allow_closing=True,
-        ),
     )
     monkeypatch.setattr(
         "negotiation.negotiation_graph.normalize_text",

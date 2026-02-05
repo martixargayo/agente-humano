@@ -87,7 +87,6 @@ def plan_phase_policy(
     belief_state: BeliefState,
     progress_state: ProgressState,
     intent_hint: IntentHint | None,
-    precedence: dict | None,
     objective: str,
     constraints: str,
     constraints_struct: dict | None = None,

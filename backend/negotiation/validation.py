@@ -1025,9 +1025,6 @@ def _normalize_gate_state(raw: object) -> Tuple[dict, List[str]]:
     base["allowed_ids_hash_prev"] = str(
         raw.get("allowed_ids_hash_prev", base.get("allowed_ids_hash_prev", ""))
     )
-    base["precedence_signature_prev"] = str(
-        raw.get("precedence_signature_prev", base.get("precedence_signature_prev", ""))
-    )
     loop_flags = raw.get("loop_flags_prev", [])
     base["loop_flags_prev"] = _unique_list(_coerce_str_list(loop_flags))
     input_shape = raw.get("input_shape_prev", {})

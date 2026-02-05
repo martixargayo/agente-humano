@@ -117,39 +117,6 @@ def repair_policy_by_phase(
     return chosen_id, meta
 
 
-def apply_precedence_constraints(
-    allowed: list[str],
-    precedence: dict | None,
-) -> tuple[list[str], dict]:
-    prec = precedence or {}
-    min_tags = set(prec.get("min_policy_tags") or [])
-    block_tags = set(prec.get("block_policy_tags") or [])
-
-    def _tags(policy_id: str) -> set[str]:
-        policy = _POLICY_BY_ID.get(policy_id)
-        raw = getattr(policy, "tags", None) if policy else None
-        return set(raw or set())
-
-    filtered = allowed
-    if min_tags:
-        filtered = [policy_id for policy_id in filtered if min_tags.issubset(_tags(policy_id))]
-    if block_tags:
-        filtered = [
-            policy_id for policy_id in filtered if _tags(policy_id).isdisjoint(block_tags)
-        ]
-
-    meta = {
-        "precedence_mode": prec.get("mode"),
-        "precedence_reason": prec.get("reason"),
-        "precedence_min_tags": sorted(min_tags),
-        "precedence_block_tags": sorted(block_tags),
-        "precedence_filtered_out": [policy_id for policy_id in allowed if policy_id not in filtered][
-            :12
-        ],
-    }
-    return filtered, meta
-
-
 def _allowed_policy_ids(
     world_state: WorldState,
     belief_state: BeliefState,

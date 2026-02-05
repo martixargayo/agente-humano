@@ -12,21 +12,6 @@ def stable_allowed_ids_hash(allowed_ids: Iterable[str]) -> str:
     return hashlib.sha256(joined.encode("utf-8")).hexdigest()
 
 
-def precedence_signature(precedence: Dict[str, Any] | None) -> str:
-    prec = precedence or {}
-    min_tags = ",".join(sorted(prec.get("min_policy_tags") or []))
-    block_tags = ",".join(sorted(prec.get("block_policy_tags") or []))
-    return "|".join(
-        [
-            str(prec.get("mode", "")),
-            str(prec.get("phase_floor", "")),
-            str(bool(prec.get("allow_closing", True))),
-            min_tags,
-            block_tags,
-        ]
-    )
-
-
 def loop_flags_changed(prev_flags: Iterable[str], current_flags: Iterable[str]) -> bool:
     return sorted(set(prev_flags)) != sorted(set(current_flags))
 

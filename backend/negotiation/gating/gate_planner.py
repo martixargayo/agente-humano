@@ -7,7 +7,6 @@ from .shared import critical_world_flags, interaction_strong_delta_from_diff, _s
 
 def gate_phase_policy(
     world_diff: Dict[str, Any],
-    precedence_changed: bool,
     intent_transition_present: bool,
     loop_flags_changed_flag: bool,
     allowed_ids_hash_changed: bool,
@@ -20,7 +19,6 @@ def gate_phase_policy(
     interaction_strong, interaction_meta = interaction_strong_delta_from_diff(interaction_diff)
     strong_signals = (
         critical_diff
-        or precedence_changed
         or intent_transition_present
         or loop_flags_changed_flag
         or allowed_ids_hash_changed

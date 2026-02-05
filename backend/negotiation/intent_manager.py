@@ -431,9 +431,7 @@ def _ensure_steps_hydrated(
     return intent
 
 
-def _should_replan(
-    intent: IntentState, world_state: WorldState, precedence: dict | None
-) -> str | None:
+def _should_replan(intent: IntentState, world_state: WorldState) -> str | None:
     evidence_items = world_state.get("evidence_items", [])
     negotiation = world_state.get("negotiation", {}) if isinstance(world_state, dict) else {}
     threshold = INTENT_FIRMNESS_REPLAN_THRESHOLD
@@ -446,8 +444,6 @@ def _should_replan(
     )
     has_price_value = negotiation.get("price_mentioned") and negotiation.get("price_value") is not None
     if strong_firmness and has_price_value and intent.get("intent_type") != "closing":
-        if (precedence or {}).get("mode") == "recovery_guard":
-            return "relationship"
         return "closing"
     return None
 
@@ -496,7 +492,6 @@ def update_intent_state(
     progress_state: ProgressState,
     user_message: str,
     turn_count: int,
-    precedence: dict | None,
 ) -> Tuple[IntentState, dict, dict]:
     intent = deepcopy(prev_intent or default_intent_state())
     prev_world = prev_world_state or default_world_state()
@@ -515,8 +510,6 @@ def update_intent_state(
         "slots_filled_delta": {},
         "commitment_level": "soft",
     }
-
-    prec = precedence or {}
 
     if intent.get("status") != "active":
         intent_type = _intent_type_for_context(world_state, belief_state)
@@ -569,15 +562,6 @@ def update_intent_state(
         intent_hint = _build_intent_hint(intent, slots_missing, meta["commitment_level"])
         return intent, meta, intent_hint
 
-    if prec.get("mode") == "recovery_guard":
-        if intent.get("status") == "active" and intent.get("intent_type") not in {"relationship"}:
-            intent["status"] = "paused"
-            meta["intent_transition"] = "pause"
-            meta["reasons"] = (meta.get("reasons", []) + ["precedence:recovery_guard"])[:8]
-            meta["intent_new"] = deepcopy(intent)
-            intent_hint = _build_intent_hint(intent, _slots_missing(intent), "soft")
-            return intent, meta, intent_hint
-
     intent = _ensure_steps_hydrated(intent, world_state, belief_state, meta)
 
     slots_filled = dict(intent.get("slots", {}).get("slots_filled", {}))
@@ -594,7 +578,7 @@ def update_intent_state(
     )
     meta["commitment_level"] = commitment
 
-    replan_to = _should_replan(intent, world_state, precedence)
+    replan_to = _should_replan(intent, world_state)
     if replan_to:
         intent_type = replan_to
         required, optional, goal, success_criteria = build_intent_contract(

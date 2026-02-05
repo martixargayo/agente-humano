@@ -37,13 +37,6 @@ def safe_json_load(text: str) -> Dict[str, Any]:
 def build_strategy_summary(state: dict, conversation_mode: str, policy_pack_active: str, policy_id: str) -> dict:
     policy_decision = state.get("policy_decision") or {}
     intent_hint = state.get("intent_hint") or {}
-    precedence = state.get("precedence") or {}
-    precedence_reason = ""
-    if isinstance(precedence, dict):
-        if "universal" in precedence:
-            precedence_reason = (precedence.get("universal") or {}).get("reason", "")
-        else:
-            precedence_reason = precedence.get("reason", "")
 
     phase_effective = state.get("phase_effective")
     if not phase_effective:
@@ -57,7 +50,6 @@ def build_strategy_summary(state: dict, conversation_mode: str, policy_pack_acti
         "inputs_used": policy_decision.get("inputs_used", []),
         "phase_effective": phase_effective,
         "intent_next_hint": intent_hint.get("next_action_hint", ""),
-        "precedence_reason": precedence_reason,
         "conversation_mode": conversation_mode,
         "policy_pack_active": policy_pack_active,
     }
@@ -153,7 +145,6 @@ def render_executor_output(
         inputs_used=strategy_summary.get("inputs_used", []),
         phase_effective=strategy_summary.get("phase_effective", ""),
         intent_next_hint=strategy_summary.get("intent_next_hint", ""),
-        precedence_reason=strategy_summary.get("precedence_reason", ""),
         persona_json=json.dumps(persona, ensure_ascii=False),
         scene_json=json.dumps(scene, ensure_ascii=False),
         style_json=json.dumps(style, ensure_ascii=False),

@@ -469,7 +469,6 @@ class GateState(TypedDict):
     planner_skip_count: int
     allowed_ids_hash_prev: str
     allowed_ids_hash_stable_count: int
-    precedence_signature_prev: str
     loop_flags_prev: List[str]
     input_shape_prev: Dict[str, object]
     last_interaction_signals: Dict[str, object]
@@ -665,7 +664,6 @@ def default_progress_state() -> ProgressState:
             "planner_skip_count": 0,
             "allowed_ids_hash_prev": "",
             "allowed_ids_hash_stable_count": 0,
-            "precedence_signature_prev": "",
             "loop_flags_prev": [],
             "input_shape_prev": {},
             "last_interaction_signals": {},
