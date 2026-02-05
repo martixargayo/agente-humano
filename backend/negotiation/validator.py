@@ -6,14 +6,6 @@ from .elementos.render.validator_rules import evaluate_critical_violations
 from .schemas import PersonaProfile, PolicyDecision, SceneProfile, StyleContract, WorldState
 
 
-def validate_response(
-    text: str,
-    constraints_struct: dict | None,
-) -> list[str]:
-    violations, _critical = evaluate_critical_violations(text)
-    return [violation.get("code", "") for violation in violations if violation.get("code")]
-
-
 def safe_neutral_fallback(
     persona: PersonaProfile | None = None,
     scene: SceneProfile | None = None,

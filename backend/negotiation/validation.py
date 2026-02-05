@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import warnings
 from typing import Dict, Iterable, List, Tuple
 
 from .schemas import (
@@ -843,6 +844,12 @@ def normalize_progress_state(raw: object) -> Tuple[ProgressState, List[str]]:
     if not isinstance(raw, dict):
         issues.append("progress_state_no_dict")
         return base, issues
+    if "constraints_struct" in raw and "render_constraints_struct" not in raw:
+        warnings.warn(
+            "constraints_struct is deprecated; use render_constraints_struct",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
     conversation_mode = raw.get("conversation_mode", base.get("conversation_mode", "general"))
     if conversation_mode not in {"general", "negotiation"}:
