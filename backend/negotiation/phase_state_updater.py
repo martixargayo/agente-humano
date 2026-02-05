@@ -48,26 +48,6 @@ def _apply_hysteresis(
     return normalized, meta
 
 
-def _apply_precedence(
-    normalized: PhaseState,
-    meta: dict,
-    phase_floor: str | None,
-    allow_closing: bool,
-) -> PhaseState:
-    if phase_floor and normalized.get("phase") != phase_floor:
-        meta["phase_precedence_forced"] = True
-        normalized["phase"] = phase_floor
-        normalized["reasons"] = (["precedence:phase_floor"] + normalized.get("reasons", []))[:8]
-
-    if not allow_closing and normalized.get("phase") == "closing":
-        meta["phase_precedence_blocked_closing"] = True
-        normalized["phase"] = "bargaining"
-        normalized["reasons"] = (
-            ["precedence:block_closing"] + normalized.get("reasons", [])
-        )[:8]
-    return normalized
-
-
 def _sync_phase_meta(meta: dict, normalized: PhaseState) -> None:
     meta["phase_after"] = normalized.get("phase", "opening")
     meta["phase_confidence_after"] = float(normalized.get("confidence", 0.6) or 0.6)
@@ -78,12 +58,8 @@ def postprocess_phase_candidate(
     prev_phase_state: PhaseState | None,
     phase_candidate: dict,
     turn_count: int,
-    precedence: dict | None,
 ) -> tuple[PhaseState, dict]:
     prev = prev_phase_state or default_progress_state()["phase_state"]
-    prec = precedence or {}
-    phase_floor = prec.get("phase_floor")
-    allow_closing = prec.get("allow_closing", True)
     meta = {
         "phase_update_used": True,
         "phase_update_reason": "planner",
@@ -104,6 +80,5 @@ def postprocess_phase_candidate(
     meta["phase_threshold_used"] = hyst["threshold"]
     meta["phase_transition_attempted"] = hyst["attempted_change"]
     meta["phase_hysteresis_held"] = hyst["held"]
-    normalized = _apply_precedence(normalized, meta, phase_floor, allow_closing)
     _sync_phase_meta(meta, normalized)
     return normalized, meta

@@ -3,7 +3,6 @@ from __future__ import annotations
 from .gating.fingerprints import (
     interaction_fingerprint,
     loop_flags_changed,
-    precedence_signature,
     stable_allowed_ids_hash,
     universal_state_fingerprint,
 )
@@ -25,7 +24,6 @@ __all__ = [
     "gate_phase_policy",
     "interaction_fingerprint",
     "loop_flags_changed",
-    "precedence_signature",
     "stable_allowed_ids_hash",
     "universal_state_fingerprint",
     "input_shape_features",

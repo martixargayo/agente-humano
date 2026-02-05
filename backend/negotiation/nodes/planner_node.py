@@ -5,7 +5,6 @@ import os
 from ..gate_utils import (
     gate_phase_policy,
     loop_flags_changed,
-    precedence_signature,
     select_policy_id_on_skip,
     stable_allowed_ids_hash,
 )
@@ -16,7 +15,6 @@ from ..policy_planner import (
     _violates_hard_constraints,
     allowed_policy_ids,
     apply_intent_constraints,
-    apply_precedence_constraints,
     repair_policy_by_phase,
 )
 from ..schemas import default_policy_decision, default_progress_state
@@ -40,9 +38,8 @@ def phase_policy_planner_node(state: dict) -> dict:
     allowed_base = allowed_policy_ids(
         state["world_state"], state["belief_state"], state["progress_state"]
     )
-    allowed_prec, prec_meta = apply_precedence_constraints(allowed_base, state.get("precedence"))
     allowed_final, preferred, intent_meta = apply_intent_constraints(
-        allowed_prec, state.get("intent_hint")
+        allowed_base, state.get("intent_hint")
     )
     required_filtered = [
         pid for pid in allowed_final if _required_inputs_met(pid, state["world_state"])
@@ -65,9 +62,6 @@ def phase_policy_planner_node(state: dict) -> dict:
     stable_count = int(gate_state.get("allowed_ids_hash_stable_count", 0) or 0)
     stable_count = stable_count + 1 if allowed_hash == prev_allowed_hash else 0
 
-    current_signature = state.get("precedence_signature", "")
-    prev_signature = gate_state.get("precedence_signature_prev", "")
-    precedence_changed = current_signature != prev_signature
     loop_flags_prev = gate_state.get("loop_flags_prev", [])
     loop_flags_current = progress_state.get("loop_flags", [])
     loop_flags_changed_flag = loop_flags_changed(loop_flags_prev, loop_flags_current)
@@ -76,7 +70,6 @@ def phase_policy_planner_node(state: dict) -> dict:
 
     planner_skipped, skip_reason, planner_gate_meta = gate_phase_policy(
         world_diff=state.get("world_diff", {}),
-        precedence_changed=precedence_changed,
         intent_transition_present=intent_transition_present,
         loop_flags_changed_flag=loop_flags_changed_flag,
         allowed_ids_hash_changed=allowed_hash_changed,
@@ -99,7 +92,6 @@ def phase_policy_planner_node(state: dict) -> dict:
         "planner_skip_reason": skip_reason,
         "allowed_policy_ids": allowed_final,
         "allowed_policy_ids_base": allowed_base,
-        "allowed_policy_ids_after_precedence": allowed_prec,
         "allowed_policy_ids_after_intent": allowed_final,
         "allowed_policy_ids_after_required_inputs": required_filtered,
         "intent_preferred_policy_ids": preferred,
@@ -108,7 +100,6 @@ def phase_policy_planner_node(state: dict) -> dict:
         "allowed_ids_hash_stable_count": stable_count,
         "planner_gate_features": planner_gate_meta,
     }
-    planner_meta.update(prec_meta)
     planner_meta.update(intent_meta)
 
     if planner_skipped:
@@ -136,7 +127,6 @@ def phase_policy_planner_node(state: dict) -> dict:
             belief_state=state["belief_state"],
             progress_state=progress_state,
             intent_hint=state.get("intent_hint"),
-            precedence=state.get("precedence"),
             objective=state["objective"],
             constraints=state.get("constraints", ""),
             constraints_struct=state.get("hard_constraints_struct", {}),
@@ -148,7 +138,6 @@ def phase_policy_planner_node(state: dict) -> dict:
             prev_phase_state=progress_state.get("phase_state"),
             phase_candidate=phase_candidate,
             turn_count=turn_count,
-            precedence=state.get("precedence"),
         )
         phase_effective["last_updated_turn"] = turn_count
         policy_pre_repair = dict(policy_decision)
@@ -183,7 +172,6 @@ def phase_policy_planner_node(state: dict) -> dict:
         gate_state["last_planner_refresh_turn"] = turn_count
     gate_state["allowed_ids_hash_prev"] = allowed_hash
     gate_state["allowed_ids_hash_stable_count"] = stable_count
-    gate_state["precedence_signature_prev"] = current_signature
     gate_state["loop_flags_prev"] = list(loop_flags_current)
     progress_state["gate_state"] = gate_state
 

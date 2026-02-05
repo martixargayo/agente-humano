@@ -12,7 +12,6 @@ def intent_manager_node(state: dict) -> dict:
         progress_state=state["progress_state"],
         user_message=state.get("user_message", ""),
         turn_count=state.get("turn_count", 0),
-        precedence=state.get("precedence"),
     )
     state["progress_state"]["intent_state"] = intent_state
     state["intent_hint"] = intent_hint

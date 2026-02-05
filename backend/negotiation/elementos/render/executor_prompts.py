@@ -39,7 +39,6 @@ why_short: {why_short}
 inputs_used: {inputs_used}
 phase_effective: {phase_effective}
 intent_next_hint: {intent_next_hint}
-precedence_reason: {precedence_reason}
 
 PERSONA PROFILE (fixed):
 {persona_json}

@@ -6,34 +6,6 @@ from pydantic import BaseModel, ConfigDict, Field, confloat, conlist
 
 from ..schemas import NegotiationPhase, RequiredInput
 
-Mode = Literal[
-    "recovery_guard",
-    "closing_push",
-    "bargaining",
-    "discovery",
-    "opening_or_other",
-]
-
-PRECEDENCE_MODES = (
-    "recovery_guard",
-    "closing_push",
-    "bargaining",
-    "discovery",
-    "opening_or_other",
-)
-
-MODE_RECOVERY_GUARD = "recovery_guard"
-MODE_CLOSING_PUSH = "closing_push"
-MODE_BARGAINING = "bargaining"
-MODE_DISCOVERY = "discovery"
-MODE_OPENING_OR_OTHER = "opening_or_other"
-
-PRECEDENCE_RECOVERY_MIN_TAGS = ("safe_when_tense", "deescalation")
-PRECEDENCE_RECOVERY_BLOCK_TAGS = ("aggressive",)
-PRECEDENCE_DISCOVERY_MIN_TAGS = ("credibility_check",)
-PRECEDENCE_CLOSING_PUSH_MIN_TAGS = ("closing",)
-PRECEDENCE_BARGAINING_MIN_TAGS = ("bargaining",)
-
 PHASES = ("opening", "discovery", "bargaining", "closing", "recovery")
 PHASE_OPENING = "opening"
 PHASE_DISCOVERY = "discovery"
