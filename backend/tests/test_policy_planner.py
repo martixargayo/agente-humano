@@ -25,7 +25,7 @@ def test_guard_requires_price_not_mentioned_excludes_policy_when_price_mentioned
 def test_required_guards_exclude_policies_without_safe_when_tense_when_tense():
     world_state = default_world_state()
     belief_state = default_belief_state()
-    belief_state["dynamics"]["interaction_health"] = "tense"
+    belief_state["universal"]["dynamics"]["interaction_health"] = "tense"
     progress_state = default_progress_state()
 
     allowed = allowed_policy_ids(world_state, belief_state, progress_state)

@@ -53,6 +53,16 @@ _ALLOWED_TONE: set[ToneSignal] = {"neutral", "friendly", "tense"}
 _ALLOWED_ESCALATION = {"up", "down", "none"}
 _MAX_V2_CLAIMS = int(os.getenv("EVIDENCE_V2_MAX_CLAIMS", "200"))
 _MAX_V2_UNKNOWN = int(os.getenv("EVIDENCE_V2_MAX_UNKNOWN", "50"))
+BELIEF_LEGACY_KEYS = {
+    "dynamics",
+    "tom",
+    "stance",
+    "reasons",
+    "hypotheses",
+    "hypotheses_structural",
+    "hypotheses_observational",
+    "evaluations",
+}
 _ALLOWED_INTENT_STATUS: set[IntentStatus] = {
     "inactive",
     "active",
@@ -689,6 +699,12 @@ def normalize_belief_state(
     if not isinstance(raw, dict):
         issues.append("belief_state_no_dict")
         return base, issues
+    if BELIEF_LEGACY_KEYS.intersection(raw.keys()):
+        warnings.warn(
+            "belief_state legacy flat keys are deprecated; use belief_state['universal']/['negotiation'] only",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
     if "universal" not in raw or not isinstance(raw.get("universal"), dict):
         raw["universal"] = {}
@@ -713,15 +729,6 @@ def normalize_belief_state(
     if not isinstance(neg.get("tom"), dict):
         neg["tom"] = {}
     base["negotiation"] = neg
-
-    base["dynamics"] = dict(base["universal"]["dynamics"])
-    base["tom"] = dict(base["universal"]["tom"])
-    base["stance"] = dict(base["negotiation"]["stance"])
-    base["reasons"] = dict(base["negotiation"]["reasons"])
-    base["hypotheses"] = list(base["negotiation"].get("hypotheses", []))
-    base["hypotheses_structural"] = list(base["negotiation"]["hypotheses_structural"])
-    base["hypotheses_observational"] = list(base["negotiation"]["hypotheses_observational"])
-    base["evaluations"] = dict(base["negotiation"]["evaluations"])
 
     return base, issues
 

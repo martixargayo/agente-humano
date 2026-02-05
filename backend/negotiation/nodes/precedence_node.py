@@ -15,11 +15,10 @@ def precedence_node(state: dict) -> dict:
         "concession_made": negotiation.get("concession_made"),
         "price_mentioned": negotiation.get("price_mentioned"),
     }
+    universal_dynamics = (belief_state.get("universal") or {}).get("dynamics", {})
     precedence_belief = {
-        "dynamics": {
-            "interaction_health": (belief_state.get("dynamics") or {}).get(
-                "interaction_health", "stable"
-            )
+        "universal": {
+            "dynamics": {"interaction_health": universal_dynamics.get("interaction_health", "stable")}
         }
     }
     prec = compute_precedence(

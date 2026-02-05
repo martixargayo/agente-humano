@@ -90,9 +90,9 @@ def test_update_progress_state_tracks_policy_last_outcome():
     prev_world = default_world_state()
     world = default_world_state()
     prev_belief = default_belief_state()
-    prev_belief["dynamics"]["interaction_health"] = "tense"
+    prev_belief["universal"]["dynamics"]["interaction_health"] = "tense"
     belief = default_belief_state()
-    belief["dynamics"]["interaction_health"] = "stable"
+    belief["universal"]["dynamics"]["interaction_health"] = "stable"
 
     last_policy_executed = default_policy_decision()
     last_policy_executed["policy_id"] = "rapport_build"
@@ -233,7 +233,7 @@ def test_allowed_policy_ids_uses_outcome_per_policy():
 
     world = default_world_state()
     belief = default_belief_state()
-    belief["dynamics"]["interaction_health"] = "stable"
+    belief["universal"]["dynamics"]["interaction_health"] = "stable"
     world["negotiation"]["price_mentioned"] = False
     progress = default_progress_state()
     ids = policy_planner.list_policy_ids()

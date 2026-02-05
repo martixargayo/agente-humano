@@ -38,7 +38,9 @@ def compute_precedence(
     def _normalized_reason(mode: Mode, reason_key: str) -> str:
         return f"precedence:{mode} | precedence_reason:{reason_key}"
 
-    health = (belief.get("dynamics") or {}).get("interaction_health", "stable")
+    health = ((belief.get("universal") or {}).get("dynamics") or {}).get(
+        "interaction_health", "stable"
+    )
 
     if health in {"tense", "stalled"}:
         return PrecedenceResult(

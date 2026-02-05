@@ -160,7 +160,9 @@ def _allowed_policy_ids(
         return []
 
     allowed = set(policy_ids)
-    health = belief_state.get("dynamics", {}).get("interaction_health", "stable")
+    health = (belief_state.get("universal") or {}).get("dynamics", {}).get(
+        "interaction_health", "stable"
+    )
 
     if health == "tense":
         allowed -= {

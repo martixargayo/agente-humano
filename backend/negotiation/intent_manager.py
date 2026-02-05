@@ -50,8 +50,14 @@ def _message_is_vague(world_state: WorldState) -> bool:
     return bool(universal.get("message_is_vague"))
 
 
+def _belief_health(belief_state: BeliefState) -> str:
+    return (belief_state.get("universal") or {}).get("dynamics", {}).get(
+        "interaction_health", "stable"
+    )
+
+
 def _intent_type_for_context(world_state: WorldState, belief_state: BeliefState) -> str:
-    health = belief_state.get("dynamics", {}).get("interaction_health", "stable")
+    health = _belief_health(belief_state)
     negotiation = world_state.get("negotiation", {}) if isinstance(world_state, dict) else {}
     if health != "stable":
         return "relationship"
@@ -220,7 +226,7 @@ def score_multi_turn_start(
         + INTENT_WEIGHT_UNCERTAINTY * (1.0 - signal_quality)
     )
 
-    tension = 1.0 if belief_state.get("dynamics", {}).get("interaction_health") in {
+    tension = 1.0 if _belief_health(belief_state) in {
         "tense",
         "stalled",
     } else 0.0
@@ -248,7 +254,7 @@ def score_multi_turn_start(
 
 
 def _commitment_level(intent_type: str, slots_missing: list[str], belief_state: BeliefState) -> str:
-    if belief_state.get("dynamics", {}).get("interaction_health") != "stable":
+    if _belief_health(belief_state) != "stable":
         return "hard"
     if intent_type in {"closing", "concession", "credibility_check"}:
         return "hard"
@@ -673,7 +679,7 @@ def update_intent_state(
         meta["intent_new"] = deepcopy(intent)
         return intent, meta, _build_intent_hint(intent, [], commitment)
 
-    if belief_state.get("dynamics", {}).get("interaction_health") == "tense":
+    if _belief_health(belief_state) == "tense":
         intent["status"] = "abandoned"
         intent["abandon_reasons"] = list(intent.get("abandon_reasons", [])) + [
             "interaction_tense",

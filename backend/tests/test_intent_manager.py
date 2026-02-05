@@ -190,7 +190,7 @@ def test_intent_progress_requires_new_evidence_key():
 def test_intent_abandons_on_hard_trigger():
     world = default_world_state()
     belief = default_belief_state()
-    belief["dynamics"]["interaction_health"] = "tense"
+    belief["universal"]["dynamics"]["interaction_health"] = "tense"
     progress = default_progress_state()
     intent = default_intent_state()
     intent.update(
