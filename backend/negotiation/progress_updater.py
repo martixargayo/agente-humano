@@ -27,6 +27,10 @@ def _evaluate_outcome(
     if not policy_id:
         return OUTCOME_NEUTRAL
 
+    prev_neg = (
+        prev_world_state.get("negotiation", {}) if isinstance(prev_world_state, dict) else {}
+    )
+    neg = world_state.get("negotiation", {}) if isinstance(world_state, dict) else {}
     health = belief_state.get("dynamics", {}).get("interaction_health", "stable")
     prev_health = (
         prev_belief_state.get("dynamics", {}).get("interaction_health", "stable")
@@ -41,7 +45,7 @@ def _evaluate_outcome(
         return OUTCOME_NEUTRAL
 
     if policy_id == "delay_price_discussion":
-        if world_state.get("price_mentioned") and not prev_world_state.get("price_mentioned"):
+        if neg.get("price_mentioned") and not prev_neg.get("price_mentioned"):
             return OUTCOME_BAD
         if _has_info_delta(world_diff):
             return OUTCOME_GOOD
@@ -65,7 +69,7 @@ def _evaluate_outcome(
         return OUTCOME_NEUTRAL
 
     if policy_id in {"tradeoff_offer", "hold_position"}:
-        if world_state.get("concession_made") and not prev_world_state.get("concession_made"):
+        if neg.get("concession_made") and not prev_neg.get("concession_made"):
             return OUTCOME_GOOD
         return OUTCOME_NEUTRAL
 
@@ -75,7 +79,7 @@ def _evaluate_outcome(
         return OUTCOME_NEUTRAL
 
     if policy_id == "close_with_conditions":
-        if world_state.get("concession_made") and not prev_world_state.get("concession_made"):
+        if neg.get("concession_made") and not prev_neg.get("concession_made"):
             return OUTCOME_GOOD
         return OUTCOME_NEUTRAL
 

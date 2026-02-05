@@ -43,7 +43,7 @@ def test_executed_policy_and_debug_trace_are_persisted(monkeypatch):
 
     state = SessionState(user_id="u", session_id="s")
     world_state = default_world_state()
-    world_state["price_mentioned"] = True
+    world_state["negotiation"]["price_mentioned"] = True
     state.world_state = world_state
     run_negotiation_agent(state, "hola", deps=deps)
 
@@ -119,7 +119,7 @@ def test_executed_policy_can_differ_from_chosen_and_is_persisted(monkeypatch):
 
     state = SessionState(user_id="u", session_id="s")
     world_state = default_world_state()
-    world_state["price_mentioned"] = True
+    world_state["negotiation"]["price_mentioned"] = True
     state.world_state = world_state
     run_negotiation_agent(state, "hola", deps=deps)
 

@@ -196,37 +196,8 @@ class OpenClaim(TypedDict, total=False):
 
 
 class WorldState(TypedDict):
-    price_mentioned: bool
-    price_value: float | None
-    deadline_claimed: bool
-    deadline_text: str
-    deadline_days: int | None
-    deadline_kind: str
-    other_buyer_claimed: bool
-    other_buyer_text: str
-    other_buyer_offer_price: float | None
-    other_buyer_timing_text: str
-    concession_made: bool
-    concession_text: str
-    docs_claimed: bool
-    docs_types: List[str]
-    batna_claimed: bool
-    batna_text: str
-    urgency_claimed: bool
-    urgency_text: str
-    urgency_reason: str
-    min_price_claimed: bool
-    min_price_text: str
-    price_firm: bool
-    price_firm_text: str
-    evidence_offered: bool
-    evidence_text: str
-    message_is_vague: bool
-    tone_signal: ToneSignal
-    tone_confidence: float
-    tone_marker_hits: List[str]
-    conflict_markers: List[str]
-    interaction: "InteractionState"
+    universal_domain: Dict[str, Any]
+    negotiation: Dict[str, Any]
     universal_state: "UniversalState"
     open_claims: List["OpenClaim"]
     evidence_items: List["EvidenceItem"]
@@ -247,14 +218,6 @@ class EvidenceItem(TypedDict):
     turn_idx: int | None
     span: tuple[int, int] | None
     raw: Dict[str, Any] | None
-
-
-class InteractionState(TypedDict):
-    implicit_acceptance: bool
-    escalation_signal: InteractionEscalation
-    loop_hint: bool
-    evasion_detected: bool
-    soft_commitment: bool
 
 
 class WorldObservations(TypedDict):
@@ -311,6 +274,8 @@ class WorldStateMeta(TypedDict):
     updated_fields: List[str]
     turn_idx: int | None
     unknown_claims: List[Dict[str, Any]]
+    error: str
+    extractor_failed: bool
 
 
 # ============ UNIVERSAL (para cualquier conversación) ============
@@ -507,6 +472,7 @@ class GateState(TypedDict):
     precedence_signature_prev: str
     loop_flags_prev: List[str]
     input_shape_prev: Dict[str, object]
+    last_interaction_signals: Dict[str, object]
     interaction_fingerprint_prev: Dict[str, object]
     interaction_fingerprint_version: int
     prev_user_message: str
@@ -526,42 +492,37 @@ def default_universal_state() -> UniversalState:
 
 def default_world_state() -> WorldState:
     return {
-        "price_mentioned": False,
-        "price_value": None,
-        "deadline_claimed": False,
-        "deadline_text": "",
-        "deadline_days": None,
-        "deadline_kind": "unknown",
-        "other_buyer_claimed": False,
-        "other_buyer_text": "",
-        "other_buyer_offer_price": None,
-        "other_buyer_timing_text": "",
-        "concession_made": False,
-        "concession_text": "",
-        "docs_claimed": False,
-        "docs_types": [],
-        "batna_claimed": False,
-        "batna_text": "",
-        "urgency_claimed": False,
-        "urgency_text": "",
-        "urgency_reason": "",
-        "min_price_claimed": False,
-        "min_price_text": "",
-        "price_firm": False,
-        "price_firm_text": "",
-        "evidence_offered": False,
-        "evidence_text": "",
-        "message_is_vague": False,
-        "tone_signal": "neutral",
-        "tone_confidence": 0.0,
-        "tone_marker_hits": [],
-        "conflict_markers": [],
-        "interaction": {
-            "implicit_acceptance": False,
-            "escalation_signal": "none",
-            "loop_hint": False,
-            "evasion_detected": False,
-            "soft_commitment": False,
+        "universal_domain": {
+            "message_is_vague": False,
+            "tone_signal": "neutral",
+            "tone_confidence": 0.0,
+        },
+        "negotiation": {
+            "price_mentioned": False,
+            "price_value": None,
+            "price_firm": False,
+            "price_firm_text": "",
+            "deadline_claimed": False,
+            "deadline_text": "",
+            "deadline_days": None,
+            "deadline_kind": "",
+            "urgency_claimed": False,
+            "urgency_text": "",
+            "urgency_reason": "",
+            "other_buyer_claimed": False,
+            "other_buyer_text": "",
+            "other_buyer_offer_price": None,
+            "other_buyer_timing_text": "",
+            "concession_made": False,
+            "concession_text": "",
+            "batna_claimed": False,
+            "batna_text": "",
+            "min_price_claimed": False,
+            "min_price_text": "",
+            "docs_claimed": False,
+            "docs_types": [],
+            "evidence_offered": False,
+            "evidence_text": "",
         },
         "universal_state": default_universal_state(),
         "open_claims": [],
@@ -580,11 +541,13 @@ def default_world_state() -> WorldState:
         },
         "world_derived": {"fields": {}},
         "world_state_meta": {
-            "last_update_source": "regex",
+            "last_update_source": "llm",
             "evidence_confidence_min": 0.6,
             "updated_fields": [],
             "turn_idx": None,
             "unknown_claims": [],
+            "error": "",
+            "extractor_failed": False,
         },
     }
 
@@ -713,6 +676,7 @@ def default_progress_state() -> ProgressState:
             "precedence_signature_prev": "",
             "loop_flags_prev": [],
             "input_shape_prev": {},
+            "last_interaction_signals": {},
             "interaction_fingerprint_prev": {},
             "interaction_fingerprint_version": 1,
             "prev_user_message": "",

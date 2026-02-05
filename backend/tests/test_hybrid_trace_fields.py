@@ -18,7 +18,10 @@ def _fake_deps(plan_phase_policy):
         return default_belief_state(), {"belief_meta": {"mock": True}}
 
     def fake_execute(_messages):
-        return "ok"
+        return (
+            '{"schema_version":"world_extractor_v3","universal_domain_patch":{},'
+            '"negotiation_domain_patch":{},"universal_patch":{},"open_claims":[]}'
+        )
 
     return AgentDeps(
         plan_phase_policy=plan_phase_policy,
@@ -99,7 +102,7 @@ def test_phase_repair_reflected_in_trace(monkeypatch):
 
     state = SessionState(user_id="u2", session_id="s2")
     world_state = default_world_state()
-    world_state["price_mentioned"] = True
+    world_state["negotiation"]["price_mentioned"] = True
     state.world_state = world_state
     state.progress_state = default_progress_state()
     run_negotiation_agent(state, "hola", deps=deps)
@@ -181,56 +184,15 @@ def test_allowed_ids_hash_persisted_and_stable(monkeypatch):
     assert gate_state["allowed_ids_hash_stable_count"] == 1
 
 
-def test_interaction_present_in_debug_trace(monkeypatch):
-    def fake_plan_phase_policy(*_args, **_kwargs):
-        phase_candidate = {
-            "phase": "opening",
-            "confidence": 0.6,
-            "reasons": ["history:mock"],
-            "signals": [],
-            "alternatives": [],
-        }
-        return phase_candidate, default_policy_decision(), {}
-
-    deps = _fake_deps(fake_plan_phase_policy)
-    monkeypatch.setenv("USE_LLM_EXTRACTOR", "false")
-    monkeypatch.setenv("USE_LEGACY_MATCHERS", "true")
-    monkeypatch.setattr(
-        "negotiation.negotiation_graph.normalize_text",
-        lambda raw_reply, last_user_message=None: raw_reply,
-    )
-
-    state = SessionState(user_id="ui", session_id="si")
-    state.world_state = default_world_state()
-    state.progress_state = default_progress_state()
-    run_negotiation_agent(state, "me parece bien", deps=deps)
-
-    trace = state.debug_trace[-1]
-    assert trace["world_new"]["interaction"]["implicit_acceptance"] is True
-    assert "interaction" in trace["world_diff"]
-
-
-def test_gate_phase_policy_triggers_on_interaction_change():
-    world_diff = {"interaction": {"implicit_acceptance": {"before": False, "after": True}}}
-    planner_skipped, reason, _meta = gate_phase_policy(
-        world_diff=world_diff,
-        precedence_changed=False,
-        intent_transition_present=False,
-        loop_flags_changed_flag=False,
-        allowed_ids_hash_changed=False,
-        turn_count=2,
-        last_refresh_turn=1,
-    )
-
-    assert planner_skipped is False
-    assert reason == "strong_signals"
-
-
 def test_gate_phase_policy_skips_on_repeated_ack(monkeypatch):
-    monkeypatch.setenv("USE_LLM_EXTRACTOR", "false")
-    monkeypatch.setenv("USE_LEGACY_MATCHERS", "true")
-    prev_world, _ = update_world_state(default_world_state(), "ok")
-    new_world, _ = update_world_state(prev_world, "ok")
+    deps = SimpleNamespace(
+        execute=lambda _messages: (
+            '{"schema_version":"world_extractor_v3","universal_domain_patch":{},'
+            '"negotiation_domain_patch":{},"universal_patch":{},"open_claims":[]}'
+        )
+    )
+    prev_world, _ = update_world_state(default_world_state(), "ok", deps=deps)
+    new_world, _ = update_world_state(prev_world, "ok", deps=deps)
     world_diff = diff_world_state(prev_world, new_world)
 
     planner_skipped, reason, _meta = gate_phase_policy(
@@ -263,8 +225,6 @@ def test_planner_refresh_on_implicit_acceptance(monkeypatch):
         return phase_candidate, default_policy_decision(), {}
 
     deps = _fake_deps(fake_plan_phase_policy)
-    monkeypatch.setenv("USE_LLM_EXTRACTOR", "false")
-    monkeypatch.setenv("USE_LEGACY_MATCHERS", "true")
     monkeypatch.setattr(
         "negotiation.negotiation_graph.allowed_policy_ids",
         lambda *_a, **_k: ["rapport_build"],
@@ -296,23 +256,3 @@ def test_planner_refresh_on_implicit_acceptance(monkeypatch):
     run_negotiation_agent(state, "me parece bien", deps=deps)
 
     assert called["count"] >= 2
-
-
-def test_interaction_does_not_increase_llm_calls(monkeypatch):
-    called = {"llm": 0}
-
-    def fake_extract_state_patch_llm(*_args, **_kwargs):
-        called["llm"] += 1
-        raise AssertionError("LLM extractor should not be called for short ack.")
-
-    monkeypatch.setenv("USE_LLM_EXTRACTOR", "true")
-    monkeypatch.setenv("USE_LEGACY_MATCHERS", "true")
-    monkeypatch.setattr(
-        "negotiation.world_state_updater.extract_state_patch_llm",
-        fake_extract_state_patch_llm,
-    )
-
-    world, _meta = update_world_state(default_world_state(), "ok")
-
-    assert called["llm"] == 0
-    assert world["interaction"]["implicit_acceptance"] is True

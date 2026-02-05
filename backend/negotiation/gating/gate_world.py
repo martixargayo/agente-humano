@@ -68,13 +68,13 @@ def gate_world(
         "conversation_mode": conversation_mode,
     }
     if interval_expired:
-        change_meta["extractor_mode"] = "llm" if modality == "voice" else "regex"
+        change_meta["extractor_mode"] = "llm"
         return False, "interval_expired", change_meta
     if changed:
-        change_meta["extractor_mode"] = "llm" if modality == "voice" else "regex"
+        change_meta["extractor_mode"] = "llm"
         return False, "input_shape_changed", change_meta
     if interaction_strong_for_world:
-        change_meta["extractor_mode"] = "llm" if modality == "voice" else "regex"
+        change_meta["extractor_mode"] = "llm"
         return False, "interaction_changed", change_meta
     change_meta["extractor_mode"] = "none"
     return True, "interval_hold", change_meta

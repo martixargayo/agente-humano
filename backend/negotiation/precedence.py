@@ -50,16 +50,17 @@ def compute_precedence(
             allow_closing=False,
         )
 
-    if world.get("other_buyer_claimed") or world.get("deadline_claimed"):
+    negotiation = world.get("negotiation", {}) if isinstance(world, dict) else {}
+    if negotiation.get("other_buyer_claimed") or negotiation.get("deadline_claimed"):
         return PrecedenceResult(
             mode=MODE_DISCOVERY,
             reason=_normalized_reason(MODE_DISCOVERY, "world:credibility_signal"),
             min_policy_tags=PRECEDENCE_DISCOVERY_MIN_TAGS,
         )
 
-    if world.get("price_firm") is True:
+    if negotiation.get("price_firm") is True:
         closing_ok = bool(
-            world.get("concession_made")
+            negotiation.get("concession_made")
             or (intent and intent.get("intent_type") == "closing")
         )
         if closing_ok:
@@ -77,7 +78,7 @@ def compute_precedence(
             allow_closing=False,
         )
 
-    if world.get("price_mentioned") and world.get("concession_made"):
+    if negotiation.get("price_mentioned") and negotiation.get("concession_made"):
         return PrecedenceResult(
             mode=MODE_BARGAINING,
             reason=_normalized_reason(MODE_BARGAINING, "world:concession_made"),

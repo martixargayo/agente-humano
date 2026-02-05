@@ -5,7 +5,7 @@ from negotiation.schemas import default_world_state, default_belief_state
 def test_gate_belief_opens_on_escalation_up():
     prev_world = default_world_state()
     world = default_world_state()
-    world["interaction"]["escalation_signal"] = "up"
+    world["universal_domain"]["tone_signal"] = "tense"
     skipped, _reason = gate_belief(
         world_diff={},
         prev_world=prev_world,

@@ -10,15 +10,12 @@ from ..gate_utils import (
 )
 from ..mode_inference import update_conversation_mode
 from ..schemas import default_progress_state, default_world_state
-from ..world_state_updater import (
-    _previous_user_message,
-    diff_world_state,
-    extract_interaction_signals,
-    update_world_state,
-)
+from ..perception.interaction_signals import _previous_user_message, extract_interaction_signals
+from ..world_state_updater import diff_world_state, update_world_state
 
 
 def world_updater_node(state: dict) -> dict:
+    deps = state.get("deps")
     prev_world = state.get("world_state") or default_world_state()
     state["prev_world_state"] = prev_world
     progress_state = state.get("progress_state") or default_progress_state()
@@ -43,6 +40,7 @@ def world_updater_node(state: dict) -> dict:
         prev_world,
         recent_history=state.get("recent_history_text", []),
         tone_signal=None,
+        prev_interaction=gate_state.get("last_interaction_signals", {}),
     )
     interaction_fingerprint_current = interaction_fingerprint(interaction_current)
     world_skipped, skip_reason, gate_meta = gate_world(
@@ -63,7 +61,6 @@ def world_updater_node(state: dict) -> dict:
     if world_skipped:
         gate_state["world_skip_count"] = int(gate_state.get("world_skip_count", 0) or 0) + 1
         world_state = dict(prev_world)
-        world_state["interaction"] = interaction_current
         state["world_state"] = world_state
         state["world_diff"] = diff_world_state(prev_world, world_state)
         state["extractor_meta"] = {
@@ -74,17 +71,14 @@ def world_updater_node(state: dict) -> dict:
             "interaction_updated": True,
         }
     else:
-        force_llm = skip_reason == "interval_expired"
-        extractor_mode = gate_meta.get("extractor_mode", "regex")
         world_state, extractor_meta = update_world_state(
             prev_world,
             user_message,
             recent_history=state.get("recent_history_text", ""),
             belief_state=state.get("belief_state") or {},
             turn_count=turn_count,
-            force_llm=force_llm,
-            extractor_mode=extractor_mode,
             conversation_mode=conversation_mode,
+            deps=deps,
         )
         gate_state["last_world_refresh_turn"] = turn_count
         state["world_state"] = world_state
@@ -100,9 +94,8 @@ def world_updater_node(state: dict) -> dict:
         state.get("world_state", {}).get("universal_state")
     )
     gate_state["input_shape_prev"] = current_features
-    gate_state["interaction_fingerprint_prev"] = interaction_fingerprint(
-        state.get("world_state", {}).get("interaction", {})
-    )
+    gate_state["last_interaction_signals"] = interaction_current
+    gate_state["interaction_fingerprint_prev"] = interaction_fingerprint(interaction_current)
     gate_state["interaction_fingerprint_version"] = int(
         gate_state.get("interaction_fingerprint_version", 1) or 1
     )

@@ -46,20 +46,22 @@ class MultiTurnScore:
 
 
 def _message_is_vague(world_state: WorldState) -> bool:
-    return bool(world_state.get("message_is_vague"))
+    universal = world_state.get("universal_domain", {}) if isinstance(world_state, dict) else {}
+    return bool(universal.get("message_is_vague"))
 
 
 def _intent_type_for_context(world_state: WorldState, belief_state: BeliefState) -> str:
     health = belief_state.get("dynamics", {}).get("interaction_health", "stable")
+    negotiation = world_state.get("negotiation", {}) if isinstance(world_state, dict) else {}
     if health != "stable":
         return "relationship"
-    if world_state.get("price_firm"):
+    if negotiation.get("price_firm"):
         return "closing"
-    if world_state.get("concession_made"):
+    if negotiation.get("concession_made"):
         return "concession"
-    if world_state.get("price_mentioned"):
+    if negotiation.get("price_mentioned"):
         return "closing"
-    if world_state.get("docs_claimed") or world_state.get("other_buyer_claimed"):
+    if negotiation.get("docs_claimed") or negotiation.get("other_buyer_claimed"):
         return "credibility_check"
     return "info_extract"
 
@@ -69,7 +71,8 @@ def build_intent_contract(
     world_state: WorldState,
     belief_state: BeliefState,
 ) -> tuple[list[str], list[str], str, list[str]]:
-    if intent_type == "credibility_check" and world_state.get("other_buyer_claimed"):
+    negotiation = world_state.get("negotiation", {}) if isinstance(world_state, dict) else {}
+    if intent_type == "credibility_check" and negotiation.get("other_buyer_claimed"):
         contract = INTENT_CONTRACTS["credibility_check"]
         return (
             list(contract["required"]),
@@ -111,29 +114,31 @@ def _slot_entry(value: object, evidence: str, confidence: float, source: str = "
 def _extract_slots(world_state: WorldState, user_message: str) -> dict:
     slots: dict = {}
     evidence = (user_message or "").strip()[:160]
+    negotiation = world_state.get("negotiation", {}) if isinstance(world_state, dict) else {}
+    universal = world_state.get("universal_domain", {}) if isinstance(world_state, dict) else {}
 
-    if world_state.get("price_mentioned"):
-        price_value = world_state.get("price_value")
+    if negotiation.get("price_mentioned"):
+        price_value = negotiation.get("price_value")
         slots["price"] = _slot_entry(
             price_value if price_value is not None else "mentioned",
             evidence,
             0.7,
         )
 
-    if world_state.get("docs_claimed"):
-        slots["docs"] = _slot_entry(world_state.get("docs_types", []), evidence, 0.6)
+    if negotiation.get("docs_claimed"):
+        slots["docs"] = _slot_entry(negotiation.get("docs_types", []), evidence, 0.6)
 
-    if world_state.get("deadline_claimed"):
-        slots["deadline_real"] = _slot_entry(world_state.get("deadline_text", ""), evidence, 0.6)
+    if negotiation.get("deadline_claimed"):
+        slots["deadline_real"] = _slot_entry(negotiation.get("deadline_text", ""), evidence, 0.6)
 
-    if world_state.get("other_buyer_claimed"):
-        other_buyer_text = world_state.get("other_buyer_text", "").strip()
+    if negotiation.get("other_buyer_claimed"):
+        other_buyer_text = negotiation.get("other_buyer_text", "").strip()
         slots["other_buyer"] = _slot_entry("claimed", evidence, 0.5)
         slots["other_buyer_details"] = _slot_entry(
             {
                 "claim_text": other_buyer_text,
-                "offer_price": world_state.get("other_buyer_offer_price"),
-                "timing": world_state.get("other_buyer_timing_text", "").strip(),
+                "offer_price": negotiation.get("other_buyer_offer_price"),
+                "timing": negotiation.get("other_buyer_timing_text", "").strip(),
                 "claim_confidence": 0.55,
             },
             evidence,
@@ -141,31 +146,31 @@ def _extract_slots(world_state: WorldState, user_message: str) -> dict:
             source="world_state:other_buyer_claimed",
         )
 
-    if world_state.get("concession_made"):
-        slots["concession"] = _slot_entry(world_state.get("concession_text", ""), evidence, 0.6)
+    if negotiation.get("concession_made"):
+        slots["concession"] = _slot_entry(negotiation.get("concession_text", ""), evidence, 0.6)
 
-    if world_state.get("batna_claimed"):
-        slots["seller_batna"] = _slot_entry(world_state.get("batna_text", ""), evidence, 0.6)
+    if negotiation.get("batna_claimed"):
+        slots["seller_batna"] = _slot_entry(negotiation.get("batna_text", ""), evidence, 0.6)
 
-    if world_state.get("urgency_claimed"):
+    if negotiation.get("urgency_claimed"):
         slots["seller_urgency_reason"] = _slot_entry(
-            world_state.get("urgency_text", ""), evidence, 0.6
+            negotiation.get("urgency_text", ""), evidence, 0.6
         )
 
-    if world_state.get("min_price_claimed"):
+    if negotiation.get("min_price_claimed"):
         slots["seller_min_acceptable"] = _slot_entry(
-            world_state.get("min_price_text", ""), evidence, 0.6
+            negotiation.get("min_price_text", ""), evidence, 0.6
         )
 
-    if world_state.get("price_firm"):
-        slots["price_firm"] = _slot_entry(world_state.get("price_firm_text", ""), evidence, 0.7)
+    if negotiation.get("price_firm"):
+        slots["price_firm"] = _slot_entry(negotiation.get("price_firm_text", ""), evidence, 0.7)
 
-    if world_state.get("evidence_offered"):
+    if negotiation.get("evidence_offered"):
         slots["evidence_offered"] = _slot_entry(
-            world_state.get("evidence_text", ""), evidence, 0.6
+            negotiation.get("evidence_text", ""), evidence, 0.6
         )
 
-    tone_signal = world_state.get("tone_signal")
+    tone_signal = universal.get("tone_signal")
     if tone_signal and tone_signal != "neutral":
         slots["tone_signal"] = _slot_entry(tone_signal, evidence, 0.5)
         if tone_signal == "friendly":
@@ -181,7 +186,8 @@ def _slots_missing(intent_state: IntentState) -> list[str]:
 
 
 def _world_has_multiple_open_factors(world_state: WorldState) -> bool:
-    signals = [world_state.get(signal) for signal in OPEN_FACTOR_SIGNALS]
+    negotiation = world_state.get("negotiation", {}) if isinstance(world_state, dict) else {}
+    signals = [negotiation.get(signal) for signal in OPEN_FACTOR_SIGNALS]
     return sum(1 for signal in signals if signal) >= 2
 
 
@@ -204,7 +210,8 @@ def score_multi_turn_start(
     reasons: list[str] = []
 
     slots_missing_count = len(slots_missing)
-    open_factors = sum(1 for signal in OPEN_FACTOR_SIGNALS if world_state.get(signal))
+    negotiation = world_state.get("negotiation", {}) if isinstance(world_state, dict) else {}
+    open_factors = sum(1 for signal in OPEN_FACTOR_SIGNALS if negotiation.get(signal))
     signal_quality = _signal_quality(world_state)
 
     benefit = (
@@ -217,7 +224,9 @@ def score_multi_turn_start(
         "tense",
         "stalled",
     } else 0.0
-    urgency_pressure = 1.0 if world_state.get("deadline_days") in URGENCY_DEADLINE_DAYS else 0.0
+    urgency_pressure = (
+        1.0 if negotiation.get("deadline_days") in URGENCY_DEADLINE_DAYS else 0.0
+    )
     cost = (
         INTENT_COST_TENSION * tension
         + INTENT_COST_REPEAT * (1.0 if slots_missing_count <= 1 else 0.0)
@@ -347,13 +356,15 @@ def evaluate_success(
             return False, []
 
     if "firm_price_detected" in criteria:
-        if world_state.get("price_firm"):
+        negotiation = world_state.get("negotiation", {}) if isinstance(world_state, dict) else {}
+        if negotiation.get("price_firm"):
             reasons.append("firm_price_detected")
         else:
             return False, []
 
     if "evidence_offered" in criteria:
-        if world_state.get("evidence_offered"):
+        negotiation = world_state.get("negotiation", {}) if isinstance(world_state, dict) else {}
+        if negotiation.get("evidence_offered"):
             reasons.append("evidence_offered")
         else:
             return False, []
@@ -418,6 +429,7 @@ def _should_replan(
     intent: IntentState, world_state: WorldState, precedence: dict | None
 ) -> str | None:
     evidence_items = world_state.get("evidence_items", [])
+    negotiation = world_state.get("negotiation", {}) if isinstance(world_state, dict) else {}
     threshold = INTENT_FIRMNESS_REPLAN_THRESHOLD
     strong_firmness = any(
         item.get("type") == "FIRMNESS"
@@ -426,7 +438,7 @@ def _should_replan(
         and float(item.get("confidence", 0.0)) >= threshold
         for item in evidence_items
     )
-    has_price_value = world_state.get("price_mentioned") and world_state.get("price_value") is not None
+    has_price_value = negotiation.get("price_mentioned") and negotiation.get("price_value") is not None
     if strong_firmness and has_price_value and intent.get("intent_type") != "closing":
         if (precedence or {}).get("mode") == "recovery_guard":
             return "relationship"
@@ -721,10 +733,12 @@ def update_intent_state(
             if _message_is_vague(world_state):
                 meta["reasons"].append("vague_response")
                 pivot_reason = "vague"
-            elif step and step.get("kind") == "request_evidence" and not world_state.get(
-                "evidence_offered"
-            ):
-                pivot_reason = "no_evidence"
+            elif step and step.get("kind") == "request_evidence":
+                negotiation = (
+                    world_state.get("negotiation", {}) if isinstance(world_state, dict) else {}
+                )
+                if not negotiation.get("evidence_offered"):
+                    pivot_reason = "no_evidence"
 
             if intent["step_attempts"] >= intent.get("max_attempts_per_step", 2):
                 if pivot_reason:

@@ -37,6 +37,7 @@ from .schemas import (
     default_style_contract,
     default_world_state,
 )
+from .specs.world_keys import ALLOWED_NEGOTIATION_DOMAIN_KEYS, ALLOWED_UNIVERSAL_DOMAIN_KEYS
 from .elementos.belief.belief_contracts import UNIVERSAL_LIMITS, UNIVERSAL_REASON_KEYS
 from .elementos.render.render_contracts import (
     PERSONA_VOICE_REGISTERS,
@@ -420,96 +421,139 @@ def normalize_belief_universal(u: dict | None) -> dict:
 
 def normalize_world_state(raw: object) -> Tuple[WorldState, List[str]]:
     base = default_world_state()
+    defaults = default_world_state()
     issues: List[str] = []
     if not isinstance(raw, dict):
         issues.append("world_state_no_dict")
         return base, issues
-    if "tone_signal" not in raw:
-        issues.append("tone_signal_missing")
-        if _STRICT_NORMALIZATION:
-            return base, issues
+    universal_domain = raw.get("universal_domain")
+    negotiation = raw.get("negotiation")
+    if not isinstance(universal_domain, dict):
+        universal_domain = {}
+    if not isinstance(negotiation, dict):
+        negotiation = {}
 
-    base["price_mentioned"] = bool(raw.get("price_mentioned", base["price_mentioned"]))
-    price_value = raw.get("price_value", base["price_value"])
-    if price_value is None:
-        base["price_value"] = None
-    else:
-        base["price_value"] = _coerce_float(price_value, 0.0)
+    for key in ALLOWED_UNIVERSAL_DOMAIN_KEYS:
+        if key in raw and key not in universal_domain:
+            universal_domain[key] = raw.get(key)
+    for key in ALLOWED_NEGOTIATION_DOMAIN_KEYS:
+        if key in raw and key not in negotiation:
+            negotiation[key] = raw.get(key)
 
-    base["deadline_claimed"] = bool(raw.get("deadline_claimed", base["deadline_claimed"]))
-    base["deadline_text"] = str(raw.get("deadline_text", base["deadline_text"])).strip()
-    deadline_days = raw.get("deadline_days", base["deadline_days"])
-    if deadline_days is None:
-        base["deadline_days"] = None
-    else:
-        try:
-            base["deadline_days"] = int(deadline_days)
-        except (TypeError, ValueError):
-            issues.append("deadline_days_invalid")
-            base["deadline_days"] = None
-    base["deadline_kind"] = str(raw.get("deadline_kind", base["deadline_kind"])).strip() or "unknown"
-    base["other_buyer_claimed"] = bool(raw.get("other_buyer_claimed", base["other_buyer_claimed"]))
-    base["other_buyer_text"] = str(raw.get("other_buyer_text", base["other_buyer_text"])).strip()
-    other_offer = raw.get("other_buyer_offer_price", base["other_buyer_offer_price"])
-    if other_offer is None:
-        base["other_buyer_offer_price"] = None
-    else:
-        base["other_buyer_offer_price"] = _coerce_float(other_offer, 0.0)
-    base["other_buyer_timing_text"] = str(
-        raw.get("other_buyer_timing_text", base["other_buyer_timing_text"])
-    ).strip()
-    base["concession_made"] = bool(raw.get("concession_made", base["concession_made"]))
-    base["concession_text"] = str(raw.get("concession_text", base["concession_text"])).strip()
-    base["docs_claimed"] = bool(raw.get("docs_claimed", base["docs_claimed"]))
-    base["docs_types"] = _unique_list(_coerce_str_list(raw.get("docs_types", [])))
-    base["batna_claimed"] = bool(raw.get("batna_claimed", base["batna_claimed"]))
-    base["batna_text"] = str(raw.get("batna_text", base["batna_text"])).strip()
-    base["urgency_claimed"] = bool(raw.get("urgency_claimed", base["urgency_claimed"]))
-    base["urgency_text"] = str(raw.get("urgency_text", base["urgency_text"])).strip()
-    base["urgency_reason"] = str(raw.get("urgency_reason", base["urgency_reason"])).strip()
-    base["min_price_claimed"] = bool(raw.get("min_price_claimed", base["min_price_claimed"]))
-    base["min_price_text"] = str(raw.get("min_price_text", base["min_price_text"])).strip()
-    base["price_firm"] = bool(raw.get("price_firm", base["price_firm"]))
-    base["price_firm_text"] = str(raw.get("price_firm_text", base["price_firm_text"])).strip()
-    base["evidence_offered"] = bool(raw.get("evidence_offered", base["evidence_offered"]))
-    base["evidence_text"] = str(raw.get("evidence_text", base["evidence_text"])).strip()
-    base["message_is_vague"] = bool(raw.get("message_is_vague", base["message_is_vague"]))
+    base["universal_domain"].update(universal_domain)
+    base["negotiation"].update(negotiation)
 
-    tone_signal = raw.get("tone_signal", base["tone_signal"])
+    base["universal_domain"]["message_is_vague"] = bool(
+        universal_domain.get(
+            "message_is_vague", defaults["universal_domain"]["message_is_vague"]
+        )
+    )
+    tone_signal = universal_domain.get("tone_signal", defaults["universal_domain"]["tone_signal"])
     if tone_signal not in _ALLOWED_TONE:
         issues.append("tone_signal_invalid")
-        tone_signal = base["tone_signal"]
-    base["tone_signal"] = tone_signal
-    base["tone_confidence"] = _clamp(
-        _coerce_float(raw.get("tone_confidence", base["tone_confidence"]), base["tone_confidence"])
+        tone_signal = defaults["universal_domain"]["tone_signal"]
+    base["universal_domain"]["tone_signal"] = tone_signal
+    base["universal_domain"]["tone_confidence"] = _clamp(
+        _coerce_float(
+            universal_domain.get(
+                "tone_confidence", defaults["universal_domain"]["tone_confidence"]
+            ),
+            defaults["universal_domain"]["tone_confidence"],
+        )
     )
 
-    tone_markers = _coerce_str_list(raw.get("tone_marker_hits", []), max_items=10)
-    base["tone_marker_hits"] = _unique_list(tone_markers, max_items=10)
-    conflict_markers = _coerce_str_list(raw.get("conflict_markers", []), max_items=10)
-    base["conflict_markers"] = _unique_list(conflict_markers, max_items=10)
-
-    interaction = raw.get("interaction", {})
-    if isinstance(interaction, dict):
-        base["interaction"]["implicit_acceptance"] = bool(
-            interaction.get("implicit_acceptance", base["interaction"]["implicit_acceptance"])
-        )
-        escalation = interaction.get("escalation_signal", base["interaction"]["escalation_signal"])
-        if escalation not in _ALLOWED_ESCALATION:
-            issues.append("interaction_escalation_invalid")
-            escalation = base["interaction"]["escalation_signal"]
-        base["interaction"]["escalation_signal"] = escalation
-        base["interaction"]["loop_hint"] = bool(
-            interaction.get("loop_hint", base["interaction"]["loop_hint"])
-        )
-        base["interaction"]["evasion_detected"] = bool(
-            interaction.get("evasion_detected", base["interaction"]["evasion_detected"])
-        )
-        base["interaction"]["soft_commitment"] = bool(
-            interaction.get("soft_commitment", base["interaction"]["soft_commitment"])
-        )
+    base["negotiation"]["price_mentioned"] = bool(
+        negotiation.get("price_mentioned", defaults["negotiation"]["price_mentioned"])
+    )
+    price_value = negotiation.get("price_value", defaults["negotiation"]["price_value"])
+    if price_value is None:
+        base["negotiation"]["price_value"] = None
     else:
-        issues.append("interaction_invalid")
+        base["negotiation"]["price_value"] = _coerce_float(price_value, 0.0)
+
+    base["negotiation"]["price_firm"] = bool(
+        negotiation.get("price_firm", defaults["negotiation"]["price_firm"])
+    )
+    base["negotiation"]["price_firm_text"] = str(
+        negotiation.get("price_firm_text", defaults["negotiation"]["price_firm_text"])
+    ).strip()
+    base["negotiation"]["deadline_claimed"] = bool(
+        negotiation.get("deadline_claimed", defaults["negotiation"]["deadline_claimed"])
+    )
+    base["negotiation"]["deadline_text"] = str(
+        negotiation.get("deadline_text", defaults["negotiation"]["deadline_text"])
+    ).strip()
+    deadline_days = negotiation.get("deadline_days", defaults["negotiation"]["deadline_days"])
+    if deadline_days is None:
+        base["negotiation"]["deadline_days"] = None
+    else:
+        try:
+            base["negotiation"]["deadline_days"] = int(deadline_days)
+        except (TypeError, ValueError):
+            issues.append("deadline_days_invalid")
+            base["negotiation"]["deadline_days"] = None
+    base["negotiation"]["deadline_kind"] = str(
+        negotiation.get("deadline_kind", defaults["negotiation"]["deadline_kind"])
+    ).strip()
+    base["negotiation"]["urgency_claimed"] = bool(
+        negotiation.get("urgency_claimed", defaults["negotiation"]["urgency_claimed"])
+    )
+    base["negotiation"]["urgency_text"] = str(
+        negotiation.get("urgency_text", defaults["negotiation"]["urgency_text"])
+    ).strip()
+    base["negotiation"]["urgency_reason"] = str(
+        negotiation.get("urgency_reason", defaults["negotiation"]["urgency_reason"])
+    ).strip()
+    base["negotiation"]["other_buyer_claimed"] = bool(
+        negotiation.get(
+            "other_buyer_claimed", defaults["negotiation"]["other_buyer_claimed"]
+        )
+    )
+    base["negotiation"]["other_buyer_text"] = str(
+        negotiation.get("other_buyer_text", defaults["negotiation"]["other_buyer_text"])
+    ).strip()
+    other_offer = negotiation.get(
+        "other_buyer_offer_price", defaults["negotiation"]["other_buyer_offer_price"]
+    )
+    if other_offer is None:
+        base["negotiation"]["other_buyer_offer_price"] = None
+    else:
+        base["negotiation"]["other_buyer_offer_price"] = _coerce_float(other_offer, 0.0)
+    base["negotiation"]["other_buyer_timing_text"] = str(
+        negotiation.get(
+            "other_buyer_timing_text", defaults["negotiation"]["other_buyer_timing_text"]
+        )
+    ).strip()
+    base["negotiation"]["concession_made"] = bool(
+        negotiation.get("concession_made", defaults["negotiation"]["concession_made"])
+    )
+    base["negotiation"]["concession_text"] = str(
+        negotiation.get("concession_text", defaults["negotiation"]["concession_text"])
+    ).strip()
+    base["negotiation"]["docs_claimed"] = bool(
+        negotiation.get("docs_claimed", defaults["negotiation"]["docs_claimed"])
+    )
+    base["negotiation"]["docs_types"] = _unique_list(
+        _coerce_str_list(negotiation.get("docs_types", []))
+    )
+    base["negotiation"]["batna_claimed"] = bool(
+        negotiation.get("batna_claimed", defaults["negotiation"]["batna_claimed"])
+    )
+    base["negotiation"]["batna_text"] = str(
+        negotiation.get("batna_text", defaults["negotiation"]["batna_text"])
+    ).strip()
+    base["negotiation"]["min_price_claimed"] = bool(
+        negotiation.get("min_price_claimed", defaults["negotiation"]["min_price_claimed"])
+    )
+    base["negotiation"]["min_price_text"] = str(
+        negotiation.get("min_price_text", defaults["negotiation"]["min_price_text"])
+    ).strip()
+    base["negotiation"]["evidence_offered"] = bool(
+        negotiation.get("evidence_offered", defaults["negotiation"]["evidence_offered"])
+    )
+    base["negotiation"]["evidence_text"] = str(
+        negotiation.get("evidence_text", defaults["negotiation"]["evidence_text"])
+    ).strip()
 
     evidence_items = raw.get("evidence_items", [])
     if isinstance(evidence_items, list):
@@ -604,6 +648,10 @@ def normalize_world_state(raw: object) -> Tuple[WorldState, List[str]]:
         )
         meta["updated_fields"] = _unique_list(
             _coerce_str_list(world_state_meta.get("updated_fields", [])), max_items=40
+        )
+        meta["error"] = str(world_state_meta.get("error", meta.get("error", "")))[:200]
+        meta["extractor_failed"] = bool(
+            world_state_meta.get("extractor_failed", meta.get("extractor_failed", False))
         )
         turn_idx = world_state_meta.get("turn_idx", meta.get("turn_idx"))
         if turn_idx is None:
@@ -977,6 +1025,8 @@ def _normalize_gate_state(raw: object) -> Tuple[dict, List[str]]:
     base["loop_flags_prev"] = _unique_list(_coerce_str_list(loop_flags))
     input_shape = raw.get("input_shape_prev", {})
     base["input_shape_prev"] = input_shape if isinstance(input_shape, dict) else {}
+    last_interaction = raw.get("last_interaction_signals", {})
+    base["last_interaction_signals"] = last_interaction if isinstance(last_interaction, dict) else {}
     interaction_fp = raw.get("interaction_fingerprint_prev", {})
     base["interaction_fingerprint_prev"] = (
         interaction_fp if isinstance(interaction_fp, dict) else {}

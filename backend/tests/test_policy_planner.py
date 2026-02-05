@@ -13,7 +13,7 @@ def test_guard_requires_price_not_mentioned_excludes_policy_when_price_mentioned
     assert "requires_price_not_mentioned" in (policy.guards or set())
 
     world_state = default_world_state()
-    world_state["price_mentioned"] = True
+    world_state["negotiation"]["price_mentioned"] = True
     belief_state = default_belief_state()
     progress_state = default_progress_state()
 

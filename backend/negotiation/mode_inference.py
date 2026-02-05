@@ -3,13 +3,14 @@ from __future__ import annotations
 
 def compute_mode_score(world: dict) -> float:
     score = 0.0
-    if world.get("price_mentioned"):
+    negotiation = world.get("negotiation", {}) if isinstance(world, dict) else {}
+    if negotiation.get("price_mentioned"):
         score += 0.35
-    if world.get("deadline_claimed"):
+    if negotiation.get("deadline_claimed"):
         score += 0.20
-    if world.get("other_buyer_claimed"):
+    if negotiation.get("other_buyer_claimed"):
         score += 0.20
-    if world.get("min_price_claimed"):
+    if negotiation.get("min_price_claimed"):
         score += 0.25
     return min(score, 1.0)
 

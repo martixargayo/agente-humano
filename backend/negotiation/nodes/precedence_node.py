@@ -6,13 +6,14 @@ from ..precedence import compute_precedence
 
 def precedence_node(state: dict) -> dict:
     world_state = state["world_state"]
+    negotiation = world_state.get("negotiation", {}) if isinstance(world_state, dict) else {}
     belief_state = state["belief_state"]
     precedence_world = {
-        "other_buyer_claimed": world_state.get("other_buyer_claimed"),
-        "deadline_claimed": world_state.get("deadline_claimed"),
-        "price_firm": world_state.get("price_firm"),
-        "concession_made": world_state.get("concession_made"),
-        "price_mentioned": world_state.get("price_mentioned"),
+        "other_buyer_claimed": negotiation.get("other_buyer_claimed"),
+        "deadline_claimed": negotiation.get("deadline_claimed"),
+        "price_firm": negotiation.get("price_firm"),
+        "concession_made": negotiation.get("concession_made"),
+        "price_mentioned": negotiation.get("price_mentioned"),
     }
     precedence_belief = {
         "dynamics": {
