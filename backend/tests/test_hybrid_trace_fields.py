@@ -42,7 +42,7 @@ def test_policy_id_is_clamped_to_allowed_ids(monkeypatch):
 
     deps = _fake_deps(fake_plan_phase_policy)
     monkeypatch.setattr(
-        "negotiation.negotiation_graph.allowed_policy_ids",
+        "negotiation.nodes.planner_node.allowed_policy_ids",
         lambda *_a, **_k: ["safe_neutral"],
     )
     monkeypatch.setattr(
@@ -74,7 +74,7 @@ def test_phase_repair_reflected_in_trace(monkeypatch):
 
     deps = _fake_deps(fake_plan_phase_policy)
     monkeypatch.setattr(
-        "negotiation.negotiation_graph.compute_precedence",
+        "negotiation.nodes.precedence_node.compute_precedence",
         lambda *_a, **_k: SimpleNamespace(
             mode="closing_push",
             reason="test",
@@ -89,11 +89,11 @@ def test_phase_repair_reflected_in_trace(monkeypatch):
         lambda raw_reply, last_user_message=None: raw_reply,
     )
     monkeypatch.setattr(
-        "negotiation.negotiation_graph.allowed_policy_ids",
+        "negotiation.nodes.planner_node.allowed_policy_ids",
         lambda *_a, **_k: ["info_extract_critical", "close_with_conditions"],
     )
     monkeypatch.setattr(
-        "negotiation.negotiation_graph.repair_policy_by_phase",
+        "negotiation.nodes.planner_node.repair_policy_by_phase",
         lambda *_a, **_k: ("close_with_conditions", {"phase_repair_used": True}),
     )
 
@@ -126,11 +126,11 @@ def test_skip_uses_safe_neutral_when_no_last_policy(monkeypatch):
 
     deps = _fake_deps(fake_plan_phase_policy)
     monkeypatch.setattr(
-        "negotiation.negotiation_graph.gate_phase_policy",
+        "negotiation.nodes.planner_node.gate_phase_policy",
         lambda **_kwargs: (True, "forced_skip", {"interaction_meta": {}}),
     )
     monkeypatch.setattr(
-        "negotiation.negotiation_graph.allowed_policy_ids",
+        "negotiation.nodes.planner_node.allowed_policy_ids",
         lambda *_a, **_k: ["safe_neutral"],
     )
     monkeypatch.setattr(
@@ -161,7 +161,7 @@ def test_allowed_ids_hash_persisted_and_stable(monkeypatch):
 
     deps = _fake_deps(fake_plan_phase_policy)
     monkeypatch.setattr(
-        "negotiation.negotiation_graph.allowed_policy_ids",
+        "negotiation.nodes.planner_node.allowed_policy_ids",
         lambda *_a, **_k: ["safe_neutral", "rapport_build"],
     )
     monkeypatch.setattr(

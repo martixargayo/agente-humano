@@ -187,7 +187,7 @@ class NegotiationTurn(TypedDict):
 
     objective: str
     constraints: str
-    constraints_struct: dict
+    hard_constraints_struct: dict
     exit_option: dict
     max_total_cost: float
 
@@ -392,7 +392,7 @@ def run_negotiation_agent(
         f"- Coste total alternativa: {exit_option['total_cost']:.0f}€.\n"
         f"- Máximo coste total aceptable derivado: ≤ {max_total_cost:.0f}€ {rule_note}.\n"
     )
-    constraints_struct = {
+    hard_constraints_struct = {
         "max_total_cost": max_total_cost,
         "avoid_reveal_own_numbers": True,
         "respect_batna": True,
@@ -427,7 +427,7 @@ def run_negotiation_agent(
         "conversation_mode": progress_state_input.get("conversation_mode", "general"),
         "objective": objective,
         "constraints": constraints,
-        "constraints_struct": constraints_struct,
+        "hard_constraints_struct": hard_constraints_struct,
         "exit_option": exit_option,
         "max_total_cost": max_total_cost,
         "world_state": world_state_input,

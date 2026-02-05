@@ -482,7 +482,7 @@ class ProgressState(TypedDict):
     mode_last_switch_turn: int
     policy_pack_active: str
     render_state: RenderState
-    constraints_struct: RenderConstraints
+    render_constraints_struct: RenderConstraints
     last_executed_policy_id: str
     last_executed_policy_outcome: PolicyOutcome
     last_chosen_policy_id: str
@@ -686,7 +686,7 @@ def default_progress_state() -> ProgressState:
         "mode_last_switch_turn": 0,
         "policy_pack_active": "universal",
         "render_state": default_render_state(),
-        "constraints_struct": default_constraints_struct(),
+        "render_constraints_struct": default_constraints_struct(),
         "last_executed_policy_id": "",
         "last_executed_policy_outcome": "",
         "last_chosen_policy_id": "",

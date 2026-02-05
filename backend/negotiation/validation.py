@@ -868,8 +868,11 @@ def normalize_progress_state(raw: object) -> Tuple[ProgressState, List[str]]:
         raw.get("render_state", base.get("render_state", {}))
     )
     issues.extend(render_issues)
-    base["constraints_struct"], constraints_issues = _normalize_constraints_struct(
-        raw.get("constraints_struct", base.get("constraints_struct", {}))
+    base["render_constraints_struct"], constraints_issues = _normalize_constraints_struct(
+        raw.get(
+            "render_constraints_struct",
+            raw.get("constraints_struct", base.get("render_constraints_struct", {})),
+        )
     )
     issues.extend(constraints_issues)
 
