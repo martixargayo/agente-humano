@@ -577,14 +577,6 @@ def default_belief_state() -> BeliefState:
     return {
         "universal": uni,
         "negotiation": neg,
-        "dynamics": dict(uni["dynamics"]),
-        "tom": dict(uni["tom"]),
-        "stance": dict(neg["stance"]),
-        "reasons": dict(neg["reasons"]),
-        "hypotheses": list(neg["hypotheses"]),
-        "hypotheses_structural": list(neg["hypotheses_structural"]),
-        "hypotheses_observational": list(neg["hypotheses_observational"]),
-        "evaluations": dict(neg["evaluations"]),
     }
 
 

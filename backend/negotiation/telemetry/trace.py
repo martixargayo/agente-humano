@@ -5,16 +5,36 @@ from ..schemas import BeliefState, WorldState
 
 def diff_belief_state(prev: BeliefState, new: BeliefState) -> dict:
     diff: dict = {}
-    if prev.get("stance") != new.get("stance"):
-        diff["stance"] = {"before": prev.get("stance"), "after": new.get("stance")}
-    if prev.get("dynamics") != new.get("dynamics"):
-        diff["dynamics"] = {"before": prev.get("dynamics"), "after": new.get("dynamics")}
-    if prev.get("reasons") != new.get("reasons"):
-        diff["reasons"] = {"before": prev.get("reasons"), "after": new.get("reasons")}
-    if prev.get("hypotheses") != new.get("hypotheses"):
-        diff["hypotheses"] = {"before": prev.get("hypotheses"), "after": new.get("hypotheses")}
-    if prev.get("tom") != new.get("tom"):
-        diff["tom"] = {"before": prev.get("tom"), "after": new.get("tom")}
+    prev_universal = prev.get("universal") or {}
+    new_universal = new.get("universal") or {}
+    prev_negotiation = prev.get("negotiation") or {}
+    new_negotiation = new.get("negotiation") or {}
+
+    if prev_negotiation.get("stance") != new_negotiation.get("stance"):
+        diff["stance"] = {
+            "before": prev_negotiation.get("stance"),
+            "after": new_negotiation.get("stance"),
+        }
+    if prev_universal.get("dynamics") != new_universal.get("dynamics"):
+        diff["dynamics"] = {
+            "before": prev_universal.get("dynamics"),
+            "after": new_universal.get("dynamics"),
+        }
+    if prev_negotiation.get("reasons") != new_negotiation.get("reasons"):
+        diff["reasons"] = {
+            "before": prev_negotiation.get("reasons"),
+            "after": new_negotiation.get("reasons"),
+        }
+    if prev_negotiation.get("hypotheses") != new_negotiation.get("hypotheses"):
+        diff["hypotheses"] = {
+            "before": prev_negotiation.get("hypotheses"),
+            "after": new_negotiation.get("hypotheses"),
+        }
+    if prev_universal.get("tom") != new_universal.get("tom"):
+        diff["tom"] = {
+            "before": prev_universal.get("tom"),
+            "after": new_universal.get("tom"),
+        }
     return diff
 
 

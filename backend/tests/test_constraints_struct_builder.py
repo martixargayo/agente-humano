@@ -6,7 +6,7 @@ from negotiation.schemas import default_belief_state, default_progress_state, de
 def test_constraints_struct_builder_flags():
     world = default_world_state()
     belief = default_belief_state()
-    belief["dynamics"]["interaction_health"] = "tense"
+    belief["universal"]["dynamics"]["interaction_health"] = "tense"
     progress = default_progress_state()
     progress["conversation_mode"] = "negotiation"
     decision = {"policy_id": "info_extract_critical"}

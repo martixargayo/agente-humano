@@ -25,7 +25,7 @@ def build_constraints_struct(
     if not bool(style.get("markdown_allowed", False)):
         out["forbid_formats"].append("markdown")
 
-    dynamics = (belief.get("dynamics") or {})
+    dynamics = (belief.get("universal") or {}).get("dynamics", {})
     if dynamics.get("interaction_health") in ("tense", "stalled"):
         out["max_questions"] = min(int(out.get("max_questions", 2)), 1)
 

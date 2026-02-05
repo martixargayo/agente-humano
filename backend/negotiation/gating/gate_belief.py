@@ -43,7 +43,11 @@ def gate_belief(
         interaction_meta.get("escalation_change") or interaction_meta.get("loop_enter")
     )
     interaction_universal_signal = False
-    prev_health = (prev_belief or {}).get("dynamics", {}).get("interaction_health", "stable")
+    prev_health = (
+        (prev_belief or {}).get("universal", {}).get("dynamics", {}).get(
+            "interaction_health", "stable"
+        )
+    )
     health_should_refresh = False
     curr_universal_fp = universal_state_fingerprint(world.get("universal_state"))
     fingerprint_changed = bool(

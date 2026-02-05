@@ -31,12 +31,14 @@ def _evaluate_outcome(
         prev_world_state.get("negotiation", {}) if isinstance(prev_world_state, dict) else {}
     )
     neg = world_state.get("negotiation", {}) if isinstance(world_state, dict) else {}
-    health = belief_state.get("dynamics", {}).get("interaction_health", "stable")
-    prev_health = (
-        prev_belief_state.get("dynamics", {}).get("interaction_health", "stable")
-        if prev_belief_state
-        else "stable"
+    health = (belief_state.get("universal") or {}).get("dynamics", {}).get(
+        "interaction_health", "stable"
     )
+    prev_health = "stable"
+    if prev_belief_state:
+        prev_health = (prev_belief_state.get("universal") or {}).get("dynamics", {}).get(
+            "interaction_health", "stable"
+        )
     world_diff = diff_world_state(prev_world_state, world_state)
 
     if policy_id == "info_extract_critical":
@@ -74,7 +76,9 @@ def _evaluate_outcome(
         return OUTCOME_NEUTRAL
 
     if policy_id == "challenge_anchor_indirect":
-        if belief_state.get("stance", {}).get("seller_flexibility", 0.0) > 0.6:
+        if (belief_state.get("negotiation") or {}).get("stance", {}).get(
+            "seller_flexibility", 0.0
+        ) > 0.6:
             return OUTCOME_GOOD
         return OUTCOME_NEUTRAL
 

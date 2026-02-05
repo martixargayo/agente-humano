@@ -11,7 +11,7 @@ def test_compute_precedence_recovery_guard_overrides_signals():
     world = default_world_state()
     world["negotiation"]["price_firm"] = True
     belief = default_belief_state()
-    belief["dynamics"]["interaction_health"] = "tense"
+    belief["universal"]["dynamics"]["interaction_health"] = "tense"
 
     prec = compute_precedence(world=world, belief=belief, intent=None)
 
@@ -167,7 +167,7 @@ def test_precedence_signature_changes_on_interaction_health_change():
     )
 
     belief_changed = default_belief_state()
-    belief_changed["dynamics"]["interaction_health"] = "tense"
+    belief_changed["universal"]["dynamics"]["interaction_health"] = "tense"
     prec_changed = compute_precedence(world=world, belief=belief_changed, intent=None)
     signature_changed = precedence_signature(
         {
