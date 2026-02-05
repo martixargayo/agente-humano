@@ -1,4 +1,4 @@
-from negotiation.response_validator import validate_and_repair, validate_response
+from negotiation.validator import validate_and_repair, validate_response
 
 
 def test_validate_response_flags_violations():
