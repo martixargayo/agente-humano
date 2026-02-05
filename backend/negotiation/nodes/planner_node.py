@@ -53,7 +53,7 @@ def phase_policy_planner_node(state: dict) -> dict:
         pid
         for pid in allowed_final
         if not _violates_hard_constraints(
-            pid, state["world_state"], state.get("constraints_struct")
+            pid, state["world_state"], state.get("hard_constraints_struct")
         )
     ]
     if not allowed_final:
@@ -139,7 +139,7 @@ def phase_policy_planner_node(state: dict) -> dict:
             precedence=state.get("precedence"),
             objective=state["objective"],
             constraints=state.get("constraints", ""),
-            constraints_struct=state.get("constraints_struct", {}),
+            constraints_struct=state.get("hard_constraints_struct", {}),
             recent_context=state.get("recent_history_text", ""),
             allowed_policy_ids=allowed_final,
         )

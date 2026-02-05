@@ -47,7 +47,7 @@ def _queue_world_states(monkeypatch, world_states):
         return default_world_state(), {"extractor_used": False}
 
     monkeypatch.setattr(
-        "negotiation.negotiation_graph.update_world_state",
+        "negotiation.nodes.world_node.update_world_state",
         fake_update_world_state,
     )
     monkeypatch.setattr(

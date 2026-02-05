@@ -43,7 +43,9 @@ def executor_node(state: dict) -> dict:
         state, conversation_mode, policy_pack_active, policy_id
     )
     state["strategy_summary"] = strategy_summary
-    constraints_struct = progress_state.get("constraints_struct") or default_constraints_struct()
+    constraints_struct = (
+        progress_state.get("render_constraints_struct") or default_constraints_struct()
+    )
 
     executor_output = render_executor_output(
         state,
@@ -99,6 +101,11 @@ def executor_node(state: dict) -> dict:
         logger.info("executor_response_validated=%s violations=%s", repaired_response, violations)
 
     state["executor_validator_meta"] = validator_meta
-    state["override_policy_id"] = None
+    override_policy_id = validator_meta.get("override_policy_id")
+    state["override_policy_id"] = override_policy_id
+    if override_policy_id:
+        executed_override = dict(executed)
+        executed_override["policy_id"] = override_policy_id
+        state["executed_policy"] = executed_override
     state["override_reason"] = validator_meta.get("override_reason")
     return state

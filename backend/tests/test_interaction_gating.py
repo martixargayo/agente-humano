@@ -1,4 +1,9 @@
-from negotiation.gate_utils import input_shape_features, precedence_signature, stable_allowed_ids_hash
+from negotiation.gate_utils import (
+    input_shape_features,
+    interaction_fingerprint,
+    precedence_signature,
+    stable_allowed_ids_hash,
+)
 from negotiation.negotiation_graph import AgentDeps, run_negotiation_agent
 from negotiation.schemas import default_belief_state, default_policy_decision, default_progress_state, default_world_state
 from negotiation.world_state_updater import extract_interaction_signals
@@ -61,11 +66,11 @@ def test_no_refresh_storms_on_ack_sequence(monkeypatch):
         lambda raw_reply, last_user_message=None: raw_reply,
     )
     monkeypatch.setattr(
-        "negotiation.negotiation_graph.allowed_policy_ids",
+        "negotiation.nodes.planner_node.allowed_policy_ids",
         lambda *_a, **_k: ["rapport_build"],
     )
     monkeypatch.setattr(
-        "negotiation.negotiation_graph.compute_precedence",
+        "negotiation.nodes.precedence_node.compute_precedence",
         lambda *_a, **_k: type(
             "Prec",
             (),
@@ -80,7 +85,7 @@ def test_no_refresh_storms_on_ack_sequence(monkeypatch):
         )(),
     )
     monkeypatch.setattr(
-        "negotiation.negotiation_graph.update_intent_state",
+        "negotiation.nodes.intent_node.update_intent_state",
         lambda **_k: (default_progress_state().get("intent_state"), {"intent_transition": "none"}, {}),
     )
     def fake_update_progress_state(**kwargs):
@@ -93,7 +98,7 @@ def test_no_refresh_storms_on_ack_sequence(monkeypatch):
         return progress
 
     monkeypatch.setattr(
-        "negotiation.negotiation_graph.update_progress_state",
+        "negotiation.nodes.progress_node.update_progress_state",
         fake_update_progress_state,
     )
 
@@ -166,6 +171,8 @@ def test_interaction_propagates_when_world_extractor_skipped(monkeypatch):
 
     gate_state = state.progress_state["gate_state"]
     gate_state["input_shape_prev"] = input_shape_features("me parece bien")
+    interaction = extract_interaction_signals("me parece bien", state.world_state)
+    gate_state["interaction_fingerprint_prev"] = interaction_fingerprint(interaction)
     gate_state["last_world_refresh_turn"] = state.turn_count
 
     run_negotiation_agent(state, "me parece bien", deps=deps)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import os
 from dataclasses import dataclass
 from typing import List, Tuple
 
@@ -224,7 +225,9 @@ def score_multi_turn_start(
     )
 
     utility = benefit - cost
-    threshold = INTENT_START_UTILITY_THRESHOLD
+    threshold = float(
+        os.getenv("INTENT_START_UTILITY_THRESHOLD", str(INTENT_START_UTILITY_THRESHOLD))
+    )
     reasons.append(f"utility:{utility:.2f}")
     reasons.append(f"benefit:{benefit:.2f}")
     reasons.append(f"cost:{cost:.2f}")

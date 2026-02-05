@@ -18,7 +18,7 @@ def progress_updater_node(state: dict) -> dict:
     )
     render_state = progress_state.get("render_state") or default_render_state()
     persona, scene, style = resolve_render_profiles(render_state)
-    constraints_struct = build_constraints_struct(
+    render_constraints_struct = build_constraints_struct(
         world=state.get("world_state", {}),
         belief=state.get("belief_state", {}),
         progress=progress_state,
@@ -27,6 +27,6 @@ def progress_updater_node(state: dict) -> dict:
         scene=scene,
         style=style,
     )
-    progress_state["constraints_struct"] = constraints_struct
+    progress_state["render_constraints_struct"] = render_constraints_struct
     state["progress_state"] = progress_state
     return state

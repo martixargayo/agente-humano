@@ -87,7 +87,9 @@ def test_executed_policy_can_differ_from_chosen_and_is_persisted(monkeypatch):
     def fake_update_belief_state(*args, **kwargs):
         return default_belief_state(), {"belief_meta": {"mock": True}}
 
-    def fake_validate_and_repair(response_text, constraints_struct, policy_decision, world_state):
+    def fake_validate_and_repair(
+        response_text, constraints_struct, policy_decision, world_state, **_kwargs
+    ):
         meta = {
             "violations": ["mock"],
             "repaired_used": True,
@@ -111,7 +113,7 @@ def test_executed_policy_can_differ_from_chosen_and_is_persisted(monkeypatch):
         lambda raw_reply, last_user_message=None: raw_reply,
     )
     monkeypatch.setattr(
-        "negotiation.negotiation_graph.validate_and_repair",
+        "negotiation.nodes.executor_node.validate_and_repair",
         fake_validate_and_repair,
     )
 
