@@ -41,14 +41,25 @@ def hydrate_slots_from_world(
     belief_state: dict,
     turn_count: int,
 ) -> dict:
+    def _has_value(value: object) -> bool:
+        if value is None:
+            return False
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return bool(value.strip())
+        if isinstance(value, (list, dict, tuple, set)):
+            return len(value) > 0
+        return True
+
     filled: dict = {}
     for slot in plan.slots_required:
         value = _get_dotted(world_state, slot)
         source = "world"
-        if value is None:
+        if not _has_value(value):
             value = _get_dotted(belief_state, slot)
             source = "belief"
-        if value is not None:
+        if _has_value(value):
             filled[slot] = {"value": value, "source": source, "updated_turn": turn_count}
     return filled
 
