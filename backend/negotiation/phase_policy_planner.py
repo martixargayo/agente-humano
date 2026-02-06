@@ -9,7 +9,7 @@ from langchain_openai import ChatOpenAI
 
 from prompts import PHASE_POLICY_SYSTEM_PROMPT, PHASE_POLICY_USER_PROMPT
 from .elementos.strategy_definitions import PhasePolicyDecisionModel, REASON_PREFIXES
-from .policies import get_policy, policy_catalog_text, safe_neutral_policy_id
+from .policies import get_policy, policy_catalog_text, policy_catalog_with_phases_text, safe_neutral_policy_id
 from .schemas import (
     BeliefState,
     NegotiationPhase,
@@ -139,6 +139,7 @@ def plan_phase_policy(
         phase_state=json.dumps(progress_state.get("phase_state", {}), ensure_ascii=False),
         allowed_policy_ids=json.dumps(allowed_policy_ids, ensure_ascii=False),
         policy_catalog=policy_catalog_text(),
+        policy_catalog_with_phases=policy_catalog_with_phases_text(),
         objective=objective,
         constraints=constraints,
         recent_context=recent_context,
