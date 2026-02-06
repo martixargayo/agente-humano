@@ -32,6 +32,18 @@ def policy_catalog_text() -> str:
     return "\n".join(lines)
 
 
+def policy_catalog_with_phases_text() -> str:
+    lines = []
+    for policy in POLICIES:
+        phases = ", ".join(policy.phase_hints)
+        required = policy.required_inputs or []
+        lines.append(
+            f"- {policy.policy_id}: {policy.description} | Phases: {phases} | "
+            f"Required inputs: {required}"
+        )
+    return "\n".join(lines)
+
+
 def policy_phase_catalog() -> dict[str, list[str]]:
     return {policy.policy_id: list(policy.phase_hints) for policy in POLICIES}
 

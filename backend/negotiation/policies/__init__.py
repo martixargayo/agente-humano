@@ -5,6 +5,7 @@ from .registry import (
     get_policy,
     list_policy_ids,
     policy_catalog_text,
+    policy_catalog_with_phases_text,
     policy_phase_catalog,
     safe_neutral_policy_id,
 )
@@ -14,6 +15,7 @@ __all__ = [
     "get_policy",
     "list_policy_ids",
     "policy_catalog_text",
+    "policy_catalog_with_phases_text",
     "policy_phase_catalog",
     "safe_neutral_policy_id",
 ]

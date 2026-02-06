@@ -219,6 +219,7 @@ Reglas:
 - reasons: etiquetas normalizadas (world:<flag> | belief:<flag> | intent:<flag> | history:<flag>)
 - signals: señales observables y cortas.
 - policy_id debe estar en allowed_policy_ids.
+- Después de elegir phase, SOLO puedes elegir una policy cuyas phases incluyan esa phase.
 - micro_goal breve y accionable.
 - NO texto fuera del JSON, NO markdown.
 """.strip()
@@ -247,6 +248,9 @@ PHASE_POLICY_USER_PROMPT = """
 
 [Policy catalog]
 {policy_catalog}
+
+[Policy catalog with phases]
+{policy_catalog_with_phases}
 
 [Objective]
 {objective}

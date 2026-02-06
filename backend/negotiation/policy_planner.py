@@ -4,7 +4,7 @@ from __future__ import annotations
 from .elementos.strategy_definitions import PHASE_INDEX
 import warnings
 
-from .policies import POLICIES, list_policy_ids, policy_phase_catalog
+from .policies import POLICIES, list_policy_ids, policy_phase_catalog, safe_neutral_policy_id
 from .legacy.intent_constraints import (
     _preferred_policy_ids as _legacy_preferred_policy_ids,
     apply_intent_constraints as _legacy_apply_intent_constraints,
@@ -135,6 +135,25 @@ def _allowed_policy_ids_minimal(
         and not _violates_hard_constraints(policy_id, world_state, constraints_struct)
     ]
     return allowed
+
+
+def allowed_policy_ids_no_phase(
+    world_state: WorldState,
+    belief_state: BeliefState,
+    progress_state: ProgressState,
+    constraints_struct: dict | None = None,
+) -> list[str]:
+    del belief_state, progress_state
+    policy_ids = list_policy_ids()
+    if not policy_ids:
+        return [safe_neutral_policy_id()]
+    allowed = [
+        policy_id
+        for policy_id in policy_ids
+        if _required_inputs_met(policy_id, world_state)
+        and not _violates_hard_constraints(policy_id, world_state, constraints_struct)
+    ]
+    return allowed or [safe_neutral_policy_id()]
 
 
 def _required_inputs_met(policy_id: str, world_state: WorldState) -> bool:
