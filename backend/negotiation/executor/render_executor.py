@@ -16,6 +16,139 @@ from ..schemas import ExecutorOutput, RenderConstraints
 
 
 _ALLOWED_TONES = {"friendly", "neutral", "tense"}
+_BELIEF_SUMMARY_MAX_CHARS = 1500
+_BELIEF_SUMMARY_MAX_LIST = 6
+_BELIEF_SUMMARY_MAX_DICT_KEYS = 8
+_BELIEF_SUMMARY_MAX_STRING = 240
+
+
+def _get_nested(value: object, path: List[str]) -> object:
+    current = value
+    for key in path:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(key)
+    return current
+
+
+def _assign_nested(target: dict, path: List[str], value: object) -> None:
+    current = target
+    for key in path[:-1]:
+        if key not in current or not isinstance(current.get(key), dict):
+            current[key] = {}
+        current = current[key]
+    current[path[-1]] = value
+
+
+def _delete_nested(target: dict, path: List[str]) -> None:
+    current = target
+    for key in path[:-1]:
+        if not isinstance(current, dict) or key not in current:
+            return
+        current = current[key]
+    if isinstance(current, dict):
+        current.pop(path[-1], None)
+
+
+def _should_include(value: object) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (list, dict)):
+        return bool(value)
+    return True
+
+
+def _trim_value(value: object) -> object:
+    if isinstance(value, str):
+        if len(value) <= _BELIEF_SUMMARY_MAX_STRING:
+            return value
+        return value[: _BELIEF_SUMMARY_MAX_STRING].rstrip()
+    if isinstance(value, list):
+        return [_trim_value(item) for item in value[:_BELIEF_SUMMARY_MAX_LIST]]
+    if isinstance(value, dict):
+        trimmed = {}
+        for key in sorted(value.keys())[:_BELIEF_SUMMARY_MAX_DICT_KEYS]:
+            trimmed[key] = _trim_value(value[key])
+        return trimmed
+    return value
+
+
+def _compact_json(payload: dict) -> str:
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def summarize_belief_state_for_executor(belief_state: object) -> dict:
+    if not isinstance(belief_state, dict):
+        return {"summary": {}, "truncated": False, "keys": []}
+
+    allowlist = [
+        "universal.dynamics.interaction_health",
+        "universal.dynamics.escalation",
+        "universal.dynamics.looping",
+        "universal.dynamics.evasion",
+        "universal.dynamics.commitment",
+        "universal.metrics.trust",
+        "universal.metrics.cooperation",
+        "universal.metrics.clarity",
+        "universal.metrics.engagement",
+        "negotiation.stance",
+        "negotiation.reasons",
+        "negotiation.hypotheses",
+        "negotiation.hypotheses_structural",
+        "negotiation.hypotheses_observational",
+        "negotiation.evaluations",
+        "negotiation.tom",
+    ]
+
+    summary: dict = {}
+    included: list[str] = []
+    for entry in allowlist:
+        path = entry.split(".")
+        value = _get_nested(belief_state, path)
+        if _should_include(value):
+            _assign_nested(summary, path, _trim_value(value))
+            included.append(entry)
+
+    summary = _trim_value(summary)
+    truncated = False
+    payload = _compact_json(summary)
+    if len(payload) > _BELIEF_SUMMARY_MAX_CHARS:
+        truncated = True
+        drop_order = [
+            "negotiation.tom",
+            "negotiation.evaluations",
+            "negotiation.hypotheses_observational",
+            "negotiation.hypotheses_structural",
+            "negotiation.hypotheses",
+            "negotiation.reasons",
+            "negotiation.stance",
+            "universal.metrics.engagement",
+            "universal.metrics.clarity",
+            "universal.metrics.cooperation",
+            "universal.metrics.trust",
+            "universal.dynamics.evasion",
+            "universal.dynamics.looping",
+            "universal.dynamics.commitment",
+            "universal.dynamics.escalation",
+        ]
+        for drop in drop_order:
+            _delete_nested(summary, drop.split("."))
+            payload = _compact_json(summary)
+            if len(payload) <= _BELIEF_SUMMARY_MAX_CHARS:
+                break
+
+    if len(payload) > _BELIEF_SUMMARY_MAX_CHARS:
+        truncated = True
+        summary = {}
+        health = _get_nested(belief_state, ["universal", "dynamics", "interaction_health"])
+        if _should_include(health):
+            summary = {"universal": {"dynamics": {"interaction_health": _trim_value(health)}}}
+        payload = _compact_json(summary)
+
+    final_keys = [key for key in included if _get_nested(summary, key.split(".")) is not None]
+    return {"summary": summary, "truncated": truncated, "keys": sorted(final_keys)}
 
 
 def safe_json_load(text: str) -> Dict[str, Any]:
@@ -141,6 +274,11 @@ def render_executor_output(
     scene.update(scene_profile)
     style.update(style_contract)
 
+    belief_summary = summarize_belief_state_for_executor(state.get("belief_state"))
+    belief_summary_json = _compact_json(belief_summary.get("summary", {}))
+    belief_summary_truncated = bool(belief_summary.get("truncated", False))
+    belief_summary_keys = belief_summary.get("keys", [])
+
     prompt = EXECUTOR_USER_PROMPT.format(
         conversation_mode=conversation_mode,
         policy_pack_active=policy_pack_active,
@@ -158,6 +296,9 @@ def render_executor_output(
         constraints_json=json.dumps(constraints_struct, ensure_ascii=False),
         memory_block=memory_block,
         world_json=json.dumps(world_state, ensure_ascii=False),
+        belief_state_summary=belief_summary_json,
+        belief_summary_truncated=str(belief_summary_truncated).lower(),
+        belief_summary_keys=json.dumps(belief_summary_keys, ensure_ascii=False),
         user_message=user_message,
         output_schema=EXECUTOR_OUTPUT_SCHEMA.strip(),
     )
