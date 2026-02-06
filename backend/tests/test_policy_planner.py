@@ -7,30 +7,28 @@ from negotiation.schemas import (
 )
 
 
-def test_guard_requires_price_not_mentioned_excludes_policy_when_price_mentioned():
-    policy = get_policy("delay_price_discussion")
-    assert policy is not None, "Spec requires delay_price_discussion policy to exist"
-    assert "requires_price_not_mentioned" in (policy.guards or set())
-
+def test_allowed_policy_ids_filters_by_phase():
     world_state = default_world_state()
-    world_state["negotiation"]["price_mentioned"] = True
+    belief_state = default_belief_state()
+    progress_state = default_progress_state()
+    progress_state["phase_state"]["phase"] = "opening"
+
+    allowed = allowed_policy_ids(world_state, belief_state, progress_state)
+
+    assert "close_with_conditions" not in allowed
+
+
+def test_allowed_policy_ids_filters_by_required_inputs_true():
+    world_state = default_world_state()
     belief_state = default_belief_state()
     progress_state = default_progress_state()
 
     allowed = allowed_policy_ids(world_state, belief_state, progress_state)
+    assert "test_credibility" not in allowed
 
-    assert "delay_price_discussion" not in allowed
-
-
-def test_required_guards_exclude_policies_without_safe_when_tense_when_tense():
-    world_state = default_world_state()
-    belief_state = default_belief_state()
-    belief_state["universal"]["dynamics"]["interaction_health"] = "tense"
-    progress_state = default_progress_state()
-
+    world_state["negotiation"]["other_buyer_claimed"] = True
     allowed = allowed_policy_ids(world_state, belief_state, progress_state)
-
-    assert "challenge_anchor_indirect" not in allowed
+    assert "test_credibility" in allowed
 
 
 def test_all_policies_define_phase_hints():

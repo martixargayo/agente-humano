@@ -34,13 +34,18 @@ def safe_json_load(text: str) -> Dict[str, Any]:
             return {}
 
 
-def build_strategy_summary(state: dict, conversation_mode: str, policy_pack_active: str, policy_id: str) -> dict:
+def build_strategy_summary(
+    state: dict, conversation_mode: str, policy_pack_active: str, policy_id: str
+) -> dict:
     policy_decision = state.get("policy_decision") or {}
+    policy_hint = state.get("policy_hint") or {}
     intent_hint = state.get("intent_hint") or {}
 
     phase_effective = state.get("phase_effective")
     if not phase_effective:
         phase_effective = (state.get("progress_state") or {}).get("phase_state", {}).get("phase", "")
+
+    next_hint = policy_hint.get("next_action_hint") or intent_hint.get("next_action_hint") or ""
 
     return {
         "policy_id": policy_id,
@@ -49,7 +54,8 @@ def build_strategy_summary(state: dict, conversation_mode: str, policy_pack_acti
         "why_short": policy_decision.get("why_short", ""),
         "inputs_used": policy_decision.get("inputs_used", []),
         "phase_effective": phase_effective,
-        "intent_next_hint": intent_hint.get("next_action_hint", ""),
+        "policy_next_hint": next_hint,
+        "intent_next_hint": next_hint,
         "conversation_mode": conversation_mode,
         "policy_pack_active": policy_pack_active,
     }
@@ -144,6 +150,7 @@ def render_executor_output(
         why_short=strategy_summary.get("why_short", ""),
         inputs_used=strategy_summary.get("inputs_used", []),
         phase_effective=strategy_summary.get("phase_effective", ""),
+        policy_next_hint=strategy_summary.get("policy_next_hint", ""),
         intent_next_hint=strategy_summary.get("intent_next_hint", ""),
         persona_json=json.dumps(persona, ensure_ascii=False),
         scene_json=json.dumps(scene, ensure_ascii=False),

@@ -15,6 +15,7 @@ def progress_updater_node(state: dict) -> dict:
         world_state=state["world_state"],
         prev_belief_state=state.get("prev_belief_state"),
         belief_state=state["belief_state"],
+        turn_count=state.get("turn_count", 0),
     )
     render_state = progress_state.get("render_state") or default_render_state()
     persona, scene, style = resolve_render_profiles(render_state)

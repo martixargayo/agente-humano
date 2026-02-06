@@ -1,23 +1,14 @@
 from __future__ import annotations
 
-import os
-
-from ..gate_utils import (
-    gate_phase_policy,
-    loop_flags_changed,
-    select_policy_id_on_skip,
-    stable_allowed_ids_hash,
-)
 from ..phase_state_updater import postprocess_phase_candidate
-from ..policies import policy_phase_catalog, safe_neutral_policy_id
+from ..policies import get_policy, list_policy_ids, policy_phase_catalog, safe_neutral_policy_id
 from ..policy_planner import (
     _required_inputs_met,
     _violates_hard_constraints,
     allowed_policy_ids,
-    apply_intent_constraints,
     repair_policy_by_phase,
 )
-from ..schemas import default_policy_decision, default_progress_state
+from ..schemas import default_policy_decision, default_policy_state, default_progress_state
 from ..state.deps import DEFAULT_DEPS
 from ..validation import normalize_policy_decision
 
@@ -25,6 +16,31 @@ from ..validation import normalize_policy_decision
 def _ensure_objective(state: dict) -> None:
     if not state.get("objective"):
         state["objective"] = ""
+
+
+def _allowed_policy_ids_minimal(
+    world_state: dict,
+    progress_state: dict,
+    constraints_struct: dict | None,
+) -> list[str]:
+    phase = (progress_state.get("phase_state") or {}).get("phase", "opening")
+    phase_catalog = policy_phase_catalog()
+    allowed = [
+        policy_id
+        for policy_id in list_policy_ids()
+        if phase in phase_catalog.get(policy_id, [])
+        and _required_inputs_met(policy_id, world_state)
+        and not _violates_hard_constraints(policy_id, world_state, constraints_struct)
+    ]
+    return allowed or [safe_neutral_policy_id()]
+
+
+def _current_step_for_policy(policy_id: str, step_idx: int):
+    policy = get_policy(policy_id)
+    plan = policy.plan if policy else None
+    if not plan or step_idx < 0 or step_idx >= len(plan.steps):
+        return None
+    return plan.steps[step_idx]
 
 
 def phase_policy_planner_node(state: dict) -> dict:
@@ -36,46 +52,13 @@ def phase_policy_planner_node(state: dict) -> dict:
     turn_count = state.get("turn_count", 0) or 0
 
     allowed_base = allowed_policy_ids(
-        state["world_state"], state["belief_state"], state["progress_state"]
+        state["world_state"],
+        state["belief_state"],
+        state["progress_state"],
+        state.get("hard_constraints_struct"),
     )
-    allowed_final, preferred, intent_meta = apply_intent_constraints(
-        allowed_base, state.get("intent_hint")
-    )
-    required_filtered = [
-        pid for pid in allowed_final if _required_inputs_met(pid, state["world_state"])
-    ]
-    if required_filtered:
-        allowed_final = required_filtered
-    allowed_final = [
-        pid
-        for pid in allowed_final
-        if not _violates_hard_constraints(
-            pid, state["world_state"], state.get("hard_constraints_struct")
-        )
-    ]
-    if not allowed_final:
-        allowed_final = [safe_neutral_policy_id()]
-
-    allowed_hash = stable_allowed_ids_hash(allowed_final)
-    prev_allowed_hash = gate_state.get("allowed_ids_hash_prev", "")
-    allowed_hash_changed = allowed_hash != prev_allowed_hash
-    stable_count = int(gate_state.get("allowed_ids_hash_stable_count", 0) or 0)
-    stable_count = stable_count + 1 if allowed_hash == prev_allowed_hash else 0
-
-    loop_flags_prev = gate_state.get("loop_flags_prev", [])
-    loop_flags_current = progress_state.get("loop_flags", [])
-    loop_flags_changed_flag = loop_flags_changed(loop_flags_prev, loop_flags_current)
-    intent_transition = (state.get("intent_meta") or {}).get("intent_transition")
-    intent_transition_present = bool(intent_transition and intent_transition != "none")
-
-    planner_skipped, skip_reason, planner_gate_meta = gate_phase_policy(
-        world_diff=state.get("world_diff", {}),
-        intent_transition_present=intent_transition_present,
-        loop_flags_changed_flag=loop_flags_changed_flag,
-        allowed_ids_hash_changed=allowed_hash_changed,
-        turn_count=turn_count,
-        last_refresh_turn=int(gate_state.get("last_planner_refresh_turn", 0) or 0),
-        interval=int(os.getenv("PHASE_POLICY_REFRESH_INTERVAL_TURNS", "2")),
+    allowed_final = _allowed_policy_ids_minimal(
+        state["world_state"], progress_state, state.get("hard_constraints_struct")
     )
 
     phase_candidate = None
@@ -83,6 +66,9 @@ def phase_policy_planner_node(state: dict) -> dict:
     policy_pre_repair = None
     policy_post_repair = None
     policy_decision = default_policy_decision()
+    planner_skipped = False
+    skip_reason = ""
+
     planner_meta: dict = {
         "planner_failed": False,
         "planner_error": "",
@@ -92,48 +78,63 @@ def phase_policy_planner_node(state: dict) -> dict:
         "planner_skip_reason": skip_reason,
         "allowed_policy_ids": allowed_final,
         "allowed_policy_ids_base": allowed_base,
-        "allowed_policy_ids_after_intent": allowed_final,
-        "allowed_policy_ids_after_required_inputs": required_filtered,
-        "intent_preferred_policy_ids": preferred,
-        "allowed_ids_hash": allowed_hash,
-        "allowed_ids_hash_prev": prev_allowed_hash,
-        "allowed_ids_hash_stable_count": stable_count,
-        "planner_gate_features": planner_gate_meta,
     }
-    planner_meta.update(intent_meta)
 
-    if planner_skipped:
-        chosen_id, skip_mode = select_policy_id_on_skip(
-            last_policy_chosen=progress_state.get("last_chosen_policy_id", ""),
-            allowed_policy_ids=allowed_final,
-            policy_attempts=progress_state.get("policy_attempts", {}),
-            loop_flags=loop_flags_current,
-            safe_neutral_policy_id=safe_neutral_policy_id(),
-            max_attempts=int(os.getenv("PLANNER_SKIP_MAX_ATTEMPTS", "3")),
-        )
+    policy_state = progress_state.get("policy_state", default_policy_state())
+    current_step = _current_step_for_policy(
+        policy_state.get("policy_id", ""), int(policy_state.get("step_idx", 0))
+    )
+    if policy_state.get("planner_request") == "continue_policy" and current_step:
+        planner_skipped = True
+        skip_reason = "continue_policy"
         policy_decision = {
-            "policy_id": chosen_id,
-            "reason": "Planner skipped; fallback policy selected.",
-            "micro_goal": "Mantener conversación abierta con una pregunta breve.",
+            "policy_id": policy_state.get("policy_id", ""),
+            "reason": "Continuar policy multi-turn sin planner.",
+            "micro_goal": current_step.micro_goal,
             "risk_posture": "low",
             "why_short": "",
             "inputs_used": [],
         }
-        planner_meta["planner_skip_mode"] = skip_mode
+        planner_meta["planner_skipped"] = planner_skipped
+        planner_meta["planner_skip_reason"] = skip_reason
     else:
-        phase_candidate, policy_decision, planner_call_meta = deps.plan_phase_policy(
-            world_state=state["world_state"],
-            world_diff=state.get("world_diff", {}),
-            belief_state=state["belief_state"],
-            progress_state=progress_state,
-            intent_hint=state.get("intent_hint"),
-            objective=state["objective"],
-            constraints=state.get("constraints", ""),
-            constraints_struct=state.get("hard_constraints_struct", {}),
-            recent_context=state.get("recent_history_text", ""),
-            allowed_policy_ids=allowed_final,
-        )
-        planner_meta.update(planner_call_meta)
+        planner_skipped = False
+        skip_reason = ""
+        try:
+            phase_candidate, policy_decision, planner_call_meta = deps.plan_phase_policy(
+                world_state=state["world_state"],
+                world_diff=state.get("world_diff", {}),
+                belief_state=state["belief_state"],
+                progress_state=progress_state,
+                policy_state=policy_state,
+                policy_plan_summary=state.get("policy_plan_summary"),
+                objective=state["objective"],
+                constraints=state.get("constraints", ""),
+                constraints_struct=state.get("hard_constraints_struct", {}),
+                recent_context=state.get("recent_history_text", ""),
+                allowed_policy_ids=allowed_final,
+            )
+            planner_meta.update(planner_call_meta)
+        except Exception as exc:
+            planner_meta["planner_failed"] = True
+            planner_meta["planner_fallback_used"] = True
+            planner_meta["planner_error"] = str(exc)
+            policy_decision = {
+                "policy_id": safe_neutral_policy_id(),
+                "reason": "Fallback seguro por error de planner.",
+                "micro_goal": "Mantener conversación abierta con una pregunta breve.",
+                "risk_posture": "low",
+                "why_short": "",
+                "inputs_used": [],
+            }
+            phase_candidate = {
+                "phase": "opening",
+                "confidence": 0.0,
+                "reasons": [],
+                "signals": [],
+                "alternatives": [],
+            }
+
         phase_effective, phase_meta = postprocess_phase_candidate(
             prev_phase_state=progress_state.get("phase_state"),
             phase_candidate=phase_candidate,
@@ -141,14 +142,13 @@ def phase_policy_planner_node(state: dict) -> dict:
         )
         phase_effective["last_updated_turn"] = turn_count
         policy_pre_repair = dict(policy_decision)
-        commitment = (state.get("intent_hint") or {}).get("commitment_level")
         repaired_id, repair_meta = repair_policy_by_phase(
             policy_decision.get("policy_id", ""),
             allowed_final,
             policy_phase_catalog(),
             phase_effective.get("phase", "opening"),
-            preferred,
-            commitment,
+            None,
+            None,
             policy_attempts=progress_state.get("policy_attempts", {}),
         )
         if repaired_id and repaired_id != policy_decision.get("policy_id"):
@@ -170,17 +170,13 @@ def phase_policy_planner_node(state: dict) -> dict:
         gate_state["planner_skip_count"] = int(gate_state.get("planner_skip_count", 0) or 0) + 1
     else:
         gate_state["last_planner_refresh_turn"] = turn_count
-    gate_state["allowed_ids_hash_prev"] = allowed_hash
-    gate_state["allowed_ids_hash_stable_count"] = stable_count
-    gate_state["loop_flags_prev"] = list(loop_flags_current)
     progress_state["gate_state"] = gate_state
 
     if not state.get("phase_meta"):
         state["phase_meta"] = {
             "phase_update_used": False,
-            "phase_update_reason": "planner_skip" if planner_skipped else "planner",
+            "phase_update_reason": "policy_continue" if planner_skipped else "planner",
         }
-    planner_meta["intent_meta"] = state.get("intent_meta", {})
     planner_meta["phase_meta"] = state.get("phase_meta", {})
     planner_meta["phase_state"] = progress_state.get("phase_state", {})
 
@@ -212,9 +208,5 @@ def phase_policy_planner_node(state: dict) -> dict:
             "planner": gate_state.get("last_planner_refresh_turn", 0),
         },
         "world_gate_features": state.get("extractor_meta", {}).get("world_gate_features", {}),
-        "planner_gate_features": planner_gate_meta,
-        "allowed_ids_hash": allowed_hash,
-        "allowed_ids_hash_prev": prev_allowed_hash,
-        "allowed_ids_hash_stable_count": stable_count,
     }
     return state

@@ -8,7 +8,16 @@ from .elementos.execution_definitions import (
     OUTCOME_NEUTRAL,
 )
 from .gate_utils import _split_world_diff
-from .schemas import BeliefState, PolicyDecision, ProgressState, WorldState, default_progress_state
+from .policies import get_policy
+from .schemas import (
+    BeliefState,
+    PolicyDecision,
+    PolicyState,
+    ProgressState,
+    WorldState,
+    default_policy_state,
+    default_progress_state,
+)
 from .world_state_updater import diff_world_state
 
 
@@ -98,6 +107,7 @@ def update_progress_state(
     world_state: WorldState,
     prev_belief_state: BeliefState | None,
     belief_state: BeliefState,
+    turn_count: int = 0,
 ) -> ProgressState:
     progress = default_progress_state()
     if prev_progress:
@@ -133,6 +143,10 @@ def update_progress_state(
             progress["turns_in_same_mode"] = 1
         progress["last_chosen_policy_id"] = policy_id
 
+    current_policy_state = progress.get("policy_state", default_policy_state())
+    if policy_id and policy_id != current_policy_state.get("policy_id", ""):
+        progress["policy_state"] = hydrate_policy_state_from_catalog(policy_id, turn_count=turn_count)
+
     loop_flags = list(progress.get("loop_flags", []))
     if (
         progress.get("turns_in_same_mode", 0) >= 2
@@ -143,3 +157,27 @@ def update_progress_state(
     progress["loop_flags"] = loop_flags
 
     return progress
+
+
+def hydrate_policy_state_from_catalog(policy_id: str, turn_count: int) -> PolicyState:
+    base = default_policy_state()
+    if not policy_id:
+        return base
+    policy = get_policy(policy_id)
+    plan = policy.plan if policy else None
+    base["policy_id"] = policy_id
+    if not plan:
+        base["status"] = "inactive"
+        base["planner_request"] = "choose_policy"
+        return base
+    base["status"] = "active"
+    base["step_idx"] = 0
+    base["step_attempts"] = 0
+    base["max_attempts_per_step"] = int(plan.max_attempts_per_step)
+    base["started_turn"] = turn_count
+    base["last_turn"] = turn_count
+    base["no_progress_turns"] = 0
+    base["planner_request"] = "continue_policy"
+    base["slots_required"] = list(plan.slots_required)
+    base["slots_filled"] = {}
+    return base

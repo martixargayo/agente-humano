@@ -43,16 +43,12 @@ from .elementos.execution_definitions import (
 )
 from .gate_utils import (
     gate_belief,
-    gate_phase_policy,
     gate_world,
     input_shape_features,
     interaction_fingerprint,
     loop_flags_changed,
-    select_policy_id_on_skip,
-    stable_allowed_ids_hash,
     universal_state_fingerprint,
 )
-from .intent_manager import update_intent_state
 from .phase_policy_planner import plan_phase_policy
 from .phase_state_updater import postprocess_phase_candidate
 from .policies import get_policy, list_policy_ids, policy_phase_catalog, safe_neutral_policy_id
@@ -60,7 +56,6 @@ from .policy_planner import (
     _required_inputs_met,
     _violates_hard_constraints,
     allowed_policy_ids,
-    apply_intent_constraints,
     repair_policy_by_phase,
 )
 from .progress_updater import update_progress_state
@@ -90,7 +85,7 @@ from .validation import (
 from .world_state_updater import diff_world_state, update_world_state
 from .nodes.world_node import world_updater_node
 from .nodes.belief_node import belief_updater_node
-from .nodes.intent_node import intent_manager_node
+from .nodes.policy_progress_node import policy_progress_node
 from .nodes.planner_node import phase_policy_planner_node
 from .nodes.progress_node import progress_updater_node
 from .nodes.executor_node import executor_node
@@ -190,6 +185,8 @@ class NegotiationTurn(TypedDict):
     progress_state: ProgressState
     intent_hint: dict
     intent_meta: dict
+    policy_hint: dict
+    policy_meta: dict
     policy_decision: PolicyDecision
     policy_pre_repair: PolicyDecision | None
     policy_post_repair: PolicyDecision | None
@@ -315,7 +312,7 @@ workflow = StateGraph(NegotiationTurn)
 
 workflow.add_node("world_updater", world_updater_node)
 workflow.add_node("belief_updater", belief_updater_node)
-workflow.add_node("intent_manager", intent_manager_node)
+workflow.add_node("policy_progress", policy_progress_node)
 workflow.add_node("phase_policy_planner", phase_policy_planner_node)
 workflow.add_node("progress_updater", progress_updater_node)
 workflow.add_node("executor", executor_node)
@@ -323,8 +320,8 @@ workflow.add_node("executor", executor_node)
 workflow.add_edge(START, "world_updater")
 
 workflow.add_edge("world_updater", "belief_updater")
-workflow.add_edge("belief_updater", "intent_manager")
-workflow.add_edge("intent_manager", "phase_policy_planner")
+workflow.add_edge("belief_updater", "policy_progress")
+workflow.add_edge("policy_progress", "phase_policy_planner")
 workflow.add_edge("phase_policy_planner", "progress_updater")
 workflow.add_edge("progress_updater", "executor")
 
@@ -345,7 +342,7 @@ def run_negotiation_agent(
     Ejecuta un turno de negociación:
     - Añade el mensaje del vendedor al historial.
     - Construye el estado para LangGraph.
-    - Pasa por world_updater + belief_updater + intent_manager +
+    - Pasa por world_updater + belief_updater + policy_progress +
       phase_policy_planner + progress_updater + executor.
     - Guarda estados persistentes en SessionState.
     - Añade la respuesta del comprador al historial.
@@ -425,6 +422,8 @@ def run_negotiation_agent(
         "progress_state": progress_state_input,
         "intent_hint": {},
         "intent_meta": {},
+        "policy_hint": {},
+        "policy_meta": {},
         "policy_decision": default_policy_decision(),
         "policy_pre_repair": None,
         "policy_post_repair": None,

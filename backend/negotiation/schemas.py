@@ -89,6 +89,43 @@ class IntentState(TypedDict):
     next_action_hint: str
 
 
+class SlotValue(TypedDict, total=False):
+    value: object
+    source: Literal["world", "belief"]
+    updated_turn: int
+
+
+class PolicyState(TypedDict):
+    status: Literal["inactive", "active", "succeeded", "abandoned", "paused"]
+    policy_id: str
+    step_idx: int
+    step_attempts: int
+    max_attempts_per_step: int
+    started_turn: int
+    last_turn: int
+    no_progress_turns: int
+    planner_request: Literal["choose_policy", "continue_policy", "replan_policy"]
+    slots_required: List[str]
+    slots_filled: Dict[str, SlotValue]
+
+
+class PolicyHint(TypedDict):
+    policy_active: bool
+    policy_id: str
+    step_kind: str
+    target_slot: str
+    next_action_hint: str
+    attempts_left: int
+    slots_missing: List[str]
+
+
+class PolicyMeta(TypedDict):
+    transition: Literal["advance", "retry", "succeed", "abandon", "force_planner"]
+    reasons: List[str]
+    deltas: dict
+    thresholds: dict
+
+
 # ---------- UniversalState v1 (universal) ----------
 ConstraintKind = Literal["time", "money", "availability", "logistics", "capability", "rule", "safety", "other"]
 ConstraintPolarity = Literal["must", "must_not", "prefer", "avoid"]
@@ -456,6 +493,7 @@ class ProgressState(TypedDict):
     loop_flags: List[str]
     turns_in_same_mode: int
     intent_state: IntentState
+    policy_state: PolicyState
     phase_state: PhaseState
     gate_state: "GateState"
 
@@ -633,6 +671,22 @@ def default_constraints_struct() -> RenderConstraints:
     }
 
 
+def default_policy_state() -> PolicyState:
+    return {
+        "status": "inactive",
+        "policy_id": "",
+        "step_idx": 0,
+        "step_attempts": 0,
+        "max_attempts_per_step": 2,
+        "started_turn": 0,
+        "last_turn": 0,
+        "no_progress_turns": 0,
+        "planner_request": "choose_policy",
+        "slots_required": [],
+        "slots_filled": {},
+    }
+
+
 def default_progress_state() -> ProgressState:
     return {
         "conversation_mode": "general",
@@ -649,6 +703,7 @@ def default_progress_state() -> ProgressState:
         "loop_flags": [],
         "turns_in_same_mode": 0,
         "intent_state": default_intent_state(),
+        "policy_state": default_policy_state(),
         "phase_state": {
             "phase": "opening",
             "confidence": 0.6,

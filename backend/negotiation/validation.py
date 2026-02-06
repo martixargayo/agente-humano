@@ -17,6 +17,7 @@ from .schemas import (
     NegotiationPhase,
     PersonaProfile,
     PolicyDecision,
+    PolicyState,
     PhaseState,
     ProgressState,
     RenderConstraints,
@@ -30,6 +31,7 @@ from .schemas import (
     default_intent_state,
     default_constraints_struct,
     default_policy_decision,
+    default_policy_state,
     default_persona_profile,
     default_progress_state,
     default_render_state,
@@ -77,6 +79,8 @@ _ALLOWED_INTENT_TYPES: set[IntentType] = {
     "closing",
     "credibility_check",
 }
+_ALLOWED_POLICY_STATUS = {"inactive", "active", "succeeded", "abandoned", "paused"}
+_ALLOWED_PLANNER_REQUEST = {"choose_policy", "continue_policy", "replan_policy"}
 _ALLOWED_PHASES: set[NegotiationPhase] = {
     "opening",
     "discovery",
@@ -994,10 +998,79 @@ def normalize_progress_state(raw: object) -> Tuple[ProgressState, List[str]]:
     base["turns_in_same_mode"] = int(raw.get("turns_in_same_mode", base["turns_in_same_mode"]))
     base["intent_state"], intent_issues = normalize_intent_state(raw.get("intent_state", {}))
     issues.extend(intent_issues)
+    base["policy_state"], policy_issues = normalize_policy_state(raw.get("policy_state", {}))
+    issues.extend(policy_issues)
     base["phase_state"], phase_issues = normalize_phase_state(raw.get("phase_state", {}))
     issues.extend(phase_issues)
     base["gate_state"], gate_issues = _normalize_gate_state(raw.get("gate_state", {}))
     issues.extend(gate_issues)
+
+    return base, issues
+
+
+def normalize_policy_state(raw: object) -> Tuple[PolicyState, List[str]]:
+    base = default_policy_state()
+    issues: List[str] = []
+    if not isinstance(raw, dict):
+        issues.append("policy_state_no_dict")
+        return base, issues
+
+    status = raw.get("status", base.get("status"))
+    if status not in _ALLOWED_POLICY_STATUS:
+        issues.append("policy_state_status_invalid")
+    else:
+        base["status"] = status
+
+    base["policy_id"] = str(raw.get("policy_id", base.get("policy_id", "")))
+
+    for key in (
+        "step_idx",
+        "step_attempts",
+        "max_attempts_per_step",
+        "started_turn",
+        "last_turn",
+        "no_progress_turns",
+    ):
+        value = raw.get(key, base.get(key))
+        try:
+            base[key] = max(0, int(value))  # type: ignore[index]
+        except (TypeError, ValueError):
+            issues.append(f"policy_state_invalid:{key}")
+
+    planner_request = raw.get("planner_request", base.get("planner_request"))
+    if planner_request not in _ALLOWED_PLANNER_REQUEST:
+        issues.append("policy_state_planner_request_invalid")
+    else:
+        base["planner_request"] = planner_request
+
+    base["slots_required"] = _unique_list(
+        _coerce_str_list(raw.get("slots_required", base.get("slots_required", []))),
+        max_items=12,
+    )
+
+    slots_filled: Dict[str, dict] = {}
+    raw_slots_filled = raw.get("slots_filled", {})
+    if isinstance(raw_slots_filled, dict):
+        for key, value in raw_slots_filled.items():
+            if not isinstance(value, dict):
+                issues.append(f"policy_state_slot_invalid:{key}")
+                continue
+            source = value.get("source")
+            if source not in {"world", "belief"}:
+                source = None
+            updated_turn = value.get("updated_turn", 0)
+            try:
+                updated_turn = max(0, int(updated_turn))
+            except (TypeError, ValueError):
+                updated_turn = 0
+                issues.append(f"policy_state_slot_turn_invalid:{key}")
+            slot_record = {"value": value.get("value"), "updated_turn": updated_turn}
+            if source:
+                slot_record["source"] = source
+            slots_filled[str(key)] = slot_record
+    else:
+        issues.append("policy_state_slots_filled_invalid")
+    base["slots_filled"] = slots_filled
 
     return base, issues
 
