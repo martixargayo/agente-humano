@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict, Tuple
-
-from .shared import critical_world_flags, interaction_strong_delta_from_diff, _split_world_diff
+import warnings
 
 
 def gate_phase_policy(
@@ -14,18 +13,19 @@ def gate_phase_policy(
     last_refresh_turn: int,
     interval: int = 2,
 ) -> Tuple[bool, str, Dict[str, Any]]:
-    domain_diff, interaction_diff = _split_world_diff(world_diff)
-    critical_diff = any(key in domain_diff for key in critical_world_flags())
-    interaction_strong, interaction_meta = interaction_strong_delta_from_diff(interaction_diff)
-    strong_signals = (
-        critical_diff
-        or intent_transition_present
-        or loop_flags_changed_flag
-        or allowed_ids_hash_changed
-        or interaction_strong
+    warnings.warn(
+        "gating.gate_planner.gate_phase_policy is deprecated; use legacy.gating_deprecated.",
+        DeprecationWarning,
+        stacklevel=2,
     )
-    interval_expired = (turn_count - last_refresh_turn) >= interval
-    if interval_expired or strong_signals:
-        reason = "interval_expired" if interval_expired else "strong_signals"
-        return False, reason, {"interaction_meta": interaction_meta}
-    return True, "interval_hold", {"interaction_meta": interaction_meta}
+    from ..legacy.gating_deprecated import gate_phase_policy as legacy_gate_phase_policy
+
+    return legacy_gate_phase_policy(
+        world_diff,
+        intent_transition_present,
+        loop_flags_changed_flag,
+        allowed_ids_hash_changed,
+        turn_count,
+        last_refresh_turn,
+        interval=interval,
+    )

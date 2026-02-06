@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict, Iterable, Tuple
+import warnings
 
 from ..perception.input_shape import (
     ConversationMode,
@@ -52,16 +53,18 @@ def select_policy_id_on_skip(
     safe_neutral_policy_id: str,
     max_attempts: int = 3,
 ) -> Tuple[str, str]:
-    attempts = policy_attempts or {}
-    loop_flags_clean = not list(loop_flags)
-    if (
-        last_policy_chosen
-        and last_policy_chosen in allowed_policy_ids
-        and loop_flags_clean
-        and attempts.get(last_policy_chosen, 0) < max_attempts
-    ):
-        return last_policy_chosen, "reuse_last_policy"
-    if safe_neutral_policy_id in allowed_policy_ids:
-        return safe_neutral_policy_id, "safe_neutral_fallback"
-    fallback = allowed_policy_ids[0] if allowed_policy_ids else safe_neutral_policy_id
-    return fallback, "safe_neutral_missing"
+    warnings.warn(
+        "gating.shared.select_policy_id_on_skip is deprecated; use legacy.gating_deprecated.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    from ..legacy.gating_deprecated import select_policy_id_on_skip as legacy_select_policy_id
+
+    return legacy_select_policy_id(
+        last_policy_chosen,
+        allowed_policy_ids,
+        policy_attempts,
+        loop_flags,
+        safe_neutral_policy_id,
+        max_attempts=max_attempts,
+    )
