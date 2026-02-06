@@ -120,6 +120,8 @@ def test_e2e_happy_path_progression(monkeypatch, tmp_path):
         prompt = executor_script.prompts[1]
         assert "policy_next_hint:" in prompt
         assert "phase_effective:" in prompt
+        assert "belief_state_summary:" in prompt
+        assert "interaction_health" in prompt
         assert trace[1]["phase_effective"]["phase"] in prompt
 
         _assert_trace_invariants(trace, graph_states)

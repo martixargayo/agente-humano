@@ -41,6 +41,10 @@ phase_effective: {phase_effective}
 policy_next_hint: {policy_next_hint}
 intent_next_hint: {intent_next_hint}
 
+belief_state_summary: {belief_state_summary}
+belief_summary_truncated: {belief_summary_truncated}
+belief_summary_keys: {belief_summary_keys}
+
 PERSONA PROFILE (fixed):
 {persona_json}
 
