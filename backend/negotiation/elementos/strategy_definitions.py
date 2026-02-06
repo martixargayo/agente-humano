@@ -1,6 +1,6 @@
 import os
 from dataclasses import dataclass
-from typing import List, Literal, Set
+from typing import List, Literal, Optional, Set
 
 from pydantic import BaseModel, ConfigDict, Field, confloat, conlist
 
@@ -18,6 +18,31 @@ PHASE_INDEX: dict[NegotiationPhase, int] = {phase: idx for idx, phase in enumera
 PHASE_LITERAL = Literal["opening", "discovery", "bargaining", "closing", "recovery"]
 REASON_PREFIXES = {"world", "belief", "intent", "history"}
 RISK_POSTURES = ("low", "mid", "high")
+
+
+@dataclass(frozen=True)
+class SuccessCond:
+    kind: Literal["slot_filled", "world_flag_true", "belief_flag_eq"]
+    key: str
+    value: object | None = None
+
+
+@dataclass(frozen=True)
+class PolicyStep:
+    kind: str
+    target_slot: str
+    micro_goal: str
+    next_action_hint: str
+    success_if: List[SuccessCond]
+
+
+@dataclass(frozen=True)
+class PolicyPlan:
+    slots_required: List[str]
+    steps: List[PolicyStep]
+    max_attempts_per_step: int = 2
+    max_turns_total: int = 6
+    no_progress_turns_limit: int = 2
 
 
 class PhaseSignal(BaseModel):
@@ -161,6 +186,7 @@ class Policy:
     capabilities: Set[str] | None = None
     guards: Set[str] | None = None
     tags: Set[str] | None = None
+    plan: Optional[PolicyPlan] = None
 
 
 POLICIES: List[Policy] = [
@@ -233,6 +259,25 @@ POLICIES: List[Policy] = [
         capabilities={"request_evidence", "probe_narrow"},
         guards={"safe_when_tense", "avoid_mentioning_own_numbers"},
         tags={"credibility_check"},
+        plan=PolicyPlan(
+            slots_required=["negotiation.other_buyer_text", "negotiation.evidence_offered"],
+            steps=[
+                PolicyStep(
+                    kind="request_evidence",
+                    target_slot="negotiation.evidence_offered",
+                    micro_goal="Pedir evidencia concreta de la otra oferta.",
+                    next_action_hint="Solicita datos verificables de la supuesta oferta.",
+                    success_if=[SuccessCond(kind="slot_filled", key="negotiation.evidence_offered")],
+                ),
+                PolicyStep(
+                    kind="probe_narrow",
+                    target_slot="negotiation.other_buyer_text",
+                    micro_goal="Aclarar detalles del otro comprador.",
+                    next_action_hint="Pregunta por términos, tiempos y condiciones del comprador.",
+                    success_if=[SuccessCond(kind="slot_filled", key="negotiation.other_buyer_text")],
+                ),
+            ],
+        ),
     ),
     Policy(
         policy_id="delay_price_discussion",

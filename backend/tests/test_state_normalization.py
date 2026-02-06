@@ -225,30 +225,7 @@ def test_temporal_invariant_last_policy_executed_is_persisted(monkeypatch):
     assert state.last_policy_executed.get("policy_id") == "rapport_build"
 
 
-def test_allowed_policy_ids_uses_outcome_per_policy():
-    os.environ.setdefault("OPENAI_API_KEY", "test")
-    from negotiation import policy_planner
-
-    importlib.reload(policy_planner)
-
-    world = default_world_state()
-    belief = default_belief_state()
-    belief["universal"]["dynamics"]["interaction_health"] = "stable"
-    world["negotiation"]["price_mentioned"] = False
-    progress = default_progress_state()
-    ids = policy_planner.list_policy_ids()
-    assert len(ids) >= 2
-    p1, p2 = ids[0], ids[1]
-    progress["policy_attempts"] = {p1: 3, p2: 3}
-    progress["policy_last_outcome"] = {p1: "bad", p2: "good"}
-
-    allowed = policy_planner.allowed_policy_ids(world, belief, progress)
-
-    assert p1 not in allowed
-    assert p2 in allowed
-
-
-def test_allowed_policy_ids_blocks_after_neutral_outcome():
+def test_allowed_policy_ids_ignores_outcomes_when_minimal():
     os.environ.setdefault("OPENAI_API_KEY", "test")
     from negotiation import policy_planner
 
@@ -257,15 +234,12 @@ def test_allowed_policy_ids_blocks_after_neutral_outcome():
     world = default_world_state()
     belief = default_belief_state()
     progress = default_progress_state()
-    ids = policy_planner.list_policy_ids()
-    assert ids
-    target_policy = ids[0]
-    progress["policy_attempts"] = {target_policy: 3}
-    progress["policy_last_outcome"] = {target_policy: "neutral"}
+    progress["policy_attempts"] = {"safe_neutral": 3}
+    progress["policy_last_outcome"] = {"safe_neutral": "bad"}
 
     allowed = policy_planner.allowed_policy_ids(world, belief, progress)
 
-    assert target_policy not in allowed
+    assert "safe_neutral" in allowed
 
 
 def test_normalize_progress_policy_attempts_accepts_numeric_strings():

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from .elementos.strategy_definitions import PHASE_INDEX
-from .policies import POLICIES, list_policy_ids
+from .policies import POLICIES, list_policy_ids, policy_phase_catalog
 from .schemas import (
     BeliefState,
     IntentHint,
@@ -117,68 +117,24 @@ def repair_policy_by_phase(
     return chosen_id, meta
 
 
-def _allowed_policy_ids(
+def _allowed_policy_ids_minimal(
     world_state: WorldState,
-    belief_state: BeliefState,
     progress_state: ProgressState,
+    constraints_struct: dict | None,
 ) -> list[str]:
     policy_ids = list_policy_ids()
     if not policy_ids:
         return []
-
-    allowed = set(policy_ids)
-    health = (belief_state.get("universal") or {}).get("dynamics", {}).get(
-        "interaction_health", "stable"
-    )
-
-    if health == "tense":
-        allowed -= {
-            "challenge_anchor_indirect",
-            "tradeoff_offer",
-            "close_with_conditions",
-            "hold_position",
-        }
-        allowed |= {"deescalate_tension", "rapport_build"}
-
-    required_guards: set[str] = set()
-    if health in {"tense", "stalled"}:
-        required_guards.add("safe_when_tense")
-
-    def _guard_violation(policy_id: str) -> bool:
-        policy = next((item for item in POLICIES if item.policy_id == policy_id), None)
-        if not policy or not policy.guards:
-            if required_guards:
-                return True
-            return False
-        guards = policy.guards or set()
-        if required_guards and not required_guards.issubset(guards):
-            return True
-        if "requires_price_not_mentioned" in guards and _world_value(world_state, "price_mentioned"):
-            return True
-        return False
-
-    if progress_state.get("turns_in_same_mode", 0) >= 2:
-        last_policy = progress_state.get("last_chosen_policy_id", "")
-        if last_policy in allowed:
-            allowed.remove(last_policy)
-
-    if "stuck_in_policy" in progress_state.get("loop_flags", []):
-        last_policy = progress_state.get("last_chosen_policy_id", "")
-        if last_policy in allowed:
-            allowed.remove(last_policy)
-
-    attempts = progress_state.get("policy_attempts", {})
-    outcomes = progress_state.get("policy_last_outcome", {})
-    for policy_id, count in attempts.items():
-        if count >= 3 and outcomes.get(policy_id) in {"bad", "neutral"}:
-            allowed.discard(policy_id)
-
-    allowed = {policy_id for policy_id in allowed if not _guard_violation(policy_id)}
-
-    if not allowed:
-        return list_policy_ids()
-
-    return sorted(allowed)
+    phase = (progress_state.get("phase_state") or {}).get("phase", "opening")
+    phase_catalog = policy_phase_catalog()
+    allowed = [
+        policy_id
+        for policy_id in policy_ids
+        if phase in phase_catalog.get(policy_id, [])
+        and _required_inputs_met(policy_id, world_state)
+        and not _violates_hard_constraints(policy_id, world_state, constraints_struct)
+    ]
+    return allowed
 
 
 def _required_inputs_met(policy_id: str, world_state: WorldState) -> bool:
@@ -216,8 +172,10 @@ def allowed_policy_ids(
     world_state: WorldState,
     belief_state: BeliefState,
     progress_state: ProgressState,
+    constraints_struct: dict | None = None,
 ) -> list[str]:
-    return _allowed_policy_ids(world_state, belief_state, progress_state)
+    del belief_state
+    return _allowed_policy_ids_minimal(world_state, progress_state, constraints_struct)
 
 
 def _step_kind_to_caps(step_kind: str) -> set[str]:

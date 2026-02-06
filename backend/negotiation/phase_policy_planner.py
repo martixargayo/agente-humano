@@ -9,10 +9,9 @@ from langchain_openai import ChatOpenAI
 
 from prompts import PHASE_POLICY_SYSTEM_PROMPT, PHASE_POLICY_USER_PROMPT
 from .elementos.strategy_definitions import PhasePolicyDecisionModel, REASON_PREFIXES
-from .policies import policy_catalog_text, safe_neutral_policy_id
+from .policies import get_policy, policy_catalog_text, safe_neutral_policy_id
 from .schemas import (
     BeliefState,
-    IntentHint,
     NegotiationPhase,
     PolicyDecision,
     ProgressState,
@@ -81,12 +80,35 @@ def _fallback_policy(allowed_ids: list[str]) -> PolicyDecision:
     }
 
 
+def _policy_plan_summary(progress_state: ProgressState) -> dict:
+    policy_state = progress_state.get("policy_state", {}) if isinstance(progress_state, dict) else {}
+    policy_id = policy_state.get("policy_id", "")
+    if not policy_id:
+        return {}
+    policy = get_policy(policy_id)
+    plan = policy.plan if policy else None
+    if not plan:
+        return {"policy_id": policy_id, "steps": []}
+    steps = []
+    for idx, step in enumerate(plan.steps):
+        steps.append(
+            {
+                "idx": idx,
+                "kind": step.kind,
+                "target_slot": step.target_slot,
+                "micro_goal": step.micro_goal[:80],
+            }
+        )
+    return {"policy_id": policy_id, "steps": steps}
+
+
 def plan_phase_policy(
     world_state: WorldState,
     world_diff: dict,
     belief_state: BeliefState,
     progress_state: ProgressState,
-    intent_hint: IntentHint | None,
+    policy_state: dict | None,
+    policy_plan_summary: dict | None,
     objective: str,
     constraints: str,
     constraints_struct: dict | None = None,
@@ -110,7 +132,10 @@ def plan_phase_policy(
         world_state=json.dumps(world_state, ensure_ascii=False),
         world_diff=json.dumps(world_diff or {}, ensure_ascii=False),
         belief_state=json.dumps(belief_state, ensure_ascii=False),
-        intent_hint=json.dumps(intent_hint or {}, ensure_ascii=False),
+        policy_state=json.dumps(policy_state or {}, ensure_ascii=False),
+        policy_plan_summary=json.dumps(
+            policy_plan_summary or _policy_plan_summary(progress_state), ensure_ascii=False
+        ),
         phase_state=json.dumps(progress_state.get("phase_state", {}), ensure_ascii=False),
         allowed_policy_ids=json.dumps(allowed_policy_ids, ensure_ascii=False),
         policy_catalog=policy_catalog_text(),

@@ -38,6 +38,7 @@ risk_posture: {risk_posture}
 why_short: {why_short}
 inputs_used: {inputs_used}
 phase_effective: {phase_effective}
+policy_next_hint: {policy_next_hint}
 intent_next_hint: {intent_next_hint}
 
 PERSONA PROFILE (fixed):

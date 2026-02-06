@@ -233,8 +233,11 @@ PHASE_POLICY_USER_PROMPT = """
 [BeliefState]
 {belief_state}
 
-[Intent hint]
-{intent_hint}
+[PolicyState]
+{policy_state}
+
+[PolicyPlan summary]
+{policy_plan_summary}
 
 [PhaseState prev]
 {phase_state}
