@@ -3,7 +3,7 @@ from __future__ import annotations
 import negotiation.negotiation_graph as negotiation_graph
 from negotiation.executor.render_executor import build_strategy_summary
 from negotiation.policies import safe_neutral_policy_id
-from negotiation.schemas import default_policy_decision, default_progress_state
+from negotiation.schemas import default_policy_decision, default_progress_state, default_world_state
 from state import SessionState
 
 from tests.helpers.negotiation_harness import (
@@ -12,7 +12,6 @@ from tests.helpers.negotiation_harness import (
     PlannerScript,
     assert_policy_decision_invariants,
     assert_progress_invariants,
-    available_policy_ids,
     fake_update_belief_state,
     random_messages,
     simulate_conversation,
@@ -55,6 +54,16 @@ def _negotiation_state() -> SessionState:
     state.progress_state["conversation_mode"] = "negotiation"
     state.progress_state["mode_confidence"] = 1.0
     return state
+
+
+def _assert_trace_invariants(trace: list[dict], graph_states: list[dict]) -> None:
+    assert len(trace) >= len(graph_states)
+    trace_slice = trace[-len(graph_states) :] if graph_states else []
+    for entry, graph_state in zip(trace_slice, graph_states):
+        assert_progress_invariants(entry["progress_state"])
+        allowed_ids = graph_state.get("allowed_policy_ids") or []
+        assert allowed_ids
+        assert_policy_decision_invariants(entry["policy_decision"], allowed_ids)
 
 
 def test_e2e_happy_path_progression(monkeypatch, tmp_path):
@@ -113,9 +122,7 @@ def test_e2e_happy_path_progression(monkeypatch, tmp_path):
         assert "phase_effective:" in prompt
         assert trace[1]["phase_effective"]["phase"] in prompt
 
-        for entry in trace:
-            assert_progress_invariants(entry["progress_state"])
-            assert_policy_decision_invariants(entry["policy_decision"], available_policy_ids())
+        _assert_trace_invariants(trace, graph_states)
         assert state.debug_trace
 
 
@@ -142,8 +149,7 @@ def test_e2e_no_progress_triggers_replan(monkeypatch, tmp_path):
         )
         assert any(gs.get("policy_meta", {}).get("transition") == "force_planner" for gs in graph_states)
         assert trace[-1]["gates"]["planner_skipped"] is False
-        assert_progress_invariants(trace[-1]["progress_state"])
-        assert_policy_decision_invariants(trace[-1]["policy_decision"], available_policy_ids())
+        _assert_trace_invariants(trace, graph_states)
         assert state.debug_trace
 
 
@@ -166,8 +172,7 @@ def test_e2e_bad_inputs_no_crash(monkeypatch, tmp_path):
 
     with trace_guard(tmp_path, "bad_inputs", trace, graph_states):
         last = trace[-1]
-        assert_progress_invariants(last["progress_state"])
-        assert_policy_decision_invariants(last["policy_decision"], available_policy_ids())
+        _assert_trace_invariants(trace, graph_states)
         assert len(last["progress_state"]["policy_state"]["slots_required"]) <= 12
         confidence = float(last["phase_effective"].get("confidence", 0.0))
         assert 0.0 <= confidence <= 1.0
@@ -193,8 +198,7 @@ def test_e2e_corrupted_state_normalized(monkeypatch, tmp_path):
     with trace_guard(tmp_path, "corrupted_state", trace, graph_states):
         last = trace[-1]
         assert last["validation_issues"]["progress_in"]
-        assert_progress_invariants(last["progress_state"])
-        assert_policy_decision_invariants(last["policy_decision"], available_policy_ids())
+        _assert_trace_invariants(trace, graph_states)
 
 
 def test_e2e_planner_defective_outputs(monkeypatch, tmp_path):
@@ -221,7 +225,7 @@ def test_e2e_planner_defective_outputs(monkeypatch, tmp_path):
         first = graph_states[0]
         assert first["planner_meta"].get("policy_normalization_changed", False) is True
         assert first["phase_effective"]["phase"] == "opening"
-        assert_policy_decision_invariants(first["policy_decision"], available_policy_ids())
+        assert_policy_decision_invariants(first["policy_decision"], first["allowed_policy_ids"])
 
         second = graph_states[1]
         assert second["planner_meta"]["planner_failed"] is True
@@ -248,6 +252,7 @@ def test_e2e_phase_hysteresis_hold(monkeypatch, tmp_path):
         assert graph_states[0]["phase_effective"]["phase"] == "opening"
         assert graph_states[1]["phase_meta"]["phase_hysteresis_held"] is True
         assert graph_states[1]["phase_effective"]["phase"] == "opening"
+        _assert_trace_invariants(trace, graph_states)
 
 
 def test_e2e_continue_policy_skips_planner(monkeypatch, tmp_path):
@@ -255,6 +260,8 @@ def test_e2e_continue_policy_skips_planner(monkeypatch, tmp_path):
     llm = FakeLLM(executor_script=ExecutorScript())
     deps = DepsHarness(planner, llm)
     state = SessionState(user_id="u", session_id="s")
+    state.world_state = default_world_state()
+    state.world_state["negotiation"]["other_buyer_claimed"] = True
     progress = default_progress_state()
     progress["policy_state"] = {
         "status": "active",
@@ -280,6 +287,7 @@ def test_e2e_continue_policy_skips_planner(monkeypatch, tmp_path):
         assert meta["planner_skipped"] is True
         assert meta["planner_skip_reason"] == "continue_policy"
         assert graph_states[0]["phase_effective"]["phase"] == "opening"
+        _assert_trace_invariants(trace, graph_states)
 
 
 def test_e2e_choose_and_replan_calls_planner(monkeypatch, tmp_path):
@@ -321,6 +329,8 @@ def test_e2e_choose_and_replan_calls_planner(monkeypatch, tmp_path):
         assert len(planner.calls) == 2
         assert graph_states[0]["planner_meta"]["planner_skipped"] is False
         assert graph_states2[0]["planner_meta"]["planner_skipped"] is False
+        _assert_trace_invariants(trace, graph_states)
+        _assert_trace_invariants(trace2[-len(graph_states2):], graph_states2)
 
 
 def test_e2e_policy_required_inputs_gate(monkeypatch, tmp_path):
@@ -342,6 +352,86 @@ def test_e2e_policy_required_inputs_gate(monkeypatch, tmp_path):
         second_allowed = graph_states[1]["allowed_policy_ids"]
         assert "tradeoff_offer" not in first_allowed
         assert "tradeoff_offer" in second_allowed
+        _assert_trace_invariants(trace, graph_states)
+
+
+def test_e2e_planner_policy_not_allowed_falls_back(monkeypatch, tmp_path):
+    planner = PlannerScript(responses=[_planner_response("opening", "test_credibility")])
+    llm = FakeLLM(executor_script=ExecutorScript())
+    deps = DepsHarness(planner, llm)
+
+    _state, trace, graph_states = simulate_conversation(
+        ["hola"],
+        deps,
+        initial_state=_negotiation_state(),
+        monkeypatch=monkeypatch,
+        graph_module=negotiation_graph,
+    )
+
+    with trace_guard(tmp_path, "policy_not_allowed", trace, graph_states):
+        first_allowed = graph_states[0]["allowed_policy_ids"]
+        assert "test_credibility" not in first_allowed
+        assert graph_states[0]["planner_meta"]["policy_normalization_changed"] is True
+        assert graph_states[0]["policy_decision"]["policy_id"] in first_allowed
+        _assert_trace_invariants(trace, graph_states)
+
+
+def test_e2e_boolean_slot_false_not_counted(monkeypatch, tmp_path):
+    planner = PlannerScript(responses=[_planner_response("opening", "test_credibility")])
+    llm = FakeLLM(executor_script=ExecutorScript())
+    deps = DepsHarness(planner, llm)
+    state = _negotiation_state()
+    state.world_state = default_world_state()
+    state.world_state["negotiation"]["other_buyer_claimed"] = True
+    state.progress_state["policy_state"] = {
+        "status": "active",
+        "policy_id": "test_credibility",
+        "step_idx": 0,
+        "step_attempts": 0,
+        "max_attempts_per_step": 2,
+        "started_turn": 0,
+        "last_turn": 0,
+        "no_progress_turns": 0,
+        "planner_request": "continue_policy",
+        "slots_required": ["negotiation.evidence_offered"],
+        "slots_filled": {},
+    }
+
+    _state, trace, graph_states = simulate_conversation(
+        ["ok"],
+        deps,
+        initial_state=state,
+        monkeypatch=monkeypatch,
+        graph_module=negotiation_graph,
+    )
+
+    with trace_guard(tmp_path, "bool_slot_false", trace, graph_states):
+        slots_filled = graph_states[0]["progress_state"]["policy_state"]["slots_filled"]
+        assert "negotiation.evidence_offered" not in slots_filled
+        assert graph_states[0]["progress_state"]["policy_state"]["step_idx"] == 0
+        _assert_trace_invariants(trace, graph_states)
+
+
+def test_e2e_executor_invalid_json_no_step_advance(monkeypatch, tmp_path):
+    planner = PlannerScript(responses=[_planner_response("opening", "test_credibility")])
+    executor_script = ExecutorScript(outputs=["{bad json"] * 3)
+    llm = FakeLLM(executor_script=executor_script)
+    deps = DepsHarness(planner, llm)
+
+    _state, trace, graph_states = simulate_conversation(
+        ["ok", "ok", "ok"],
+        deps,
+        initial_state=_negotiation_state(),
+        monkeypatch=monkeypatch,
+        graph_module=negotiation_graph,
+    )
+
+    with trace_guard(tmp_path, "executor_invalid_json", trace, graph_states):
+        step_idxs = [gs["progress_state"]["policy_state"]["step_idx"] for gs in graph_states]
+        assert step_idxs == sorted(step_idxs)
+        assert all(step_idx == 0 for step_idx in step_idxs)
+        assert all(gs["policy_meta"]["transition"] != "advance" for gs in graph_states)
+        _assert_trace_invariants(trace, graph_states)
 
 
 def test_intent_hint_compat_priority():
@@ -374,6 +464,7 @@ def test_planner_does_not_use_rag(monkeypatch, tmp_path):
 
     with trace_guard(tmp_path, "no_rag", trace, graph_states):
         assert graph_states[0]["planner_meta"]["planner_failed"] is False
+        _assert_trace_invariants(trace, graph_states)
 
 
 def test_e2e_monkey_run_randomized(monkeypatch, tmp_path):
@@ -400,7 +491,6 @@ def test_e2e_monkey_run_randomized(monkeypatch, tmp_path):
 
     with trace_guard(tmp_path, "monkey_run", trace, graph_states):
         last = trace[-1]
-        assert_progress_invariants(last["progress_state"])
-        assert_policy_decision_invariants(last["policy_decision"], available_policy_ids())
+        _assert_trace_invariants(trace, graph_states)
         assert len(trace) == len(turns)
         assert planner.calls

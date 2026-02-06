@@ -91,13 +91,30 @@ class FakeLLM:
         self.current_user_message = message
 
     def execute(self, messages: Any) -> str:
-        if messages and isinstance(messages[0], dict):
-            content = messages[-1].get("content", "")
-            self.world_calls.append(content)
+        message_list = list(messages or [])
+        message_texts = [self._message_text(item) for item in message_list]
+        if self._is_world_extractor_prompt(message_texts):
+            self.world_calls.append(message_texts[-1] if message_texts else "")
             return self._world_response()
-        prompt = messages[-1].content if messages else ""
+        prompt = message_texts[-1] if message_texts else ""
         self.executor_calls.append(prompt)
         return self.executor_script(prompt, self.current_user_message)
+
+    def _message_text(self, message: Any) -> str:
+        if isinstance(message, dict):
+            return str(message.get("content", ""))
+        if hasattr(message, "content"):
+            return str(getattr(message, "content"))
+        return str(message or "")
+
+    def _is_world_extractor_prompt(self, message_texts: list[str]) -> bool:
+        signature_tokens = (
+            "world_extractor_v3",
+            "Extract structured updates for world_state",
+            "strict JSON extractor",
+        )
+        joined = "\n".join(message_texts)
+        return any(token in joined for token in signature_tokens)
 
     def _world_response(self) -> str:
         message = (self.current_user_message or "").lower()
