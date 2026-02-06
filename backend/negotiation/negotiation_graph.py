@@ -496,6 +496,7 @@ def run_negotiation_agent(
             "override_policy_id": new_graph_state.get("override_policy_id"),
             "override_reason": new_graph_state.get("override_reason"),
             "progress_state": new_progress_state,
+            # Legacy intent fields retained for backward compatibility with older traces.
             "intent_prev": new_graph_state.get("planner_meta", {}).get("intent_meta", {}).get(
                 "intent_prev", {}
             ),

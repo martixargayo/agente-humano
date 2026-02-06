@@ -1,0 +1,163 @@
+from __future__ import annotations
+
+from negotiation.nodes.planner_node import phase_policy_planner_node
+from negotiation.policy_progress import update_policy_state
+from negotiation.progress_updater import update_progress_state
+from negotiation.schemas import (
+    default_belief_state,
+    default_policy_decision,
+    default_policy_state,
+    default_progress_state,
+    default_world_state,
+)
+from negotiation.state.deps import AgentDeps
+
+
+def test_progress_updater_aligns_policy_state_on_new_policy():
+    prev_progress = default_progress_state()
+    prev_progress["policy_state"] = {
+        **default_policy_state(),
+        "status": "active",
+        "policy_id": "rapport_build",
+    }
+    decision = default_policy_decision()
+    decision["policy_id"] = "test_credibility"
+
+    progress = update_progress_state(
+        prev_progress=prev_progress,
+        policy_decision=decision,
+        last_policy_executed=None,
+        prev_world_state=default_world_state(),
+        world_state=default_world_state(),
+        prev_belief_state=None,
+        belief_state=default_belief_state(),
+        turn_count=2,
+    )
+
+    assert progress["policy_state"]["policy_id"] == "test_credibility"
+
+
+def test_progress_updater_atomic_policy_stays_inactive():
+    decision = default_policy_decision()
+    decision["policy_id"] = "safe_neutral"
+
+    progress = update_progress_state(
+        prev_progress=default_progress_state(),
+        policy_decision=decision,
+        last_policy_executed=None,
+        prev_world_state=default_world_state(),
+        world_state=default_world_state(),
+        prev_belief_state=None,
+        belief_state=default_belief_state(),
+        turn_count=1,
+    )
+
+    assert progress["policy_state"]["status"] == "inactive"
+    assert progress["policy_state"]["planner_request"] == "choose_policy"
+
+
+def test_policy_hint_uses_current_step_next_action_hint():
+    policy_state = {
+        **default_policy_state(),
+        "status": "active",
+        "policy_id": "test_credibility",
+        "step_idx": 0,
+    }
+
+    updated_state, policy_hint, _meta = update_policy_state(
+        prev_policy_state=policy_state,
+        world_state=default_world_state(),
+        world_diff={},
+        belief_state=default_belief_state(),
+        belief_diff={},
+        progress_state=default_progress_state(),
+        user_message="",
+        turn_count=3,
+        last_policy_executed=None,
+    )
+
+    assert updated_state["policy_id"] == "test_credibility"
+    assert policy_hint["next_action_hint"] == "Solicita datos verificables de la supuesta oferta."
+
+
+def test_policy_progress_never_switches_policy_id_when_replanning():
+    policy_state = {
+        **default_policy_state(),
+        "status": "active",
+        "policy_id": "test_credibility",
+        "step_idx": 0,
+        "step_attempts": 2,
+    }
+
+    updated_state, _hint, _meta = update_policy_state(
+        prev_policy_state=policy_state,
+        world_state=default_world_state(),
+        world_diff={},
+        belief_state=default_belief_state(),
+        belief_diff={},
+        progress_state=default_progress_state(),
+        user_message="",
+        turn_count=4,
+        last_policy_executed=None,
+    )
+
+    assert updated_state["policy_id"] == "test_credibility"
+    assert updated_state["planner_request"] in {"continue_policy", "replan_policy"}
+
+
+def test_planner_skips_when_continue_policy_and_calls_when_replan():
+    called = {"planner": 0}
+
+    def fake_plan_phase_policy(**_kwargs):
+        called["planner"] += 1
+        decision = default_policy_decision()
+        decision["policy_id"] = "safe_neutral"
+        phase_candidate = {
+            "phase": "opening",
+            "confidence": 0.5,
+            "reasons": ["history:mock"],
+            "signals": [],
+            "alternatives": [],
+        }
+        return phase_candidate, decision, {"planner_meta": {"mock": True}}
+
+    deps = AgentDeps(
+        plan_phase_policy=fake_plan_phase_policy,
+        update_belief_state=lambda **_kwargs: (default_belief_state(), {}),
+        execute=lambda _messages: "ok",
+    )
+
+    state = {
+        "deps": deps,
+        "objective": "test",
+        "world_state": default_world_state(),
+        "belief_state": default_belief_state(),
+        "progress_state": default_progress_state(),
+        "hard_constraints_struct": {},
+        "constraints": "",
+        "recent_history_text": "",
+        "world_diff": {},
+        "turn_count": 1,
+    }
+    state["progress_state"]["policy_state"] = {
+        **default_policy_state(),
+        "status": "active",
+        "policy_id": "test_credibility",
+        "step_idx": 0,
+        "planner_request": "continue_policy",
+    }
+
+    phase_policy_planner_node(dict(state))
+    assert called["planner"] == 0
+
+    replan_state = dict(state)
+    replan_state["progress_state"] = default_progress_state()
+    replan_state["progress_state"]["policy_state"] = {
+        **default_policy_state(),
+        "status": "active",
+        "policy_id": "test_credibility",
+        "step_idx": 0,
+        "planner_request": "replan_policy",
+    }
+    phase_policy_planner_node(replan_state)
+    assert called["planner"] == 1
