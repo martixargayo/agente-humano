@@ -20,6 +20,7 @@ const DebugEditor = {
   dpr: 1,
   dragging: null,
   hoverKey: null,
+  activeTouchId: null,
   raycaster: new THREE.Raycaster(),
   plane: new THREE.Plane(new THREE.Vector3(0, 0, 1), 0), // z=0
   handlesRadius: 10,
@@ -140,6 +141,7 @@ window.addEventListener('keydown', (e) => {
 let audioCtx = null;
 let analyser = null;
 let analyserData = null;
+let audioAnalyserConnected = false;
 let lastAudioDebugLog = 0;
 let lastMissingAnalyserLog = 0;
 let silentFrameCount = 0;
@@ -167,6 +169,24 @@ const LipsyncConfig = {
   floorSpeaking: 0.12, // mínima apertura cuando hay voz clara
 };
 
+const RendererTuning = {
+  maxDevicePixelRatio: Math.min(3, Math.max(1, Number.parseFloat(URL_PARAMS.get('maxDpr')) || 2)),
+};
+
+async function ensureAudioContextReady(context = getOrCreateAudioContext()) {
+  if (!context || context.state === 'closed') {
+    context = getOrCreateAudioContext();
+  }
+  if (context.state === 'suspended') {
+    try {
+      await context.resume();
+    } catch (err) {
+      if (AudioDebug.enabled) console.warn('[audio-debug] No se pudo reanudar AudioContext', err);
+    }
+  }
+  return context;
+}
+
 // === NUEVO: helper para un AudioContext global y reutilizable ===
 function getOrCreateAudioContext() {
   if (!audioCtx || audioCtx.state === 'closed') {
@@ -185,6 +205,12 @@ function cleanupAudio() {
     }
     audioSource = null;
   }
+  if (analyser && audioAnalyserConnected) {
+    try { analyser.disconnect(); } catch (err) {
+      if (AudioDebug.enabled) console.warn('[audio-debug] Error al desconectar analyser', err);
+    }
+  }
+  audioAnalyserConnected = false;
   analyser = null;
   analyserData = null;
   silentFrameCount = 0;
@@ -202,9 +228,29 @@ const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerH
 camera.position.set(0, 0.25, 1.9);
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(window.devicePixelRatio);
-renderer.setSize(window.innerWidth, window.innerHeight);
+function applyRendererSizing() {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  const dpr = Math.min(window.devicePixelRatio || 1, RendererTuning.maxDevicePixelRatio);
+  renderer.setPixelRatio(dpr);
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+
+applyRendererSizing();
 console.info('[three] maxAttributes:', renderer.capabilities.maxAttributes);
+
+canvas.addEventListener('webglcontextlost', (e) => {
+  e.preventDefault();
+  console.error('[three] WebGL context perdido.');
+  setStatusText('Render pausado (GPU). Intentando recuperar…');
+});
+
+canvas.addEventListener('webglcontextrestored', () => {
+  console.info('[three] WebGL context restaurado.');
+  setStatusText('Render recuperado.');
+});
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
@@ -1184,12 +1230,16 @@ loader.load(
 // 5. Resize
 // =========================
 window.addEventListener('resize', () => {
-  const w = window.innerWidth;
-  const h = window.innerHeight;
-  camera.aspect = w / h;
-  camera.updateProjectionMatrix();
-  renderer.setSize(w, h);
+  applyRendererSizing();
   resizeDebugEditorOverlay();
+  if (DebugEditor.dragging) onDebugEditorUp();
+});
+
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState !== 'visible') return;
+  if (AvatarState.mode === 'SPEAKING' || AvatarState.mode === 'LISTENING') {
+    await ensureAudioContextReady();
+  }
 });
 
 // =========================
@@ -1258,7 +1308,7 @@ async function warmupFrontendTts() {
     source.connect(gain);
     gain.connect(ctx.destination);
 
-    await ctx.resume();
+    await ensureAudioContextReady(ctx);
 
     const startTime = ctx.currentTime + 0.05;
     source.start(startTime);
@@ -1372,8 +1422,9 @@ async function playAudioFromAudioData(
 
   audioSource.connect(analyser);
   analyser.connect(ctx.destination);
+  audioAnalyserConnected = true;
 
-  await ctx.resume();
+  await ensureAudioContextReady(ctx);
 
   setMode('SPEAKING');
   AvatarState.emotion = emotion;
@@ -1497,13 +1548,23 @@ function getTalkLevelFromAudio(dt) {
     return 0;
   }
 
-  analyser.getByteTimeDomainData(analyserData);
+  try {
+    analyser.getByteTimeDomainData(analyserData);
+  } catch (err) {
+    if (AudioDebug.enabled) console.warn('[audio-debug] Falló lectura del analyser', err);
+    lipsyncLevel = 0;
+    return 0;
+  }
   let sum = 0;
   for (let i = 0; i < analyserData.length; i++) {
     const v = analyserData[i] / 128 - 1;
     sum += v * v;
   }
   const rms = Math.sqrt(sum / analyserData.length);
+  if (!Number.isFinite(rms)) {
+    lipsyncLevel = 0;
+    return 0;
+  }
   const intensity = AvatarState.speechIntensity || 1.0;
 
   const minRms = AudioDebug.minRms;
@@ -1535,6 +1596,8 @@ function getTalkLevelFromAudio(dt) {
   const speed = target > lipsyncLevel ? LipsyncConfig.attack : LipsyncConfig.release;
   const smoothing = 1 - Math.exp(-Math.max(dt, 1e-4) * speed);
   lipsyncLevel += (target - lipsyncLevel) * smoothing;
+  if (!Number.isFinite(lipsyncLevel)) lipsyncLevel = 0;
+  lipsyncLevel = clamp01(lipsyncLevel);
 
   if (AudioDebug.enabled) {
     debugStats.frames += 1;
@@ -2092,9 +2155,25 @@ let waveAudioCtx = null;
 let waveAnalyser = null;
 let waveDataArray = null;
 let waveAnimationId = null;
-let recorderMimeType = 'audio/webm;codecs=opus';
+let waveMicSource = null;
+let recorderMimeType = '';
+let stopRecorderFallbackId = null;
 let discardRecording = false;
 let orbLevel = 0;
+
+function pickSupportedRecorderMimeType() {
+  if (typeof window.MediaRecorder === 'undefined') return '';
+  const preferred = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/mp4;codecs=mp4a.40.2',
+    'audio/mp4',
+  ];
+  for (const mime of preferred) {
+    if (MediaRecorder.isTypeSupported(mime)) return mime;
+  }
+  return '';
+}
 
 function computeIdlePulse(timeMs) {
   return 0.08 * (0.5 + 0.5 * Math.sin((timeMs * 2 * Math.PI) / 3800));
@@ -2144,6 +2223,16 @@ function stopInputOrb() {
 function teardownMic() {
   stopInputOrb();
 
+  if (stopRecorderFallbackId) {
+    clearTimeout(stopRecorderFallbackId);
+    stopRecorderFallbackId = null;
+  }
+
+  if (waveMicSource) {
+    try { waveMicSource.disconnect(); } catch (_) {}
+    waveMicSource = null;
+  }
+
   waveAudioCtx = null;
 
   try { if (audioStream) audioStream.getTracks().forEach((t) => t.stop()); } catch (_) {}
@@ -2157,7 +2246,16 @@ async function startRecording() {
   if (!navigator.mediaDevices?.getUserMedia) {
     throw new Error('getUserMedia no soportado');
   }
+  if (typeof window.MediaRecorder === 'undefined') {
+    throw new Error('MediaRecorder no soportado en este navegador. Usa modo Escribir.');
+  }
 
+  recorderMimeType = pickSupportedRecorderMimeType();
+  if (!recorderMimeType) {
+    throw new Error('No hay formato de grabación compatible. Usa modo Escribir.');
+  }
+
+  teardownMic();
   discardRecording = false;
   audioStream = await navigator.mediaDevices.getUserMedia({
     audio: {
@@ -2167,10 +2265,6 @@ async function startRecording() {
     },
   });
 
-  recorderMimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-    ? 'audio/webm;codecs=opus'
-    : 'audio/webm';
-
   mediaRecorder = new MediaRecorder(audioStream, { mimeType: recorderMimeType });
   audioChunks = [];
 
@@ -2179,6 +2273,11 @@ async function startRecording() {
   };
 
   mediaRecorder.onstop = async () => {
+    if (stopRecorderFallbackId) {
+      clearTimeout(stopRecorderFallbackId);
+      stopRecorderFallbackId = null;
+    }
+
     const blob = new Blob(audioChunks, { type: recorderMimeType });
     audioChunks = [];
 
@@ -2221,11 +2320,11 @@ async function startRecording() {
   }
 
   waveAudioCtx = getOrCreateAudioContext();
-  await waveAudioCtx.resume();
+  await ensureAudioContextReady(waveAudioCtx);
   waveAnalyser = waveAudioCtx.createAnalyser();
   waveAnalyser.fftSize = 1024;
-  const source = waveAudioCtx.createMediaStreamSource(audioStream);
-  source.connect(waveAnalyser);
+  waveMicSource = waveAudioCtx.createMediaStreamSource(audioStream);
+  waveMicSource.connect(waveAnalyser);
   waveDataArray = new Uint8Array(waveAnalyser.frequencyBinCount);
   ensureOrbLoop();
 }
@@ -2244,6 +2343,16 @@ function stopRecording() {
     } catch (err) {
       console.warn('[mic] Error al detener MediaRecorder', err);
       try { mediaRecorder.stop(); } catch (_) {}
+    }
+
+    if (!stopRecorderFallbackId) {
+      stopRecorderFallbackId = window.setTimeout(() => {
+        if (!isRecording) return;
+        console.warn('[mic] Timeout esperando onstop. Limpiando recursos.');
+        isRecording = false;
+        teardownMic();
+        if (AvatarState.mode !== 'SPEAKING' && AvatarState.mode !== 'THINKING') enterIdle();
+      }, 3500);
     }
   }
 
@@ -2313,6 +2422,16 @@ async function requestMicPermissions() {
 
 async function startConversation() {
   if (ui.permissionError) ui.permissionError.textContent = '';
+
+  if (typeof window.MediaRecorder === 'undefined' || !pickSupportedRecorderMimeType()) {
+    setInputMode(InputMode.WRITE);
+    hasMicPermission = false;
+    if (ui.permissionOverlay) ui.permissionOverlay.style.display = 'none';
+    flashStatus('Modo voz no disponible en este navegador. Usa Escribir.');
+    enterIdle();
+    return;
+  }
+
   const ok = await requestMicPermissions();
   if (!ok) {
     if (ui.permissionError) {
@@ -2322,7 +2441,7 @@ async function startConversation() {
   }
 
   try {
-    await getOrCreateAudioContext().resume();
+    await ensureAudioContextReady();
     warmupFrontendTts();
   } catch (_) {}
 
@@ -2512,6 +2631,7 @@ function initDebugEditorOverlay() {
   overlay.addEventListener('touchstart', onDebugEditorTouchStart, { passive: false });
   overlay.addEventListener('touchmove', onDebugEditorTouchMove, { passive: false });
   overlay.addEventListener('touchend', onDebugEditorTouchEnd, { passive: false });
+  overlay.addEventListener('touchcancel', onDebugEditorTouchCancel, { passive: false });
 
   resizeDebugEditorOverlay();
   setDebugEditorVisible(true);
@@ -2569,13 +2689,33 @@ function copyTuningJson() {
     navigator.clipboard.writeText(text).then(() => {
       console.info('[debug-editor] JSON copiado al portapapeles.');
     }).catch(() => {
-      console.info('[debug-editor] Copia manual:\n', text);
+      fallbackCopyToClipboard(text);
     });
   } else {
-    console.info('[debug-editor] Copia manual:\n', text);
+    fallbackCopyToClipboard(text);
   }
 }
 
+function fallbackCopyToClipboard(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.setAttribute('readonly', '');
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  let copied = false;
+  try {
+    copied = document.execCommand('copy');
+  } catch (_) {}
+  document.body.removeChild(ta);
+  if (copied) {
+    console.info('[debug-editor] JSON copiado (fallback).');
+  } else {
+    console.info('[debug-editor] Copia manual:
+', text);
+  }
+}
 function resetTuningGroup(group) {
   const d = DebugEditor.defaults;
   if (!d) return;
@@ -2808,7 +2948,13 @@ function onDebugEditorUp() {
 function onDebugEditorTouchStart(e) {
   if (!DebugEditor.visible) return;
   if (!e.touches?.length) return;
+  if (e.touches.length > 1) {
+    onDebugEditorUp();
+    e.preventDefault();
+    return;
+  }
   const t = e.touches[0];
+  DebugEditor.activeTouchId = t.identifier;
   onDebugEditorDown({ clientX: t.clientX, clientY: t.clientY, preventDefault: () => {} });
   e.preventDefault();
 }
@@ -2816,12 +2962,28 @@ function onDebugEditorTouchStart(e) {
 function onDebugEditorTouchMove(e) {
   if (!DebugEditor.visible) return;
   if (!e.touches?.length) return;
-  const t = e.touches[0];
+  if (e.touches.length > 1) {
+    onDebugEditorUp();
+    e.preventDefault();
+    return;
+  }
+  const t = Array.from(e.touches).find((touch) => touch.identifier === DebugEditor.activeTouchId) || e.touches[0];
   onDebugEditorMove({ clientX: t.clientX, clientY: t.clientY, preventDefault: () => {} });
   e.preventDefault();
 }
 
 function onDebugEditorTouchEnd(e) {
+  if (e.changedTouches?.length) {
+    const released = Array.from(e.changedTouches).some((t) => t.identifier === DebugEditor.activeTouchId);
+    if (!released) return;
+  }
+  DebugEditor.activeTouchId = null;
+  onDebugEditorUp(e);
+  e.preventDefault();
+}
+
+function onDebugEditorTouchCancel(e) {
+  DebugEditor.activeTouchId = null;
   onDebugEditorUp(e);
   e.preventDefault();
 }
