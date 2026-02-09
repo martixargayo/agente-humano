@@ -8,6 +8,8 @@ import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js'
 // =========================
 const URL_PARAMS = new URLSearchParams(window.location.search);
 const DEBUG_EDIT_ENABLED = URL_PARAMS.get('debugEdit') === '1';
+const ENABLE_CAM_CONTROLS = URL_PARAMS.get('camControls') !== '0';
+const ENABLE_CAM_KEYBOARD = URL_PARAMS.get('camKeys') !== '0';
 
 // ============================================================================
 // ✅ Debug Editor state (DEBE existir antes de animate() y keydown)
@@ -136,6 +138,24 @@ window.addEventListener('keydown', (e) => {
       resetTuningGroup(DebugEditor.regionGroup);
     }
   }
+
+  if (ENABLE_CAM_CONTROLS && ENABLE_CAM_KEYBOARD && !isTypingTarget(e.target)) {
+    const key = e.key.toLowerCase();
+    if (['arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'w', 'a', 's', 'd'].includes(key)) {
+      camKeyState.add(key);
+      e.preventDefault();
+    }
+  }
+});
+
+window.addEventListener('keyup', (e) => {
+  if (!ENABLE_CAM_CONTROLS || !ENABLE_CAM_KEYBOARD) return;
+  if (isTypingTarget(e.target)) return;
+  const key = e.key.toLowerCase();
+  if (['arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'w', 'a', 's', 'd'].includes(key)) {
+    camKeyState.delete(key);
+    e.preventDefault();
+  }
 });
 
 let audioCtx = null;
@@ -256,6 +276,44 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.target.set(0, 0.2, 0);
+controls.enabled = ENABLE_CAM_CONTROLS;
+controls.enableRotate = ENABLE_CAM_CONTROLS;
+controls.enableZoom = ENABLE_CAM_CONTROLS;
+controls.enablePan = ENABLE_CAM_CONTROLS;
+controls.mouseButtons = {
+  LEFT: THREE.MOUSE.ROTATE,
+  MIDDLE: THREE.MOUSE.DOLLY,
+  RIGHT: THREE.MOUSE.PAN,
+};
+
+renderer.domElement.addEventListener('contextmenu', (e) => {
+  if (ENABLE_CAM_CONTROLS) e.preventDefault();
+});
+
+const camKeyState = new Set();
+const CAM_KEY_ROTATE_SPEED = 1.1;
+
+function isTypingTarget(target) {
+  if (!target) return false;
+  const tagName = target.tagName?.toLowerCase();
+  return tagName === 'input' || tagName === 'textarea' || target.isContentEditable;
+}
+
+function applyKeyboardCamera(delta) {
+  if (!ENABLE_CAM_CONTROLS || !ENABLE_CAM_KEYBOARD || !controls.enabled) return;
+  if (!camKeyState.size) return;
+  const step = CAM_KEY_ROTATE_SPEED * delta;
+  let azimuth = 0;
+  let polar = 0;
+
+  if (camKeyState.has('arrowleft') || camKeyState.has('a')) azimuth += step;
+  if (camKeyState.has('arrowright') || camKeyState.has('d')) azimuth -= step;
+  if (camKeyState.has('arrowup') || camKeyState.has('w')) polar += step;
+  if (camKeyState.has('arrowdown') || camKeyState.has('s')) polar -= step;
+
+  if (azimuth !== 0) controls.rotateLeft(azimuth);
+  if (polar !== 0) controls.rotateUp(polar);
+}
 
 const keyLight = new THREE.DirectionalLight(0xffffff, 0.9);
 keyLight.position.set(2, 4, 3);
@@ -2011,7 +2069,8 @@ function animate() {
     particlePoints.position.set(0, 0, 0);
   }
 
-  controls.update();
+  applyKeyboardCamera(delta);
+  if (ENABLE_CAM_CONTROLS) controls.update();
   renderer.render(scene, camera);
 
   if (DebugEditor && DebugEditor.visible) drawDebugEditorOverlay();
@@ -2581,7 +2640,7 @@ function setDebugEditorVisible(v) {
   DebugEditor.visible = !!v;
   DebugEditor.overlay.style.display = DebugEditor.visible ? 'block' : 'none';
   if (DebugEditor.infoEl) DebugEditor.infoEl.style.display = DebugEditor.visible ? 'block' : 'none';
-  DebugEditor.overlay.style.pointerEvents = DebugEditor.visible ? 'auto' : 'none';
+  DebugEditor.overlay.style.pointerEvents = 'none';
 }
 
 function initDebugEditorOverlay() {
@@ -2608,7 +2667,7 @@ function initDebugEditorOverlay() {
     width: '100vw',
     height: '100vh',
     zIndex: '9999',
-    pointerEvents: 'auto',
+    pointerEvents: 'none',
   });
 
   document.body.appendChild(overlay);
@@ -2643,14 +2702,17 @@ function initDebugEditorOverlay() {
   document.body.appendChild(info);
   DebugEditor.infoEl = info;
 
-  overlay.addEventListener('mousemove', onDebugEditorMove);
-  overlay.addEventListener('mousedown', onDebugEditorDown);
-  window.addEventListener('mouseup', onDebugEditorUp);
+  if (!DebugEditor.eventHandlersBound) {
+    DebugEditor.eventHandlersBound = true;
+    window.addEventListener('mousemove', onDebugEditorMove, { capture: true });
+    window.addEventListener('mousedown', onDebugEditorDown, { capture: true });
+    window.addEventListener('mouseup', onDebugEditorUp, { capture: true });
 
-  overlay.addEventListener('touchstart', onDebugEditorTouchStart, { passive: false });
-  overlay.addEventListener('touchmove', onDebugEditorTouchMove, { passive: false });
-  overlay.addEventListener('touchend', onDebugEditorTouchEnd, { passive: false });
-  overlay.addEventListener('touchcancel', onDebugEditorTouchCancel, { passive: false });
+    window.addEventListener('touchstart', onDebugEditorTouchStart, { passive: false, capture: true });
+    window.addEventListener('touchmove', onDebugEditorTouchMove, { passive: false, capture: true });
+    window.addEventListener('touchend', onDebugEditorTouchEnd, { passive: false, capture: true });
+    window.addEventListener('touchcancel', onDebugEditorTouchCancel, { passive: false, capture: true });
+  }
 
   resizeDebugEditorOverlay();
   setDebugEditorVisible(true);
@@ -2914,12 +2976,12 @@ function applyDrag(key, worldPoint, startPoint, startSnapshot) {
 }
 
 function onDebugEditorDown(e) {
-  if (!DebugEditor.visible) return;
+  if (!DebugEditor.visible) return false;
   const key = pickHandle(e.clientX, e.clientY);
-  if (!key) return;
+  if (!key) return false;
 
   const p = rayToPlane(e.clientX, e.clientY);
-  if (!p) return;
+  if (!p) return false;
 
   DebugEditor.dragging = {
     key,
@@ -2937,7 +2999,9 @@ function onDebugEditorDown(e) {
   };
 
   controls.enabled = false;
-  e.preventDefault();
+  e.preventDefault?.();
+  e.stopPropagation?.();
+  return true;
 }
 
 function onDebugEditorMove(e) {
@@ -2953,13 +3017,16 @@ function onDebugEditorMove(e) {
   if (!p) return;
 
   applyDrag(key, p, startPoint, startSnapshot);
-  e.preventDefault();
+  e.preventDefault?.();
+  e.stopPropagation?.();
 }
 
-function onDebugEditorUp() {
+function onDebugEditorUp(e) {
   if (!DebugEditor.dragging) return;
   DebugEditor.dragging = null;
-  controls.enabled = true;
+  controls.enabled = ENABLE_CAM_CONTROLS;
+  e?.preventDefault?.();
+  e?.stopPropagation?.();
   scheduleRecomputeMasks('drag:final', { immediate: true });
 }
 
@@ -2973,8 +3040,16 @@ function onDebugEditorTouchStart(e) {
   }
   const t = e.touches[0];
   DebugEditor.activeTouchId = t.identifier;
-  onDebugEditorDown({ clientX: t.clientX, clientY: t.clientY, preventDefault: () => {} });
-  e.preventDefault();
+  const didStart = onDebugEditorDown({
+    clientX: t.clientX,
+    clientY: t.clientY,
+    preventDefault: () => {},
+    stopPropagation: () => {},
+  });
+  if (didStart) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
 }
 
 function onDebugEditorTouchMove(e) {
@@ -2986,8 +3061,16 @@ function onDebugEditorTouchMove(e) {
     return;
   }
   const t = Array.from(e.touches).find((touch) => touch.identifier === DebugEditor.activeTouchId) || e.touches[0];
-  onDebugEditorMove({ clientX: t.clientX, clientY: t.clientY, preventDefault: () => {} });
-  e.preventDefault();
+  onDebugEditorMove({
+    clientX: t.clientX,
+    clientY: t.clientY,
+    preventDefault: () => {},
+    stopPropagation: () => {},
+  });
+  if (DebugEditor.dragging) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
 }
 
 function onDebugEditorTouchEnd(e) {
@@ -2998,12 +3081,14 @@ function onDebugEditorTouchEnd(e) {
   DebugEditor.activeTouchId = null;
   onDebugEditorUp(e);
   e.preventDefault();
+  e.stopPropagation();
 }
 
 function onDebugEditorTouchCancel(e) {
   DebugEditor.activeTouchId = null;
   onDebugEditorUp(e);
   e.preventDefault();
+  e.stopPropagation();
 }
 
 function drawHandle(ctx, key, color, filled, clientX, clientY) {
