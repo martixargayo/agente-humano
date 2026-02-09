@@ -1415,7 +1415,7 @@ async function playAudioFromAudioData(
   analyser = ctx.createAnalyser();
   analyser.fftSize = 512;
   analyser.smoothingTimeConstant = 0.4;
-  analyserData = new Uint8Array(analyser.frequencyBinCount);
+  analyserData = new Uint8Array(analyser.fftSize);
 
   audioSource = ctx.createBufferSource();
   audioSource.buffer = audioBuffer;
@@ -1502,6 +1502,9 @@ async function enterSpeaking(replyText, { emotion = 'neutral', intensity = 1.0 }
 }
 
 async function enterListening() {
+  if (DEBUG_EDIT_ENABLED) {
+    return enterIdle();
+  }
   if (currentInputMode !== InputMode.TALK) {
     return enterIdle();
   }
@@ -2037,6 +2040,7 @@ const ui = {
   agentNegotiation: document.getElementById('agentNegotiation'),
   textInput: document.getElementById('textInput'),
   sendTextBtn: document.getElementById('sendTextBtn'),
+  bottomBar: document.querySelector('.bottom-bar'),
 };
 
 let statusResetId = null;
@@ -2405,6 +2409,9 @@ async function sendTextTurn(message) {
 }
 
 async function requestMicPermissions() {
+  if (DEBUG_EDIT_ENABLED) {
+    return false;
+  }
   if (!navigator.mediaDevices?.getUserMedia) {
     return false;
   }
@@ -2421,6 +2428,10 @@ async function requestMicPermissions() {
 }
 
 async function startConversation() {
+  if (DEBUG_EDIT_ENABLED) {
+    if (ui.permissionOverlay) ui.permissionOverlay.style.display = 'none';
+    return;
+  }
   if (ui.permissionError) ui.permissionError.textContent = '';
 
   if (typeof window.MediaRecorder === 'undefined' || !pickSupportedRecorderMimeType()) {
@@ -2495,6 +2506,14 @@ window.addEventListener('keydown', (e) => {
     finishUserTurn();
   }
 });
+
+if (DEBUG_EDIT_ENABLED) {
+  if (ui.permissionOverlay) ui.permissionOverlay.style.display = 'none';
+  if (ui.replyContainer) ui.replyContainer.classList.add('hidden');
+  if (ui.bottomBar) ui.bottomBar.style.display = 'none';
+  currentInputMode = InputMode.WRITE;
+  hasMicPermission = false;
+}
 
 setInputMode(currentInputMode);
 setAgentMode(currentAgentMode);
