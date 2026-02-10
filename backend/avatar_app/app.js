@@ -2,12 +2,14 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
+import { createDemoFeedbackMode } from './demo_feedback_mode.js';
 
 // =========================
 // URL params
 // =========================
 const URL_PARAMS = new URLSearchParams(window.location.search);
 const DEBUG_EDIT_ENABLED = URL_PARAMS.get('debugEdit') === '1';
+const demoFeedbackMode = createDemoFeedbackMode({ urlParams: URL_PARAMS });
 
 // =========================
 // Tema perceptual del avatar (dark/light)
@@ -1521,6 +1523,13 @@ const ui = {
   sendTextBtn: document.getElementById('sendTextBtn'),
 };
 
+const chatUiContainers = [
+  ui.replyContainer,
+  document.querySelector('.bottom-bar'),
+  ui.permissionOverlay,
+  ui.listeningGlow,
+].filter(Boolean);
+
 let statusResetId = null;
 
 function updateReplyText(text) {
@@ -1818,13 +1827,26 @@ async function transcribeAudio(blob) {
 }
 
 async function sendTextTurn(message) {
+  if (demoFeedbackMode.isFinished()) return;
+
   enterThinking();
   updateReplyText('…');
 
   try {
-    const { replyText, emotion, intensity } = await fetchAgentReply(message, { mode: currentAgentMode });
-    updateReplyText(replyText);
-    await enterSpeaking(replyText, { emotion, intensity });
+    const demoTurn = demoFeedbackMode.getReplyForTurn();
+    const turnReply = demoTurn.shouldSkipBackend
+      ? {
+          replyText: demoTurn.replyText,
+          emotion: demoTurn.emotion,
+          intensity: demoTurn.intensity,
+        }
+      : await fetchAgentReply(message, { mode: currentAgentMode });
+
+    updateReplyText(turnReply.replyText);
+    await enterSpeaking(turnReply.replyText, {
+      emotion: turnReply.emotion,
+      intensity: turnReply.intensity,
+    });
   } catch (err) {
     console.error('Error al hablar con el backend:', err);
     updateReplyText(err?.message || 'Error de red');
@@ -1916,6 +1938,17 @@ window.addEventListener('keydown', (e) => {
     e.preventDefault();
     finishUserTurn();
   }
+});
+
+demoFeedbackMode.mount({
+  hiddenContainers: chatUiContainers,
+  onFinish: () => {
+    stopInputOrb();
+    cancelRecording();
+    cleanupAudio();
+    setListeningGlowEnabled(false);
+    enterIdle();
+  },
 });
 
 setInputMode(currentInputMode);
