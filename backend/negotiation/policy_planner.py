@@ -1,8 +1,10 @@
 # backend/negotiation/policy_planner.py
 from __future__ import annotations
 
-from .elementos.strategy_definitions import PHASE_INDEX
+import os
 import warnings
+
+from .elementos.strategy_definitions import PHASE_INDEX
 
 from .policies import POLICIES, list_policy_ids, policy_phase_catalog, safe_neutral_policy_id
 from .legacy.intent_constraints import (
@@ -39,6 +41,47 @@ def _world_has_key(world_state: WorldState, key: str) -> bool:
     return key in world_state
 
 
+
+
+def _belief_value(belief_state: BeliefState, key: str):
+    cur: object = belief_state
+    for part in key.split("."):
+        if not isinstance(cur, dict):
+            return None
+        cur = cur.get(part)
+    return cur
+
+
+def _required_beliefs_met(policy_id: str, belief_state: BeliefState) -> bool:
+    policy = _POLICY_BY_ID.get(policy_id)
+    required = list(policy.required_beliefs or []) if policy else []
+    if not required:
+        return True
+    for cond in required:
+        key = str(cond.get("key", ""))
+        op = str(cond.get("op", "eq"))
+        val = cond.get("value")
+        cur = _belief_value(belief_state, key)
+        if op == "eq" and cur != val:
+            return False
+        if op == "neq" and cur == val:
+            return False
+        if op == "gte":
+            try:
+                if float(cur) < float(val):
+                    return False
+            except Exception:
+                return False
+        if op == "lte":
+            try:
+                if float(cur) > float(val):
+                    return False
+            except Exception:
+                return False
+        if op == "in":
+            if cur not in (val if isinstance(val, (list, tuple, set)) else [val]):
+                return False
+    return True
 def _phase_bonus(policy_phases: list[str], current_phase: str) -> int:
     if not policy_phases:
         return 0
@@ -143,7 +186,7 @@ def allowed_policy_ids_no_phase(
     progress_state: ProgressState,
     constraints_struct: dict | None = None,
 ) -> list[str]:
-    del belief_state, progress_state
+    del progress_state
     policy_ids = list_policy_ids()
     if not policy_ids:
         return [safe_neutral_policy_id()]
@@ -152,6 +195,7 @@ def allowed_policy_ids_no_phase(
         for policy_id in policy_ids
         if _required_inputs_met(policy_id, world_state)
         and not _violates_hard_constraints(policy_id, world_state, constraints_struct)
+        and (os.getenv("POLICY_REQUIRED_BELIEFS_ENABLED", "0") != "1" or _required_beliefs_met(policy_id, belief_state))
     ]
     return allowed or [safe_neutral_policy_id()]
 
@@ -193,8 +237,11 @@ def allowed_policy_ids(
     progress_state: ProgressState,
     constraints_struct: dict | None = None,
 ) -> list[str]:
-    del belief_state
-    return _allowed_policy_ids_minimal(world_state, progress_state, constraints_struct)
+    base = _allowed_policy_ids_minimal(world_state, progress_state, constraints_struct)
+    if os.getenv("POLICY_REQUIRED_BELIEFS_ENABLED", "0") != "1":
+        return base
+    filtered = [pid for pid in base if _required_beliefs_met(pid, belief_state)]
+    return filtered or [safe_neutral_policy_id()]
 
 
 def _preferred_policy_ids(intent_hint: IntentHint | None) -> list[str]:

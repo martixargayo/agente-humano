@@ -102,6 +102,19 @@ def _policy_plan_summary(progress_state: ProgressState) -> dict:
     return {"policy_id": policy_id, "steps": steps}
 
 
+
+
+def _belief_cues_governed(belief_state: BeliefState) -> dict:
+    uni = belief_state.get("universal", {}) if isinstance(belief_state, dict) else {}
+    guidance = uni.get("behavior_guidance", {}) if isinstance(uni, dict) else {}
+    dynamics = uni.get("dynamics", {}) if isinstance(uni, dict) else {}
+    negotiation = belief_state.get("negotiation", {}) if isinstance(belief_state, dict) else {}
+    return {
+        "behavior_guidance": guidance if isinstance(guidance, dict) else {},
+        "interaction_health": (dynamics or {}).get("interaction_health", "stable"),
+        "negotiation_stance": (negotiation or {}).get("stance", {}),
+        "negotiation_reasons": (negotiation or {}).get("reasons", {}),
+    }
 def plan_phase_policy(
     world_state: WorldState,
     world_diff: dict,
@@ -132,6 +145,7 @@ def plan_phase_policy(
         world_state=json.dumps(world_state, ensure_ascii=False),
         world_diff=json.dumps(world_diff or {}, ensure_ascii=False),
         belief_state=json.dumps(belief_state, ensure_ascii=False),
+        belief_cues=json.dumps(_belief_cues_governed(belief_state), ensure_ascii=False),
         policy_state=json.dumps(policy_state or {}, ensure_ascii=False),
         policy_plan_summary=json.dumps(
             policy_plan_summary or _policy_plan_summary(progress_state), ensure_ascii=False

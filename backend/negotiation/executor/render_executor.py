@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import Any, Dict, List
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -95,11 +96,11 @@ def summarize_belief_state_for_executor(belief_state: object) -> dict:
         "universal.metrics.engagement",
         "negotiation.stance",
         "negotiation.reasons",
+        "universal.behavior_guidance",
         "negotiation.hypotheses",
         "negotiation.hypotheses_structural",
         "negotiation.hypotheses_observational",
         "negotiation.evaluations",
-        "negotiation.tom",
     ]
 
     summary: dict = {}
@@ -279,6 +280,15 @@ def render_executor_output(
     belief_summary_truncated = bool(belief_summary.get("truncated", False))
     belief_summary_keys = belief_summary.get("keys", [])
 
+    if os.getenv("EXECUTOR_EPISTEMIC_CONTRACT_ENABLED", "0") == "1":
+        constraints_epistemic = {
+            "epistemic_style": constraints_struct.get("epistemic_style", "neutral"),
+            "must_hedge": bool(constraints_struct.get("must_hedge", False)),
+            "verify_first": bool(constraints_struct.get("verify_first", False)),
+        }
+    else:
+        constraints_epistemic = {"epistemic_style": "neutral", "must_hedge": False, "verify_first": False}
+
     prompt = EXECUTOR_USER_PROMPT.format(
         conversation_mode=conversation_mode,
         policy_pack_active=policy_pack_active,
@@ -294,6 +304,7 @@ def render_executor_output(
         scene_json=json.dumps(scene, ensure_ascii=False),
         style_json=json.dumps(style, ensure_ascii=False),
         constraints_json=json.dumps(constraints_struct, ensure_ascii=False),
+        epistemic_contract_json=json.dumps(constraints_epistemic, ensure_ascii=False),
         memory_block=memory_block,
         world_json=json.dumps(world_state, ensure_ascii=False),
         belief_state_summary=belief_summary_json,

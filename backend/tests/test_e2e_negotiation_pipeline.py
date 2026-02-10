@@ -496,3 +496,29 @@ def test_e2e_monkey_run_randomized(monkeypatch, tmp_path):
         _assert_trace_invariants(trace, graph_states)
         assert len(trace) == len(turns)
         assert planner.calls
+
+
+def test_e2e_bluff_drives_epistemic_contract_under_flags(monkeypatch, tmp_path):
+    monkeypatch.setenv("BELIEF_GOVERNOR_ENABLED", "1")
+    monkeypatch.setenv("EXECUTOR_EPISTEMIC_CONTRACT_ENABLED", "1")
+
+    planner = PlannerScript(responses=[_planner_response("opening", "safe_neutral")])
+    executor_script = ExecutorScript()
+    llm = FakeLLM(executor_script=executor_script)
+    deps = DepsHarness(planner, llm)
+
+    state = _negotiation_state()
+    state, trace, graph_states = simulate_conversation(
+        ["Tengo otro comprador pero sin pruebas"],
+        deps,
+        initial_state=state,
+        monkeypatch=monkeypatch,
+        graph_module=negotiation_graph,
+    )
+
+    with trace_guard(tmp_path, "epistemic_contract", trace, graph_states):
+        assert executor_script.prompts
+        prompt = executor_script.prompts[-1]
+        assert "EPISTEMIC CONTRACT" in prompt
+        assert "verify_first" in prompt
+        assert "must_hedge" in prompt

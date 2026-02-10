@@ -25,9 +25,21 @@ def build_constraints_struct(
     if not bool(style.get("markdown_allowed", False)):
         out["forbid_formats"].append("markdown")
 
-    dynamics = (belief.get("universal") or {}).get("dynamics", {})
-    if dynamics.get("interaction_health") in ("tense", "stalled"):
-        out["max_questions"] = min(int(out.get("max_questions", 2)), 1)
+    universal = (belief.get("universal") or {}) if isinstance(belief, dict) else {}
+    dynamics = universal.get("dynamics", {}) if isinstance(universal.get("dynamics"), dict) else {}
+    guidance = universal.get("behavior_guidance", {}) if isinstance(universal.get("behavior_guidance"), dict) else {}
+    verification_need = float(guidance.get("verification_need", 0.0) or 0.0)
+    conflict_risk = float(guidance.get("conflict_risk", 0.0) or 0.0)
+    epistemic_style = str(guidance.get("epistemic_style", "neutral") or "neutral")
+
+    if dynamics.get("interaction_health") in ("tense", "stalled") or conflict_risk >= 0.6:
+        out["max_questions"] = 1
+    elif verification_need >= 0.6:
+        out["max_questions"] = min(int(style.get("max_questions", 2)), max(2, int(out.get("max_questions", 2))))
+
+    out["epistemic_style"] = epistemic_style if epistemic_style in {"hedged", "neutral", "direct"} else "neutral"
+    out["must_hedge"] = out["epistemic_style"] == "hedged" or verification_need >= 0.6
+    out["verify_first"] = verification_need >= 0.6
 
     policy_id = decision.get("policy_id") or ""
     policy = get_policy(policy_id)

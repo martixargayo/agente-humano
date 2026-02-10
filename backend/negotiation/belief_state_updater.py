@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 
 from langchain_openai import ChatOpenAI
 
@@ -17,7 +18,9 @@ from .elementos.belief.belief_updater_v2_prompts import (
 )
 from .elementos.belief.belief_contracts import UNIVERSAL_LIMITS
 from .schemas import BeliefState, PolicyDecision, WorldState, default_belief_state
-from .validation import normalize_belief_state, normalize_belief_universal
+from .validation import normalize_belief_state, normalize_belief_state_v2, normalize_belief_universal
+from .belief_governor import derive_behavior_guidance
+from .world_belief_adapters import world_v1_to_v2
 
 _belief_llm = ChatOpenAI(model=BELIEF_MODEL, temperature=BELIEF_TEMPERATURE)
 logger = logging.getLogger(__name__)
@@ -87,7 +90,7 @@ def _interaction_strong(world: dict, world_diff: dict | None) -> bool:
     return False
 
 
-def extract_belief_patch_llm_v2(
+def extract_belief_patch_llm_v3(
     user_message: str,
     world_state: dict,
     world_diff: dict,
@@ -123,7 +126,7 @@ def extract_belief_patch_llm_v2(
     uni_patch = dict(data.get("universal_patch") or {})
     neg_patch = dict(data.get("negotiation_patch") or {})
     meta = dict(data.get("meta") or {})
-    meta["extractor_version"] = "belief_updater_v2"
+    meta["extractor_version"] = "belief_updater_v3"
     return uni_patch, neg_patch, meta
 
 
@@ -227,7 +230,7 @@ def update_belief_state(
     conversation_mode = conversation_mode or "negotiation"
 
     try:
-        uni_patch, neg_patch, meta_patch = extract_belief_patch_llm_v2(
+        uni_patch, neg_patch, meta_patch = extract_belief_patch_llm_v3(
             user_message=user_message,
             world_state=world_state,
             world_diff=world_diff,
@@ -256,8 +259,16 @@ def update_belief_state(
     if neg_patch:
         neg_new = _deep_merge_dict_limited(neg_new, neg_patch, max_depth=3, max_keys=120)
 
-    belief_v2 = {"universal": uni_new, "negotiation": neg_new}
-    belief_state, _issues = normalize_belief_state(belief_v2)
+    belief_v2 = {"schema_version": "v2", "universal": uni_new, "negotiation": neg_new}
+    belief_state, _issues = normalize_belief_state_v2(belief_v2)
+
+    if os.getenv("BELIEF_GOVERNOR_ENABLED", "0") == "1":
+        world_v2 = world_v1_to_v2(world_state)
+        guidance, governor_meta = derive_behavior_guidance(belief_state, world_v2)
+        belief_state.setdefault("universal", {})["behavior_guidance"] = guidance
+        meta.update({"governor_used": True, **governor_meta})
+    else:
+        meta.update({"governor_used": False})
     meta.update(
         {
             "allow_health_change": allow_health_change,

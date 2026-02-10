@@ -219,6 +219,7 @@ Reglas:
 - reasons: etiquetas normalizadas (world:<flag> | belief:<flag> | intent:<flag> | history:<flag>)
 - signals: señales observables y cortas.
 - policy_id debe estar en allowed_policy_ids.
+- No usar hipótesis crudas como hechos; usa solo belief cues gobernantes.
 - Después de elegir phase, SOLO puedes elegir una policy cuyas phases incluyan esa phase.
 - micro_goal breve y accionable.
 - NO texto fuera del JSON, NO markdown.
@@ -233,6 +234,9 @@ PHASE_POLICY_USER_PROMPT = """
 
 [BeliefState]
 {belief_state}
+
+[Belief cues governantes]
+{belief_cues}
 
 [PolicyState]
 {policy_state}

@@ -4,7 +4,7 @@ from typing import List, Literal, Optional, Set
 
 from pydantic import BaseModel, ConfigDict, Field, confloat, conlist
 
-from ..schemas import NegotiationPhase, RequiredInput
+from ..schemas import NegotiationPhase, RequiredBelief, RequiredInput
 
 PHASES = ("opening", "discovery", "bargaining", "closing", "recovery")
 PHASE_OPENING = "opening"
@@ -187,6 +187,7 @@ class Policy:
     guards: Set[str] | None = None
     tags: Set[str] | None = None
     plan: Optional[PolicyPlan] = None
+    required_beliefs: List[RequiredBelief] | None = None
 
 
 POLICIES: List[Policy] = [
@@ -368,6 +369,7 @@ POLICIES: List[Policy] = [
         capabilities={"pressure_soft", "probe_open"},
         guards={"safe_when_tense", "avoid_mentioning_own_numbers"},
         tags={"deescalation", "safe_when_tense"},
+        required_beliefs=[{"key": "universal.behavior_guidance.conflict_risk", "op": "gte", "value": 0.6}],
     ),
     Policy(
         policy_id="close_with_conditions",

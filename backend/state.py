@@ -7,7 +7,8 @@ from typing import Dict, List, Literal, Tuple, TypedDict
 
 from negotiation.elementos.belief.belief_contracts import UNIVERSAL_REASON_KEYS
 from negotiation.schemas import default_belief_state
-from negotiation.validation import normalize_belief_state
+from negotiation.validation import normalize_belief_state, normalize_world_state_v2
+from negotiation.world_belief_adapters import belief_v1_to_v2, world_v1_to_v2
 
 # ---- Tipos básicos ----
 
@@ -102,7 +103,17 @@ def migrate_belief_state_legacy_to_v2(belief_state: Dict | None) -> Dict:
     if isinstance(belief_state.get("evaluations"), dict):
         base["negotiation"]["evaluations"] = belief_state["evaluations"]
 
-    normalized, _issues = normalize_belief_state(base)
+    normalized, _issues = normalize_belief_state(belief_v1_to_v2(base))
+    legacy_stance = belief_state.get("stance", {}) if isinstance(belief_state, dict) else {}
+    if isinstance(legacy_stance, dict) and legacy_stance:
+        normalized.setdefault("negotiation", {}).setdefault("stance", {}).update(legacy_stance)
+    legacy_reasons = belief_state.get("reasons", {}) if isinstance(belief_state, dict) else {}
+    if isinstance(legacy_reasons, dict) and legacy_reasons:
+        for key, value in legacy_reasons.items():
+            if key not in UNIVERSAL_REASON_KEYS:
+                normalized.setdefault("negotiation", {}).setdefault("reasons", {})[key] = value
+    if not isinstance(belief_state, dict) or "schema_version" not in belief_state:
+        normalized.pop("schema_version", None)
     return normalized
 
 
@@ -244,6 +255,9 @@ def get_session_state(user_id: str, session_id: str) -> SessionState:
     state = SESSIONS[key]
     if not isinstance(state.belief_state, dict) or state.belief_state:
         state.belief_state = migrate_belief_state_legacy_to_v2(state.belief_state)
+    if not isinstance(state.world_state, dict):
+        state.world_state = {}
+    state.world_state, _world_issues = normalize_world_state_v2(world_v1_to_v2(state.world_state))
     return state
 
 

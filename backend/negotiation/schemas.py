@@ -13,6 +13,7 @@ StyleFormat = Literal["plain", "bullets", "qa"]
 EmojiPolicy = Literal["never", "rare", "allowed"]
 InteractionEscalation = Literal["up", "down", "none"]
 RequiredInputOp = Literal["exists", "true", "non_empty"]
+RequiredBeliefOp = Literal["eq", "neq", "gte", "lte", "in"]
 EvidenceType = Literal[
     "PRICE",
     "DEADLINE",
@@ -348,11 +349,22 @@ class BeliefReasonItem(TypedDict, total=False):
     evidence: str  # <= 180
 
 
+class BehaviorGuidance(TypedDict, total=False):
+    assertiveness: float
+    verification_need: float
+    trust_estimate: float
+    conflict_risk: float
+    pace_preference: float
+    recommended_move: str
+    epistemic_style: str
+
+
 class BeliefUniversalState(TypedDict, total=False):
     metrics: BeliefUniversalMetrics
     dynamics: BeliefUniversalDynamics
     tom: BeliefUniversalToM
     reasons: Dict[str, BeliefReasonItem]  # validado por allowlist
+    behavior_guidance: BehaviorGuidance
 
 
 # ============ NEGOTIATION (plugin mental) ============
@@ -381,6 +393,12 @@ class BeliefState(TypedDict, total=False):
     hypotheses_structural: List[str]
     hypotheses_observational: List[str]
     evaluations: Dict[str, Any]
+
+
+class RequiredBelief(TypedDict):
+    key: str
+    op: RequiredBeliefOp
+    value: object
 
 
 class PolicyDecision(TypedDict):
@@ -438,6 +456,9 @@ class RenderConstraints(TypedDict, total=False):
     disallow_numbers: bool
     require_ask_if_missing: List[str]
     max_questions: Optional[int]
+    epistemic_style: str
+    must_hedge: bool
+    verify_first: bool
 
 
 class ExecutorOutput(TypedDict, total=False):
@@ -529,6 +550,7 @@ def default_universal_state() -> UniversalState:
 
 def default_world_state() -> WorldState:
     return {
+        "schema_version": "v1",
         "universal_domain": {
             "message_is_vague": False,
             "tone_signal": "neutral",
@@ -560,6 +582,24 @@ def default_world_state() -> WorldState:
             "docs_types": [],
             "evidence_offered": False,
             "evidence_text": "",
+        },
+        "universal_v2": {
+            "clarity": {"is_vague": False, "missing_info": [], "ambiguity_types": [], "confidence": 0.0},
+            "affect": {"tone": "neutral", "confidence": 0.0, "sentiment": "neutral", "arousal": "medium"},
+            "interaction": {"cooperation": 0.5, "friction": 0.0, "boundary": False, "loop": False, "commitment_signal": 0.0},
+            "intent": {"act": "inform", "confidence": 0.0},
+            "commitments": [],
+        },
+        "negotiation_v2": {
+            "subject": {"item": "", "context": "", "attributes": {}},
+            "offers": [],
+            "constraints": [],
+            "interests": [],
+            "concessions": [],
+            "time_pressure": {"deadline_text": "", "deadline_date": None, "window_days": None, "urgency": 0.0, "reason": "", "status": "unverified", "confidence": 0.0},
+            "leverage_claims": [],
+            "evidence": [],
+            "agreement_state": {"state": "none", "next_step": "", "open_points": [], "confidence": 0.0},
         },
         "universal_state": default_universal_state(),
         "open_claims": [],
@@ -611,7 +651,18 @@ def default_belief_state() -> BeliefState:
         "evaluations": {},
         "tom": {},
     }
+    uni["behavior_guidance"] = {
+        "assertiveness": 0.5,
+        "verification_need": 0.5,
+        "trust_estimate": 0.5,
+        "conflict_risk": 0.0,
+        "pace_preference": 0.5,
+        "recommended_move": "hold",
+        "epistemic_style": "neutral",
+    }
+    uni["tom"]["hypotheses"] = []
     return {
+        "schema_version": "v2",
         "universal": uni,
         "negotiation": neg,
     }
@@ -668,6 +719,9 @@ def default_constraints_struct() -> RenderConstraints:
         "disallow_numbers": False,
         "require_ask_if_missing": [],
         "max_questions": 2,
+        "epistemic_style": "neutral",
+        "must_hedge": False,
+        "verify_first": False,
     }
 
 
