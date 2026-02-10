@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Dict
 
 from ...schemas import StyleContract
+from .carlos_buyer_preset import CARLOS_STYLE_CONTRACT
 
 
 _STYLES: Dict[str, StyleContract] = {
@@ -33,6 +34,7 @@ _STYLES: Dict[str, StyleContract] = {
         "markdown_allowed": True,
         "bullets_max": 4,
     },
+    "psyplay_compact": CARLOS_STYLE_CONTRACT,
 }
 
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from copy import deepcopy
 from typing import Any, Dict, List
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -11,7 +12,6 @@ from ..elementos.render.executor_prompts import (
     EXECUTOR_SYSTEM_PROMPT,
     EXECUTOR_USER_PROMPT,
 )
-from ..elementos.render import resolve_render_profiles
 from ..elementos.render.render_contracts import RENDER_LIMITS
 from ..schemas import ExecutorOutput, RenderConstraints
 
@@ -264,16 +264,10 @@ def render_executor_output(
     world_state: dict,
     user_message: str,
 ) -> ExecutorOutput:
-    persona, scene, style = resolve_render_profiles(
-        {
-            "persona_id": persona_profile.get("persona_id", "default"),
-            "scene_id": scene_profile.get("scene_id", "default_chat"),
-            "style_id": style_contract.get("style_id", "default"),
-        }
-    )
-    persona.update(persona_profile)
-    scene.update(scene_profile)
-    style.update(style_contract)
+    persona = deepcopy(persona_profile)
+    scene = deepcopy(scene_profile)
+    style = deepcopy(style_contract)
+    constraints = deepcopy(constraints_struct)
 
     belief_summary = summarize_belief_state_for_executor(state.get("belief_state"))
     belief_summary_json = _compact_json(belief_summary.get("summary", {}))
@@ -303,7 +297,7 @@ def render_executor_output(
         persona_json=json.dumps(persona, ensure_ascii=False),
         scene_json=json.dumps(scene, ensure_ascii=False),
         style_json=json.dumps(style, ensure_ascii=False),
-        constraints_json=json.dumps(constraints_struct, ensure_ascii=False),
+        constraints_json=json.dumps(constraints, ensure_ascii=False),
         epistemic_contract_json=json.dumps(constraints_epistemic, ensure_ascii=False),
         memory_block=memory_block,
         world_json=json.dumps(world_state, ensure_ascii=False),

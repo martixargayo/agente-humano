@@ -8,9 +8,9 @@ PolicyOutcome = Literal["good", "neutral", "bad", ""]
 ToneSignal = Literal["neutral", "friendly", "tense"]
 ToneUsed = Literal["friendly", "neutral", "tense"]
 ConversationMode = Literal["general", "negotiation"]
-StyleLength = Literal["short", "medium", "long"]
+StyleLength = Literal["very_short", "short", "medium", "long"]
 StyleFormat = Literal["plain", "bullets", "qa"]
-EmojiPolicy = Literal["never", "rare", "allowed"]
+EmojiPolicy = Literal["none", "never", "rare", "allowed"]
 InteractionEscalation = Literal["up", "down", "none"]
 RequiredInputOp = Literal["exists", "true", "non_empty"]
 RequiredBeliefOp = Literal["eq", "neq", "gte", "lte", "in"]
@@ -415,11 +415,16 @@ class PolicyDecision(TypedDict):
 class PersonaProfile(TypedDict, total=False):
     persona_id: str
     role: str
-    voice_register: Literal["formal", "neutral", "friendly", "technical"]
+    voice_register: Literal["formal", "neutral", "friendly", "technical", "natural"]
     values: List[str]
     hard_limits: List[str]
     do: List[str]
     dont: List[str]
+    role_card: Dict[str, Any]
+    experience: str
+    big_five: Dict[str, str]
+    trait_markers: List[str]
+    persona_anchors: List[str]
     signature_line: str
 
 
@@ -429,12 +434,16 @@ class SceneProfile(TypedDict, total=False):
     macro_goal: str
     operational_context: List[str]
     disclaimers: List[str]
+    scenario_card: Dict[str, Any]
+    partner_name: str
+    turn_topic: str
 
 
 class StyleContract(TypedDict, total=False):
     style_id: str
     target_length: StyleLength
     format: StyleFormat
+    max_words: int
     max_questions: int
     emoji_policy: EmojiPolicy
     markdown_allowed: bool
@@ -454,6 +463,9 @@ class RenderState(TypedDict, total=False):
 class RenderConstraints(TypedDict, total=False):
     forbid_claims: List[str]
     forbid_formats: List[str]
+    forbid_behaviors: List[str]
+    dialogue_dynamics: List[str]
+    end_rule: Dict[str, Any]
     disallow_numbers: bool
     require_ask_if_missing: List[str]
     max_questions: Optional[int]
@@ -721,6 +733,9 @@ def default_constraints_struct() -> RenderConstraints:
     return {
         "forbid_claims": ["access_internal_systems", "physical_actions_done"],
         "forbid_formats": ["markdown"],
+        "forbid_behaviors": [],
+        "dialogue_dynamics": [],
+        "end_rule": {"when_stalled": False, "marker": ""},
         "disallow_numbers": False,
         "require_ask_if_missing": [],
         "max_questions": 2,

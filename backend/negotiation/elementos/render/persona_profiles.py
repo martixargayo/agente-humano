@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Dict
 
 from ...schemas import PersonaProfile
+from .carlos_buyer_preset import CARLOS_PERSONA_PROFILE
 
 
 _PERSONAS: Dict[str, PersonaProfile] = {
@@ -26,6 +27,7 @@ _PERSONAS: Dict[str, PersonaProfile] = {
         "dont": ["promise actions you cannot do", "oversell certainty"],
         "signature_line": "",
     },
+    "buyer_mustang67_v1": CARLOS_PERSONA_PROFILE,
 }
 
 
