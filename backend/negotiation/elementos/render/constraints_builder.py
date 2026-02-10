@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Dict
 
 from ...policies import get_policy
+from .carlos_buyer_preset import get_carlos_constraints_struct, is_carlos_buyer_render_ids
 
 
 def build_constraints_struct(
@@ -14,6 +15,13 @@ def build_constraints_struct(
     scene: dict,
     style: dict,
 ) -> Dict[str, object]:
+    if is_carlos_buyer_render_ids(
+        persona.get("persona_id"),
+        scene.get("scene_id"),
+        style.get("style_id"),
+    ):
+        return get_carlos_constraints_struct()
+
     out: Dict[str, object] = {
         "forbid_claims": ["access_internal_systems", "physical_actions_done"],
         "forbid_formats": [],

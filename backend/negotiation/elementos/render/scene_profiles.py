@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Dict
 
 from ...schemas import SceneProfile
+from .carlos_buyer_preset import CARLOS_SCENE_PROFILE
 
 
 _SCENES: Dict[str, SceneProfile] = {
@@ -20,6 +21,7 @@ _SCENES: Dict[str, SceneProfile] = {
         "operational_context": ["in_person", "no_internal_systems"],
         "disclaimers": ["no_internal_systems"],
     },
+    "mustang67_in_person_viewing": CARLOS_SCENE_PROFILE,
 }
 
 

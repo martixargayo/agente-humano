@@ -1094,6 +1094,13 @@ def _normalize_persona_profile(raw: object) -> Tuple[PersonaProfile, List[str]]:
     )
     base["do"] = _unique_list(_coerce_str_list(raw.get("do", base["do"])), max_items=8)
     base["dont"] = _unique_list(_coerce_str_list(raw.get("dont", base["dont"])), max_items=8)
+    if isinstance(raw.get("role_card"), dict):
+        base["role_card"] = raw["role_card"]
+    base["experience"] = str(raw.get("experience", base.get("experience", ""))).strip()[:500]
+    if isinstance(raw.get("big_five"), dict):
+        base["big_five"] = {str(k): str(v) for k, v in raw["big_five"].items()}
+    base["trait_markers"] = _unique_list(_coerce_str_list(raw.get("trait_markers", [])), max_items=10)
+    base["persona_anchors"] = _unique_list(_coerce_str_list(raw.get("persona_anchors", [])), max_items=8)
     base["signature_line"] = str(raw.get("signature_line", base.get("signature_line", ""))).strip()[:140]
     return base, issues
 
@@ -1113,6 +1120,10 @@ def _normalize_scene_profile(raw: object) -> Tuple[SceneProfile, List[str]]:
     base["disclaimers"] = _unique_list(
         _coerce_str_list(raw.get("disclaimers", base.get("disclaimers", []))), max_items=8
     )
+    if isinstance(raw.get("scenario_card"), dict):
+        base["scenario_card"] = raw["scenario_card"]
+    base["partner_name"] = str(raw.get("partner_name", base.get("partner_name", ""))).strip()[:120]
+    base["turn_topic"] = str(raw.get("turn_topic", base.get("turn_topic", ""))).strip()[:240]
     return base, issues
 
 
@@ -1133,6 +1144,11 @@ def _normalize_style_contract(raw: object) -> Tuple[StyleContract, List[str]]:
         issues.append("style_format_invalid")
         fmt = base["format"]
     base["format"] = fmt
+    try:
+        max_words = int(raw.get("max_words", base.get("max_words", 0) or 0))
+        base["max_words"] = max(0, min(200, max_words))
+    except (TypeError, ValueError):
+        issues.append("style_max_words_invalid")
     try:
         max_questions = int(raw.get("max_questions", base["max_questions"]))
         base["max_questions"] = max(0, min(6, max_questions))
@@ -1186,6 +1202,19 @@ def _normalize_constraints_struct(raw: object) -> Tuple[RenderConstraints, List[
     base["forbid_formats"] = _unique_list(
         _coerce_str_list(raw.get("forbid_formats", base["forbid_formats"])), max_items=6
     )
+    base["forbid_behaviors"] = _unique_list(
+        _coerce_str_list(raw.get("forbid_behaviors", base.get("forbid_behaviors", []))),
+        max_items=10,
+    )
+    base["dialogue_dynamics"] = _unique_list(
+        _coerce_str_list(raw.get("dialogue_dynamics", base.get("dialogue_dynamics", []))),
+        max_items=8,
+    )
+    if isinstance(raw.get("end_rule"), dict):
+        base["end_rule"] = {
+            "when_stalled": bool(raw["end_rule"].get("when_stalled", False)),
+            "marker": str(raw["end_rule"].get("marker", "")).strip()[:20],
+        }
     base["disallow_numbers"] = bool(raw.get("disallow_numbers", base["disallow_numbers"]))
     base["require_ask_if_missing"] = _unique_list(
         _coerce_str_list(raw.get("require_ask_if_missing", base["require_ask_if_missing"])),

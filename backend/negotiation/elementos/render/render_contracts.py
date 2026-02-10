@@ -12,10 +12,10 @@ CRITICAL_VIOLATION_CODES = {
     "privacy_leak",
 }
 
-PERSONA_VOICE_REGISTERS = {"formal", "neutral", "friendly", "technical"}
-STYLE_LENGTHS = {"short", "medium", "long"}
+PERSONA_VOICE_REGISTERS = {"formal", "neutral", "friendly", "technical", "natural"}
+STYLE_LENGTHS = {"very_short", "short", "medium", "long"}
 STYLE_FORMATS = {"plain", "bullets", "qa"}
-STYLE_EMOJI_POLICIES = {"never", "rare", "allowed"}
+STYLE_EMOJI_POLICIES = {"none", "never", "rare", "allowed"}
 
 # ============ NEGOTIATION SECOND ============
 NEGOTIATION_RENDER_DEFAULTS = {

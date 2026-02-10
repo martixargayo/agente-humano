@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 
 from ..context_utils import format_memory_block
+from ..elementos.render.carlos_buyer_preset import get_carlos_constraints_struct, is_carlos_buyer_render_ids
 from ..elementos.render import resolve_render_profiles
 from ..executor import build_strategy_summary, normalize_executor_output, render_executor_output
 from ..schemas import default_constraints_struct, default_policy_decision, default_progress_state, default_render_state
@@ -43,9 +44,16 @@ def executor_node(state: dict) -> dict:
         state, conversation_mode, policy_pack_active, policy_id
     )
     state["strategy_summary"] = strategy_summary
-    constraints_struct = (
-        progress_state.get("render_constraints_struct") or default_constraints_struct()
-    )
+    constraints_struct = progress_state.get("render_constraints_struct")
+    if not isinstance(constraints_struct, dict):
+        if is_carlos_buyer_render_ids(
+            render_state.get("persona_id"),
+            render_state.get("scene_id"),
+            render_state.get("style_id"),
+        ):
+            constraints_struct = get_carlos_constraints_struct()
+        else:
+            constraints_struct = default_constraints_struct()
 
     executor_output = render_executor_output(
         state,
