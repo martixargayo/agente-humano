@@ -61,6 +61,10 @@ from .policy_planner import (
 from .progress_updater import update_progress_state
 from .executor import build_strategy_summary, normalize_executor_output, render_executor_output
 from .elementos.render import resolve_render_profiles
+from .elementos.render.preset_registry import (
+    apply_buyer_preset_to_render_state,
+    resolve_runtime_buyer_preset_choice,
+)
 from .elementos.render.constraints_builder import build_constraints_struct
 from .validator import validate_and_repair
 from .schemas import (
@@ -337,6 +341,7 @@ def run_negotiation_agent(
     state: SessionState,
     user_message: str,
     deps: AgentDeps = DEFAULT_DEPS,
+    explicit_preset_id: str | None = None,
 ) -> Tuple[str, SessionState]:
     """
     Ejecuta un turno de negociación:
@@ -386,6 +391,22 @@ def run_negotiation_agent(
     world_state_input, world_issues_in = normalize_world_state(state.world_state)
     belief_state_input, belief_issues_in = normalize_belief_state(state.belief_state)
     progress_state_input, progress_issues_in = normalize_progress_state(state.progress_state)
+    explicit_runtime_preset = explicit_preset_id
+    if explicit_runtime_preset is None:
+        explicit_runtime_preset = (
+            (progress_state_input.get("render_state") or {}).get("buyer_preset_id")
+            if isinstance(progress_state_input, dict)
+            else None
+        )
+
+    runtime_preset, preset_source = resolve_runtime_buyer_preset_choice(explicit_runtime_preset)
+    override_existing = preset_source == "explicit"
+    progress_state_input, preset_meta = apply_buyer_preset_to_render_state(
+        progress_state_input,
+        runtime_preset,
+        override_existing=override_existing,
+        preset_source=preset_source,
+    )
     policy_issues_in: list[str] = []
     last_policy_executed_input = state.last_policy_executed
     if (
@@ -549,6 +570,7 @@ def run_negotiation_agent(
             ),
             "memory_meta": new_graph_state.get("memory_meta", {}),
             "refresh_meta": new_graph_state.get("refresh_meta", {}),
+            "preset_meta": preset_meta,
             "exit_issues": exit_issues,
             "max_total_cost_margin": margin,
             "validation_issues": {
