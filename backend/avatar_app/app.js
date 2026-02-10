@@ -9,6 +9,57 @@ import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js'
 const URL_PARAMS = new URLSearchParams(window.location.search);
 const DEBUG_EDIT_ENABLED = URL_PARAMS.get('debugEdit') === '1';
 
+// =========================
+// Tema perceptual del avatar (dark/light)
+// - Geometría, rig, lipsync y animación NO cambian con el tema.
+// - Solo cambia la capa perceptual: fondo + respuesta tonal/alpha del shader.
+// =========================
+const DEFAULT_THEME = 'dark';
+
+const THEME_PRESETS = {
+  dark: {
+    background: 0x000000,
+    particleColor: 0xdddddd,
+    // Dark actual: preservar respuesta histórica sin remapeo.
+    densityInMin: 0.0,
+    densityInMax: 1.0,
+    densityGamma: 1.0,
+    densityOutMin: 0.0,
+    densityOutMax: 1.0,
+    alphaGain: 1.0,
+    alphaClip: 0.02,
+    shadeMin: 0.6,
+    shadeMax: 1.0,
+  },
+  light: {
+    background: 0xf2f4f7, // off-white técnico (no blanco puro)
+    particleColor: 0x2f3640, // grafito oscuro (no negro puro)
+    // Recalibración perceptual:
+    // - limpia bajas densidades periféricas (menos grano)
+    // - comprime altas densidades (evita manchas tipo tinta)
+    densityInMin: 0.22,
+    densityInMax: 0.92,
+    densityGamma: 1.12,
+    densityOutMin: 0.08,
+    densityOutMax: 0.72,
+    alphaGain: 0.94,
+    alphaClip: 0.03,
+    shadeMin: 0.72,
+    shadeMax: 1.0,
+  },
+};
+
+function resolveTheme() {
+  const urlTheme = URL_PARAMS.get('theme');
+  if (urlTheme && THEME_PRESETS[urlTheme]) return urlTheme;
+  return DEFAULT_THEME;
+}
+
+const activeThemeName = resolveTheme();
+const activeTheme = THEME_PRESETS[activeThemeName];
+document.documentElement.dataset.avatarTheme = activeThemeName;
+console.info('[theme] Avatar perceptual theme:', activeThemeName);
+
 // ============================================================================
 // ✅ Neck Editor state (DEBE existir antes de animate() y keydown)
 // ============================================================================
@@ -167,7 +218,7 @@ function cleanupAudio() {
 const canvas = document.getElementById('c');
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x000000);
+scene.background = new THREE.Color(activeTheme.background);
 
 const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.01, 100);
 camera.position.set(0, 0.25, 1.9);
@@ -191,6 +242,14 @@ scene.add(rimLight);
 
 const ambient = new THREE.AmbientLight(0xffffff, 0.2);
 scene.add(ambient);
+
+// Ajuste lumínico mínimo en modo claro: recuperar separación de planos
+// sin tocar tipos de luz ni lógica de animación.
+if (activeThemeName === 'light') {
+  keyLight.intensity = 0.84;
+  rimLight.intensity = 0.46;
+  ambient.intensity = 0.26;
+}
 
 const clock = new THREE.Clock();
 
@@ -573,6 +632,18 @@ uniform sampler2D uColorMap;
 uniform float uUseMap;
 uniform float uDebugHeadWeight;
 
+// Remapeo perceptual de densidad/alpha para soportar fondo claro sin
+// romper el modo oscuro ni duplicar shader.
+uniform float uDensityInMin;
+uniform float uDensityInMax;
+uniform float uDensityGamma;
+uniform float uDensityOutMin;
+uniform float uDensityOutMax;
+uniform float uAlphaGain;
+uniform float uAlphaClip;
+uniform float uShadeMin;
+uniform float uShadeMax;
+
 varying vec2 vUv;
 varying float vHeadWeight;
 
@@ -593,13 +664,16 @@ void main() {
 
   vec3 texColor = texture2D(uColorMap, vUv).rgb;
   float densityRaw = (texColor.r + texColor.g + texColor.b) / 3.0;
-  float density = mix(1.0, densityRaw, uUseMap);
+  float densityBase = mix(1.0, densityRaw, uUseMap);
 
-  float alpha = circle * density;
-  if (alpha < 0.02) discard;
+  float densityNorm = smoothstep(uDensityInMin, uDensityInMax, densityBase);
+  float density = mix(uDensityOutMin, uDensityOutMax, pow(densityNorm, uDensityGamma));
+
+  float alpha = circle * density * uAlphaGain;
+  if (alpha < uAlphaClip) discard;
 
   vec3 baseColor = uColor;
-  vec3 finalColor = mix(baseColor * 0.6, baseColor, density);
+  vec3 finalColor = mix(baseColor * uShadeMin, baseColor * uShadeMax, density);
   gl_FragColor = vec4(finalColor, alpha);
 }
 `;
@@ -812,9 +886,20 @@ loader.load(
       blending: THREE.NormalBlending,
       uniforms: {
         uPointSize: { value: POINT_SIZE },
-        uColor: { value: new THREE.Color(0xdddddd) },
+        uColor: { value: new THREE.Color(activeTheme.particleColor) },
         uColorMap: { value: colorMap },
         uUseMap: { value: colorMap ? 1.0 : 0.0 },
+
+        // Uniforms perceptuales por tema (single shader, sin bifurcar lógica)
+        uDensityInMin: { value: activeTheme.densityInMin },
+        uDensityInMax: { value: activeTheme.densityInMax },
+        uDensityGamma: { value: activeTheme.densityGamma },
+        uDensityOutMin: { value: activeTheme.densityOutMin },
+        uDensityOutMax: { value: activeTheme.densityOutMax },
+        uAlphaGain: { value: activeTheme.alphaGain },
+        uAlphaClip: { value: activeTheme.alphaClip },
+        uShadeMin: { value: activeTheme.shadeMin },
+        uShadeMax: { value: activeTheme.shadeMax },
 
         uTime: { value: 0.0 },
         uGlobalAmp: { value: 1.5 },
