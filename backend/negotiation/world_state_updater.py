@@ -7,8 +7,12 @@ from typing import Any, Tuple
 from langchain_openai import ChatOpenAI
 
 from .schemas import WorldState, default_world_state
-from .validation import normalize_open_claims, normalize_universal_state, normalize_world_state
-from .extractors.world_extractor_v3 import extract_world_patch_llm_v3
+from .validation import normalize_open_claims, normalize_universal_state, normalize_world_state, normalize_world_state_v2
+from .extractors.world_extractor_v4 import extract_world_patch_llm_v4
+
+# Backward-compat alias for tests and legacy monkeypatch hooks.
+extract_world_patch_llm_v3 = extract_world_patch_llm_v4
+from .world_belief_adapters import world_v1_to_v2
 
 
 def _default_world_llm():
@@ -115,6 +119,7 @@ def update_world_state(
     base = default_world_state()
     if prev_world:
         base, _ = normalize_world_state(prev_world)
+    base = world_v1_to_v2(base)
 
     turn_idx = int(turn_count or 0) or int((base.get("world_state_meta") or {}).get("turn_idx") or 0) + 1
     base.setdefault("world_state_meta", {})
@@ -137,7 +142,7 @@ def update_world_state(
     world.setdefault("world_state_meta", {})
 
     try:
-        u_dom_patch, n_dom_patch, universal_patch, open_claims, v3_meta = extract_world_patch_llm_v3(
+        u_dom_patch, n_dom_patch, universal_patch, open_claims, v3_meta = extract_world_patch_llm_v4(
             llm_deps,
             user_message,
             base,
@@ -155,20 +160,27 @@ def update_world_state(
         )
         world["open_claims"] = normalize_open_claims(open_claims, max_total=8)
 
+        if conversation_mode != "negotiation":
+            world.setdefault("negotiation_v2", {})
+            world["negotiation_v2"] = default_world_state().get("negotiation_v2", {})
+        world = world_v1_to_v2(world)
+        world, v2_issues = normalize_world_state_v2(world)
         world["world_state_meta"]["last_update_source"] = "llm"
         world["world_state_meta"]["error"] = ""
         world["world_state_meta"]["extractor_failed"] = False
         world["world_state_meta"]["updated_fields"] = sorted(
             list(u_dom_patch.keys()) + list(n_dom_patch.keys())
         )
-        meta = {**v3_meta, "extractor_used": True, "extractor_failed": False}
+        meta = {**v3_meta, "extractor_version": "world_extractor_v4", "extractor_used": True, "extractor_failed": False, "v2_issues": v2_issues}
         return world, meta
 
     except Exception as exc:
         world["world_state_meta"]["last_update_source"] = "llm"
         world["world_state_meta"]["error"] = f"{type(exc).__name__}: {exc}"
         world["world_state_meta"]["extractor_failed"] = True
-        meta = {"extractor_used": True, "extractor_failed": True, "error": str(exc)}
+        world = world_v1_to_v2(world)
+        world, v2_issues = normalize_world_state_v2(world)
+        meta = {"extractor_used": True, "extractor_failed": True, "error": str(exc), "v2_issues": v2_issues}
         return world, meta
 
 

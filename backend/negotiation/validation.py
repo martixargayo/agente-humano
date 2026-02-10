@@ -41,6 +41,39 @@ from .schemas import (
 )
 from .specs.world_keys import ALLOWED_NEGOTIATION_DOMAIN_KEYS, ALLOWED_UNIVERSAL_DOMAIN_KEYS
 from .elementos.belief.belief_contracts import UNIVERSAL_LIMITS, UNIVERSAL_REASON_KEYS
+from .contracts_v2 import (
+    AGREEMENT_STATE_ENUM,
+    AROUSAL_ENUM,
+    BEHAVIOR_GUIDANCE_EPISTEMIC_STYLE,
+    BEHAVIOR_GUIDANCE_RECOMMENDED_MOVES,
+    COMMITMENT_STATUS_ENUM,
+    COMMITMENT_TYPE_ENUM,
+    CONSTRAINT_DIMENSION_ENUM,
+    CONSTRAINT_KIND_ENUM,
+    CONSTRAINT_SIDE_ENUM,
+    EVIDENCE_TYPE_ENUM,
+    INTEREST_CATEGORY_ENUM,
+    INTENT_ACT_ENUM,
+    LEVERAGE_TYPE_ENUM,
+    MAX_ITEMS,
+    MAX_META_CHARS,
+    MAX_META_DEPTH,
+    MAX_META_KEYS,
+    MAX_STR_LEN,
+    NEGOTIATION_REASON_KEYS,
+    NEGOTIATION_STANCE_KEYS,
+    OFFER_FIRMNESS_ENUM,
+    OFFER_KIND_ENUM,
+    OFFER_SIDE_ENUM,
+    OFFER_STATUS_ENUM,
+    SENTIMENT_ENUM,
+    TONE_ENUM,
+    TRUTH_STATUS_ENUM,
+    clamp01,
+    enum_or,
+    to_int,
+    trim,
+)
 from .elementos.render.render_contracts import (
     PERSONA_VOICE_REGISTERS,
     STYLE_EMOJI_POLICIES,
@@ -431,14 +464,257 @@ def normalize_belief_universal(u: dict | None) -> dict:
         if item["evidence"]:
             r_out[k] = item
 
-    return {"metrics": m, "dynamics": d, "tom": t, "reasons": r_out}
+    return {"metrics": m, "dynamics": d, "tom": t, "reasons": r_out, "behavior_guidance": _normalize_behavior_guidance(u.get("behavior_guidance", {}))}
 
+
+
+def _sanitize_meta(value: object, depth: int = 0) -> object | None:
+    if depth > MAX_META_DEPTH:
+        return None
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    if isinstance(value, list):
+        out = []
+        for item in value[:MAX_ITEMS["evidence"]]:
+            clean = _sanitize_meta(item, depth + 1)
+            if clean is not None:
+                out.append(clean)
+        return out
+    if isinstance(value, dict):
+        out = {}
+        for idx, (k, v) in enumerate(value.items()):
+            if idx >= MAX_META_KEYS:
+                break
+            key = trim(k, MAX_STR_LEN["key"])
+            clean = _sanitize_meta(v, depth + 1)
+            if key and clean is not None:
+                out[key] = clean
+        txt = _trim(str(out), MAX_META_CHARS)
+        if not txt:
+            return {}
+        return out
+    return None
+
+
+def default_world_state_v2() -> dict:
+    return default_world_state()
+
+
+def default_belief_state_v2() -> dict:
+    return default_belief_state()
+
+
+def _normalize_behavior_guidance(raw: object) -> dict:
+    r = dict(raw or {}) if isinstance(raw, dict) else {}
+    return {
+        "assertiveness": clamp01(r.get("assertiveness", 0.5), 0.5),
+        "verification_need": clamp01(r.get("verification_need", 0.5), 0.5),
+        "trust_estimate": clamp01(r.get("trust_estimate", 0.5), 0.5),
+        "conflict_risk": clamp01(r.get("conflict_risk", 0.0), 0.0),
+        "pace_preference": clamp01(r.get("pace_preference", 0.5), 0.5),
+        "recommended_move": enum_or(r.get("recommended_move", "hold"), BEHAVIOR_GUIDANCE_RECOMMENDED_MOVES, "hold"),
+        "epistemic_style": enum_or(r.get("epistemic_style", "neutral"), BEHAVIOR_GUIDANCE_EPISTEMIC_STYLE, "neutral"),
+    }
+
+
+def normalize_world_state_v2(raw: object) -> Tuple[dict, List[str]]:
+    if not isinstance(raw, dict):
+        base = default_world_state()
+        base["schema_version"] = "v2"
+        return base, ["world_state_no_dict"]
+    raw_legacy = dict(raw)
+    raw_legacy.pop("universal_v2", None)
+    raw_legacy.pop("negotiation_v2", None)
+    raw_legacy["schema_version"] = "v1"
+    base, issues = normalize_world_state(raw_legacy)
+    out = dict(base)
+    out["schema_version"] = "v2"
+    u2 = dict((raw.get("universal_v2") or {}) if isinstance(raw.get("universal_v2"), dict) else {})
+    n2 = dict((raw.get("negotiation_v2") or {}) if isinstance(raw.get("negotiation_v2"), dict) else {})
+    clarity = dict(u2.get("clarity") or {})
+    affect = dict(u2.get("affect") or {})
+    interaction = dict(u2.get("interaction") or {})
+    intent = dict(u2.get("intent") or {})
+    commitments = u2.get("commitments", []) if isinstance(u2.get("commitments"), list) else []
+    out["universal_v2"] = {
+        "clarity": {
+            "is_vague": bool(clarity.get("is_vague", out["universal_domain"].get("message_is_vague", False))),
+            "missing_info": _coerce_str_list(clarity.get("missing_info", []), MAX_ITEMS["missing_info"]),
+            "ambiguity_types": _coerce_str_list(clarity.get("ambiguity_types", []), MAX_ITEMS["ambiguity_types"]),
+            "confidence": clamp01(clarity.get("confidence", 0.0), 0.0),
+        },
+        "affect": {
+            "tone": enum_or(affect.get("tone", "neutral"), TONE_ENUM, "neutral"),
+            "confidence": clamp01(affect.get("confidence", 0.0), 0.0),
+            "sentiment": enum_or(affect.get("sentiment", "neutral"), SENTIMENT_ENUM, "neutral"),
+            "arousal": enum_or(affect.get("arousal", "medium"), AROUSAL_ENUM, "medium"),
+        },
+        "interaction": {
+            "cooperation": clamp01(interaction.get("cooperation", 0.5), 0.5),
+            "friction": clamp01(interaction.get("friction", 0.0), 0.0),
+            "boundary": bool(interaction.get("boundary", False)),
+            "loop": bool(interaction.get("loop", False)),
+            "commitment_signal": clamp01(interaction.get("commitment_signal", 0.0), 0.0),
+        },
+        "intent": {
+            "act": enum_or(intent.get("act", "inform"), INTENT_ACT_ENUM, "inform"),
+            "confidence": clamp01(intent.get("confidence", 0.0), 0.0),
+        },
+        "commitments": [
+            {
+                "type": enum_or(it.get("type", "other"), COMMITMENT_TYPE_ENUM, "other"),
+                "text": trim(it.get("text", ""), MAX_STR_LEN["text"]),
+                "status": enum_or(it.get("status", "claimed"), COMMITMENT_STATUS_ENUM, "claimed"),
+                "confidence": clamp01(it.get("confidence", 0.0), 0.0),
+            }
+            for it in commitments[:MAX_ITEMS["commitments"]] if isinstance(it, dict)
+        ],
+    }
+    offers = n2.get("offers", []) if isinstance(n2.get("offers"), list) else []
+    constraints = n2.get("constraints", []) if isinstance(n2.get("constraints"), list) else []
+    interests = n2.get("interests", []) if isinstance(n2.get("interests"), list) else []
+    concessions = n2.get("concessions", []) if isinstance(n2.get("concessions"), list) else []
+    leverage = n2.get("leverage_claims", []) if isinstance(n2.get("leverage_claims"), list) else []
+    evidence = n2.get("evidence", []) if isinstance(n2.get("evidence"), list) else []
+    time_pressure = dict(n2.get("time_pressure") or {})
+    agr = dict(n2.get("agreement_state") or {})
+    out["negotiation_v2"] = {
+        "subject": {
+            "item": trim((n2.get("subject") or {}).get("item", ""), MAX_STR_LEN["short_text"]) if isinstance(n2.get("subject"), dict) else "",
+            "context": trim((n2.get("subject") or {}).get("context", ""), MAX_STR_LEN["text"]) if isinstance(n2.get("subject"), dict) else "",
+            "attributes": dict((n2.get("subject") or {}).get("attributes", {})) if isinstance((n2.get("subject") or {}).get("attributes", {}), dict) else {},
+        },
+        "offers": [
+            {
+                "side": enum_or(it.get("side", "seller"), OFFER_SIDE_ENUM, "seller"),
+                "kind": enum_or(it.get("kind", "condition"), OFFER_KIND_ENUM, "condition"),
+                "value": it.get("value") if isinstance(it.get("value"), dict) or it.get("value") is None else None,
+                "terms": [x for x in it.get("terms", [])[:MAX_ITEMS["constraints"]] if isinstance(x, dict)],
+                "text": trim(it.get("text", ""), MAX_STR_LEN["text"]),
+                "firmness": enum_or(it.get("firmness", "medium"), OFFER_FIRMNESS_ENUM, "medium"),
+                "status": enum_or(it.get("status", "proposed"), OFFER_STATUS_ENUM, "proposed"),
+                "confidence": clamp01(it.get("confidence", 0.0), 0.0),
+            }
+            for it in offers[:MAX_ITEMS["offers"]] if isinstance(it, dict)
+        ],
+        "constraints": [
+            {
+                "side": enum_or(it.get("side", "seller"), CONSTRAINT_SIDE_ENUM, "seller"),
+                "kind": enum_or(it.get("kind", "limit"), CONSTRAINT_KIND_ENUM, "limit"),
+                "dimension": enum_or(it.get("dimension", "other"), CONSTRAINT_DIMENSION_ENUM, "other"),
+                "value": it.get("value"),
+                "text": trim(it.get("text", ""), MAX_STR_LEN["text"]),
+                "flexibility": clamp01(it.get("flexibility", 0.5), 0.5),
+                "status": enum_or(it.get("status", "claimed"), TRUTH_STATUS_ENUM, "claimed"),
+                "confidence": clamp01(it.get("confidence", 0.0), 0.0),
+            }
+            for it in constraints[:MAX_ITEMS["constraints"]] if isinstance(it, dict)
+        ],
+        "interests": [
+            {
+                "side": enum_or(it.get("side", "seller"), OFFER_SIDE_ENUM, "seller"),
+                "category": enum_or(it.get("category", "other"), INTEREST_CATEGORY_ENUM, "other"),
+                "text": trim(it.get("text", ""), MAX_STR_LEN["text"]),
+                "confidence": clamp01(it.get("confidence", 0.0), 0.0),
+            }
+            for it in interests[:MAX_ITEMS["interests"]] if isinstance(it, dict)
+        ],
+        "concessions": [
+            {
+                "side": enum_or(it.get("side", "seller"), OFFER_SIDE_ENUM, "seller"),
+                "dimension": enum_or(it.get("dimension", "other"), CONSTRAINT_DIMENSION_ENUM, "other"),
+                "from": it.get("from"),
+                "to": it.get("to"),
+                "text": trim(it.get("text", ""), MAX_STR_LEN["text"]),
+                "confidence": clamp01(it.get("confidence", 0.0), 0.0),
+            }
+            for it in concessions[:MAX_ITEMS["concessions"]] if isinstance(it, dict)
+        ],
+        "time_pressure": {
+            "deadline_text": trim(time_pressure.get("deadline_text", ""), MAX_STR_LEN["text"]),
+            "deadline_date": trim(time_pressure.get("deadline_date"), MAX_STR_LEN["short_text"]) or None,
+            "window_days": to_int(time_pressure.get("window_days"), None),
+            "urgency": clamp01(time_pressure.get("urgency", 0.0), 0.0),
+            "reason": trim(time_pressure.get("reason", ""), MAX_STR_LEN["text"]),
+            "status": enum_or(time_pressure.get("status", "unverified"), TRUTH_STATUS_ENUM, "unverified"),
+            "confidence": clamp01(time_pressure.get("confidence", 0.0), 0.0),
+        },
+        "leverage_claims": [
+            {
+                "side": enum_or(it.get("side", "seller"), OFFER_SIDE_ENUM, "seller"),
+                "type": enum_or(it.get("type", "time"), LEVERAGE_TYPE_ENUM, "time"),
+                "text": trim(it.get("text", ""), MAX_STR_LEN["text"]),
+                "value": it.get("value"),
+                "evidence_ref": trim(it.get("evidence_ref"), MAX_STR_LEN["short_text"]) or None,
+                "status": enum_or(it.get("status", "claimed"), TRUTH_STATUS_ENUM, "claimed"),
+                "confidence": clamp01(it.get("confidence", 0.0), 0.0),
+            }
+            for it in leverage[:MAX_ITEMS["leverage_claims"]] if isinstance(it, dict)
+        ],
+        "evidence": [
+            {
+                "type": enum_or(it.get("type", "other"), EVIDENCE_TYPE_ENUM, "other"),
+                "items": _coerce_str_list(it.get("items", []), MAX_ITEMS["evidence"]),
+                "text": trim(it.get("text", ""), MAX_STR_LEN["text"]),
+                "status": enum_or(it.get("status", "claimed"), TRUTH_STATUS_ENUM, "claimed"),
+                "confidence": clamp01(it.get("confidence", 0.0), 0.0),
+                "meta": _sanitize_meta(it.get("meta", {})) or {},
+            }
+            for it in evidence[:MAX_ITEMS["evidence"]] if isinstance(it, dict)
+        ],
+        "agreement_state": {
+            "state": enum_or(agr.get("state", "none"), AGREEMENT_STATE_ENUM, "none"),
+            "next_step": trim(agr.get("next_step", ""), MAX_STR_LEN["text"]),
+            "open_points": _coerce_str_list(agr.get("open_points", []), MAX_ITEMS["open_points"]),
+            "confidence": clamp01(agr.get("confidence", 0.0), 0.0),
+        },
+    }
+    return out, issues
+
+
+def normalize_belief_state_v2(raw: object, previous: BeliefState | None = None) -> Tuple[dict, List[str]]:
+    base, issues = normalize_belief_state(raw, previous=previous)
+    out = dict(base)
+    out["schema_version"] = "v2"
+    uni = dict(out.get("universal") or {})
+    tom = dict(uni.get("tom") or {})
+    raw_uni = (raw.get("universal") or {}) if isinstance(raw, dict) else {}
+    raw_tom = (raw_uni.get("tom") or {}) if isinstance(raw_uni, dict) else {}
+    hypotheses = raw_tom.get("hypotheses", tom.get("hypotheses", [])) if isinstance(raw_tom.get("hypotheses", tom.get("hypotheses", [])), list) else []
+    tom["hypotheses"] = [
+        {
+            "kind": trim(it.get("kind", "other"), MAX_STR_LEN["short_text"]),
+            "text": trim(it.get("text", ""), MAX_STR_LEN["text"]),
+            "confidence": clamp01(it.get("confidence", 0.0), 0.0),
+            "evidence_refs": _coerce_str_list(it.get("evidence_refs", []), 6),
+        }
+        for it in hypotheses[:MAX_ITEMS["hypotheses"]] if isinstance(it, dict)
+    ]
+    uni["tom"] = tom
+    uni["behavior_guidance"] = _normalize_behavior_guidance(uni.get("behavior_guidance", {}))
+    out["universal"] = uni
+
+    neg = dict(out.get("negotiation") or {})
+    stance_raw = dict(neg.get("stance") or {})
+    neg["stance"] = {k: clamp01(stance_raw.get(k, 0.5), 0.5) for k in NEGOTIATION_STANCE_KEYS}
+    reasons_raw = dict(neg.get("reasons") or {})
+    n_reasons = {}
+    for k in NEGOTIATION_REASON_KEYS:
+        item = dict(reasons_raw.get(k) or {})
+        evidence = trim(item.get("evidence", ""), MAX_STR_LEN["evidence"])
+        if not evidence:
+            continue
+        n_reasons[k] = {"weight": clamp01(item.get("weight", 0.0), 0.0), "confidence": clamp01(item.get("confidence", 0.0), 0.0), "evidence": evidence}
+    neg["reasons"] = n_reasons
+    out["negotiation"] = neg
+    return out, issues
 def normalize_world_state(raw: object) -> Tuple[WorldState, List[str]]:
     base = default_world_state()
     defaults = default_world_state()
     issues: List[str] = []
     if not isinstance(raw, dict):
         issues.append("world_state_no_dict")
+        base["schema_version"] = "v2"
         return base, issues
     universal_domain = raw.get("universal_domain")
     negotiation = raw.get("negotiation")
@@ -688,6 +964,10 @@ def normalize_world_state(raw: object) -> Tuple[WorldState, List[str]]:
     base["universal_state"] = normalize_universal_state(raw.get("universal_state"))
     base["open_claims"] = normalize_open_claims(raw.get("open_claims"), max_total=50)
 
+    base["schema_version"] = "v2" if raw.get("schema_version") == "v2" else "v1"
+    if "universal_v2" in raw or "negotiation_v2" in raw or base["schema_version"] == "v2":
+        v2_out, v2_issues = normalize_world_state_v2(raw)
+        return v2_out, issues + v2_issues
     return base, issues
 
 
@@ -732,7 +1012,25 @@ def normalize_belief_state(
         neg["evaluations"] = {}
     if not isinstance(neg.get("tom"), dict):
         neg["tom"] = {}
+    stance_raw = dict(neg.get("stance") or {})
+    neg["stance"] = {k: clamp01(stance_raw.get(k, 0.5), 0.5) for k in NEGOTIATION_STANCE_KEYS}
+    reasons_raw = dict(neg.get("reasons") or {})
+    filtered_reasons = {}
+    for key in NEGOTIATION_REASON_KEYS:
+        item = dict(reasons_raw.get(key) or {})
+        evidence = _trim(item.get("evidence", ""), MAX_STR_LEN["evidence"])
+        if not evidence:
+            continue
+        filtered_reasons[key] = {
+            "weight": clamp01(item.get("weight", 0.0), 0.0),
+            "confidence": clamp01(item.get("confidence", 0.0), 0.0),
+            "evidence": evidence,
+        }
+    neg["reasons"] = filtered_reasons
     base["negotiation"] = neg
+
+    if "schema_version" in raw:
+        base["schema_version"] = "v2" if raw.get("schema_version") == "v2" else "v1"
 
     return base, issues
 

@@ -21,6 +21,9 @@ Output JSON:
 }
 Rules:
 - response_text must obey style_contract and constraints_struct.
+- Never present hypotheses/inferences as facts.
+- If epistemic_contract.must_hedge is true, use hedged language ("parece", "podría", "para confirmar").
+- If epistemic_contract.verify_first is true, prioritize one concise verification question before conclusions.
 - requested_info_slots max 6.
 - If constraints_struct.disallow_numbers == true, do not output any explicit numbers/currencies.
 """
@@ -56,6 +59,9 @@ STYLE CONTRACT (fixed):
 
 CONSTRAINTS_STRUCT (must obey):
 {constraints_json}
+
+EPISTEMIC CONTRACT (must obey):
+{epistemic_contract_json}
 
 [MEMORY]
 {memory_block}
