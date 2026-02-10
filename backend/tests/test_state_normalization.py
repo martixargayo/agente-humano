@@ -269,7 +269,7 @@ def test_normalize_progress_phase_state_clamps_and_dedupes():
     )
 
     assert "phase_invalid" in issues
-    assert progress["phase_state"]["phase"] == "opening"
+    assert progress["phase_state"]["phase"] == "climate"
     assert progress["phase_state"]["confidence"] == 1.0
     assert progress["phase_state"]["reasons"] == ["a", "b"]
     assert progress["phase_state"]["last_updated_turn"] == 0

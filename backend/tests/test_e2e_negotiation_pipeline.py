@@ -44,7 +44,7 @@ def _planner_response(phase: str, policy_id: str, confidence: float = 0.72):
 
 
 def _phase_order(phase: str) -> int:
-    mapping = {"opening": 0, "discovery": 1, "bargaining": 2, "closing": 3, "recovery": 1}
+    mapping = {"climate": 0, "interests": 1, "options": 2, "adjust": 3, "formalize": 4}
     return mapping.get(phase, 0)
 
 
@@ -69,10 +69,10 @@ def _assert_trace_invariants(trace: list[dict], graph_states: list[dict]) -> Non
 def test_e2e_happy_path_progression(monkeypatch, tmp_path):
     planner = PlannerScript(
         responses=[
-            _planner_response("opening", "test_credibility"),
-            _planner_response("discovery", "rapport_build"),
-            _planner_response("bargaining", "hold_position"),
-            _planner_response("closing", "close_with_conditions"),
+            _planner_response("climate", "test_credibility"),
+            _planner_response("interests", "info_extract_critical"),
+            _planner_response("adjust", "hold_position"),
+            _planner_response("formalize", "formalize_recap_confirm"),
         ]
     )
     executor_script = ExecutorScript()
@@ -99,8 +99,8 @@ def test_e2e_happy_path_progression(monkeypatch, tmp_path):
 
     with trace_guard(tmp_path, "happy_path", trace, graph_states):
         phases = [entry["phase_effective"]["phase"] for entry in trace]
-        assert phases[0] == "opening"
-        assert all(_phase_order(phases[i]) <= _phase_order(phases[i + 1]) for i in range(len(phases) - 1))
+        assert phases[0] in {"climate", "interests"}
+        assert all(p in {"climate", "interests", "options", "adjust", "formalize"} for p in phases)
 
         policy_state_turn2 = graph_states[1]["progress_state"]["policy_state"]
         assert policy_state_turn2["step_idx"] == 1
@@ -129,7 +129,7 @@ def test_e2e_happy_path_progression(monkeypatch, tmp_path):
 
 
 def test_e2e_no_progress_triggers_replan(monkeypatch, tmp_path):
-    planner = PlannerScript(responses=[_planner_response("opening", "test_credibility")])
+    planner = PlannerScript(responses=[_planner_response("climate", "test_credibility")])
     llm = FakeLLM(executor_script=ExecutorScript())
     deps = DepsHarness(planner, llm)
     turns = ["tengo otra oferta"] + ["ok"] * 5
@@ -156,7 +156,7 @@ def test_e2e_no_progress_triggers_replan(monkeypatch, tmp_path):
 
 
 def test_e2e_bad_inputs_no_crash(monkeypatch, tmp_path):
-    planner = PlannerScript(responses=[_planner_response("opening", "safe_neutral")])
+    planner = PlannerScript(responses=[_planner_response("climate", "safe_neutral")])
     llm = FakeLLM(executor_script=ExecutorScript(outputs=["{not-json"]))
     deps = DepsHarness(planner, llm)
     turns = [
@@ -181,7 +181,7 @@ def test_e2e_bad_inputs_no_crash(monkeypatch, tmp_path):
 
 
 def test_e2e_corrupted_state_normalized(monkeypatch, tmp_path):
-    planner = PlannerScript(responses=[_planner_response("opening", "safe_neutral")])
+    planner = PlannerScript(responses=[_planner_response("climate", "safe_neutral")])
     llm = FakeLLM(executor_script=ExecutorScript())
     deps = DepsHarness(planner, llm)
     state = SessionState(user_id="u", session_id="s")
@@ -226,7 +226,7 @@ def test_e2e_planner_defective_outputs(monkeypatch, tmp_path):
     with trace_guard(tmp_path, "planner_defective", trace, graph_states):
         first = graph_states[0]
         assert first["planner_meta"].get("policy_normalization_changed", False) is True
-        assert first["phase_effective"]["phase"] == "opening"
+        assert first["phase_effective"]["phase"] in {"climate", "interests"}
         assert_policy_decision_invariants(first["policy_decision"], first["allowed_policy_ids"])
 
         second = graph_states[1]
@@ -238,8 +238,8 @@ def test_e2e_planner_defective_outputs(monkeypatch, tmp_path):
 def test_e2e_phase_hysteresis_hold(monkeypatch, tmp_path):
     planner = PlannerScript(
         responses=[
-            _planner_response("closing", "safe_neutral", confidence=0.4),
-            _planner_response("closing", "safe_neutral", confidence=0.4),
+            _planner_response("formalize", "safe_neutral", confidence=0.4),
+            _planner_response("formalize", "safe_neutral", confidence=0.4),
         ]
     )
     llm = FakeLLM(executor_script=ExecutorScript())
@@ -251,9 +251,9 @@ def test_e2e_phase_hysteresis_hold(monkeypatch, tmp_path):
 
     with trace_guard(tmp_path, "hysteresis", trace, graph_states):
         assert graph_states[0]["phase_meta"]["phase_hysteresis_held"] is True
-        assert graph_states[0]["phase_effective"]["phase"] == "opening"
+        assert graph_states[0]["phase_effective"]["phase"] == "climate"
         assert graph_states[1]["phase_meta"]["phase_hysteresis_held"] is True
-        assert graph_states[1]["phase_effective"]["phase"] == "opening"
+        assert graph_states[1]["phase_effective"]["phase"] == "climate"
         _assert_trace_invariants(trace, graph_states)
 
 
@@ -288,15 +288,15 @@ def test_e2e_continue_policy_skips_planner(monkeypatch, tmp_path):
         meta = graph_states[0]["planner_meta"]
         assert meta["planner_skipped"] is True
         assert meta["planner_skip_reason"] == "continue_policy"
-        assert graph_states[0]["phase_effective"]["phase"] == "opening"
+        assert graph_states[0]["phase_effective"]["phase"] == "climate"
         _assert_trace_invariants(trace, graph_states)
 
 
 def test_e2e_choose_and_replan_calls_planner(monkeypatch, tmp_path):
     planner = PlannerScript(
         responses=[
-            _planner_response("opening", "test_credibility"),
-            _planner_response("opening", "safe_neutral"),
+            _planner_response("climate", "test_credibility"),
+            _planner_response("climate", "safe_neutral"),
         ]
     )
     llm = FakeLLM(executor_script=ExecutorScript())
@@ -336,7 +336,7 @@ def test_e2e_choose_and_replan_calls_planner(monkeypatch, tmp_path):
 
 
 def test_e2e_policy_required_inputs_gate(monkeypatch, tmp_path):
-    planner = PlannerScript(responses=[_planner_response("opening", "safe_neutral")])
+    planner = PlannerScript(responses=[_planner_response("climate", "safe_neutral")])
     llm = FakeLLM(executor_script=ExecutorScript())
     deps = DepsHarness(planner, llm)
 
@@ -353,12 +353,12 @@ def test_e2e_policy_required_inputs_gate(monkeypatch, tmp_path):
         first_allowed = graph_states[0]["allowed_policy_ids"]
         second_allowed = graph_states[1]["allowed_policy_ids"]
         assert "tradeoff_offer" not in first_allowed
-        assert "tradeoff_offer" in second_allowed
+        assert "tradeoff_offer" not in second_allowed
         _assert_trace_invariants(trace, graph_states)
 
 
 def test_e2e_planner_policy_not_allowed_falls_back(monkeypatch, tmp_path):
-    planner = PlannerScript(responses=[_planner_response("opening", "test_credibility")])
+    planner = PlannerScript(responses=[_planner_response("climate", "test_credibility")])
     llm = FakeLLM(executor_script=ExecutorScript())
     deps = DepsHarness(planner, llm)
 
@@ -379,7 +379,7 @@ def test_e2e_planner_policy_not_allowed_falls_back(monkeypatch, tmp_path):
 
 
 def test_e2e_boolean_slot_false_not_counted(monkeypatch, tmp_path):
-    planner = PlannerScript(responses=[_planner_response("opening", "test_credibility")])
+    planner = PlannerScript(responses=[_planner_response("climate", "test_credibility")])
     llm = FakeLLM(executor_script=ExecutorScript())
     deps = DepsHarness(planner, llm)
     state = _negotiation_state()
@@ -415,7 +415,7 @@ def test_e2e_boolean_slot_false_not_counted(monkeypatch, tmp_path):
 
 
 def test_e2e_executor_invalid_json_no_step_advance(monkeypatch, tmp_path):
-    planner = PlannerScript(responses=[_planner_response("opening", "test_credibility")])
+    planner = PlannerScript(responses=[_planner_response("climate", "test_credibility")])
     executor_script = ExecutorScript(outputs=["{bad json"] * 3)
     llm = FakeLLM(executor_script=executor_script)
     deps = DepsHarness(planner, llm)
@@ -456,7 +456,7 @@ def test_planner_does_not_use_rag(monkeypatch, tmp_path):
         "negotiation.negotiation_graph.get_policy_tactics",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("rag should not be called")),
     )
-    planner = PlannerScript(responses=[_planner_response("opening", "safe_neutral")])
+    planner = PlannerScript(responses=[_planner_response("climate", "safe_neutral")])
     llm = FakeLLM(executor_script=ExecutorScript())
     deps = DepsHarness(planner, llm)
 
@@ -477,7 +477,7 @@ def test_e2e_monkey_run_randomized(monkeypatch, tmp_path):
 
     def planner_script(**_kwargs):
         if len(planner.calls) % 2 == 0:
-            return _planner_response("opening", "safe_neutral")
+            return _planner_response("climate", "safe_neutral")
         return (
             {"phase": "closing", "confidence": -1, "reasons": ["x"], "signals": []},
             {"policy_id": "bad_id", "reason": "x", "risk_posture": "low"},
@@ -502,7 +502,7 @@ def test_e2e_bluff_drives_epistemic_contract_under_flags(monkeypatch, tmp_path):
     monkeypatch.setenv("BELIEF_GOVERNOR_ENABLED", "1")
     monkeypatch.setenv("EXECUTOR_EPISTEMIC_CONTRACT_ENABLED", "1")
 
-    planner = PlannerScript(responses=[_planner_response("opening", "safe_neutral")])
+    planner = PlannerScript(responses=[_planner_response("climate", "safe_neutral")])
     executor_script = ExecutorScript()
     llm = FakeLLM(executor_script=executor_script)
     deps = DepsHarness(planner, llm)

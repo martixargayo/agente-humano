@@ -59,7 +59,7 @@ def test_planner_called_when_choose_policy():
 
     def fake_plan_phase_policy(**_kwargs):
         called["count"] += 1
-        return {"phase": "opening"}, {"policy_id": "safe_neutral"}, {}
+        return {"phase": "climate"}, {"policy_id": "safe_neutral"}, {}
 
     progress_state = default_progress_state()
     policy_state = default_policy_state()
@@ -79,7 +79,7 @@ def test_planner_called_when_replan_policy():
 
     def fake_plan_phase_policy(**_kwargs):
         called["count"] += 1
-        return {"phase": "opening"}, {"policy_id": "safe_neutral"}, {}
+        return {"phase": "climate"}, {"policy_id": "safe_neutral"}, {}
 
     progress_state = default_progress_state()
     policy_state = default_policy_state()

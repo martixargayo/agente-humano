@@ -11,7 +11,7 @@ from state import SessionState
 def _fake_deps():
     def fake_plan_phase_policy(*_args, **_kwargs):
         phase_candidate = {
-            "phase": "opening",
+            "phase": "climate",
             "confidence": 0.6,
             "reasons": ["history:mock"],
             "signals": [],

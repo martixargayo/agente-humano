@@ -6,16 +6,17 @@ from pydantic import BaseModel, ConfigDict, Field, confloat, conlist
 
 from ..schemas import NegotiationPhase, RequiredBelief, RequiredInput
 
-PHASES = ("opening", "discovery", "bargaining", "closing", "recovery")
-PHASE_OPENING = "opening"
-PHASE_DISCOVERY = "discovery"
-PHASE_BARGAINING = "bargaining"
-PHASE_CLOSING = "closing"
-PHASE_RECOVERY = "recovery"
-PHASE_ORDER: list[NegotiationPhase] = ["opening", "discovery", "bargaining", "closing"]
+PHASES = ("climate", "interests", "options", "adjust", "formalize")
+PHASE_CLIMATE = "climate"
+PHASE_INTERESTS = "interests"
+PHASE_OPTIONS = "options"
+PHASE_ADJUST = "adjust"
+PHASE_FORMALIZE = "formalize"
+PHASE_ORDER: list[NegotiationPhase] = ["climate", "interests", "options", "adjust", "formalize"]
 PHASE_INDEX: dict[NegotiationPhase, int] = {phase: idx for idx, phase in enumerate(PHASE_ORDER)}
 
-PHASE_LITERAL = Literal["opening", "discovery", "bargaining", "closing", "recovery"]
+LEGACY_PHASE_LITERAL = Literal["opening", "discovery", "bargaining", "closing", "recovery"]
+PHASE_LITERAL = Literal["climate", "interests", "options", "adjust", "formalize"]
 REASON_PREFIXES = {"world", "belief", "intent", "history"}
 RISK_POSTURES = ("low", "mid", "high")
 
@@ -54,11 +55,12 @@ class PhaseSignal(BaseModel):
 
 class PhasePolicyDecisionModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    phase: PHASE_LITERAL
+    phase: PHASE_LITERAL | LEGACY_PHASE_LITERAL
     confidence: confloat(ge=0.0, le=1.0) = 0.6
+    recovery_mode: bool = False
     reasons: conlist(str, max_length=8) = Field(default_factory=list)
     signals: conlist(PhaseSignal, max_length=8) = Field(default_factory=list)
-    alternatives: conlist(PHASE_LITERAL, max_length=3) = Field(default_factory=list)
+    alternatives: conlist(PHASE_LITERAL | LEGACY_PHASE_LITERAL, max_length=3) = Field(default_factory=list)
     policy_id: str = ""
     reason: str = Field(default="", max_length=180)
     micro_goal: str = Field(default="", max_length=140)
@@ -198,7 +200,7 @@ POLICIES: List[Policy] = [
         hard_constraints="No escalar ni presionar; mantener tono cordial.",
         hard_constraints_rules=["avoid_reveal_own_numbers"],
         rag_query_template="Frases neutrales y seguras para mantener la conversación.",
-        phase_hints=["opening", "recovery", "discovery"],
+        phase_hints=["climate", "interests", "options", "adjust", "formalize"],
         required_inputs=[],
         target_slots=["rapport_signal"],
         expected_effects=["keeps_dialogue_open"],
@@ -216,14 +218,14 @@ POLICIES: List[Policy] = [
         rag_query_template=(
             "Tácticas para generar rapport sin perder objetivo en una negociación presencial."
         ),
-        phase_hints=["opening", "recovery"],
+        phase_hints=["climate"],
         required_inputs=[{"key": "tone_signal", "op": "exists"}],
         target_slots=["rapport_signal"],
         expected_effects=["reduces_tension", "opens_dialogue"],
         failure_modes=["seller_repeats_same_answer", "high_tension"],
         capabilities={"probe_open"},
         guards={"safe_when_tense", "avoid_mentioning_own_numbers"},
-        tags={"deescalation", "safe_when_tense"},
+        tags={"deescalation", "safe_when_tense", "recovery_ok"},
     ),
     Policy(
         policy_id="info_extract_critical",
@@ -234,7 +236,7 @@ POLICIES: List[Policy] = [
         rag_query_template=(
             "Preguntas y técnicas para descubrir información crítica sin sonar interrogatorio."
         ),
-        phase_hints=["discovery", "opening"],
+        phase_hints=["interests", "climate"],
         required_inputs=[],
         target_slots=["docs", "seller_batna", "seller_urgency_reason"],
         expected_effects=["seller_provides_docs", "seller_explains_urgency"],
@@ -252,7 +254,7 @@ POLICIES: List[Policy] = [
         rag_query_template=(
             "Cómo contrastar credibilidad con preguntas indirectas y señales suaves."
         ),
-        phase_hints=["discovery", "opening"],
+        phase_hints=["interests", "climate"],
         required_inputs=[{"key": "other_buyer_claimed", "op": "true"}],
         target_slots=["other_buyer_details", "evidence_offered"],
         expected_effects=["seller_offers_evidence", "clarifies_other_buyer"],
@@ -289,7 +291,7 @@ POLICIES: List[Policy] = [
         rag_query_template=(
             "Tácticas para aplazar precio y reconducir a información o valor."
         ),
-        phase_hints=["discovery", "opening"],
+        phase_hints=["interests", "climate"],
         required_inputs=[{"key": "price_mentioned", "op": "exists"}],
         target_slots=["docs", "seller_batna"],
         expected_effects=["shifts_to_info", "reduces_price_focus"],
@@ -307,7 +309,7 @@ POLICIES: List[Policy] = [
         rag_query_template=(
             "Formas indirectas de desafiar un precio alto y abrir espacio."
         ),
-        phase_hints=["bargaining", "closing"],
+        phase_hints=["adjust"],
         required_inputs=[{"key": "price_mentioned", "op": "true"}],
         target_slots=["price", "concession"],
         expected_effects=["seller_considers_drop", "signals_flexibility"],
@@ -325,7 +327,7 @@ POLICIES: List[Policy] = [
         rag_query_template=(
             "Cómo formular trade-offs claros que mantengan control del valor."
         ),
-        phase_hints=["bargaining", "closing"],
+        phase_hints=["adjust"],
         required_inputs=[{"key": "price_mentioned", "op": "true"}],
         target_slots=["concession", "docs"],
         expected_effects=["seller_offers_extra", "seller_moves_on_price"],
@@ -343,7 +345,7 @@ POLICIES: List[Policy] = [
         rag_query_template=(
             "Frases breves para mantener posición y seguir negociando."
         ),
-        phase_hints=["bargaining", "closing"],
+        phase_hints=["adjust"],
         required_inputs=[{"key": "price_mentioned", "op": "true"}],
         target_slots=["price", "price_firm"],
         expected_effects=["seller_acknowledges_limit", "stabilizes_terms"],
@@ -361,30 +363,30 @@ POLICIES: List[Policy] = [
         rag_query_template=(
             "Tácticas de desescalada en negociación presencial sin ceder de más."
         ),
-        phase_hints=["recovery"],
+        phase_hints=["climate"],
         required_inputs=[{"key": "tone_signal", "op": "exists"}],
         target_slots=["rapport_signal"],
         expected_effects=["reduces_tension", "restores_cooperation"],
         failure_modes=["seller_hostile"],
         capabilities={"pressure_soft", "probe_open"},
         guards={"safe_when_tense", "avoid_mentioning_own_numbers"},
-        tags={"deescalation", "safe_when_tense"},
+        tags={"deescalation", "safe_when_tense", "recovery_ok"},
         required_beliefs=[{"key": "universal.behavior_guidance.conflict_risk", "op": "gte", "value": 0.6}],
     ),
     Policy(
-        policy_id="close_with_conditions",
-        description="Cerrar con condiciones concretas y recapitulación.",
+        policy_id="formalize_recap_confirm",
+        description="Recapitular y confirmar términos acordados con siguiente paso.",
         primary_when="Acuerdo cercano o hay consenso básico.",
-        hard_constraints="No aceptar más de 10k total; dejar claro el siguiente paso.",
+        hard_constraints="No inventar términos; confirmar solo lo acordado y un siguiente paso claro.",
         hard_constraints_rules=["respect_batna", "avoid_reveal_own_numbers"],
-        rag_query_template=("Guía para cerrar condiciones claras y confirmar acuerdo."),
-        phase_hints=["closing"],
+        rag_query_template=("Guía para recapitular acuerdos y confirmar términos finales."),
+        phase_hints=["formalize"],
         required_inputs=[{"key": "price_mentioned", "op": "true"}],
         target_slots=["price", "docs"],
-        expected_effects=["agreement_next_step", "confirm_terms"],
-        failure_modes=["price_over_limit", "missing_docs"],
+        expected_effects=["agreement_recap_confirmed"],
+        failure_modes=["missing_open_points", "counterparty_changes_terms"],
         capabilities={"close_next"},
         guards={"requires_slot_complete", "avoid_mentioning_own_numbers"},
-        tags={"closing"},
+        tags={"formalize", "recovery_ok"},
     ),
 ]

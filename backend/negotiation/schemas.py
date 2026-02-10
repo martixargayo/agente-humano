@@ -46,7 +46,8 @@ StepKind = Literal[
     "pressure_soft",
     "close_next",
 ]
-NegotiationPhase = Literal["opening", "discovery", "bargaining", "closing", "recovery"]
+NegotiationPhase = Literal["climate", "interests", "options", "adjust", "formalize"]
+LegacyNegotiationPhase = Literal["opening", "discovery", "bargaining", "closing", "recovery"]
 
 
 class IntentSlot(TypedDict):
@@ -484,6 +485,10 @@ class IntentHint(TypedDict):
 
 class PhaseState(TypedDict):
     phase: NegotiationPhase
+    phase_proposed: NegotiationPhase | LegacyNegotiationPhase | Literal[""]
+    phase_effective: NegotiationPhase
+    recovery_mode: bool
+    recovery_stable_turns: int
     confidence: float
     reasons: List[str]
     last_updated_turn: int
@@ -759,7 +764,11 @@ def default_progress_state() -> ProgressState:
         "intent_state": default_intent_state(),
         "policy_state": default_policy_state(),
         "phase_state": {
-            "phase": "opening",
+            "phase": "climate",
+            "phase_proposed": "",
+            "phase_effective": "climate",
+            "recovery_mode": False,
+            "recovery_stable_turns": 0,
             "confidence": 0.6,
             "reasons": [],
             "last_updated_turn": 0,
