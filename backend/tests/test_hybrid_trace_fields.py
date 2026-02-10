@@ -108,7 +108,7 @@ def test_phase_repair_reflected_in_trace(monkeypatch):
 
     trace = state.debug_trace[-1]
     assert trace["phase_candidate"]["phase"] == "closing"
-    assert trace["phase_effective"]["phase"] == "closing"
+    assert trace["phase_effective"]["phase"] == "formalize"
     assert trace["policy_pre_repair"]["policy_id"] == "info_extract_critical"
     assert trace["policy_post_repair"]["policy_id"] != trace["policy_pre_repair"]["policy_id"]
 

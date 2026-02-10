@@ -14,6 +14,7 @@ from .schemas import (
     IntentState,
     IntentStatus,
     IntentType,
+    LegacyNegotiationPhase,
     NegotiationPhase,
     PersonaProfile,
     PolicyDecision,
@@ -115,6 +116,13 @@ _ALLOWED_INTENT_TYPES: set[IntentType] = {
 _ALLOWED_POLICY_STATUS = {"inactive", "active", "succeeded", "abandoned", "paused"}
 _ALLOWED_PLANNER_REQUEST = {"choose_policy", "continue_policy", "replan_policy"}
 _ALLOWED_PHASES: set[NegotiationPhase] = {
+    "climate",
+    "interests",
+    "options",
+    "adjust",
+    "formalize",
+}
+_ALLOWED_LEGACY_PHASES: set[LegacyNegotiationPhase] = {
     "opening",
     "discovery",
     "bargaining",
@@ -1419,17 +1427,42 @@ def _normalize_gate_state(raw: object) -> Tuple[dict, List[str]]:
 
 
 def normalize_phase_state(raw: object) -> Tuple[PhaseState, List[str]]:
+    from .phase_migration import normalize_phase_candidate
+
     base = default_progress_state()["phase_state"]
     issues: List[str] = []
     if not isinstance(raw, dict):
         issues.append("phase_state_no_dict")
         return base, issues
 
-    phase = raw.get("phase", base["phase"])
-    if phase not in _ALLOWED_PHASES:
-        issues.append("phase_invalid")
-        phase = "opening"
-    base["phase"] = phase
+    phase_candidate = raw.get("phase_effective", raw.get("phase", base["phase"]))
+    normalized_phase, proposed_raw, mapped_recovery, phase_issues = normalize_phase_candidate(
+        str(phase_candidate),
+        bool(raw.get("recovery_mode", False)),
+    )
+    issues.extend(phase_issues)
+
+    base["phase"] = normalized_phase
+    base["phase_effective"] = normalized_phase
+
+    proposed = str(raw.get("phase_proposed", proposed_raw or "")).strip().lower()
+    base["phase_proposed"] = proposed if proposed in _ALLOWED_LEGACY_PHASES.union(_ALLOWED_PHASES) else ""
+
+    recovery_mode = bool(raw.get("recovery_mode", mapped_recovery))
+    if proposed == "recovery":
+        recovery_mode = True
+        base["phase_effective"] = "climate"
+        base["phase"] = str(raw.get("phase", base["phase"])) if str(raw.get("phase", "")) in _ALLOWED_PHASES else "climate"
+        issues.append("phase_recovery_overlay_applied")
+
+    base["recovery_mode"] = bool(recovery_mode)
+
+    stable_turns = raw.get("recovery_stable_turns", base.get("recovery_stable_turns", 0))
+    try:
+        base["recovery_stable_turns"] = max(0, int(stable_turns))
+    except (TypeError, ValueError):
+        issues.append("phase_recovery_stable_turns_invalid")
+        base["recovery_stable_turns"] = 0
 
     base["confidence"] = _clamp(
         _coerce_float(raw.get("confidence", base["confidence"]), base["confidence"])

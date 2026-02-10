@@ -16,7 +16,7 @@ def test_executed_policy_and_debug_trace_are_persisted(monkeypatch):
         decision["micro_goal"] = "y"
         decision["risk_posture"] = "mid"
         phase_candidate = {
-            "phase": "opening",
+            "phase": "climate",
             "confidence": 0.6,
             "reasons": ["history:mock"],
             "signals": [],
@@ -76,7 +76,7 @@ def test_executed_policy_can_differ_from_chosen_and_is_persisted(monkeypatch):
         decision["micro_goal"] = "chosen"
         decision["risk_posture"] = "mid"
         phase_candidate = {
-            "phase": "opening",
+            "phase": "climate",
             "confidence": 0.6,
             "reasons": ["history:mock"],
             "signals": [],

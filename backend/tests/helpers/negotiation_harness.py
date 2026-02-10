@@ -21,7 +21,7 @@ from state import SessionState
 
 ALLOWED_POLICY_STATUS = {"inactive", "active", "succeeded", "abandoned", "paused"}
 ALLOWED_PLANNER_REQUEST = {"choose_policy", "continue_policy", "replan_policy"}
-ALLOWED_PHASES = {"opening", "discovery", "bargaining", "closing", "recovery"}
+ALLOWED_PHASES = {"climate", "interests", "options", "adjust", "formalize"}
 
 
 def _safe_json(payload: dict) -> str:
@@ -45,7 +45,7 @@ class PlannerScript:
         decision = default_policy_decision()
         decision["policy_id"] = "safe_neutral"
         phase_candidate = {
-            "phase": "opening",
+            "phase": "climate",
             "confidence": 0.7,
             "reasons": ["history:default"],
             "signals": [],

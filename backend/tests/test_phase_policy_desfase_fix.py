@@ -39,8 +39,8 @@ def _choose_policy_ids(progress_state):
         (
             policy_id
             for policy_id in allowed_all
-            if "closing" in phase_catalog.get(policy_id, [])
-            and "opening" not in phase_catalog.get(policy_id, [])
+            if "formalize" in phase_catalog.get(policy_id, [])
+            and "climate" not in phase_catalog.get(policy_id, [])
         ),
         None,
     )
@@ -48,8 +48,8 @@ def _choose_policy_ids(progress_state):
         (
             policy_id
             for policy_id in allowed_all
-            if "opening" in phase_catalog.get(policy_id, [])
-            and "closing" not in phase_catalog.get(policy_id, [])
+            if "climate" in phase_catalog.get(policy_id, [])
+            and "formalize" not in phase_catalog.get(policy_id, [])
         ),
         None,
     )
@@ -57,7 +57,7 @@ def _choose_policy_ids(progress_state):
         (
             policy_id
             for policy_id in allowed_all
-            if "opening" in phase_catalog.get(policy_id, [])
+            if "climate" in phase_catalog.get(policy_id, [])
         ),
         None,
     )
@@ -79,7 +79,7 @@ def test_policy_repaired_when_phase_effective_mismatch():
     def fake_plan_phase_policy(**_kwargs):
         return (
             {
-                "phase": "closing",
+                "phase": "formalize",
                 "confidence": 0.95,
                 "reasons": [],
                 "signals": [],
@@ -103,7 +103,7 @@ def test_policy_repaired_when_phase_effective_mismatch():
 
     policy_id = result["policy_decision"]["policy_id"]
     assert policy_id in allowed_all
-    assert "closing" in phase_catalog.get(policy_id, [])
+    assert "formalize" in phase_catalog.get(policy_id, [])
     assert result["planner_meta"]["policy_phase_mismatch"] is True
 
 
@@ -122,7 +122,7 @@ def test_hysteresis_hold_forces_policy_to_match_phase_effective():
     def fake_plan_phase_policy(**_kwargs):
         return (
             {
-                "phase": "closing",
+                "phase": "formalize",
                 "confidence": 0.1,
                 "reasons": [],
                 "signals": [],
@@ -146,8 +146,8 @@ def test_hysteresis_hold_forces_policy_to_match_phase_effective():
 
     policy_id = result["policy_decision"]["policy_id"]
     assert policy_id in allowed_all
-    assert "opening" in phase_catalog.get(policy_id, [])
-    assert result["phase_effective"]["phase"] == "opening"
+    assert "climate" in phase_catalog.get(policy_id, [])
+    assert result["phase_effective"]["phase"] == "climate"
 
 
 def test_no_regression_continue_policy_skips_planner():

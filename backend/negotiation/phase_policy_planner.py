@@ -164,8 +164,9 @@ def plan_phase_policy(
         result = structured.invoke(messages)
         payload = result.model_dump()
         phase_candidate = {
-            "phase": payload.get("phase", "opening"),
+            "phase": payload.get("phase", "climate"),
             "confidence": float(payload.get("confidence", 0.6) or 0.6),
+            "recovery_mode": bool(payload.get("recovery_mode", False)),
             "reasons": _normalize_reasons(payload.get("reasons", [])),
             "signals": _normalize_signals(payload.get("signals", [])),
             "alternatives": payload.get("alternatives", []),
@@ -194,8 +195,9 @@ def plan_phase_policy(
         logger.warning("phase_policy_planner_error=%s", exc)
         return (
             {
-                "phase": "opening",
+                "phase": "climate",
                 "confidence": 0.0,
+                "recovery_mode": False,
                 "reasons": [],
                 "signals": [],
                 "alternatives": [],

@@ -3,6 +3,7 @@ from __future__ import annotations
 from ..phase_state_updater import postprocess_phase_candidate
 from ..policies import get_policy, policy_phase_catalog, safe_neutral_policy_id
 from ..policy_planner import (
+    allowed_policy_ids,
     allowed_policy_ids_no_phase,
     repair_policy_by_phase,
 )
@@ -32,7 +33,7 @@ def phase_policy_planner_node(state: dict) -> dict:
     gate_state = progress_state.get("gate_state", default_progress_state()["gate_state"])
     turn_count = state.get("turn_count", 0) or 0
 
-    allowed_all = allowed_policy_ids_no_phase(
+    allowed_all = allowed_policy_ids(
         state["world_state"],
         state["belief_state"],
         progress_state,
@@ -112,7 +113,7 @@ def phase_policy_planner_node(state: dict) -> dict:
                 "inputs_used": [],
             }
             phase_candidate = {
-                "phase": "opening",
+                "phase": "climate",
                 "confidence": 0.0,
                 "reasons": [],
                 "signals": [],
@@ -123,11 +124,14 @@ def phase_policy_planner_node(state: dict) -> dict:
             prev_phase_state=progress_state.get("phase_state"),
             phase_candidate=phase_candidate,
             turn_count=turn_count,
+            world_state=state.get("world_state", {}),
+            belief_state=state.get("belief_state", {}),
+            progress_state=progress_state,
         )
         phase_effective["last_updated_turn"] = turn_count
         policy_pre_repair = dict(policy_decision)
         policy_id_llm = policy_decision.get("policy_id", "")
-        effective_phase = phase_effective.get("phase", "opening")
+        effective_phase = phase_effective.get("phase_effective") or phase_effective.get("phase", "climate")
         phase_catalog = policy_phase_catalog()
         policy_phase_mismatch = effective_phase not in phase_catalog.get(policy_id_llm, [])
         planner_meta["policy_phase_mismatch"] = policy_phase_mismatch

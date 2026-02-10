@@ -85,14 +85,8 @@ def _required_beliefs_met(policy_id: str, belief_state: BeliefState) -> bool:
 def _phase_bonus(policy_phases: list[str], current_phase: str) -> int:
     if not policy_phases:
         return 0
-    if current_phase == "recovery":
-        if "recovery" in policy_phases:
-            return 3
-        return 0
     if current_phase in policy_phases:
         return 2
-    if "recovery" in policy_phases:
-        return 1
     if current_phase in PHASE_INDEX:
         cur_i = PHASE_INDEX[current_phase]  # type: ignore[index]
         for phase in policy_phases:
@@ -168,7 +162,9 @@ def _allowed_policy_ids_minimal(
     policy_ids = list_policy_ids()
     if not policy_ids:
         return []
-    phase = (progress_state.get("phase_state") or {}).get("phase", "opening")
+    phase_state = progress_state.get("phase_state") or {}
+    phase = phase_state.get("phase_effective") or phase_state.get("phase") or "climate"
+    recovery_mode = bool(phase_state.get("recovery_mode", False))
     phase_catalog = policy_phase_catalog()
     allowed = [
         policy_id
@@ -177,6 +173,16 @@ def _allowed_policy_ids_minimal(
         and _required_inputs_met(policy_id, world_state)
         and not _violates_hard_constraints(policy_id, world_state, constraints_struct)
     ]
+    if recovery_mode:
+        scoped: list[str] = []
+        for policy_id in allowed:
+            policy = _POLICY_BY_ID.get(policy_id)
+            tags = set(getattr(policy, "tags", set()) or set()) if policy else set()
+            guards = set(getattr(policy, "guards", set()) or set()) if policy else set()
+            if policy_id == safe_neutral_policy_id() or "recovery_ok" in tags or "safe_when_tense" in guards or "safe_when_tense" in tags:
+                if "aggressive" not in tags:
+                    scoped.append(policy_id)
+        allowed = scoped or [safe_neutral_policy_id()]
     return allowed
 
 
