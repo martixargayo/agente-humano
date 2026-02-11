@@ -3,9 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Tuple
 
-from langchain_openai import ChatOpenAI
-
-from .config import build_chat_openai_kwargs, get_negotiation_model_config
+from .llm_clients import get_world_llm
 from .schemas import WorldState, default_world_state
 from .validation import normalize_open_claims, normalize_universal_state, normalize_world_state, normalize_world_state_v2
 from .extractors.world_extractor_v4 import extract_world_patch_llm_v4
@@ -16,8 +14,7 @@ from .world_belief_adapters import world_v1_to_v2
 
 
 def _default_world_llm():
-    cfg = get_negotiation_model_config()
-    return ChatOpenAI(**build_chat_openai_kwargs(cfg.world))
+    return get_world_llm()
 
 
 def _merge_list_by_key(prev: list[dict], new: list[dict], key_fn, max_n: int) -> list[dict]:

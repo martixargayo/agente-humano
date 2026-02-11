@@ -92,10 +92,8 @@ from .state.deps import AgentDeps, DEFAULT_DEPS
 
 load_dotenv()
 logger = logging.getLogger(__name__)
-NEGOTIATION_CONFIG = get_negotiation_model_config()
-
-def _load_negotiation_rag_index():
-    rag_dir = NEGOTIATION_CONFIG.rag_dir
+def _load_negotiation_rag_index(cfg):
+    rag_dir = cfg.rag_dir
     if not os.path.isdir(rag_dir):
         logger.warning("rag_dir_not_found=%s", rag_dir)
         return None
@@ -129,7 +127,7 @@ def _load_negotiation_rag_index():
         return None
 
     try:
-        embeddings = OpenAIEmbeddings(model=NEGOTIATION_CONFIG.embeddings.model)
+        embeddings = OpenAIEmbeddings(model=cfg.embeddings.model)
         vs = FAISS.from_documents(docs, embeddings)
         logger.info("rag_index_loaded count=%s", len(docs))
         return vs
@@ -140,18 +138,20 @@ def _load_negotiation_rag_index():
 
 _RAG_INDEX_LOCK = threading.Lock()
 _NEGOTIATION_RAG_INDEX = None
+_NEGOTIATION_RAG_INDEX_KEY: tuple[str, str] | None = None
 
 
-def get_negotiation_rag_index():
-    global _NEGOTIATION_RAG_INDEX
-    # Fast path (sin lock) si ya está inicializado.
-    if _NEGOTIATION_RAG_INDEX is not None:
+def get_negotiation_rag_index(cfg=None):
+    global _NEGOTIATION_RAG_INDEX, _NEGOTIATION_RAG_INDEX_KEY
+    cfg = cfg or get_negotiation_model_config()
+    key = (cfg.rag_dir, cfg.embeddings.model)
+    if _NEGOTIATION_RAG_INDEX is not None and _NEGOTIATION_RAG_INDEX_KEY == key:
         return _NEGOTIATION_RAG_INDEX
 
-    # Slow path con lock para evitar doble init concurrente.
     with _RAG_INDEX_LOCK:
-        if _NEGOTIATION_RAG_INDEX is None:
-            _NEGOTIATION_RAG_INDEX = _load_negotiation_rag_index()
+        if _NEGOTIATION_RAG_INDEX is None or _NEGOTIATION_RAG_INDEX_KEY != key:
+            _NEGOTIATION_RAG_INDEX = _load_negotiation_rag_index(cfg)
+            _NEGOTIATION_RAG_INDEX_KEY = key
 
     return _NEGOTIATION_RAG_INDEX
 
@@ -252,11 +252,11 @@ def _last_assistant_message(messages: List[Message]) -> str:
 # ---- RAG táctico por policy ----
 
 
-def get_policy_tactics(policy_id: str, context: str) -> str:
+def get_policy_tactics(policy_id: str, context: str, cfg=None) -> str:
     policy = get_policy(policy_id)
     policy_label = policy.description if policy else policy_id
 
-    rag_index = get_negotiation_rag_index()
+    rag_index = get_negotiation_rag_index(cfg)
     if rag_index is None:
         return (
             f"[RAG FALLBACK] Tácticas para policy {policy_label}:\n"
@@ -347,6 +347,8 @@ def run_negotiation_agent(
     - Guarda estados persistentes en SessionState.
     - Añade la respuesta del comprador al historial.
     """
+
+    cfg = get_negotiation_model_config()
 
     add_message(state, role="user", content=user_message)
 
@@ -578,7 +580,7 @@ def run_negotiation_agent(
                 "policy_out": policy_issues_out,
                 "progress_out": progress_issues_out,
             },
-            **negotiation_effective_model_params(get_negotiation_model_config()),
+            **negotiation_effective_model_params(cfg),
             "planner_failed": new_graph_state.get("planner_meta", {}).get("planner_failed", False),
             "planner_error": new_graph_state.get("planner_meta", {}).get("planner_error", ""),
             "planner_fallback_used": new_graph_state.get("planner_meta", {}).get(

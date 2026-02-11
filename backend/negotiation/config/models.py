@@ -238,8 +238,8 @@ def get_negotiation_model_config(
         default_max_tokens=320,
         default_structured_output=True,
         default_response_format="json_schema",
-        model_legacy=("PHASE_POLICY_MODEL_NAME", "SUMMARY_MODEL_NAME", "OPENAI_MODEL_NAME"),
-        temperature_legacy=("PHASE_POLICY_TEMPERATURE",),
+        model_legacy=("PHASE_POLICY_MODEL_NAME", "PLANNER_MODEL_NAME", "SUMMARY_MODEL_NAME", "OPENAI_MODEL_NAME"),
+        temperature_legacy=("PHASE_POLICY_TEMPERATURE", "PLANNER_TEMPERATURE"),
         deprecation_warnings=warnings,
     )
     summary = _read_component(
@@ -280,6 +280,7 @@ def get_negotiation_model_config(
         "NEGOTIATION_RAG_DIR",
         default_rag_dir,
         str,
+        legacy=("NEGOCIATION_RAG_DIR",),
         deprecation_warnings=warnings,
     )
 
@@ -309,11 +310,21 @@ def build_chat_openai_kwargs(component: ModelComponentConfig) -> dict[str, Any]:
         "presence_penalty": component.presence_penalty,
         "frequency_penalty": component.frequency_penalty,
         "max_retries": component.retries,
+        "streaming": component.streaming,
     }
     if component.seed is not None:
         kwargs["seed"] = component.seed
-    if component.reasoning_effort:
-        kwargs["reasoning"] = {"effort": component.reasoning_effort}
+    if component.reasoning_effort and component.model.startswith("gpt-5"):
+        kwargs["model_kwargs"] = {
+            **kwargs.get("model_kwargs", {}),
+            "reasoning": {"effort": component.reasoning_effort},
+        }
+    elif component.reasoning_effort:
+        logger.warning(
+            "negotiation_model_config_reasoning_ignored model=%s effort=%s",
+            component.model,
+            component.reasoning_effort,
+        )
     return kwargs
 
 

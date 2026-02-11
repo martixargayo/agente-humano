@@ -4,11 +4,9 @@ from dataclasses import dataclass
 from typing import Any, Callable, Optional, Tuple
 
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI
-
 from prompts import SUMMARY_SYSTEM_PROMPT, SUMMARY_USER_PROMPT
 
-from ..config import build_chat_openai_kwargs, get_negotiation_model_config
+from ..llm_clients import get_executor_llm, get_summary_llm
 from ..phase_policy_planner import plan_phase_policy
 from ..belief_state_updater import update_belief_state
 from ..schemas import BeliefState, PolicyDecision
@@ -20,11 +18,6 @@ ExecuteFn = Callable[..., str]
 SummarizeFn = Callable[[str, str], str]
 
 
-NEGOTIATION_CONFIG = get_negotiation_model_config()
-
-executor_llm = ChatOpenAI(**build_chat_openai_kwargs(NEGOTIATION_CONFIG.executor))
-
-summary_llm = ChatOpenAI(**build_chat_openai_kwargs(NEGOTIATION_CONFIG.summary))
 
 summary_prompt = ChatPromptTemplate.from_messages(
     [
@@ -43,7 +36,7 @@ class AgentDeps:
 
 
 def _default_execute(messages: Any) -> str:
-    result = executor_llm.invoke(messages)
+    result = get_executor_llm().invoke(messages)
     return getattr(result, "content", str(result))
 
 
@@ -52,7 +45,7 @@ def _default_summarize(existing_summary: str, new_block: str) -> str:
         existing_summary=existing_summary,
         new_block=new_block,
     )
-    result = summary_llm.invoke(messages)
+    result = get_summary_llm().invoke(messages)
     return getattr(result, "content", str(result)).strip()
 
 

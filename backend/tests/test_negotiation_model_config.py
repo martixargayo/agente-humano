@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from negotiation.config.models import get_negotiation_model_config
+from negotiation.config.models import build_chat_openai_kwargs, get_negotiation_model_config
+from negotiation.llm_clients import get_planner_llm, reset_negotiation_llm_caches
 from negotiation.negotiation_graph import AgentDeps, run_negotiation_agent
 from negotiation.schemas import default_belief_state, default_progress_state, default_world_state
 from state import SessionState
@@ -16,10 +17,15 @@ def _clear_model_env(monkeypatch):
         "NEGOTIATION_SUMMARY_MODEL",
         "NEGOTIATION_EXECUTOR_MODEL",
         "NEGOTIATION_EMBEDDINGS_MODEL",
+        "NEGOTIATION_RAG_DIR",
+        "NEGOCIATION_RAG_DIR",
         "WORLD_EXTRACTOR_MODEL",
         "WORLD_MODEL",
         "BELIEF_MODEL_NAME",
         "PHASE_POLICY_MODEL_NAME",
+        "PLANNER_MODEL_NAME",
+        "PHASE_POLICY_TEMPERATURE",
+        "PLANNER_TEMPERATURE",
         "SUMMARY_MODEL_NAME",
         "EXECUTOR_MODEL_NAME",
         "OPENAI_MODEL_NAME",
@@ -50,6 +56,78 @@ def test_env_override_changes_only_target_component(monkeypatch):
     assert cfg.belief.model == "gpt-4.1-nano"
     assert cfg.summary.model == "gpt-4.1-nano"
     assert cfg.executor.model == "gpt-5-nano"
+
+
+def test_legacy_planner_model_name_env_supported(monkeypatch):
+    _clear_model_env(monkeypatch)
+    monkeypatch.setenv("PLANNER_MODEL_NAME", "legacy-planner-model")
+
+    cfg = get_negotiation_model_config()
+
+    assert cfg.planner.model == "legacy-planner-model"
+
+
+def test_legacy_negociation_rag_dir_env_supported(monkeypatch):
+    _clear_model_env(monkeypatch)
+    monkeypatch.setenv("NEGOCIATION_RAG_DIR", "/tmp/rag-legacy")
+
+    cfg = get_negotiation_model_config()
+
+    assert cfg.rag_dir == "/tmp/rag-legacy"
+
+
+def test_build_chat_openai_kwargs_includes_streaming_and_reasoning_model_kwargs(monkeypatch):
+    _clear_model_env(monkeypatch)
+    cfg = get_negotiation_model_config()
+
+    kwargs = build_chat_openai_kwargs(cfg.executor)
+
+    assert kwargs["streaming"] is True
+    assert kwargs["model_kwargs"]["reasoning"]["effort"] == "minimal"
+
+
+def test_build_chat_openai_kwargs_omits_reasoning_for_non_gpt5(monkeypatch):
+    _clear_model_env(monkeypatch)
+    cfg = get_negotiation_model_config(
+        overrides={"executor": {"model": "gpt-4.1-nano", "reasoning_effort": "minimal"}}
+    )
+
+    kwargs = build_chat_openai_kwargs(cfg.executor)
+
+    assert "model_kwargs" not in kwargs
+
+
+def test_llm_getter_respects_env_before_first_use_and_cache_reset(monkeypatch):
+    _clear_model_env(monkeypatch)
+    reset_negotiation_llm_caches()
+
+    captured: list[dict] = []
+
+    class _DummyLLM:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    def _fake_chat_openai(**kwargs):
+        captured.append(kwargs)
+        return _DummyLLM(**kwargs)
+
+    monkeypatch.setattr("negotiation.llm_clients.ChatOpenAI", _fake_chat_openai)
+
+    monkeypatch.setenv("NEGOTIATION_PLANNER_MODEL", "planner-a")
+    get_planner_llm()
+    first_model = captured[-1]["model"]
+
+    monkeypatch.setenv("NEGOTIATION_PLANNER_MODEL", "planner-b")
+    get_planner_llm()
+    second_model_same_cache = captured[-1]["model"]
+
+    reset_negotiation_llm_caches()
+    get_planner_llm()
+    third_model_after_reset = captured[-1]["model"]
+
+    assert first_model == "planner-a"
+    assert second_model_same_cache == "planner-a"
+    assert third_model_after_reset == "planner-b"
 
 
 def test_debug_trace_exposes_effective_models_and_params(monkeypatch):

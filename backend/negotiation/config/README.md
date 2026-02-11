@@ -37,7 +37,7 @@ Shared:
 
 ## Compatibilidad backward
 
-Se mantienen env vars legacy como fallback (por ejemplo `WORLD_EXTRACTOR_MODEL`, `BELIEF_MODEL_NAME`, `PHASE_POLICY_MODEL_NAME`, `SUMMARY_MODEL_NAME`, `EXECUTOR_MODEL_NAME`, `EMBEDDINGS_MODEL_NAME`, `OPENAI_MODEL_NAME`).
+Se mantienen env vars legacy como fallback (por ejemplo `WORLD_EXTRACTOR_MODEL`, `BELIEF_MODEL_NAME`, `PHASE_POLICY_MODEL_NAME`, `PLANNER_MODEL_NAME`, `SUMMARY_MODEL_NAME`, `EXECUTOR_MODEL_NAME`, `EMBEDDINGS_MODEL_NAME`, `OPENAI_MODEL_NAME`, `NEGOCIATION_RAG_DIR`).
 
 Cuando se usan, el sistema registra warning de deprecación con la variable nueva recomendada.
 
@@ -46,3 +46,9 @@ Cuando se usan, el sistema registra warning de deprecación con la variable nuev
 1. Cambia env vars `NEGOTIATION_*` en `.env` (sin tocar secrets como `OPENAI_API_KEY`).
 2. O usa overrides en código para una request concreta con `get_negotiation_model_config(overrides=...)`.
 3. Revisa `debug_trace` del turno: incluye `models_effective` y `params_effective`.
+
+
+## Inicialización de clientes LLM
+
+La creación de clientes `ChatOpenAI` es lazy + cacheada por proceso (`lru_cache`).
+Para tests o recarga dinámica de env vars se puede usar `reset_negotiation_llm_caches()`.
