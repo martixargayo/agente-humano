@@ -6,6 +6,8 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 import os
+import pathlib
+import sys
 from google.cloud import speech
 from google.oauth2 import service_account
 
@@ -16,11 +18,42 @@ from openai import OpenAI
 
 import base64
 
-import pathlib
 from fastapi.staticfiles import StaticFiles
 
+<<<<<<< HEAD
 from state import get_session_state, DEFAULT_CONTEXT_LIMIT_TURNS, DEFAULT_KEEP_LAST_TURNS
+=======
+BASE_DIR = pathlib.Path(__file__).resolve().parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
+from state import get_session_state
+>>>>>>> origin/main
 from agent import run_agent
+
+
+def _migrate_negotiation_env_aliases() -> None:
+    """Promueve variables legacy a las nuevas y elimina aliases deprecados."""
+    env_aliases = {
+        "NEGOCIATION_RAG_DIR": "NEGOTIATION_RAG_DIR",
+        "OPENAI_MODEL_NAME": "NEGOTIATION_WORLD_MODEL",
+        "PLANNER_MODEL_NAME": "NEGOTIATION_PLANNER_MODEL",
+        "PLANNER_TEMPERATURE": "NEGOTIATION_PLANNER_TEMPERATURE",
+        "SUMMARY_MODEL_NAME": "NEGOTIATION_SUMMARY_MODEL",
+        "SUMMARY_TEMPERATURE": "NEGOTIATION_SUMMARY_TEMPERATURE",
+        "EMBEDDINGS_MODEL_NAME": "NEGOTIATION_EMBEDDINGS_MODEL",
+        "EXECUTOR_MODEL_NAME": "NEGOTIATION_EXECUTOR_MODEL",
+        "EXECUTOR_TEMPERATURE": "NEGOTIATION_EXECUTOR_TEMPERATURE",
+    }
+    for old_key, new_key in env_aliases.items():
+        old_value = os.getenv(old_key)
+        if old_value and not os.getenv(new_key):
+            os.environ[new_key] = old_value
+        if old_key in os.environ:
+            del os.environ[old_key]
+
+
+_migrate_negotiation_env_aliases()
 
 from negotiation.negotiation_graph import run_negotiation_agent
 from negotiation.summary_jobs import SUMMARY_JOBS, deferred_summary_enabled, make_turn_job
@@ -48,7 +81,6 @@ app.add_middleware(
 
 # --- Servir el avatar 3D como estático en /avatar ---
 
-BASE_DIR = pathlib.Path(__file__).resolve().parent
 AVATAR_DIR = BASE_DIR / "avatar_app"  # carpeta que has creado
 
 if AVATAR_DIR.exists():
@@ -67,11 +99,25 @@ GOOGLE_CREDENTIALS_PATH = os.getenv(
     "/workspaces/agente-humano/backend/keys/google-stt.json",  # fallback seguro
 )
 
-credentials = service_account.Credentials.from_service_account_file(
-    GOOGLE_CREDENTIALS_PATH
-)
+def _build_speech_client() -> speech.SpeechClient | None:
+    if not os.path.exists(GOOGLE_CREDENTIALS_PATH):
+        logger.warning(
+            "google_stt_credentials_missing path=%s",
+            GOOGLE_CREDENTIALS_PATH,
+        )
+        return None
 
-speech_client = speech.SpeechClient(credentials=credentials)
+    try:
+        credentials = service_account.Credentials.from_service_account_file(
+            GOOGLE_CREDENTIALS_PATH
+        )
+        return speech.SpeechClient(credentials=credentials)
+    except Exception as exc:
+        logger.warning("google_stt_client_init_error=%s", exc)
+        return None
+
+
+speech_client = _build_speech_client()
 
 # Google STT config desde .env
 GOOGLE_STT_MODEL = os.getenv("GOOGLE_STT_MODEL", "latest_long")
@@ -88,7 +134,19 @@ stt_config = speech.RecognitionConfig(
 
 # --- OpenAI Text-to-Speech (salida de audio) ---
 
-openai_client = OpenAI()  # usa OPENAI_API_KEY del entorno
+def _build_openai_client() -> OpenAI | None:
+    if not os.getenv("OPENAI_API_KEY"):
+        logger.warning("openai_api_key_missing_tts_disabled=true")
+        return None
+
+    try:
+        return OpenAI()  # usa OPENAI_API_KEY del entorno
+    except Exception as exc:
+        logger.warning("openai_tts_client_init_error=%s", exc)
+        return None
+
+
+openai_client = _build_openai_client()
 
 TTS_MODEL = os.getenv("OPENAI_TTS_MODEL", "gpt-4o-mini-tts")
 DEFAULT_VOICE = os.getenv("OPENAI_TTS_VOICE", "cedar")
@@ -110,6 +168,10 @@ async def warmup_tts():
     Llamada de calentamiento para que el primer TTS
     no tenga el coste de arranque del modelo.
     """
+    if openai_client is None:
+        logger.warning("warmup_tts_skipped client_unavailable=true")
+        return
+
     try:
         # Texto corto y neutro, solo para que el modelo cargue.
         resp = openai_client.audio.speech.create(
@@ -460,6 +522,12 @@ def demo_page():
 
 @app.post("/stt_google")
 async def stt_google(file: UploadFile = File(...)):
+    if speech_client is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Google STT no está configurado en este entorno.",
+        )
+
     try:
         audio_bytes = await file.read()
         audio = speech.RecognitionAudio(content=audio_bytes)
@@ -483,6 +551,12 @@ async def stt_google(file: UploadFile = File(...)):
 
 @app.post("/tts_openai")
 async def tts_openai(payload: TTSRequest):
+    if openai_client is None:
+        raise HTTPException(
+            status_code=503,
+            detail="OpenAI TTS no está configurado en este entorno.",
+        )
+
     try:
         voice = payload.voice or DEFAULT_VOICE
         fmt = DEFAULT_FORMAT
@@ -531,6 +605,12 @@ async def tts_openai(payload: TTSRequest):
     
 @app.post("/tts", response_model=TTSAudioResponse)
 async def tts(payload: TTSRequest):
+    if openai_client is None:
+        raise HTTPException(
+            status_code=503,
+            detail="OpenAI TTS no está configurado en este entorno.",
+        )
+
     try:
         t_tts_request_start = time.perf_counter()
         voice = payload.voice or DEFAULT_VOICE

@@ -1,26 +1,44 @@
 # backend/normalizer.py
 from __future__ import annotations
 
+import logging
 import os
 
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
+from env_compat import getenv_preferred
 
 load_dotenv()
 
 # Modelo específico del normalizador (segunda LLM)
-NORMALIZER_MODEL = os.getenv(
-    "NORMALIZER_MODEL_NAME",
-    os.getenv("SUMMARY_MODEL_NAME", os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini")),
+NORMALIZER_MODEL = getenv_preferred(
+    preferred="NORMALIZER_MODEL_NAME",
+    legacy=("NEGOTIATION_SUMMARY_MODEL", "SUMMARY_MODEL_NAME", "OPENAI_MODEL_NAME"),
+    default="gpt-4o-mini",
 )
 
 NORMALIZER_TEMPERATURE = float(os.getenv("NORMALIZER_TEMPERATURE", "0.0"))
 
-normalizer_llm = ChatOpenAI(
-    model=NORMALIZER_MODEL,
-    temperature=NORMALIZER_TEMPERATURE,
-)
+logger = logging.getLogger(__name__)
+
+
+def _build_normalizer_llm() -> ChatOpenAI | None:
+    if not os.getenv("OPENAI_API_KEY"):
+        logger.warning("normalizer_openai_api_key_missing passthrough_enabled=true")
+        return None
+
+    try:
+        return ChatOpenAI(
+            model=NORMALIZER_MODEL,
+            temperature=NORMALIZER_TEMPERATURE,
+        )
+    except Exception as exc:
+        logger.warning("normalizer_llm_init_error=%s", exc)
+        return None
+
+
+normalizer_llm = _build_normalizer_llm()
 
 NORMALIZER_SYSTEM_PROMPT = """
 <normalizer>
@@ -122,9 +140,16 @@ def normalize_text(raw_reply: str, last_user_message: str | None = None) -> str:
 
     last_user_message = (last_user_message or "").strip()
 
+    if normalizer_llm is None:
+        return raw_reply
+
     messages = normalizer_prompt.format_messages(
         user_message=last_user_message,
         assistant_reply=raw_reply,
     )
-    result = normalizer_llm.invoke(messages)
-    return (result.content or "").strip()
+    try:
+        result = normalizer_llm.invoke(messages)
+        return (result.content or "").strip()
+    except Exception as exc:
+        logger.warning("normalizer_invoke_error=%s", exc)
+        return raw_reply
