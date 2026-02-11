@@ -1,27 +1,85 @@
 # backend/negotiation/validation.py
 from __future__ import annotations
 
+import hashlib
 import os
+import re
+import warnings
 from typing import Dict, Iterable, List, Tuple
 
 from .schemas import (
     BeliefState,
+    ConversationMode,
     InteractionHealth,
     IntentState,
     IntentStatus,
     IntentType,
+    LegacyNegotiationPhase,
     NegotiationPhase,
+    PersonaProfile,
     PolicyDecision,
+    PolicyState,
     PhaseState,
     ProgressState,
+    RenderConstraints,
+    RenderState,
     RiskPosture,
+    SceneProfile,
+    StyleContract,
     ToneSignal,
     WorldState,
     default_belief_state,
     default_intent_state,
+    default_constraints_struct,
     default_policy_decision,
+    default_policy_state,
+    default_persona_profile,
     default_progress_state,
+    default_render_state,
+    default_scene_profile,
+    default_style_contract,
     default_world_state,
+)
+from .specs.world_keys import ALLOWED_NEGOTIATION_DOMAIN_KEYS, ALLOWED_UNIVERSAL_DOMAIN_KEYS
+from .elementos.belief.belief_contracts import UNIVERSAL_LIMITS, UNIVERSAL_REASON_KEYS
+from .contracts_v2 import (
+    AGREEMENT_STATE_ENUM,
+    AROUSAL_ENUM,
+    BEHAVIOR_GUIDANCE_EPISTEMIC_STYLE,
+    BEHAVIOR_GUIDANCE_RECOMMENDED_MOVES,
+    COMMITMENT_STATUS_ENUM,
+    COMMITMENT_TYPE_ENUM,
+    CONSTRAINT_DIMENSION_ENUM,
+    CONSTRAINT_KIND_ENUM,
+    CONSTRAINT_SIDE_ENUM,
+    EVIDENCE_TYPE_ENUM,
+    INTEREST_CATEGORY_ENUM,
+    INTENT_ACT_ENUM,
+    LEVERAGE_TYPE_ENUM,
+    MAX_ITEMS,
+    MAX_META_CHARS,
+    MAX_META_DEPTH,
+    MAX_META_KEYS,
+    MAX_STR_LEN,
+    NEGOTIATION_REASON_KEYS,
+    NEGOTIATION_STANCE_KEYS,
+    OFFER_FIRMNESS_ENUM,
+    OFFER_KIND_ENUM,
+    OFFER_SIDE_ENUM,
+    OFFER_STATUS_ENUM,
+    SENTIMENT_ENUM,
+    TONE_ENUM,
+    TRUTH_STATUS_ENUM,
+    clamp01,
+    enum_or,
+    to_int,
+    trim,
+)
+from .elementos.render.render_contracts import (
+    PERSONA_VOICE_REGISTERS,
+    STYLE_EMOJI_POLICIES,
+    STYLE_FORMATS,
+    STYLE_LENGTHS,
 )
 
 
@@ -31,6 +89,16 @@ _ALLOWED_TONE: set[ToneSignal] = {"neutral", "friendly", "tense"}
 _ALLOWED_ESCALATION = {"up", "down", "none"}
 _MAX_V2_CLAIMS = int(os.getenv("EVIDENCE_V2_MAX_CLAIMS", "200"))
 _MAX_V2_UNKNOWN = int(os.getenv("EVIDENCE_V2_MAX_UNKNOWN", "50"))
+BELIEF_LEGACY_KEYS = {
+    "dynamics",
+    "tom",
+    "stance",
+    "reasons",
+    "hypotheses",
+    "hypotheses_structural",
+    "hypotheses_observational",
+    "evaluations",
+}
 _ALLOWED_INTENT_STATUS: set[IntentStatus] = {
     "inactive",
     "active",
@@ -45,7 +113,16 @@ _ALLOWED_INTENT_TYPES: set[IntentType] = {
     "closing",
     "credibility_check",
 }
+_ALLOWED_POLICY_STATUS = {"inactive", "active", "succeeded", "abandoned", "paused"}
+_ALLOWED_PLANNER_REQUEST = {"choose_policy", "continue_policy", "replan_policy"}
 _ALLOWED_PHASES: set[NegotiationPhase] = {
+    "climate",
+    "interests",
+    "options",
+    "adjust",
+    "formalize",
+}
+_ALLOWED_LEGACY_PHASES: set[LegacyNegotiationPhase] = {
     "opening",
     "discovery",
     "bargaining",
@@ -117,98 +194,664 @@ def _unique_list(values: Iterable[str], max_items: int | None = None) -> List[st
     return result
 
 
+_OPEN_LABEL_RE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
+
+
+def _clamp01(x: object, default: float = 0.0) -> float:
+    try:
+        v = float(x)  # type: ignore[arg-type]
+    except Exception:
+        return default
+    if v < 0.0:
+        return 0.0
+    if v > 1.0:
+        return 1.0
+    return v
+
+
+def _trim(value: object, max_len: int) -> str:
+    if value is None:
+        return ""
+    t = str(value).strip()
+    if len(t) > max_len:
+        t = t[:max_len]
+    return t
+
+
+def normalize_universal_state(u: dict | None) -> dict:
+    u = dict(u or {})
+    goal = dict(u.get("goal") or {})
+    goal_norm = {
+        "summary": _trim(goal.get("summary", ""), 120),
+        "confidence": _clamp01(goal.get("confidence", 0.0), 0.0),
+        "evidence_text": _trim(goal.get("evidence_text", ""), 180),
+    }
+    if not goal_norm["summary"]:
+        goal_norm = {}
+
+    def _norm_list(items, max_n, field_norm):
+        out = []
+        for it in (items or []):
+            try:
+                d = field_norm(dict(it or {}))
+            except Exception:
+                continue
+            if d:
+                out.append(d)
+            if len(out) >= max_n:
+                break
+        return out
+
+    allowed_kind = {"time", "money", "availability", "logistics", "capability", "rule", "safety", "other"}
+    allowed_polarity = {"must", "must_not", "prefer", "avoid"}
+    allowed_strength = {"low", "medium", "high"}
+    allowed_who = {"user", "agent", "other"}
+    allowed_status = {"proposed", "agreed", "cancelled", "done"}
+    allowed_entity = {"person", "place", "product", "org", "event", "document", "other"}
+    allowed_act = {
+        "ask",
+        "inform",
+        "refuse",
+        "accept",
+        "offer",
+        "counter",
+        "stall",
+        "repair",
+        "threaten",
+        "confirm",
+    }
+
+    def _norm_constraint(d):
+        kind = d.get("kind", "other")
+        if kind not in allowed_kind:
+            kind = "other"
+        polarity = d.get("polarity", "must")
+        if polarity not in allowed_polarity:
+            polarity = "must"
+        return {
+            "kind": kind,
+            "key": _trim(d.get("key", ""), 48),
+            "value": _trim(d.get("value", ""), 120),
+            "polarity": polarity,
+            "confidence": _clamp01(d.get("confidence", 0.0), 0.0),
+            "evidence_text": _trim(d.get("evidence_text", ""), 180),
+        }
+
+    def _norm_pref(d):
+        strength = d.get("strength", "medium")
+        if strength not in allowed_strength:
+            strength = "medium"
+        return {
+            "topic": _trim(d.get("topic", ""), 48),
+            "value": _trim(d.get("value", ""), 120),
+            "strength": strength,
+            "confidence": _clamp01(d.get("confidence", 0.0), 0.0),
+            "evidence_text": _trim(d.get("evidence_text", ""), 180),
+        }
+
+    def _norm_commit(d):
+        who = d.get("who", "other")
+        if who not in allowed_who:
+            who = "other"
+        status = d.get("status", "proposed")
+        if status not in allowed_status:
+            status = "proposed"
+        return {
+            "who": who,
+            "action": _trim(d.get("action", ""), 120),
+            "due": _trim(d.get("due", ""), 60),
+            "status": status,
+            "confidence": _clamp01(d.get("confidence", 0.0), 0.0),
+            "evidence_text": _trim(d.get("evidence_text", ""), 180),
+        }
+
+    def _norm_entity(d):
+        etype = d.get("type", "other")
+        if etype not in allowed_entity:
+            etype = "other"
+        return {
+            "name": _trim(d.get("name", ""), 120),
+            "type": etype,
+            "role": _trim(d.get("role", ""), 48),
+            "confidence": _clamp01(d.get("confidence", 0.0), 0.0),
+            "evidence_text": _trim(d.get("evidence_text", ""), 180),
+        }
+
+    def _norm_act(d):
+        act = d.get("act", "inform")
+        if act not in allowed_act:
+            act = "inform"
+        strength = d.get("strength", "medium")
+        if strength not in allowed_strength:
+            strength = "medium"
+        return {
+            "act": act,
+            "target": _trim(d.get("target", ""), 48),
+            "strength": strength,
+            "confidence": _clamp01(d.get("confidence", 0.0), 0.0),
+            "evidence_text": _trim(d.get("evidence_text", ""), 180),
+        }
+
+    u_norm = {
+        "goal": goal_norm,
+        "constraints": _norm_list(u.get("constraints"), 10, _norm_constraint),
+        "preferences": _norm_list(u.get("preferences"), 10, _norm_pref),
+        "commitments": _norm_list(u.get("commitments"), 10, _norm_commit),
+        "entities": _norm_list(u.get("entities"), 12, _norm_entity),
+        "speech_acts": _norm_list(u.get("speech_acts"), 6, _norm_act),
+    }
+    return u_norm
+
+
+def _open_claim_dedupe_key(scope: str, category: str, label: str, evidence_text: str) -> str:
+    norm = _trim(evidence_text, 60).lower()
+    raw = f"{scope}|{category}|{label}|{norm}"
+    return "sha1:" + hashlib.sha1(raw.encode("utf-8")).hexdigest()
+
+
+def normalize_open_claims(claims: list | None, max_total: int = 50) -> list[dict]:
+    out: list[dict] = []
+    seen: set[str] = set()
+    allowed_scopes = {"universal", "negotiation", "other_domain"}
+    allowed_categories = {
+        "emotion",
+        "social_dynamics",
+        "tactic",
+        "risk",
+        "identity",
+        "preference",
+        "constraint",
+        "context",
+        "quality",
+        "other",
+    }
+    for it in (claims or []):
+        d = dict(it or {})
+        scope = d.get("scope", "universal")
+        category = d.get("category", "other")
+        if scope not in allowed_scopes or category not in allowed_categories:
+            continue
+        label = _trim(d.get("label", ""), 32)
+        if not _OPEN_LABEL_RE.match(label):
+            continue
+        evidence = _trim(d.get("evidence_text", ""), 180)
+        if not evidence:
+            continue
+        value = _trim(d.get("value", ""), 160)
+        conf = _clamp01(d.get("confidence", 0.0), 0.0)
+        turn_idx = int(d.get("turn_idx", 0) or 0)
+        source = d.get("source", "llm")
+
+        dk = _open_claim_dedupe_key(scope, category, label, evidence)
+        if dk in seen:
+            continue
+        seen.add(dk)
+
+        out.append(
+            {
+                "scope": scope,
+                "category": category,
+                "label": label,
+                "value": value,
+                "confidence": conf,
+                "evidence_text": evidence,
+                "turn_idx": turn_idx,
+                "source": source,
+                "dedupe_key": dk,
+            }
+        )
+        if len(out) >= max_total:
+            break
+    return out
+
+
+def normalize_belief_universal(u: dict | None) -> dict:
+    u = dict(u or {})
+    metrics = dict(u.get("metrics") or {})
+    dynamics = dict(u.get("dynamics") or {})
+    tom = dict(u.get("tom") or {})
+    reasons = dict(u.get("reasons") or {})
+
+    m = {
+        "trust": _clamp01(metrics.get("trust", 0.5), 0.5),
+        "cooperation": _clamp01(metrics.get("cooperation", 0.5), 0.5),
+        "clarity": _clamp01(metrics.get("clarity", 0.5), 0.5),
+        "engagement": _clamp01(metrics.get("engagement", 0.5), 0.5),
+    }
+
+    health = dynamics.get("interaction_health", "stable")
+    if health not in ("stable", "tense", "stalled"):
+        health = "stable"
+    esc = dynamics.get("escalation", "none")
+    if esc not in ("up", "down", "none"):
+        esc = "none"
+    comm = dynamics.get("commitment", "none")
+    if comm not in ("hard", "soft", "none"):
+        comm = "none"
+
+    d = {
+        "interaction_health": health,
+        "escalation": esc,
+        "looping": bool(dynamics.get("looping", False)),
+        "evasion": bool(dynamics.get("evasion", False)),
+        "commitment": comm,
+    }
+
+    def _norm_list(xs, max_n):
+        out = []
+        for x in (xs or []):
+            s = _trim(x, UNIVERSAL_LIMITS["tom_item_max_len"])
+            if s:
+                out.append(s)
+            if len(out) >= max_n:
+                break
+        return out
+
+    t = {
+        "other_goals": _norm_list(tom.get("other_goals"), UNIVERSAL_LIMITS["tom_list_max"]),
+        "other_tactics": _norm_list(tom.get("other_tactics"), UNIVERSAL_LIMITS["tom_list_max"]),
+        "other_belief_about_me": _norm_list(
+            tom.get("other_belief_about_me"), UNIVERSAL_LIMITS["tom_list_max"]
+        ),
+        "confidence": _clamp01(tom.get("confidence", 0.0), 0.0),
+    }
+
+    r_out = {}
+    for k, v in reasons.items():
+        if k not in UNIVERSAL_REASON_KEYS:
+            continue
+        vv = dict(v or {})
+        item = {
+            "weight": _clamp01(vv.get("weight", 0.0), 0.0),
+            "confidence": _clamp01(vv.get("confidence", 0.0), 0.0),
+            "evidence": _trim(
+                vv.get("evidence") or vv.get("evidence_text") or "",
+                UNIVERSAL_LIMITS["reason_evidence_max_len"],
+            ),
+        }
+        if item["evidence"]:
+            r_out[k] = item
+
+    return {"metrics": m, "dynamics": d, "tom": t, "reasons": r_out, "behavior_guidance": _normalize_behavior_guidance(u.get("behavior_guidance", {}))}
+
+
+
+def _sanitize_meta(value: object, depth: int = 0) -> object | None:
+    if depth > MAX_META_DEPTH:
+        return None
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    if isinstance(value, list):
+        out = []
+        for item in value[:MAX_ITEMS["evidence"]]:
+            clean = _sanitize_meta(item, depth + 1)
+            if clean is not None:
+                out.append(clean)
+        return out
+    if isinstance(value, dict):
+        out = {}
+        for idx, (k, v) in enumerate(value.items()):
+            if idx >= MAX_META_KEYS:
+                break
+            key = trim(k, MAX_STR_LEN["key"])
+            clean = _sanitize_meta(v, depth + 1)
+            if key and clean is not None:
+                out[key] = clean
+        txt = _trim(str(out), MAX_META_CHARS)
+        if not txt:
+            return {}
+        return out
+    return None
+
+
+def default_world_state_v2() -> dict:
+    return default_world_state()
+
+
+def default_belief_state_v2() -> dict:
+    return default_belief_state()
+
+
+def _normalize_behavior_guidance(raw: object) -> dict:
+    r = dict(raw or {}) if isinstance(raw, dict) else {}
+    return {
+        "assertiveness": clamp01(r.get("assertiveness", 0.5), 0.5),
+        "verification_need": clamp01(r.get("verification_need", 0.5), 0.5),
+        "trust_estimate": clamp01(r.get("trust_estimate", 0.5), 0.5),
+        "conflict_risk": clamp01(r.get("conflict_risk", 0.0), 0.0),
+        "pace_preference": clamp01(r.get("pace_preference", 0.5), 0.5),
+        "recommended_move": enum_or(r.get("recommended_move", "hold"), BEHAVIOR_GUIDANCE_RECOMMENDED_MOVES, "hold"),
+        "epistemic_style": enum_or(r.get("epistemic_style", "neutral"), BEHAVIOR_GUIDANCE_EPISTEMIC_STYLE, "neutral"),
+    }
+
+
+def normalize_world_state_v2(raw: object) -> Tuple[dict, List[str]]:
+    if not isinstance(raw, dict):
+        base = default_world_state()
+        base["schema_version"] = "v2"
+        return base, ["world_state_no_dict"]
+    raw_legacy = dict(raw)
+    raw_legacy.pop("universal_v2", None)
+    raw_legacy.pop("negotiation_v2", None)
+    raw_legacy["schema_version"] = "v1"
+    base, issues = normalize_world_state(raw_legacy)
+    out = dict(base)
+    out["schema_version"] = "v2"
+    u2 = dict((raw.get("universal_v2") or {}) if isinstance(raw.get("universal_v2"), dict) else {})
+    n2 = dict((raw.get("negotiation_v2") or {}) if isinstance(raw.get("negotiation_v2"), dict) else {})
+    clarity = dict(u2.get("clarity") or {})
+    affect = dict(u2.get("affect") or {})
+    interaction = dict(u2.get("interaction") or {})
+    intent = dict(u2.get("intent") or {})
+    commitments = u2.get("commitments", []) if isinstance(u2.get("commitments"), list) else []
+    out["universal_v2"] = {
+        "clarity": {
+            "is_vague": bool(clarity.get("is_vague", out["universal_domain"].get("message_is_vague", False))),
+            "missing_info": _coerce_str_list(clarity.get("missing_info", []), MAX_ITEMS["missing_info"]),
+            "ambiguity_types": _coerce_str_list(clarity.get("ambiguity_types", []), MAX_ITEMS["ambiguity_types"]),
+            "confidence": clamp01(clarity.get("confidence", 0.0), 0.0),
+        },
+        "affect": {
+            "tone": enum_or(affect.get("tone", "neutral"), TONE_ENUM, "neutral"),
+            "confidence": clamp01(affect.get("confidence", 0.0), 0.0),
+            "sentiment": enum_or(affect.get("sentiment", "neutral"), SENTIMENT_ENUM, "neutral"),
+            "arousal": enum_or(affect.get("arousal", "medium"), AROUSAL_ENUM, "medium"),
+        },
+        "interaction": {
+            "cooperation": clamp01(interaction.get("cooperation", 0.5), 0.5),
+            "friction": clamp01(interaction.get("friction", 0.0), 0.0),
+            "boundary": bool(interaction.get("boundary", False)),
+            "loop": bool(interaction.get("loop", False)),
+            "commitment_signal": clamp01(interaction.get("commitment_signal", 0.0), 0.0),
+        },
+        "intent": {
+            "act": enum_or(intent.get("act", "inform"), INTENT_ACT_ENUM, "inform"),
+            "confidence": clamp01(intent.get("confidence", 0.0), 0.0),
+        },
+        "commitments": [
+            {
+                "type": enum_or(it.get("type", "other"), COMMITMENT_TYPE_ENUM, "other"),
+                "text": trim(it.get("text", ""), MAX_STR_LEN["text"]),
+                "status": enum_or(it.get("status", "claimed"), COMMITMENT_STATUS_ENUM, "claimed"),
+                "confidence": clamp01(it.get("confidence", 0.0), 0.0),
+            }
+            for it in commitments[:MAX_ITEMS["commitments"]] if isinstance(it, dict)
+        ],
+    }
+    offers = n2.get("offers", []) if isinstance(n2.get("offers"), list) else []
+    constraints = n2.get("constraints", []) if isinstance(n2.get("constraints"), list) else []
+    interests = n2.get("interests", []) if isinstance(n2.get("interests"), list) else []
+    concessions = n2.get("concessions", []) if isinstance(n2.get("concessions"), list) else []
+    leverage = n2.get("leverage_claims", []) if isinstance(n2.get("leverage_claims"), list) else []
+    evidence = n2.get("evidence", []) if isinstance(n2.get("evidence"), list) else []
+    time_pressure = dict(n2.get("time_pressure") or {})
+    agr = dict(n2.get("agreement_state") or {})
+    out["negotiation_v2"] = {
+        "subject": {
+            "item": trim((n2.get("subject") or {}).get("item", ""), MAX_STR_LEN["short_text"]) if isinstance(n2.get("subject"), dict) else "",
+            "context": trim((n2.get("subject") or {}).get("context", ""), MAX_STR_LEN["text"]) if isinstance(n2.get("subject"), dict) else "",
+            "attributes": dict((n2.get("subject") or {}).get("attributes", {})) if isinstance((n2.get("subject") or {}).get("attributes", {}), dict) else {},
+        },
+        "offers": [
+            {
+                "side": enum_or(it.get("side", "seller"), OFFER_SIDE_ENUM, "seller"),
+                "kind": enum_or(it.get("kind", "condition"), OFFER_KIND_ENUM, "condition"),
+                "value": it.get("value") if isinstance(it.get("value"), dict) or it.get("value") is None else None,
+                "terms": [x for x in it.get("terms", [])[:MAX_ITEMS["constraints"]] if isinstance(x, dict)],
+                "text": trim(it.get("text", ""), MAX_STR_LEN["text"]),
+                "firmness": enum_or(it.get("firmness", "medium"), OFFER_FIRMNESS_ENUM, "medium"),
+                "status": enum_or(it.get("status", "proposed"), OFFER_STATUS_ENUM, "proposed"),
+                "confidence": clamp01(it.get("confidence", 0.0), 0.0),
+            }
+            for it in offers[:MAX_ITEMS["offers"]] if isinstance(it, dict)
+        ],
+        "constraints": [
+            {
+                "side": enum_or(it.get("side", "seller"), CONSTRAINT_SIDE_ENUM, "seller"),
+                "kind": enum_or(it.get("kind", "limit"), CONSTRAINT_KIND_ENUM, "limit"),
+                "dimension": enum_or(it.get("dimension", "other"), CONSTRAINT_DIMENSION_ENUM, "other"),
+                "value": it.get("value"),
+                "text": trim(it.get("text", ""), MAX_STR_LEN["text"]),
+                "flexibility": clamp01(it.get("flexibility", 0.5), 0.5),
+                "status": enum_or(it.get("status", "claimed"), TRUTH_STATUS_ENUM, "claimed"),
+                "confidence": clamp01(it.get("confidence", 0.0), 0.0),
+            }
+            for it in constraints[:MAX_ITEMS["constraints"]] if isinstance(it, dict)
+        ],
+        "interests": [
+            {
+                "side": enum_or(it.get("side", "seller"), OFFER_SIDE_ENUM, "seller"),
+                "category": enum_or(it.get("category", "other"), INTEREST_CATEGORY_ENUM, "other"),
+                "text": trim(it.get("text", ""), MAX_STR_LEN["text"]),
+                "confidence": clamp01(it.get("confidence", 0.0), 0.0),
+            }
+            for it in interests[:MAX_ITEMS["interests"]] if isinstance(it, dict)
+        ],
+        "concessions": [
+            {
+                "side": enum_or(it.get("side", "seller"), OFFER_SIDE_ENUM, "seller"),
+                "dimension": enum_or(it.get("dimension", "other"), CONSTRAINT_DIMENSION_ENUM, "other"),
+                "from": it.get("from"),
+                "to": it.get("to"),
+                "text": trim(it.get("text", ""), MAX_STR_LEN["text"]),
+                "confidence": clamp01(it.get("confidence", 0.0), 0.0),
+            }
+            for it in concessions[:MAX_ITEMS["concessions"]] if isinstance(it, dict)
+        ],
+        "time_pressure": {
+            "deadline_text": trim(time_pressure.get("deadline_text", ""), MAX_STR_LEN["text"]),
+            "deadline_date": trim(time_pressure.get("deadline_date"), MAX_STR_LEN["short_text"]) or None,
+            "window_days": to_int(time_pressure.get("window_days"), None),
+            "urgency": clamp01(time_pressure.get("urgency", 0.0), 0.0),
+            "reason": trim(time_pressure.get("reason", ""), MAX_STR_LEN["text"]),
+            "status": enum_or(time_pressure.get("status", "unverified"), TRUTH_STATUS_ENUM, "unverified"),
+            "confidence": clamp01(time_pressure.get("confidence", 0.0), 0.0),
+        },
+        "leverage_claims": [
+            {
+                "side": enum_or(it.get("side", "seller"), OFFER_SIDE_ENUM, "seller"),
+                "type": enum_or(it.get("type", "time"), LEVERAGE_TYPE_ENUM, "time"),
+                "text": trim(it.get("text", ""), MAX_STR_LEN["text"]),
+                "value": it.get("value"),
+                "evidence_ref": trim(it.get("evidence_ref"), MAX_STR_LEN["short_text"]) or None,
+                "status": enum_or(it.get("status", "claimed"), TRUTH_STATUS_ENUM, "claimed"),
+                "confidence": clamp01(it.get("confidence", 0.0), 0.0),
+            }
+            for it in leverage[:MAX_ITEMS["leverage_claims"]] if isinstance(it, dict)
+        ],
+        "evidence": [
+            {
+                "type": enum_or(it.get("type", "other"), EVIDENCE_TYPE_ENUM, "other"),
+                "items": _coerce_str_list(it.get("items", []), MAX_ITEMS["evidence"]),
+                "text": trim(it.get("text", ""), MAX_STR_LEN["text"]),
+                "status": enum_or(it.get("status", "claimed"), TRUTH_STATUS_ENUM, "claimed"),
+                "confidence": clamp01(it.get("confidence", 0.0), 0.0),
+                "meta": _sanitize_meta(it.get("meta", {})) or {},
+            }
+            for it in evidence[:MAX_ITEMS["evidence"]] if isinstance(it, dict)
+        ],
+        "agreement_state": {
+            "state": enum_or(agr.get("state", "none"), AGREEMENT_STATE_ENUM, "none"),
+            "next_step": trim(agr.get("next_step", ""), MAX_STR_LEN["text"]),
+            "open_points": _coerce_str_list(agr.get("open_points", []), MAX_ITEMS["open_points"]),
+            "confidence": clamp01(agr.get("confidence", 0.0), 0.0),
+        },
+    }
+    return out, issues
+
+
+def normalize_belief_state_v2(raw: object, previous: BeliefState | None = None) -> Tuple[dict, List[str]]:
+    base, issues = normalize_belief_state(raw, previous=previous)
+    out = dict(base)
+    out["schema_version"] = "v2"
+    uni = dict(out.get("universal") or {})
+    tom = dict(uni.get("tom") or {})
+    raw_uni = (raw.get("universal") or {}) if isinstance(raw, dict) else {}
+    raw_tom = (raw_uni.get("tom") or {}) if isinstance(raw_uni, dict) else {}
+    hypotheses = raw_tom.get("hypotheses", tom.get("hypotheses", [])) if isinstance(raw_tom.get("hypotheses", tom.get("hypotheses", [])), list) else []
+    tom["hypotheses"] = [
+        {
+            "kind": trim(it.get("kind", "other"), MAX_STR_LEN["short_text"]),
+            "text": trim(it.get("text", ""), MAX_STR_LEN["text"]),
+            "confidence": clamp01(it.get("confidence", 0.0), 0.0),
+            "evidence_refs": _coerce_str_list(it.get("evidence_refs", []), 6),
+        }
+        for it in hypotheses[:MAX_ITEMS["hypotheses"]] if isinstance(it, dict)
+    ]
+    uni["tom"] = tom
+    uni["behavior_guidance"] = _normalize_behavior_guidance(uni.get("behavior_guidance", {}))
+    out["universal"] = uni
+
+    neg = dict(out.get("negotiation") or {})
+    stance_raw = dict(neg.get("stance") or {})
+    neg["stance"] = {k: clamp01(stance_raw.get(k, 0.5), 0.5) for k in NEGOTIATION_STANCE_KEYS}
+    reasons_raw = dict(neg.get("reasons") or {})
+    n_reasons = {}
+    for k in NEGOTIATION_REASON_KEYS:
+        item = dict(reasons_raw.get(k) or {})
+        evidence = trim(item.get("evidence", ""), MAX_STR_LEN["evidence"])
+        if not evidence:
+            continue
+        n_reasons[k] = {"weight": clamp01(item.get("weight", 0.0), 0.0), "confidence": clamp01(item.get("confidence", 0.0), 0.0), "evidence": evidence}
+    neg["reasons"] = n_reasons
+    out["negotiation"] = neg
+    return out, issues
 def normalize_world_state(raw: object) -> Tuple[WorldState, List[str]]:
     base = default_world_state()
+    defaults = default_world_state()
     issues: List[str] = []
     if not isinstance(raw, dict):
         issues.append("world_state_no_dict")
+        base["schema_version"] = "v2"
         return base, issues
-    if "tone_signal" not in raw:
-        issues.append("tone_signal_missing")
-        if _STRICT_NORMALIZATION:
-            return base, issues
+    universal_domain = raw.get("universal_domain")
+    negotiation = raw.get("negotiation")
+    if not isinstance(universal_domain, dict):
+        universal_domain = {}
+    if not isinstance(negotiation, dict):
+        negotiation = {}
 
-    base["price_mentioned"] = bool(raw.get("price_mentioned", base["price_mentioned"]))
-    price_value = raw.get("price_value", base["price_value"])
-    if price_value is None:
-        base["price_value"] = None
-    else:
-        base["price_value"] = _coerce_float(price_value, 0.0)
+    for key in ALLOWED_UNIVERSAL_DOMAIN_KEYS:
+        if key in raw and key not in universal_domain:
+            universal_domain[key] = raw.get(key)
+    for key in ALLOWED_NEGOTIATION_DOMAIN_KEYS:
+        if key in raw and key not in negotiation:
+            negotiation[key] = raw.get(key)
 
-    base["deadline_claimed"] = bool(raw.get("deadline_claimed", base["deadline_claimed"]))
-    base["deadline_text"] = str(raw.get("deadline_text", base["deadline_text"])).strip()
-    deadline_days = raw.get("deadline_days", base["deadline_days"])
-    if deadline_days is None:
-        base["deadline_days"] = None
-    else:
-        try:
-            base["deadline_days"] = int(deadline_days)
-        except (TypeError, ValueError):
-            issues.append("deadline_days_invalid")
-            base["deadline_days"] = None
-    base["deadline_kind"] = str(raw.get("deadline_kind", base["deadline_kind"])).strip() or "unknown"
-    base["other_buyer_claimed"] = bool(raw.get("other_buyer_claimed", base["other_buyer_claimed"]))
-    base["other_buyer_text"] = str(raw.get("other_buyer_text", base["other_buyer_text"])).strip()
-    other_offer = raw.get("other_buyer_offer_price", base["other_buyer_offer_price"])
-    if other_offer is None:
-        base["other_buyer_offer_price"] = None
-    else:
-        base["other_buyer_offer_price"] = _coerce_float(other_offer, 0.0)
-    base["other_buyer_timing_text"] = str(
-        raw.get("other_buyer_timing_text", base["other_buyer_timing_text"])
-    ).strip()
-    base["concession_made"] = bool(raw.get("concession_made", base["concession_made"]))
-    base["concession_text"] = str(raw.get("concession_text", base["concession_text"])).strip()
-    base["docs_claimed"] = bool(raw.get("docs_claimed", base["docs_claimed"]))
-    base["docs_types"] = _unique_list(_coerce_str_list(raw.get("docs_types", [])))
-    base["batna_claimed"] = bool(raw.get("batna_claimed", base["batna_claimed"]))
-    base["batna_text"] = str(raw.get("batna_text", base["batna_text"])).strip()
-    base["urgency_claimed"] = bool(raw.get("urgency_claimed", base["urgency_claimed"]))
-    base["urgency_text"] = str(raw.get("urgency_text", base["urgency_text"])).strip()
-    base["urgency_reason"] = str(raw.get("urgency_reason", base["urgency_reason"])).strip()
-    base["min_price_claimed"] = bool(raw.get("min_price_claimed", base["min_price_claimed"]))
-    base["min_price_text"] = str(raw.get("min_price_text", base["min_price_text"])).strip()
-    base["price_firm"] = bool(raw.get("price_firm", base["price_firm"]))
-    base["price_firm_text"] = str(raw.get("price_firm_text", base["price_firm_text"])).strip()
-    base["evidence_offered"] = bool(raw.get("evidence_offered", base["evidence_offered"]))
-    base["evidence_text"] = str(raw.get("evidence_text", base["evidence_text"])).strip()
-    base["message_is_vague"] = bool(raw.get("message_is_vague", base["message_is_vague"]))
+    base["universal_domain"].update(universal_domain)
+    base["negotiation"].update(negotiation)
 
-    tone_signal = raw.get("tone_signal", base["tone_signal"])
+    base["universal_domain"]["message_is_vague"] = bool(
+        universal_domain.get(
+            "message_is_vague", defaults["universal_domain"]["message_is_vague"]
+        )
+    )
+    tone_signal = universal_domain.get("tone_signal", defaults["universal_domain"]["tone_signal"])
     if tone_signal not in _ALLOWED_TONE:
         issues.append("tone_signal_invalid")
-        tone_signal = base["tone_signal"]
-    base["tone_signal"] = tone_signal
-    base["tone_confidence"] = _clamp(
-        _coerce_float(raw.get("tone_confidence", base["tone_confidence"]), base["tone_confidence"])
+        tone_signal = defaults["universal_domain"]["tone_signal"]
+    base["universal_domain"]["tone_signal"] = tone_signal
+    base["universal_domain"]["tone_confidence"] = _clamp(
+        _coerce_float(
+            universal_domain.get(
+                "tone_confidence", defaults["universal_domain"]["tone_confidence"]
+            ),
+            defaults["universal_domain"]["tone_confidence"],
+        )
     )
 
-    tone_markers = _coerce_str_list(raw.get("tone_marker_hits", []), max_items=10)
-    base["tone_marker_hits"] = _unique_list(tone_markers, max_items=10)
-    conflict_markers = _coerce_str_list(raw.get("conflict_markers", []), max_items=10)
-    base["conflict_markers"] = _unique_list(conflict_markers, max_items=10)
-
-    interaction = raw.get("interaction", {})
-    if isinstance(interaction, dict):
-        base["interaction"]["implicit_acceptance"] = bool(
-            interaction.get("implicit_acceptance", base["interaction"]["implicit_acceptance"])
-        )
-        escalation = interaction.get("escalation_signal", base["interaction"]["escalation_signal"])
-        if escalation not in _ALLOWED_ESCALATION:
-            issues.append("interaction_escalation_invalid")
-            escalation = base["interaction"]["escalation_signal"]
-        base["interaction"]["escalation_signal"] = escalation
-        base["interaction"]["loop_hint"] = bool(
-            interaction.get("loop_hint", base["interaction"]["loop_hint"])
-        )
-        base["interaction"]["evasion_detected"] = bool(
-            interaction.get("evasion_detected", base["interaction"]["evasion_detected"])
-        )
-        base["interaction"]["soft_commitment"] = bool(
-            interaction.get("soft_commitment", base["interaction"]["soft_commitment"])
-        )
+    base["negotiation"]["price_mentioned"] = bool(
+        negotiation.get("price_mentioned", defaults["negotiation"]["price_mentioned"])
+    )
+    price_value = negotiation.get("price_value", defaults["negotiation"]["price_value"])
+    if price_value is None:
+        base["negotiation"]["price_value"] = None
     else:
-        issues.append("interaction_invalid")
+        base["negotiation"]["price_value"] = _coerce_float(price_value, 0.0)
+
+    base["negotiation"]["price_firm"] = bool(
+        negotiation.get("price_firm", defaults["negotiation"]["price_firm"])
+    )
+    base["negotiation"]["price_firm_text"] = str(
+        negotiation.get("price_firm_text", defaults["negotiation"]["price_firm_text"])
+    ).strip()
+    base["negotiation"]["deadline_claimed"] = bool(
+        negotiation.get("deadline_claimed", defaults["negotiation"]["deadline_claimed"])
+    )
+    base["negotiation"]["deadline_text"] = str(
+        negotiation.get("deadline_text", defaults["negotiation"]["deadline_text"])
+    ).strip()
+    deadline_days = negotiation.get("deadline_days", defaults["negotiation"]["deadline_days"])
+    if deadline_days is None:
+        base["negotiation"]["deadline_days"] = None
+    else:
+        try:
+            base["negotiation"]["deadline_days"] = int(deadline_days)
+        except (TypeError, ValueError):
+            issues.append("deadline_days_invalid")
+            base["negotiation"]["deadline_days"] = None
+    base["negotiation"]["deadline_kind"] = str(
+        negotiation.get("deadline_kind", defaults["negotiation"]["deadline_kind"])
+    ).strip()
+    base["negotiation"]["urgency_claimed"] = bool(
+        negotiation.get("urgency_claimed", defaults["negotiation"]["urgency_claimed"])
+    )
+    base["negotiation"]["urgency_text"] = str(
+        negotiation.get("urgency_text", defaults["negotiation"]["urgency_text"])
+    ).strip()
+    base["negotiation"]["urgency_reason"] = str(
+        negotiation.get("urgency_reason", defaults["negotiation"]["urgency_reason"])
+    ).strip()
+    base["negotiation"]["other_buyer_claimed"] = bool(
+        negotiation.get(
+            "other_buyer_claimed", defaults["negotiation"]["other_buyer_claimed"]
+        )
+    )
+    base["negotiation"]["other_buyer_text"] = str(
+        negotiation.get("other_buyer_text", defaults["negotiation"]["other_buyer_text"])
+    ).strip()
+    other_offer = negotiation.get(
+        "other_buyer_offer_price", defaults["negotiation"]["other_buyer_offer_price"]
+    )
+    if other_offer is None:
+        base["negotiation"]["other_buyer_offer_price"] = None
+    else:
+        base["negotiation"]["other_buyer_offer_price"] = _coerce_float(other_offer, 0.0)
+    base["negotiation"]["other_buyer_timing_text"] = str(
+        negotiation.get(
+            "other_buyer_timing_text", defaults["negotiation"]["other_buyer_timing_text"]
+        )
+    ).strip()
+    base["negotiation"]["concession_made"] = bool(
+        negotiation.get("concession_made", defaults["negotiation"]["concession_made"])
+    )
+    base["negotiation"]["concession_text"] = str(
+        negotiation.get("concession_text", defaults["negotiation"]["concession_text"])
+    ).strip()
+    base["negotiation"]["docs_claimed"] = bool(
+        negotiation.get("docs_claimed", defaults["negotiation"]["docs_claimed"])
+    )
+    base["negotiation"]["docs_types"] = _unique_list(
+        _coerce_str_list(negotiation.get("docs_types", []))
+    )
+    base["negotiation"]["batna_claimed"] = bool(
+        negotiation.get("batna_claimed", defaults["negotiation"]["batna_claimed"])
+    )
+    base["negotiation"]["batna_text"] = str(
+        negotiation.get("batna_text", defaults["negotiation"]["batna_text"])
+    ).strip()
+    base["negotiation"]["min_price_claimed"] = bool(
+        negotiation.get("min_price_claimed", defaults["negotiation"]["min_price_claimed"])
+    )
+    base["negotiation"]["min_price_text"] = str(
+        negotiation.get("min_price_text", defaults["negotiation"]["min_price_text"])
+    ).strip()
+    base["negotiation"]["evidence_offered"] = bool(
+        negotiation.get("evidence_offered", defaults["negotiation"]["evidence_offered"])
+    )
+    base["negotiation"]["evidence_text"] = str(
+        negotiation.get("evidence_text", defaults["negotiation"]["evidence_text"])
+    ).strip()
 
     evidence_items = raw.get("evidence_items", [])
     if isinstance(evidence_items, list):
@@ -304,6 +947,10 @@ def normalize_world_state(raw: object) -> Tuple[WorldState, List[str]]:
         meta["updated_fields"] = _unique_list(
             _coerce_str_list(world_state_meta.get("updated_fields", [])), max_items=40
         )
+        meta["error"] = str(world_state_meta.get("error", meta.get("error", "")))[:200]
+        meta["extractor_failed"] = bool(
+            world_state_meta.get("extractor_failed", meta.get("extractor_failed", False))
+        )
         turn_idx = world_state_meta.get("turn_idx", meta.get("turn_idx"))
         if turn_idx is None:
             meta["turn_idx"] = None
@@ -322,6 +969,13 @@ def normalize_world_state(raw: object) -> Tuple[WorldState, List[str]]:
     else:
         issues.append("world_state_meta_invalid")
 
+    base["universal_state"] = normalize_universal_state(raw.get("universal_state"))
+    base["open_claims"] = normalize_open_claims(raw.get("open_claims"), max_total=50)
+
+    base["schema_version"] = "v2" if raw.get("schema_version") == "v2" else "v1"
+    if "universal_v2" in raw or "negotiation_v2" in raw or base["schema_version"] == "v2":
+        v2_out, v2_issues = normalize_world_state_v2(raw)
+        return v2_out, issues + v2_issues
     return base, issues
 
 
@@ -337,120 +991,54 @@ def normalize_belief_state(
     if not isinstance(raw, dict):
         issues.append("belief_state_no_dict")
         return base, issues
+    if BELIEF_LEGACY_KEYS.intersection(raw.keys()):
+        warnings.warn(
+            "belief_state legacy flat keys are deprecated; use belief_state['universal']/['negotiation'] only",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
-    stance = raw.get("stance", {})
-    if not isinstance(stance, dict):
-        issues.append("stance_invalid")
-        stance = {}
-    base["stance"]["deal_feasibility"] = _clamp(
-        _coerce_float(stance.get("deal_feasibility", base["stance"]["deal_feasibility"]),
-                      base["stance"]["deal_feasibility"])
-    )
-    base["stance"]["seller_flexibility"] = _clamp(
-        _coerce_float(stance.get("seller_flexibility", base["stance"]["seller_flexibility"]),
-                      base["stance"]["seller_flexibility"])
-    )
+    if "universal" not in raw or not isinstance(raw.get("universal"), dict):
+        raw["universal"] = {}
+    if "negotiation" not in raw or not isinstance(raw.get("negotiation"), dict):
+        raw["negotiation"] = {}
 
-    reasons_raw = raw.get("reasons", {})
-    reasons: Dict[str, Dict[str, object]] = {}
-    if isinstance(reasons_raw, dict):
-        scored_reasons: List[Tuple[str, Dict[str, object], float]] = []
-        for key, value in reasons_raw.items():
-            if key not in _ALLOWED_REASON_KEYS:
-                issues.append(f"reason_key_invalid:{key}")
-                continue
-            if not isinstance(value, dict):
-                issues.append(f"reason_invalid:{key}")
-                continue
-            weight = _clamp(_coerce_float(value.get("weight", 0.5), 0.5))
-            confidence = _clamp(_coerce_float(value.get("confidence", 0.5), 0.5))
-            evidence = str(value.get("evidence", "")).strip()
-            if not evidence:
-                issues.append(f"reason_missing_evidence:{key}")
-            scored_reasons.append(
-                (
-                    str(key),
-                    {
-                        "weight": weight,
-                        "confidence": confidence,
-                        "evidence": evidence,
-                    },
-                    weight * confidence,
-                )
-            )
-        scored_reasons.sort(key=lambda item: item[2], reverse=True)
-        if len(scored_reasons) > 6:
-            issues.append("reasons_trimmed")
-        for key, payload, _score in scored_reasons[:6]:
-            reasons[key] = payload
-    else:
-        issues.append("reasons_invalid")
-    base["reasons"] = reasons
+    base["universal"] = normalize_belief_universal(raw.get("universal"))
 
-    hypotheses = _coerce_str_list(raw.get("hypotheses", []), max_items=5)
-    if len(hypotheses) >= 5:
-        issues.append("hypotheses_trimmed")
-    base["hypotheses"] = hypotheses
+    neg = dict(raw.get("negotiation") or {})
+    if not isinstance(neg.get("stance"), dict):
+        neg["stance"] = {}
+    if not isinstance(neg.get("reasons"), dict):
+        neg["reasons"] = {}
+    if not isinstance(neg.get("hypotheses"), list):
+        neg["hypotheses"] = []
+    if not isinstance(neg.get("hypotheses_structural"), list):
+        neg["hypotheses_structural"] = []
+    if not isinstance(neg.get("hypotheses_observational"), list):
+        neg["hypotheses_observational"] = []
+    if not isinstance(neg.get("evaluations"), dict):
+        neg["evaluations"] = {}
+    if not isinstance(neg.get("tom"), dict):
+        neg["tom"] = {}
+    stance_raw = dict(neg.get("stance") or {})
+    neg["stance"] = {k: clamp01(stance_raw.get(k, 0.5), 0.5) for k in NEGOTIATION_STANCE_KEYS}
+    reasons_raw = dict(neg.get("reasons") or {})
+    filtered_reasons = {}
+    for key in NEGOTIATION_REASON_KEYS:
+        item = dict(reasons_raw.get(key) or {})
+        evidence = _trim(item.get("evidence", ""), MAX_STR_LEN["evidence"])
+        if not evidence:
+            continue
+        filtered_reasons[key] = {
+            "weight": clamp01(item.get("weight", 0.0), 0.0),
+            "confidence": clamp01(item.get("confidence", 0.0), 0.0),
+            "evidence": evidence,
+        }
+    neg["reasons"] = filtered_reasons
+    base["negotiation"] = neg
 
-    structural_raw = raw.get("hypotheses_structural", [])
-    observational_raw = raw.get("hypotheses_observational", [])
-    if not structural_raw and not observational_raw and hypotheses:
-        observational_raw = hypotheses
-    structural = [
-        value
-        for value in _unique_list(_coerce_str_list(structural_raw, max_items=5))
-        if value in _ALLOWED_STRUCTURAL_HYPOTHESES
-    ]
-    observational = [
-        value
-        for value in _unique_list(_coerce_str_list(observational_raw, max_items=5))
-        if value in _ALLOWED_OBSERVATIONAL_HYPOTHESES
-    ]
-    if len(structural) >= 5:
-        issues.append("hypotheses_structural_trimmed")
-    if len(observational) >= 5:
-        issues.append("hypotheses_observational_trimmed")
-    base["hypotheses_structural"] = structural
-    base["hypotheses_observational"] = observational
-    combined = _unique_list(structural + observational, max_items=5)
-    if combined:
-        base["hypotheses"] = combined
-
-    evaluations_raw = raw.get("evaluations", {})
-    evaluations: Dict[str, float] = {}
-    if isinstance(evaluations_raw, dict):
-        for key, value in evaluations_raw.items():
-            if key not in _ALLOWED_EVALUATIONS:
-                issues.append(f"evaluation_key_invalid:{key}")
-                continue
-            evaluations[str(key)] = _clamp(_coerce_float(value, 0.0))
-    else:
-        issues.append("evaluations_invalid")
-    base["evaluations"] = evaluations
-
-    dynamics = raw.get("dynamics", {})
-    if not isinstance(dynamics, dict):
-        issues.append("dynamics_invalid")
-        dynamics = {}
-    interaction_health = dynamics.get("interaction_health", base["dynamics"]["interaction_health"])
-    if interaction_health not in _ALLOWED_HEALTH:
-        issues.append("interaction_health_invalid")
-        interaction_health = base["dynamics"]["interaction_health"]
-    base["dynamics"]["interaction_health"] = interaction_health
-    base["dynamics"]["last_update_evidence"] = str(
-        dynamics.get("last_update_evidence", base["dynamics"]["last_update_evidence"])
-    ).strip()
-
-    tom = raw.get("tom", {})
-    if not isinstance(tom, dict):
-        issues.append("tom_invalid")
-        tom = {}
-    base["tom"]["seller_goals"] = _coerce_str_list(tom.get("seller_goals", []))
-    base["tom"]["seller_tactics"] = _coerce_str_list(tom.get("seller_tactics", []))
-    base["tom"]["seller_belief_about_me"] = _coerce_str_list(tom.get("seller_belief_about_me", []))
-    base["tom"]["confidence"] = _clamp(
-        _coerce_float(tom.get("confidence", base["tom"]["confidence"]), base["tom"]["confidence"])
-    )
+    if "schema_version" in raw:
+        base["schema_version"] = "v2" if raw.get("schema_version") == "v2" else "v1"
 
     return base, issues
 
@@ -487,12 +1075,217 @@ def normalize_policy_decision(
     return base, issues
 
 
+def _normalize_persona_profile(raw: object) -> Tuple[PersonaProfile, List[str]]:
+    base = default_persona_profile()
+    issues: List[str] = []
+    if not isinstance(raw, dict):
+        issues.append("persona_profile_no_dict")
+        return base, issues
+    base["persona_id"] = str(raw.get("persona_id", base["persona_id"]))
+    base["role"] = str(raw.get("role", base["role"]))
+    voice_register = raw.get("voice_register", base["voice_register"])
+    if voice_register not in PERSONA_VOICE_REGISTERS:
+        issues.append("persona_voice_register_invalid")
+        voice_register = base["voice_register"]
+    base["voice_register"] = voice_register
+    base["values"] = _unique_list(_coerce_str_list(raw.get("values", base["values"])), max_items=6)
+    base["hard_limits"] = _unique_list(
+        _coerce_str_list(raw.get("hard_limits", base["hard_limits"])), max_items=8
+    )
+    base["do"] = _unique_list(_coerce_str_list(raw.get("do", base["do"])), max_items=8)
+    base["dont"] = _unique_list(_coerce_str_list(raw.get("dont", base["dont"])), max_items=8)
+    if isinstance(raw.get("role_card"), dict):
+        base["role_card"] = raw["role_card"]
+    base["experience"] = str(raw.get("experience", base.get("experience", ""))).strip()[:500]
+    if isinstance(raw.get("big_five"), dict):
+        base["big_five"] = {str(k): str(v) for k, v in raw["big_five"].items()}
+    base["trait_markers"] = _unique_list(_coerce_str_list(raw.get("trait_markers", [])), max_items=10)
+    base["persona_anchors"] = _unique_list(_coerce_str_list(raw.get("persona_anchors", [])), max_items=8)
+    base["signature_line"] = str(raw.get("signature_line", base.get("signature_line", ""))).strip()[:140]
+    return base, issues
+
+
+def _normalize_scene_profile(raw: object) -> Tuple[SceneProfile, List[str]]:
+    base = default_scene_profile()
+    issues: List[str] = []
+    if not isinstance(raw, dict):
+        issues.append("scene_profile_no_dict")
+        return base, issues
+    base["scene_id"] = str(raw.get("scene_id", base["scene_id"]))
+    base["setting"] = str(raw.get("setting", base["setting"]))
+    base["macro_goal"] = str(raw.get("macro_goal", base["macro_goal"]))
+    base["operational_context"] = _unique_list(
+        _coerce_str_list(raw.get("operational_context", base["operational_context"])), max_items=8
+    )
+    base["disclaimers"] = _unique_list(
+        _coerce_str_list(raw.get("disclaimers", base.get("disclaimers", []))), max_items=8
+    )
+    if isinstance(raw.get("scenario_card"), dict):
+        base["scenario_card"] = raw["scenario_card"]
+    base["partner_name"] = str(raw.get("partner_name", base.get("partner_name", ""))).strip()[:120]
+    base["turn_topic"] = str(raw.get("turn_topic", base.get("turn_topic", ""))).strip()[:240]
+    return base, issues
+
+
+def _normalize_style_contract(raw: object) -> Tuple[StyleContract, List[str]]:
+    base = default_style_contract()
+    issues: List[str] = []
+    if not isinstance(raw, dict):
+        issues.append("style_contract_no_dict")
+        return base, issues
+    base["style_id"] = str(raw.get("style_id", base["style_id"]))
+    target_length = raw.get("target_length", base["target_length"])
+    if target_length not in STYLE_LENGTHS:
+        issues.append("style_target_length_invalid")
+        target_length = base["target_length"]
+    base["target_length"] = target_length
+    fmt = raw.get("format", base["format"])
+    if fmt not in STYLE_FORMATS:
+        issues.append("style_format_invalid")
+        fmt = base["format"]
+    base["format"] = fmt
+    try:
+        max_words = int(raw.get("max_words", base.get("max_words", 0) or 0))
+        base["max_words"] = max(0, min(200, max_words))
+    except (TypeError, ValueError):
+        issues.append("style_max_words_invalid")
+    try:
+        max_questions = int(raw.get("max_questions", base["max_questions"]))
+        base["max_questions"] = max(0, min(6, max_questions))
+    except (TypeError, ValueError):
+        issues.append("style_max_questions_invalid")
+    emoji_policy = raw.get("emoji_policy", base["emoji_policy"])
+    if emoji_policy not in STYLE_EMOJI_POLICIES:
+        issues.append("style_emoji_policy_invalid")
+        emoji_policy = base["emoji_policy"]
+    base["emoji_policy"] = emoji_policy
+    base["markdown_allowed"] = bool(raw.get("markdown_allowed", base["markdown_allowed"]))
+    try:
+        bullets_max = int(raw.get("bullets_max", base.get("bullets_max", 4)))
+        base["bullets_max"] = max(0, min(8, bullets_max))
+    except (TypeError, ValueError):
+        issues.append("style_bullets_max_invalid")
+    return base, issues
+
+
+def _normalize_render_state(raw: object) -> Tuple[RenderState, List[str]]:
+    base = default_render_state()
+    issues: List[str] = []
+    if not isinstance(raw, dict):
+        issues.append("render_state_no_dict")
+        return base, issues
+    base["persona_id"] = str(raw.get("persona_id", base["persona_id"])) or base["persona_id"]
+    base["scene_id"] = str(raw.get("scene_id", base["scene_id"])) or base["scene_id"]
+    base["style_id"] = str(raw.get("style_id", base["style_id"])) or base["style_id"]
+    base["language"] = str(raw.get("language", base["language"])) or base["language"]
+    persona_profile = raw.get("persona_profile")
+    if isinstance(persona_profile, dict):
+        base["persona_profile"] = persona_profile
+    scene_profile = raw.get("scene_profile")
+    if isinstance(scene_profile, dict):
+        base["scene_profile"] = scene_profile
+    style_contract = raw.get("style_contract")
+    if isinstance(style_contract, dict):
+        base["style_contract"] = style_contract
+    return base, issues
+
+
+def _normalize_constraints_struct(raw: object) -> Tuple[RenderConstraints, List[str]]:
+    base = default_constraints_struct()
+    issues: List[str] = []
+    if not isinstance(raw, dict):
+        issues.append("constraints_struct_no_dict")
+        return base, issues
+    base["forbid_claims"] = _unique_list(
+        _coerce_str_list(raw.get("forbid_claims", base["forbid_claims"])), max_items=8
+    )
+    base["forbid_formats"] = _unique_list(
+        _coerce_str_list(raw.get("forbid_formats", base["forbid_formats"])), max_items=6
+    )
+    base["forbid_behaviors"] = _unique_list(
+        _coerce_str_list(raw.get("forbid_behaviors", base.get("forbid_behaviors", []))),
+        max_items=10,
+    )
+    base["dialogue_dynamics"] = _unique_list(
+        _coerce_str_list(raw.get("dialogue_dynamics", base.get("dialogue_dynamics", []))),
+        max_items=8,
+    )
+    if isinstance(raw.get("end_rule"), dict):
+        base["end_rule"] = {
+            "when_stalled": bool(raw["end_rule"].get("when_stalled", False)),
+            "marker": str(raw["end_rule"].get("marker", "")).strip()[:20],
+        }
+    base["disallow_numbers"] = bool(raw.get("disallow_numbers", base["disallow_numbers"]))
+    base["require_ask_if_missing"] = _unique_list(
+        _coerce_str_list(raw.get("require_ask_if_missing", base["require_ask_if_missing"])),
+        max_items=6,
+    )
+    max_questions = raw.get("max_questions", base.get("max_questions"))
+    if max_questions is None:
+        base["max_questions"] = None
+    else:
+        try:
+            base["max_questions"] = max(0, min(6, int(max_questions)))
+        except (TypeError, ValueError):
+            issues.append("constraints_struct_max_questions_invalid")
+            base["max_questions"] = base.get("max_questions", 2)
+    return base, issues
+
+
 def normalize_progress_state(raw: object) -> Tuple[ProgressState, List[str]]:
     base = default_progress_state()
     issues: List[str] = []
     if not isinstance(raw, dict):
         issues.append("progress_state_no_dict")
         return base, issues
+    if "constraints_struct" in raw and "render_constraints_struct" not in raw:
+        warnings.warn(
+            "constraints_struct is deprecated; use render_constraints_struct",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
+    conversation_mode = raw.get("conversation_mode", base.get("conversation_mode", "general"))
+    if conversation_mode not in {"general", "negotiation"}:
+        issues.append("progress_conversation_mode_invalid")
+        conversation_mode = base.get("conversation_mode", "general")
+    base["conversation_mode"] = conversation_mode  # type: ignore[assignment]
+    try:
+        base["mode_confidence"] = _clamp(
+            _coerce_float(raw.get("mode_confidence", base.get("mode_confidence", 0.0)), 0.0)
+        )
+    except (TypeError, ValueError):
+        issues.append("progress_mode_confidence_invalid")
+    try:
+        base["mode_last_switch_turn"] = max(
+            0, int(raw.get("mode_last_switch_turn", base.get("mode_last_switch_turn", 0)))
+        )
+    except (TypeError, ValueError):
+        issues.append("progress_mode_last_switch_turn_invalid")
+    base["policy_pack_active"] = str(
+        raw.get("policy_pack_active", base.get("policy_pack_active", "universal"))
+    )
+    base["render_state"], render_issues = _normalize_render_state(
+        raw.get("render_state", base.get("render_state", {}))
+    )
+    issues.extend(render_issues)
+    base["render_constraints_struct"], constraints_issues = _normalize_constraints_struct(
+        raw.get(
+            "render_constraints_struct",
+            raw.get("constraints_struct", base.get("render_constraints_struct", {})),
+        )
+    )
+    issues.extend(constraints_issues)
+
+    persona_profile_raw = raw.get("persona_profile")
+    if isinstance(persona_profile_raw, dict):
+        base["render_state"]["persona_profile"] = persona_profile_raw
+    scene_profile_raw = raw.get("scene_profile")
+    if isinstance(scene_profile_raw, dict):
+        base["render_state"]["scene_profile"] = scene_profile_raw
+    style_contract_raw = raw.get("style_contract")
+    if isinstance(style_contract_raw, dict):
+        base["render_state"]["style_contract"] = style_contract_raw
 
     last_executed_policy_id = raw.get("last_executed_policy_id", raw.get("last_policy_id", ""))
     base["last_executed_policy_id"] = str(
@@ -540,10 +1333,79 @@ def normalize_progress_state(raw: object) -> Tuple[ProgressState, List[str]]:
     base["turns_in_same_mode"] = int(raw.get("turns_in_same_mode", base["turns_in_same_mode"]))
     base["intent_state"], intent_issues = normalize_intent_state(raw.get("intent_state", {}))
     issues.extend(intent_issues)
+    base["policy_state"], policy_issues = normalize_policy_state(raw.get("policy_state", {}))
+    issues.extend(policy_issues)
     base["phase_state"], phase_issues = normalize_phase_state(raw.get("phase_state", {}))
     issues.extend(phase_issues)
     base["gate_state"], gate_issues = _normalize_gate_state(raw.get("gate_state", {}))
     issues.extend(gate_issues)
+
+    return base, issues
+
+
+def normalize_policy_state(raw: object) -> Tuple[PolicyState, List[str]]:
+    base = default_policy_state()
+    issues: List[str] = []
+    if not isinstance(raw, dict):
+        issues.append("policy_state_no_dict")
+        return base, issues
+
+    status = raw.get("status", base.get("status"))
+    if status not in _ALLOWED_POLICY_STATUS:
+        issues.append("policy_state_status_invalid")
+    else:
+        base["status"] = status
+
+    base["policy_id"] = str(raw.get("policy_id", base.get("policy_id", "")))
+
+    for key in (
+        "step_idx",
+        "step_attempts",
+        "max_attempts_per_step",
+        "started_turn",
+        "last_turn",
+        "no_progress_turns",
+    ):
+        value = raw.get(key, base.get(key))
+        try:
+            base[key] = max(0, int(value))  # type: ignore[index]
+        except (TypeError, ValueError):
+            issues.append(f"policy_state_invalid:{key}")
+
+    planner_request = raw.get("planner_request", base.get("planner_request"))
+    if planner_request not in _ALLOWED_PLANNER_REQUEST:
+        issues.append("policy_state_planner_request_invalid")
+    else:
+        base["planner_request"] = planner_request
+
+    base["slots_required"] = _unique_list(
+        _coerce_str_list(raw.get("slots_required", base.get("slots_required", []))),
+        max_items=12,
+    )
+
+    slots_filled: Dict[str, dict] = {}
+    raw_slots_filled = raw.get("slots_filled", {})
+    if isinstance(raw_slots_filled, dict):
+        for key, value in raw_slots_filled.items():
+            if not isinstance(value, dict):
+                issues.append(f"policy_state_slot_invalid:{key}")
+                continue
+            source = value.get("source")
+            if source not in {"world", "belief"}:
+                source = None
+            updated_turn = value.get("updated_turn", 0)
+            try:
+                updated_turn = max(0, int(updated_turn))
+            except (TypeError, ValueError):
+                updated_turn = 0
+                issues.append(f"policy_state_slot_turn_invalid:{key}")
+            slot_record = {"value": value.get("value"), "updated_turn": updated_turn}
+            if source:
+                slot_record["source"] = source
+            slots_filled[str(key)] = slot_record
+    else:
+        issues.append("policy_state_slots_filled_invalid")
+    base["slots_filled"] = slots_filled
 
     return base, issues
 
@@ -571,16 +1433,19 @@ def _normalize_gate_state(raw: object) -> Tuple[dict, List[str]]:
     base["allowed_ids_hash_prev"] = str(
         raw.get("allowed_ids_hash_prev", base.get("allowed_ids_hash_prev", ""))
     )
-    base["precedence_signature_prev"] = str(
-        raw.get("precedence_signature_prev", base.get("precedence_signature_prev", ""))
-    )
     loop_flags = raw.get("loop_flags_prev", [])
     base["loop_flags_prev"] = _unique_list(_coerce_str_list(loop_flags))
     input_shape = raw.get("input_shape_prev", {})
     base["input_shape_prev"] = input_shape if isinstance(input_shape, dict) else {}
+    last_interaction = raw.get("last_interaction_signals", {})
+    base["last_interaction_signals"] = last_interaction if isinstance(last_interaction, dict) else {}
     interaction_fp = raw.get("interaction_fingerprint_prev", {})
     base["interaction_fingerprint_prev"] = (
         interaction_fp if isinstance(interaction_fp, dict) else {}
+    )
+    base["prev_user_message"] = str(raw.get("prev_user_message", base.get("prev_user_message", "")))
+    base["universal_state_fingerprint_prev"] = str(
+        raw.get("universal_state_fingerprint_prev", base.get("universal_state_fingerprint_prev", ""))
     )
     version = raw.get("interaction_fingerprint_version", base.get("interaction_fingerprint_version", 1))
     try:
@@ -591,17 +1456,42 @@ def _normalize_gate_state(raw: object) -> Tuple[dict, List[str]]:
 
 
 def normalize_phase_state(raw: object) -> Tuple[PhaseState, List[str]]:
+    from .phase_migration import normalize_phase_candidate
+
     base = default_progress_state()["phase_state"]
     issues: List[str] = []
     if not isinstance(raw, dict):
         issues.append("phase_state_no_dict")
         return base, issues
 
-    phase = raw.get("phase", base["phase"])
-    if phase not in _ALLOWED_PHASES:
-        issues.append("phase_invalid")
-        phase = "opening"
-    base["phase"] = phase
+    phase_candidate = raw.get("phase_effective", raw.get("phase", base["phase"]))
+    normalized_phase, proposed_raw, mapped_recovery, phase_issues = normalize_phase_candidate(
+        str(phase_candidate),
+        bool(raw.get("recovery_mode", False)),
+    )
+    issues.extend(phase_issues)
+
+    base["phase"] = normalized_phase
+    base["phase_effective"] = normalized_phase
+
+    proposed = str(raw.get("phase_proposed", proposed_raw or "")).strip().lower()
+    base["phase_proposed"] = proposed if proposed in _ALLOWED_LEGACY_PHASES.union(_ALLOWED_PHASES) else ""
+
+    recovery_mode = bool(raw.get("recovery_mode", mapped_recovery))
+    if proposed == "recovery":
+        recovery_mode = True
+        base["phase_effective"] = "climate"
+        base["phase"] = str(raw.get("phase", base["phase"])) if str(raw.get("phase", "")) in _ALLOWED_PHASES else "climate"
+        issues.append("phase_recovery_overlay_applied")
+
+    base["recovery_mode"] = bool(recovery_mode)
+
+    stable_turns = raw.get("recovery_stable_turns", base.get("recovery_stable_turns", 0))
+    try:
+        base["recovery_stable_turns"] = max(0, int(stable_turns))
+    except (TypeError, ValueError):
+        issues.append("phase_recovery_stable_turns_invalid")
+        base["recovery_stable_turns"] = 0
 
     base["confidence"] = _clamp(
         _coerce_float(raw.get("confidence", base["confidence"]), base["confidence"])

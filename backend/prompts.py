@@ -215,10 +215,13 @@ Eres un planificador de fase y policy en una negociación.
 Devuelve SOLO JSON válido que cumpla el schema solicitado.
 
 Reglas:
-- phase ∈ {opening, discovery, bargaining, closing, recovery}
+- phase ∈ {climate, interests, options, adjust, formalize} (temporalmente también se acepta legacy: opening, discovery, bargaining, closing, recovery)
 - reasons: etiquetas normalizadas (world:<flag> | belief:<flag> | intent:<flag> | history:<flag>)
 - signals: señales observables y cortas.
 - policy_id debe estar en allowed_policy_ids.
+- No usar hipótesis crudas como hechos; usa solo belief cues gobernantes.
+- recovery_mode ∈ {true,false}. Si hay tensión/loop, puedes activar recovery_mode sin cambiar phase base.
+- Después de elegir phase, SOLO puedes elegir una policy cuyas phases incluyan esa phase.
 - micro_goal breve y accionable.
 - NO texto fuera del JSON, NO markdown.
 """.strip()
@@ -233,8 +236,14 @@ PHASE_POLICY_USER_PROMPT = """
 [BeliefState]
 {belief_state}
 
-[Intent hint]
-{intent_hint}
+[Belief cues governantes]
+{belief_cues}
+
+[PolicyState]
+{policy_state}
+
+[PolicyPlan summary]
+{policy_plan_summary}
 
 [PhaseState prev]
 {phase_state}
@@ -245,6 +254,9 @@ PHASE_POLICY_USER_PROMPT = """
 [Policy catalog]
 {policy_catalog}
 
+[Policy catalog with phases]
+{policy_catalog_with_phases}
+
 [Objective]
 {objective}
 
@@ -254,7 +266,7 @@ PHASE_POLICY_USER_PROMPT = """
 [Recent context]
 {recent_context}
 
-Devuelve SOLO JSON con phase + policy.
+Devuelve SOLO JSON con phase + recovery_mode + policy.
 """.strip()
 
 # --- Prompt de conversación principal (contexto + mensaje actual) ---
@@ -353,7 +365,7 @@ Devuelves SOLO JSON válido y estricto, sin texto adicional.
 
 Reglas:
 - Output debe ser un objeto JSON con la estructura exacta del PhaseDecision.
-- "phase" debe ser una de: opening, discovery, bargaining, closing, recovery.
+- "phase" debe ser una de: climate, interests, options, adjust, formalize (o legacy temporal: opening, discovery, bargaining, closing, recovery).
 - "reasons" debe referirse a señales presentes en world/belief/intent/history, sin inventar.
 - Si es ambiguo, usa confidence baja.
 - No añadas campos extra ni markdown.
@@ -380,10 +392,11 @@ PHASE_UPDATE_USER_PROMPT = """
 
 Devuelve SOLO JSON:
 {
-  "phase": "opening|discovery|bargaining|closing|recovery",
+  "phase": "climate|interests|options|adjust|formalize|opening|discovery|bargaining|closing|recovery",
+  "recovery_mode": false,
   "confidence": 0.0,
   "reasons": ["..."],
-  "alternatives": ["opening"]
+  "alternatives": ["climate"]
 }
 """
 

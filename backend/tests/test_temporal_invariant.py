@@ -16,7 +16,7 @@ def test_executed_policy_and_debug_trace_are_persisted(monkeypatch):
         decision["micro_goal"] = "y"
         decision["risk_posture"] = "mid"
         phase_candidate = {
-            "phase": "opening",
+            "phase": "climate",
             "confidence": 0.6,
             "reasons": ["history:mock"],
             "signals": [],
@@ -43,7 +43,7 @@ def test_executed_policy_and_debug_trace_are_persisted(monkeypatch):
 
     state = SessionState(user_id="u", session_id="s")
     world_state = default_world_state()
-    world_state["price_mentioned"] = True
+    world_state["negotiation"]["price_mentioned"] = True
     state.world_state = world_state
     run_negotiation_agent(state, "hola", deps=deps)
 
@@ -76,7 +76,7 @@ def test_executed_policy_can_differ_from_chosen_and_is_persisted(monkeypatch):
         decision["micro_goal"] = "chosen"
         decision["risk_posture"] = "mid"
         phase_candidate = {
-            "phase": "opening",
+            "phase": "climate",
             "confidence": 0.6,
             "reasons": ["history:mock"],
             "signals": [],
@@ -87,7 +87,9 @@ def test_executed_policy_can_differ_from_chosen_and_is_persisted(monkeypatch):
     def fake_update_belief_state(*args, **kwargs):
         return default_belief_state(), {"belief_meta": {"mock": True}}
 
-    def fake_validate_and_repair(response_text, constraints_struct, policy_decision, world_state):
+    def fake_validate_and_repair(
+        response_text, constraints_struct, policy_decision, world_state, **_kwargs
+    ):
         meta = {
             "violations": ["mock"],
             "repaired_used": True,
@@ -111,13 +113,13 @@ def test_executed_policy_can_differ_from_chosen_and_is_persisted(monkeypatch):
         lambda raw_reply, last_user_message=None: raw_reply,
     )
     monkeypatch.setattr(
-        "negotiation.negotiation_graph.validate_and_repair",
+        "negotiation.nodes.executor_node.validate_and_repair",
         fake_validate_and_repair,
     )
 
     state = SessionState(user_id="u", session_id="s")
     world_state = default_world_state()
-    world_state["price_mentioned"] = True
+    world_state["negotiation"]["price_mentioned"] = True
     state.world_state = world_state
     run_negotiation_agent(state, "hola", deps=deps)
 

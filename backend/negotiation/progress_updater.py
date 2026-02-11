@@ -1,25 +1,29 @@
 # backend/negotiation/progress_updater.py
 from __future__ import annotations
 
+from .elementos.execution_definitions import (
+    INFO_DELTA_KEYS,
+    OUTCOME_BAD,
+    OUTCOME_GOOD,
+    OUTCOME_NEUTRAL,
+)
 from .gate_utils import _split_world_diff
-from .schemas import BeliefState, PolicyDecision, ProgressState, WorldState, default_progress_state
+from .policies import get_policy
+from .schemas import (
+    BeliefState,
+    PolicyDecision,
+    PolicyState,
+    ProgressState,
+    WorldState,
+    default_policy_state,
+    default_progress_state,
+)
 from .world_state_updater import diff_world_state
 
 
 def _has_info_delta(world_diff: dict) -> bool:
-    info_keys = {
-        "docs_claimed",
-        "docs_types",
-        "deadline_claimed",
-        "deadline_text",
-        "other_buyer_claimed",
-        "concession_made",
-        "concession_text",
-        "price_mentioned",
-        "price_value",
-    }
     domain, _interaction = _split_world_diff(world_diff)
-    return any(key in domain for key in info_keys)
+    return any(key in domain for key in INFO_DELTA_KEYS)
 
 
 def _evaluate_outcome(
@@ -30,61 +34,69 @@ def _evaluate_outcome(
     belief_state: BeliefState,
 ) -> str:
     if not policy_id:
-        return "neutral"
+        return OUTCOME_NEUTRAL
 
-    health = belief_state.get("dynamics", {}).get("interaction_health", "stable")
-    prev_health = (
-        prev_belief_state.get("dynamics", {}).get("interaction_health", "stable")
-        if prev_belief_state
-        else "stable"
+    prev_neg = (
+        prev_world_state.get("negotiation", {}) if isinstance(prev_world_state, dict) else {}
     )
+    neg = world_state.get("negotiation", {}) if isinstance(world_state, dict) else {}
+    health = (belief_state.get("universal") or {}).get("dynamics", {}).get(
+        "interaction_health", "stable"
+    )
+    prev_health = "stable"
+    if prev_belief_state:
+        prev_health = (prev_belief_state.get("universal") or {}).get("dynamics", {}).get(
+            "interaction_health", "stable"
+        )
     world_diff = diff_world_state(prev_world_state, world_state)
 
     if policy_id == "info_extract_critical":
         if _has_info_delta(world_diff):
-            return "good"
-        return "neutral"
+            return OUTCOME_GOOD
+        return OUTCOME_NEUTRAL
 
     if policy_id == "delay_price_discussion":
-        if world_state.get("price_mentioned") and not prev_world_state.get("price_mentioned"):
-            return "bad"
+        if neg.get("price_mentioned") and not prev_neg.get("price_mentioned"):
+            return OUTCOME_BAD
         if _has_info_delta(world_diff):
-            return "good"
-        return "neutral"
+            return OUTCOME_GOOD
+        return OUTCOME_NEUTRAL
 
     if policy_id == "deescalate_tension":
         if health == "stable" and prev_health != "stable":
-            return "good"
+            return OUTCOME_GOOD
         if health == "tense":
-            return "bad"
-        return "neutral"
+            return OUTCOME_BAD
+        return OUTCOME_NEUTRAL
 
     if policy_id == "rapport_build":
         if health == "stable" and prev_health != "stable":
-            return "good"
-        return "neutral"
+            return OUTCOME_GOOD
+        return OUTCOME_NEUTRAL
 
     if policy_id == "test_credibility":
         if _has_info_delta(world_diff):
-            return "good"
-        return "neutral"
+            return OUTCOME_GOOD
+        return OUTCOME_NEUTRAL
 
     if policy_id in {"tradeoff_offer", "hold_position"}:
-        if world_state.get("concession_made") and not prev_world_state.get("concession_made"):
-            return "good"
-        return "neutral"
+        if neg.get("concession_made") and not prev_neg.get("concession_made"):
+            return OUTCOME_GOOD
+        return OUTCOME_NEUTRAL
 
     if policy_id == "challenge_anchor_indirect":
-        if belief_state.get("stance", {}).get("seller_flexibility", 0.0) > 0.6:
-            return "good"
-        return "neutral"
+        if (belief_state.get("negotiation") or {}).get("stance", {}).get(
+            "seller_flexibility", 0.0
+        ) > 0.6:
+            return OUTCOME_GOOD
+        return OUTCOME_NEUTRAL
 
     if policy_id == "close_with_conditions":
-        if world_state.get("concession_made") and not prev_world_state.get("concession_made"):
-            return "good"
-        return "neutral"
+        if neg.get("concession_made") and not prev_neg.get("concession_made"):
+            return OUTCOME_GOOD
+        return OUTCOME_NEUTRAL
 
-    return "neutral"
+    return OUTCOME_NEUTRAL
 
 
 def update_progress_state(
@@ -95,6 +107,7 @@ def update_progress_state(
     world_state: WorldState,
     prev_belief_state: BeliefState | None,
     belief_state: BeliefState,
+    turn_count: int = 0,
 ) -> ProgressState:
     progress = default_progress_state()
     if prev_progress:
@@ -130,13 +143,41 @@ def update_progress_state(
             progress["turns_in_same_mode"] = 1
         progress["last_chosen_policy_id"] = policy_id
 
+    current_policy_state = progress.get("policy_state", default_policy_state())
+    if policy_id and policy_id != current_policy_state.get("policy_id", ""):
+        progress["policy_state"] = hydrate_policy_state_from_catalog(policy_id, turn_count=turn_count)
+
     loop_flags = list(progress.get("loop_flags", []))
     if (
         progress.get("turns_in_same_mode", 0) >= 2
-        and progress.get("last_executed_policy_outcome") != "good"
+        and progress.get("last_executed_policy_outcome") != OUTCOME_GOOD
     ):
         if "stuck_in_policy" not in loop_flags:
             loop_flags.append("stuck_in_policy")
     progress["loop_flags"] = loop_flags
 
     return progress
+
+
+def hydrate_policy_state_from_catalog(policy_id: str, turn_count: int) -> PolicyState:
+    base = default_policy_state()
+    if not policy_id:
+        return base
+    policy = get_policy(policy_id)
+    plan = policy.plan if policy else None
+    base["policy_id"] = policy_id
+    if not plan:
+        base["status"] = "inactive"
+        base["planner_request"] = "choose_policy"
+        return base
+    base["status"] = "active"
+    base["step_idx"] = 0
+    base["step_attempts"] = 0
+    base["max_attempts_per_step"] = int(plan.max_attempts_per_step)
+    base["started_turn"] = turn_count
+    base["last_turn"] = turn_count
+    base["no_progress_turns"] = 0
+    base["planner_request"] = "continue_policy"
+    base["slots_required"] = list(plan.slots_required)
+    base["slots_filled"] = {}
+    return base

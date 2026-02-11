@@ -1,38 +1,96 @@
 # backend/negotiation/policy_planner.py
 from __future__ import annotations
 
-from typing import Literal
+import os
+import warnings
 
-from .policies import POLICIES, list_policy_ids
-from .schemas import (
-    BeliefState,
-    IntentHint,
-    NegotiationPhase,
-    ProgressState,
-    WorldState,
+from .elementos.strategy_definitions import PHASE_INDEX
+
+from .policies import POLICIES, list_policy_ids, policy_phase_catalog, safe_neutral_policy_id
+from .legacy.intent_constraints import (
+    _preferred_policy_ids as _legacy_preferred_policy_ids,
+    apply_intent_constraints as _legacy_apply_intent_constraints,
 )
+from .schemas import BeliefState, IntentHint, NegotiationPhase, ProgressState, WorldState
 
 
-_PHASE_ORDER: list[NegotiationPhase] = ["opening", "discovery", "bargaining", "closing"]
-_PHASE_INDEX: dict[NegotiationPhase, int] = {phase: idx for idx, phase in enumerate(_PHASE_ORDER)}
 _POLICY_BY_ID = {policy.policy_id: policy for policy in POLICIES}
 
 
+def _world_value(world_state: WorldState, key: str) -> object:
+    if not isinstance(world_state, dict):
+        return None
+    universal = world_state.get("universal_domain", {})
+    if isinstance(universal, dict) and key in universal:
+        return universal.get(key)
+    negotiation = world_state.get("negotiation", {})
+    if isinstance(negotiation, dict) and key in negotiation:
+        return negotiation.get(key)
+    return world_state.get(key)
+
+
+def _world_has_key(world_state: WorldState, key: str) -> bool:
+    if not isinstance(world_state, dict):
+        return False
+    universal = world_state.get("universal_domain", {})
+    if isinstance(universal, dict) and key in universal:
+        return True
+    negotiation = world_state.get("negotiation", {})
+    if isinstance(negotiation, dict) and key in negotiation:
+        return True
+    return key in world_state
+
+
+
+
+def _belief_value(belief_state: BeliefState, key: str):
+    cur: object = belief_state
+    for part in key.split("."):
+        if not isinstance(cur, dict):
+            return None
+        cur = cur.get(part)
+    return cur
+
+
+def _required_beliefs_met(policy_id: str, belief_state: BeliefState) -> bool:
+    policy = _POLICY_BY_ID.get(policy_id)
+    required = list(policy.required_beliefs or []) if policy else []
+    if not required:
+        return True
+    for cond in required:
+        key = str(cond.get("key", ""))
+        op = str(cond.get("op", "eq"))
+        val = cond.get("value")
+        cur = _belief_value(belief_state, key)
+        if op == "eq" and cur != val:
+            return False
+        if op == "neq" and cur == val:
+            return False
+        if op == "gte":
+            try:
+                if float(cur) < float(val):
+                    return False
+            except Exception:
+                return False
+        if op == "lte":
+            try:
+                if float(cur) > float(val):
+                    return False
+            except Exception:
+                return False
+        if op == "in":
+            if cur not in (val if isinstance(val, (list, tuple, set)) else [val]):
+                return False
+    return True
 def _phase_bonus(policy_phases: list[str], current_phase: str) -> int:
     if not policy_phases:
         return 0
-    if current_phase == "recovery":
-        if "recovery" in policy_phases:
-            return 3
-        return 0
     if current_phase in policy_phases:
         return 2
-    if "recovery" in policy_phases:
-        return 1
-    if current_phase in _PHASE_INDEX:
-        cur_i = _PHASE_INDEX[current_phase]  # type: ignore[index]
+    if current_phase in PHASE_INDEX:
+        cur_i = PHASE_INDEX[current_phase]  # type: ignore[index]
         for phase in policy_phases:
-            if phase in _PHASE_INDEX and abs(_PHASE_INDEX[phase] - cur_i) == 1:
+            if phase in PHASE_INDEX and abs(PHASE_INDEX[phase] - cur_i) == 1:
                 return 1
     return 0
 
@@ -96,99 +154,56 @@ def repair_policy_by_phase(
     return chosen_id, meta
 
 
-def apply_precedence_constraints(
-    allowed: list[str],
-    precedence: dict | None,
-) -> tuple[list[str], dict]:
-    prec = precedence or {}
-    min_tags = set(prec.get("min_policy_tags") or [])
-    block_tags = set(prec.get("block_policy_tags") or [])
-
-    def _tags(policy_id: str) -> set[str]:
-        policy = _POLICY_BY_ID.get(policy_id)
-        raw = getattr(policy, "tags", None) if policy else None
-        return set(raw or set())
-
-    filtered = allowed
-    if min_tags:
-        filtered = [policy_id for policy_id in filtered if min_tags.issubset(_tags(policy_id))]
-    if block_tags:
-        filtered = [
-            policy_id for policy_id in filtered if _tags(policy_id).isdisjoint(block_tags)
-        ]
-
-    meta = {
-        "precedence_mode": prec.get("mode"),
-        "precedence_reason": prec.get("reason"),
-        "precedence_min_tags": sorted(min_tags),
-        "precedence_block_tags": sorted(block_tags),
-        "precedence_filtered_out": [policy_id for policy_id in allowed if policy_id not in filtered][
-            :12
-        ],
-    }
-    return filtered, meta
-
-
-def _allowed_policy_ids(
+def _allowed_policy_ids_minimal(
     world_state: WorldState,
-    belief_state: BeliefState,
     progress_state: ProgressState,
+    constraints_struct: dict | None,
 ) -> list[str]:
     policy_ids = list_policy_ids()
     if not policy_ids:
         return []
+    phase_state = progress_state.get("phase_state") or {}
+    phase = phase_state.get("phase_effective") or phase_state.get("phase") or "climate"
+    recovery_mode = bool(phase_state.get("recovery_mode", False))
+    phase_catalog = policy_phase_catalog()
+    allowed = [
+        policy_id
+        for policy_id in policy_ids
+        if phase in phase_catalog.get(policy_id, [])
+        and _required_inputs_met(policy_id, world_state)
+        and not _violates_hard_constraints(policy_id, world_state, constraints_struct)
+    ]
+    if recovery_mode:
+        scoped: list[str] = []
+        for policy_id in allowed:
+            policy = _POLICY_BY_ID.get(policy_id)
+            tags = set(getattr(policy, "tags", set()) or set()) if policy else set()
+            guards = set(getattr(policy, "guards", set()) or set()) if policy else set()
+            if policy_id == safe_neutral_policy_id() or "recovery_ok" in tags or "safe_when_tense" in guards or "safe_when_tense" in tags:
+                if "aggressive" not in tags:
+                    scoped.append(policy_id)
+        allowed = scoped or [safe_neutral_policy_id()]
+    return allowed
 
-    allowed = set(policy_ids)
-    health = belief_state.get("dynamics", {}).get("interaction_health", "stable")
 
-    if health == "tense":
-        allowed -= {
-            "challenge_anchor_indirect",
-            "tradeoff_offer",
-            "close_with_conditions",
-            "hold_position",
-        }
-        allowed |= {"deescalate_tension", "rapport_build"}
-
-    required_guards: set[str] = set()
-    if health in {"tense", "stalled"}:
-        required_guards.add("safe_when_tense")
-
-    def _guard_violation(policy_id: str) -> bool:
-        policy = next((item for item in POLICIES if item.policy_id == policy_id), None)
-        if not policy or not policy.guards:
-            if required_guards:
-                return True
-            return False
-        guards = policy.guards or set()
-        if required_guards and not required_guards.issubset(guards):
-            return True
-        if "requires_price_not_mentioned" in guards and world_state.get("price_mentioned"):
-            return True
-        return False
-
-    if progress_state.get("turns_in_same_mode", 0) >= 2:
-        last_policy = progress_state.get("last_chosen_policy_id", "")
-        if last_policy in allowed:
-            allowed.remove(last_policy)
-
-    if "stuck_in_policy" in progress_state.get("loop_flags", []):
-        last_policy = progress_state.get("last_chosen_policy_id", "")
-        if last_policy in allowed:
-            allowed.remove(last_policy)
-
-    attempts = progress_state.get("policy_attempts", {})
-    outcomes = progress_state.get("policy_last_outcome", {})
-    for policy_id, count in attempts.items():
-        if count >= 3 and outcomes.get(policy_id) in {"bad", "neutral"}:
-            allowed.discard(policy_id)
-
-    allowed = {policy_id for policy_id in allowed if not _guard_violation(policy_id)}
-
-    if not allowed:
-        return list_policy_ids()
-
-    return sorted(allowed)
+def allowed_policy_ids_no_phase(
+    world_state: WorldState,
+    belief_state: BeliefState,
+    progress_state: ProgressState,
+    constraints_struct: dict | None = None,
+) -> list[str]:
+    del progress_state
+    policy_ids = list_policy_ids()
+    if not policy_ids:
+        return [safe_neutral_policy_id()]
+    allowed = [
+        policy_id
+        for policy_id in policy_ids
+        if _required_inputs_met(policy_id, world_state)
+        and not _violates_hard_constraints(policy_id, world_state, constraints_struct)
+        and (os.getenv("POLICY_REQUIRED_BELIEFS_ENABLED", "0") != "1" or _required_beliefs_met(policy_id, belief_state))
+    ]
+    return allowed or [safe_neutral_policy_id()]
 
 
 def _required_inputs_met(policy_id: str, world_state: WorldState) -> bool:
@@ -199,13 +214,13 @@ def _required_inputs_met(policy_id: str, world_state: WorldState) -> bool:
         key = req.get("key", "")
         op = req.get("op", "exists")
         if op == "exists":
-            if key not in world_state:
+            if not _world_has_key(world_state, key):
                 return False
         elif op == "true":
-            if not bool(world_state.get(key)):
+            if not bool(_world_value(world_state, key)):
                 return False
         elif op == "non_empty":
-            value = world_state.get(key)
+            value = _world_value(world_state, key)
             if not value:
                 return False
             if isinstance(value, (list, dict)) and len(value) == 0:
@@ -226,72 +241,31 @@ def allowed_policy_ids(
     world_state: WorldState,
     belief_state: BeliefState,
     progress_state: ProgressState,
+    constraints_struct: dict | None = None,
 ) -> list[str]:
-    return _allowed_policy_ids(world_state, belief_state, progress_state)
-
-
-def _step_kind_to_caps(step_kind: str) -> set[str]:
-    if not step_kind:
-        return set()
-    return {step_kind}
+    base = _allowed_policy_ids_minimal(world_state, progress_state, constraints_struct)
+    if os.getenv("POLICY_REQUIRED_BELIEFS_ENABLED", "0") != "1":
+        return base
+    filtered = [pid for pid in base if _required_beliefs_met(pid, belief_state)]
+    return filtered or [safe_neutral_policy_id()]
 
 
 def _preferred_policy_ids(intent_hint: IntentHint | None) -> list[str]:
-    if not intent_hint:
-        return []
-    step_kind = intent_hint.get("step_kind", "")
-    required_caps = _step_kind_to_caps(step_kind)
-    if not required_caps:
-        return []
-    preferred = [
-        policy.policy_id
-        for policy in POLICIES
-        if policy.capabilities and required_caps.issubset(policy.capabilities)
-    ]
-    return preferred
+    warnings.warn(
+        "policy_planner._preferred_policy_ids is deprecated; use legacy.intent_constraints.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return _legacy_preferred_policy_ids(intent_hint)
 
 
 def apply_intent_constraints(
     allowed: list[str],
     intent_hint: IntentHint | None,
 ) -> tuple[list[str], list[str], dict]:
-    meta = {
-        "planner_mode": "",
-        "planner_error": "",
-        "planner_fallback_used": False,
-    }
-    preferred = _preferred_policy_ids(intent_hint)
-
-    if not intent_hint:
-        return allowed, preferred, meta
-
-    if intent_hint.get("slots_missing"):
-        allowed = [
-            policy_id
-            for policy_id in allowed
-            if not (
-                (policy := _POLICY_BY_ID.get(policy_id))
-                and policy.guards
-                and "requires_slot_complete" in policy.guards
-            )
-        ]
-    commitment = intent_hint.get("commitment_level")
-    if commitment == "hard" and preferred:
-        forced = [policy_id for policy_id in preferred if policy_id in allowed]
-        meta["planner_mode"] = "intent_forced"
-        if forced:
-            return forced, preferred, meta
-        meta["planner_error"] = "intent_policy_unavailable"
-        meta["planner_fallback_used"] = True
-        return [], preferred, meta
-    if commitment == "soft" and preferred:
-        intersection = [policy_id for policy_id in preferred if policy_id in allowed]
-        if intersection:
-            rest = [policy_id for policy_id in allowed if policy_id not in intersection]
-            meta["planner_mode"] = "intent_soft_ranked"
-            return intersection + rest, preferred, meta
-        meta["planner_mode"] = "intent_preferred_no_intersection"
-        return allowed, preferred, meta
-
-    meta["planner_mode"] = "no_intent_constraint"
-    return allowed, preferred, meta
+    warnings.warn(
+        "policy_planner.apply_intent_constraints is deprecated; use legacy.intent_constraints.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return _legacy_apply_intent_constraints(allowed, intent_hint)

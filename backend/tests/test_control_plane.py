@@ -36,10 +36,10 @@ def _fake_deps(captured, belief_state):
     )
 
 
-def test_graph_precedence_pauses_intent(monkeypatch):
+def test_graph_does_not_pause_intent_on_tense(monkeypatch):
     captured = {}
     belief = default_belief_state()
-    belief["dynamics"]["interaction_health"] = "tense"
+    belief["universal"]["dynamics"]["interaction_health"] = "tense"
     deps = _fake_deps(captured, belief)
 
     monkeypatch.setattr(
@@ -71,5 +71,4 @@ def test_graph_precedence_pauses_intent(monkeypatch):
 
     run_negotiation_agent(state, "hola", deps=deps)
 
-    assert state.progress_state["intent_state"]["status"] == "paused"
-
+    assert state.progress_state["intent_state"]["status"] != "paused"

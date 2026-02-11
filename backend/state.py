@@ -5,6 +5,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Dict, List, Literal, Tuple, TypedDict
 
+from negotiation.elementos.belief.belief_contracts import UNIVERSAL_REASON_KEYS
+from negotiation.schemas import default_belief_state
+from negotiation.validation import normalize_belief_state, normalize_world_state_v2
+from negotiation.world_belief_adapters import belief_v1_to_v2, world_v1_to_v2
 
 # ---- Tipos básicos ----
 
@@ -38,6 +42,81 @@ def default_exit_option() -> ExitOption:
     }
 
 
+def _merge_nested(base: Dict, incoming: Dict) -> Dict:
+    if not isinstance(incoming, dict):
+        return base
+    merged = dict(base)
+    for key, value in incoming.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = {**merged.get(key, {}), **value}
+        else:
+            merged[key] = value
+    return merged
+
+
+def migrate_belief_state_legacy_to_v2(belief_state: Dict | None) -> Dict:
+    if not isinstance(belief_state, dict):
+        normalized, _issues = normalize_belief_state(default_belief_state())
+        return normalized
+
+    base = default_belief_state()
+
+    if isinstance(belief_state.get("universal"), dict):
+        base["universal"] = _merge_nested(base["universal"], belief_state["universal"])
+    if isinstance(belief_state.get("negotiation"), dict):
+        base["negotiation"] = _merge_nested(base["negotiation"], belief_state["negotiation"])
+
+    if isinstance(belief_state.get("dynamics"), dict):
+        base["universal"]["dynamics"] = {
+            **base["universal"].get("dynamics", {}),
+            **belief_state["dynamics"],
+        }
+    if isinstance(belief_state.get("tom"), dict):
+        base["universal"]["tom"] = {
+            **base["universal"].get("tom", {}),
+            **belief_state["tom"],
+        }
+    if isinstance(belief_state.get("stance"), dict):
+        base["negotiation"]["stance"] = {
+            **base["negotiation"].get("stance", {}),
+            **belief_state["stance"],
+        }
+    if isinstance(belief_state.get("reasons"), dict):
+        universal_reasons = dict(base["universal"].get("reasons", {}))
+        negotiation_reasons = dict(base["negotiation"].get("reasons", {}))
+        # Split legacy reasons by known universal keys; keep the rest under negotiation.
+        for key, value in belief_state["reasons"].items():
+            if key in UNIVERSAL_REASON_KEYS:
+                universal_reasons[key] = value
+            else:
+                negotiation_reasons[key] = value
+        base["universal"]["reasons"] = universal_reasons
+        base["negotiation"]["reasons"] = negotiation_reasons
+    if isinstance(belief_state.get("hypotheses"), list):
+        base["negotiation"]["hypotheses"] = belief_state["hypotheses"]
+    if isinstance(belief_state.get("hypotheses_structural"), list):
+        base["negotiation"]["hypotheses_structural"] = belief_state["hypotheses_structural"]
+    if isinstance(belief_state.get("hypotheses_observational"), list):
+        base["negotiation"]["hypotheses_observational"] = belief_state[
+            "hypotheses_observational"
+        ]
+    if isinstance(belief_state.get("evaluations"), dict):
+        base["negotiation"]["evaluations"] = belief_state["evaluations"]
+
+    normalized, _issues = normalize_belief_state(belief_v1_to_v2(base))
+    legacy_stance = belief_state.get("stance", {}) if isinstance(belief_state, dict) else {}
+    if isinstance(legacy_stance, dict) and legacy_stance:
+        normalized.setdefault("negotiation", {}).setdefault("stance", {}).update(legacy_stance)
+    legacy_reasons = belief_state.get("reasons", {}) if isinstance(belief_state, dict) else {}
+    if isinstance(legacy_reasons, dict) and legacy_reasons:
+        for key, value in legacy_reasons.items():
+            if key not in UNIVERSAL_REASON_KEYS:
+                normalized.setdefault("negotiation", {}).setdefault("reasons", {})[key] = value
+    if not isinstance(belief_state, dict) or "schema_version" not in belief_state:
+        normalized.pop("schema_version", None)
+    return normalized
+
+
 @dataclass
 class SessionState:
     user_id: str
@@ -45,6 +124,7 @@ class SessionState:
 
     # Resumen acumulado de todo lo "antiguo"
     summary: str = ""
+    summary_meta: Dict = field(default_factory=dict)
 
     # Historial corto: últimos N turnos (ventana recortada)
     history: List[HistoryItem] = field(default_factory=list)
@@ -173,7 +253,13 @@ def get_session_state(user_id: str, session_id: str) -> SessionState:
     key = _make_key(user_id, session_id)
     if key not in SESSIONS:
         SESSIONS[key] = SessionState(user_id=user_id, session_id=session_id)
-    return SESSIONS[key]
+    state = SESSIONS[key]
+    if not isinstance(state.belief_state, dict) or state.belief_state:
+        state.belief_state = migrate_belief_state_legacy_to_v2(state.belief_state)
+    if not isinstance(state.world_state, dict):
+        state.world_state = {}
+    state.world_state, _world_issues = normalize_world_state_v2(world_v1_to_v2(state.world_state))
+    return state
 
 
 def save_session_state(state: SessionState) -> None:

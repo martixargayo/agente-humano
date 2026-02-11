@@ -1,5 +1,5 @@
 from negotiation.negotiation_graph import AgentDeps, run_negotiation_agent
-from negotiation.schemas import default_belief_state, default_intent_state, default_progress_state
+from negotiation.schemas import default_belief_state, default_policy_state, default_progress_state
 from negotiation.schemas import default_policy_decision, default_world_state
 from state import SessionState
 
@@ -34,46 +34,36 @@ def test_executor_receives_intent_hint(monkeypatch):
     )
 
     monkeypatch.setattr(
-        "negotiation.negotiation_graph.normalize_text",
-        lambda raw_reply, last_user_message=None: raw_reply,
-    )
-    monkeypatch.setattr(
         "negotiation.negotiation_graph.get_negotiation_rag_index",
         lambda: None,
     )
 
     state = SessionState(user_id="u", session_id="s")
     progress = default_progress_state()
-    intent = default_intent_state()
-    intent.update(
+    policy_state = default_policy_state()
+    policy_state.update(
         {
             "status": "active",
-            "intent_goal": "Aclarar términos",
-            "intent_type": "info_extract",
-            "steps": [
-                {
-                    "kind": "probe_open",
-                    "target_slot": "seller_batna",
-                    "success_if_filled": ["seller_batna"],
-                }
-            ],
+            "policy_id": "test_credibility",
             "step_idx": 0,
-            "slots": {"slots_required": ["price"], "slots_optional": [], "slots_filled": {}},
+            "step_attempts": 0,
+            "planner_request": "continue_policy",
+            "slots_required": ["negotiation.other_buyer_text", "negotiation.evidence_offered"],
         }
     )
-    progress["intent_state"] = intent
+    progress["policy_state"] = policy_state
     state.progress_state = progress
     state.world_state = default_world_state()
 
     run_negotiation_agent(state, "hola", deps=deps)
 
     system_message = captured["messages"][0].content
-    assert "Intención activa" in system_message
-    assert "Paso actual" in system_message
-    assert "Slot objetivo" in system_message
-    assert "Policy target slots" in system_message
-    assert "Expected effects" in system_message
-    assert "Step:" not in system_message
+    user_message = captured["messages"][1].content
+    assert "universal message renderer" in system_message
+    assert "policy_next_hint" in user_message
+    assert "intent_next_hint" in user_message
+    assert "policy_id" in user_message
+    assert "STRATEGY SUMMARY" in user_message
 
 
 def test_executor_prompt_contract_no_step_name_no_step_colon(monkeypatch):
@@ -106,42 +96,32 @@ def test_executor_prompt_contract_no_step_name_no_step_colon(monkeypatch):
     )
 
     monkeypatch.setattr(
-        "negotiation.negotiation_graph.normalize_text",
-        lambda raw_reply, last_user_message=None: raw_reply,
-    )
-    monkeypatch.setattr(
         "negotiation.negotiation_graph.get_negotiation_rag_index",
         lambda: None,
     )
 
     state = SessionState(user_id="u", session_id="s")
     progress = default_progress_state()
-    intent = default_intent_state()
-    intent.update(
+    policy_state = default_policy_state()
+    policy_state.update(
         {
             "status": "active",
-            "intent_goal": "Aclarar términos",
-            "intent_type": "info_extract",
-            "steps": [
-                {
-                    "kind": "probe_open",
-                    "target_slot": "seller_batna",
-                    "success_if_filled": ["seller_batna"],
-                }
-            ],
+            "policy_id": "test_credibility",
             "step_idx": 0,
-            "slots": {"slots_required": ["price"], "slots_optional": [], "slots_filled": {}},
+            "step_attempts": 0,
+            "planner_request": "continue_policy",
+            "slots_required": ["negotiation.other_buyer_text", "negotiation.evidence_offered"],
         }
     )
-    progress["intent_state"] = intent
+    progress["policy_state"] = policy_state
     state.progress_state = progress
     state.world_state = default_world_state()
 
     run_negotiation_agent(state, "hola", deps=deps)
 
-    system_message = captured["messages"][0].content
-    assert "step_name" not in system_message
-    assert "Step:" not in system_message
+    user_message = captured["messages"][1].content
+    assert "step_name" not in user_message
+    assert "Step:" not in user_message
 
 
 def test_executor_prompt_close_next_includes_fallback_rule(monkeypatch):
@@ -174,38 +154,29 @@ def test_executor_prompt_close_next_includes_fallback_rule(monkeypatch):
     )
 
     monkeypatch.setattr(
-        "negotiation.negotiation_graph.normalize_text",
-        lambda raw_reply, last_user_message=None: raw_reply,
-    )
-    monkeypatch.setattr(
         "negotiation.negotiation_graph.get_negotiation_rag_index",
         lambda: None,
     )
 
     state = SessionState(user_id="u", session_id="s")
     progress = default_progress_state()
-    intent = default_intent_state()
-    intent.update(
+    policy_state = default_policy_state()
+    policy_state.update(
         {
             "status": "active",
-            "intent_goal": "Cerrar siguiente paso",
-            "intent_type": "info_extract",
-            "steps": [
-                {
-                    "kind": "close_next",
-                    "target_slot": "",
-                    "success_if_filled": [],
-                }
-            ],
+            "policy_id": "test_credibility",
             "step_idx": 0,
-            "slots": {"slots_required": [], "slots_optional": [], "slots_filled": {}},
+            "step_attempts": 0,
+            "planner_request": "continue_policy",
+            "slots_required": ["negotiation.other_buyer_text", "negotiation.evidence_offered"],
         }
     )
-    progress["intent_state"] = intent
+    progress["policy_state"] = policy_state
     state.progress_state = progress
     state.world_state = default_world_state()
 
     run_negotiation_agent(state, "hola", deps=deps)
 
-    system_message = captured["messages"][0].content
-    assert "está vacío" in system_message
+    user_message = captured["messages"][1].content
+    assert "CONSTRAINTS_STRUCT" in user_message
+    assert "\"require_ask_if_missing\"" in user_message

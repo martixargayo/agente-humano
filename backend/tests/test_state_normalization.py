@@ -31,7 +31,7 @@ def test_normalize_world_state_missing_tone_non_strict():
         validation._STRICT_NORMALIZATION = original
 
     assert world == default_world_state()
-    assert "tone_signal_missing" in issues
+    assert issues == []
 
 
 def test_normalize_world_state_invalid_tone_non_strict():
@@ -40,12 +40,14 @@ def test_normalize_world_state_invalid_tone_non_strict():
     original = validation._STRICT_NORMALIZATION
     validation._STRICT_NORMALIZATION = False
     try:
-        world, issues = normalize_world_state({"tone_signal": "extra", "price_mentioned": True})
+        world, issues = normalize_world_state(
+            {"universal_domain": {"tone_signal": "extra"}, "price_mentioned": True}
+        )
     finally:
         validation._STRICT_NORMALIZATION = original
 
-    assert world["tone_signal"] == "neutral"
-    assert world["price_mentioned"] is True
+    assert world["universal_domain"]["tone_signal"] == "neutral"
+    assert world["negotiation"]["price_mentioned"] is True
     assert "tone_signal_invalid" in issues
 
 
@@ -59,8 +61,8 @@ def test_normalize_world_state_missing_tone_strict_returns_defaults():
     finally:
         validation._STRICT_NORMALIZATION = original
 
-    assert world == default_world_state()
-    assert "tone_signal_missing" in issues
+    assert world["negotiation"]["price_mentioned"] is True
+    assert issues == []
 
 
 def test_normalize_policy_decision_invalid_policy_id_fallback():
@@ -88,9 +90,9 @@ def test_update_progress_state_tracks_policy_last_outcome():
     prev_world = default_world_state()
     world = default_world_state()
     prev_belief = default_belief_state()
-    prev_belief["dynamics"]["interaction_health"] = "tense"
+    prev_belief["universal"]["dynamics"]["interaction_health"] = "tense"
     belief = default_belief_state()
-    belief["dynamics"]["interaction_health"] = "stable"
+    belief["universal"]["dynamics"]["interaction_health"] = "stable"
 
     last_policy_executed = default_policy_decision()
     last_policy_executed["policy_id"] = "rapport_build"
@@ -116,7 +118,7 @@ def test_has_belief_evidence_delta_triggers_on_critical_flag_change():
     cur = default_world_state()
     world_diff = {}
 
-    cur["deadline_claimed"] = True
+    cur["negotiation"]["deadline_claimed"] = True
     assert has_belief_evidence_delta(world_diff, prev, cur) is True
 
 
@@ -126,7 +128,7 @@ def test_has_belief_evidence_delta_triggers_on_tone_change():
     prev = default_world_state()
     cur = default_world_state()
 
-    cur["tone_signal"] = "tense"
+    cur["universal_domain"]["tone_signal"] = "tense"
     assert has_belief_evidence_delta({}, prev, cur) is True
 
 
@@ -151,32 +153,32 @@ def test_has_belief_evidence_delta_respects_decision_flag():
 
 
 def test_belief_reasons_tiebreak_is_deterministic_with_real_keys():
-    from negotiation.belief_state_updater import _BeliefReasonModel, _BeliefStateModel
+    from negotiation.belief_state_updater import _limit_reasons
 
     reasons = {
-        "tone_signal": _BeliefReasonModel(weight=0.5, confidence=0.5, evidence="x"),
-        "docs_signal": _BeliefReasonModel(weight=0.5, confidence=0.5, evidence="x"),
+        "tone_signal": {"weight": 0.5, "confidence": 0.5, "evidence": "x"},
+        "docs_signal": {"weight": 0.5, "confidence": 0.5, "evidence": "x"},
     }
 
-    limited = _BeliefStateModel._limit_reasons(reasons)
+    limited = _limit_reasons(reasons)
 
     assert list(limited.keys()) == ["docs_signal", "tone_signal"]
 
 
 def test_belief_reasons_limit_to_top_six():
-    from negotiation.belief_state_updater import _BeliefReasonModel, _BeliefStateModel
+    from negotiation.belief_state_updater import _limit_reasons
 
     reasons = {
-        "price_signal": _BeliefReasonModel(weight=0.9, confidence=0.9, evidence="x"),
-        "deadline_signal": _BeliefReasonModel(weight=0.8, confidence=0.8, evidence="x"),
-        "other_buyer_signal": _BeliefReasonModel(weight=0.7, confidence=0.7, evidence="x"),
-        "concession_signal": _BeliefReasonModel(weight=0.6, confidence=0.6, evidence="x"),
-        "docs_signal": _BeliefReasonModel(weight=0.5, confidence=0.5, evidence="x"),
-        "tone_signal": _BeliefReasonModel(weight=0.4, confidence=0.4, evidence="x"),
-        "extra_signal": _BeliefReasonModel(weight=0.3, confidence=0.3, evidence="x"),
+        "price_signal": {"weight": 0.9, "confidence": 0.9, "evidence": "x"},
+        "deadline_signal": {"weight": 0.8, "confidence": 0.8, "evidence": "x"},
+        "other_buyer_signal": {"weight": 0.7, "confidence": 0.7, "evidence": "x"},
+        "concession_signal": {"weight": 0.6, "confidence": 0.6, "evidence": "x"},
+        "docs_signal": {"weight": 0.5, "confidence": 0.5, "evidence": "x"},
+        "tone_signal": {"weight": 0.4, "confidence": 0.4, "evidence": "x"},
+        "extra_signal": {"weight": 0.3, "confidence": 0.3, "evidence": "x"},
     }
 
-    limited = _BeliefStateModel._limit_reasons(reasons)
+    limited = _limit_reasons(reasons)
 
     assert len(limited) == 6
     assert "extra_signal" not in limited
@@ -223,30 +225,7 @@ def test_temporal_invariant_last_policy_executed_is_persisted(monkeypatch):
     assert state.last_policy_executed.get("policy_id") == "rapport_build"
 
 
-def test_allowed_policy_ids_uses_outcome_per_policy():
-    os.environ.setdefault("OPENAI_API_KEY", "test")
-    from negotiation import policy_planner
-
-    importlib.reload(policy_planner)
-
-    world = default_world_state()
-    belief = default_belief_state()
-    belief["dynamics"]["interaction_health"] = "stable"
-    world["price_mentioned"] = False
-    progress = default_progress_state()
-    ids = policy_planner.list_policy_ids()
-    assert len(ids) >= 2
-    p1, p2 = ids[0], ids[1]
-    progress["policy_attempts"] = {p1: 3, p2: 3}
-    progress["policy_last_outcome"] = {p1: "bad", p2: "good"}
-
-    allowed = policy_planner.allowed_policy_ids(world, belief, progress)
-
-    assert p1 not in allowed
-    assert p2 in allowed
-
-
-def test_allowed_policy_ids_blocks_after_neutral_outcome():
+def test_allowed_policy_ids_ignores_outcomes_when_minimal():
     os.environ.setdefault("OPENAI_API_KEY", "test")
     from negotiation import policy_planner
 
@@ -255,15 +234,12 @@ def test_allowed_policy_ids_blocks_after_neutral_outcome():
     world = default_world_state()
     belief = default_belief_state()
     progress = default_progress_state()
-    ids = policy_planner.list_policy_ids()
-    assert ids
-    target_policy = ids[0]
-    progress["policy_attempts"] = {target_policy: 3}
-    progress["policy_last_outcome"] = {target_policy: "neutral"}
+    progress["policy_attempts"] = {"safe_neutral": 3}
+    progress["policy_last_outcome"] = {"safe_neutral": "bad"}
 
     allowed = policy_planner.allowed_policy_ids(world, belief, progress)
 
-    assert target_policy not in allowed
+    assert "safe_neutral" in allowed
 
 
 def test_normalize_progress_policy_attempts_accepts_numeric_strings():
@@ -293,7 +269,7 @@ def test_normalize_progress_phase_state_clamps_and_dedupes():
     )
 
     assert "phase_invalid" in issues
-    assert progress["phase_state"]["phase"] == "opening"
+    assert progress["phase_state"]["phase"] == "climate"
     assert progress["phase_state"]["confidence"] == 1.0
     assert progress["phase_state"]["reasons"] == ["a", "b"]
     assert progress["phase_state"]["last_updated_turn"] == 0
