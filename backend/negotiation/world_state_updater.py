@@ -1447,7 +1447,26 @@ def update_world_state(
         if "message_is_vague" in decisions and "message_is_vague" not in patch:
             patch["message_is_vague"] = bool(decisions.get("message_is_vague"))
         output = {**output, "world_patch": patch}
-        validate_extractor_output(output)
+        try:
+            validate_extractor_output(output)
+        except AssertionError as exc:
+            err = str(exc)
+            if not (
+                err.startswith("extractor_missing_evidence")
+                or err.startswith("extractor_confidence_invalid")
+            ):
+                raise
+            patch = {}
+            llm_evidence = []
+            field_evidence = {}
+            output = {
+                **output,
+                "world_patch": patch,
+                "field_evidence": field_evidence,
+                "evidence_items": llm_evidence,
+                "reasons": list(output.get("reasons", [])) + [f"validation_error:{err}"],
+                "decisions": {**decisions, "should_update_beliefs": False},
+            }
         world = dict(base)
         for key, value in patch.items():
             world[key] = value

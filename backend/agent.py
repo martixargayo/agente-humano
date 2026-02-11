@@ -1,6 +1,7 @@
 # backend/agent.py
 from __future__ import annotations
 
+import logging
 import os
 from typing import List, Tuple
 
@@ -40,16 +41,33 @@ SUMMARY_MODEL = os.getenv("SUMMARY_MODEL_NAME", "gpt-4o-mini")
 MAIN_TEMPERATURE = float(os.getenv("MAIN_TEMPERATURE", "0.7"))
 SUMMARY_TEMPERATURE = float(os.getenv("SUMMARY_TEMPERATURE", "0.2"))
 
+logger = logging.getLogger(__name__)
+
+
+def _build_chat_openai(model: str, temperature: float, *, client_name: str) -> ChatOpenAI | None:
+    if not os.getenv("OPENAI_API_KEY"):
+        logger.warning("%s_openai_api_key_missing fallback_enabled=true", client_name)
+        return None
+
+    try:
+        return ChatOpenAI(model=model, temperature=temperature)
+    except Exception as exc:
+        logger.warning("%s_llm_init_error=%s", client_name, exc)
+        return None
+
+
 # Modelo principal del agente (Daniel)
-llm = ChatOpenAI(
+llm = _build_chat_openai(
     model=MAIN_MODEL,
     temperature=MAIN_TEMPERATURE,
+    client_name="agent_main",
 )
 
 # Modelo para resumir (memoria comprimida de sesión)
-summary_llm = ChatOpenAI(
+summary_llm = _build_chat_openai(
     model=SUMMARY_MODEL,
     temperature=SUMMARY_TEMPERATURE,
+    client_name="agent_summary",
 )
 
 # Parámetros de memoria (inspirados en trimming + summarizing)
@@ -142,8 +160,16 @@ def _summarize_prefix_into_state(
         new_block=new_block,
     )
 
-    result = summary_llm.invoke(messages)
-    state.summary = result.content.strip()
+    if summary_llm is None:
+        state.summary = (existing_summary + "\n" + new_block).strip()
+        return
+
+    try:
+        result = summary_llm.invoke(messages)
+        state.summary = result.content.strip()
+    except Exception as exc:
+        logger.warning("agent_summary_invoke_error=%s", exc)
+        state.summary = (existing_summary + "\n" + new_block).strip()
 
 
 def _maybe_trim_and_summarize(state: SessionState) -> None:
@@ -224,8 +250,15 @@ def run_agent(
     messages = _build_conversation_messages(state, user_message)
 
     # 4) Llamar al modelo principal
-    result = llm.invoke(messages)
-    raw_reply = result.content.strip()
+    if llm is None:
+        raw_reply = "Entendido. ¿Qué condición te gustaría concretar ahora?"
+    else:
+        try:
+            result = llm.invoke(messages)
+            raw_reply = result.content.strip()
+        except Exception as exc:
+            logger.warning("agent_main_invoke_error=%s", exc)
+            raw_reply = "Entendido. ¿Qué condición te gustaría concretar ahora?"
 
     # DEBUG: ver qué sale de Daniel antes del normalizador
     print("\n===== RAW_DANIEL_OUTPUT =====")

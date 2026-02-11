@@ -136,20 +136,20 @@ def plan_phase_policy(
         "allowed_policy_ids": allowed_policy_ids,
     }
 
-    messages = _planner_prompt.format_messages(
-        world_state=json.dumps(world_state, ensure_ascii=False),
-        world_diff=json.dumps(world_diff or {}, ensure_ascii=False),
-        belief_state=json.dumps(belief_state, ensure_ascii=False),
-        intent_hint=json.dumps(intent_hint or {}, ensure_ascii=False),
-        phase_state=json.dumps(progress_state.get("phase_state", {}), ensure_ascii=False),
-        allowed_policy_ids=json.dumps(allowed_policy_ids, ensure_ascii=False),
-        policy_catalog=policy_catalog_text(),
-        objective=objective,
-        constraints=constraints,
-        recent_context=recent_context,
-    )
-
     try:
+        messages = _planner_prompt.format_messages(
+            world_state=json.dumps(world_state, ensure_ascii=False),
+            world_diff=json.dumps(world_diff or {}, ensure_ascii=False),
+            belief_state=json.dumps(belief_state, ensure_ascii=False),
+            intent_hint=json.dumps(intent_hint or {}, ensure_ascii=False),
+            phase_state=json.dumps(progress_state.get("phase_state", {}), ensure_ascii=False),
+            allowed_policy_ids=json.dumps(allowed_policy_ids, ensure_ascii=False),
+            policy_catalog=policy_catalog_text(),
+            objective=objective,
+            constraints=constraints,
+            recent_context=recent_context,
+        )
+
         structured = _planner_llm.with_structured_output(PhasePolicyDecisionModel)
         result = structured.invoke(messages)
         payload = result.model_dump()

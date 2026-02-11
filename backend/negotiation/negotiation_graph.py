@@ -171,9 +171,24 @@ EXECUTOR_MODEL = os.getenv(
 
 EXECUTOR_TEMPERATURE = float(os.getenv("EXECUTOR_TEMPERATURE", "0.7"))
 
-executor_llm = ChatOpenAI(
+
+
+def _build_chat_openai(model: str, temperature: float, *, client_name: str) -> ChatOpenAI | None:
+    if not os.getenv("OPENAI_API_KEY"):
+        logger.warning("%s_openai_api_key_missing fallback_enabled=true", client_name)
+        return None
+
+    try:
+        return ChatOpenAI(model=model, temperature=temperature)
+    except Exception as exc:
+        logger.warning("%s_llm_init_error=%s", client_name, exc)
+        return None
+
+
+executor_llm = _build_chat_openai(
     model=EXECUTOR_MODEL,
     temperature=EXECUTOR_TEMPERATURE,
+    client_name="executor",
 )
 
 # ---- Modelo de resumen ----
@@ -184,9 +199,10 @@ SUMMARY_MODEL = os.getenv(
 )
 SUMMARY_TEMPERATURE = float(os.getenv("SUMMARY_TEMPERATURE", "0.2"))
 
-summary_llm = ChatOpenAI(
+summary_llm = _build_chat_openai(
     model=SUMMARY_MODEL,
     temperature=SUMMARY_TEMPERATURE,
+    client_name="summary",
 )
 
 summary_prompt = ChatPromptTemplate.from_messages(
@@ -213,17 +229,31 @@ class AgentDeps:
 
 def _default_execute(messages: Any) -> str:
     # Mantén la lógica real actual, pero encapsulada para injection
-    result = executor_llm.invoke(messages)
-    return getattr(result, "content", str(result))
+    if executor_llm is None:
+        return "Entendido. Sigamos revisando condiciones y números para avanzar."
+
+    try:
+        result = executor_llm.invoke(messages)
+        return getattr(result, "content", str(result))
+    except Exception as exc:
+        logger.warning("executor_invoke_error=%s", exc)
+        return "Entendido. Sigamos revisando condiciones y números para avanzar."
 
 
 def _default_summarize(existing_summary: str, new_block: str) -> str:
+    if summary_llm is None:
+        return safe_merge_summary(existing_summary, new_block)
+
     messages = summary_prompt.format_messages(
         existing_summary=existing_summary,
         new_block=new_block,
     )
-    result = summary_llm.invoke(messages)
-    return getattr(result, "content", str(result)).strip()
+    try:
+        result = summary_llm.invoke(messages)
+        return getattr(result, "content", str(result)).strip()
+    except Exception as exc:
+        logger.warning("summary_invoke_error=%s", exc)
+        return safe_merge_summary(existing_summary, new_block)
 
 
 DEFAULT_DEPS = AgentDeps(
