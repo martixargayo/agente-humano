@@ -123,7 +123,7 @@ def update_world_state(
 
     belief_state = belief_state or {}
 
-<<<<<<< HEAD
+
     if deps is not None and hasattr(deps, "execute") and not hasattr(deps, "llm"):
         llm_deps = deps
     else:
@@ -140,97 +140,7 @@ def update_world_state(
     try:
         u_dom_patch, n_dom_patch, universal_patch, open_claims, v3_meta = extract_world_patch_llm_v4(
             llm_deps,
-=======
-    if use_llm and (force_llm or _should_call_llm_extractor(user_message, base)):
-        output = extract_state_patch_llm(base, belief_state, user_message, recent_history)
-        decisions = output.get("decisions", {})
-        patch = dict(output.get("world_patch", {}))
-        llm_evidence = list(output.get("evidence_items", []))
-        field_evidence = output.get("field_evidence", {}) or {}
-        if "message_is_vague" in decisions and "message_is_vague" not in patch:
-            patch["message_is_vague"] = bool(decisions.get("message_is_vague"))
-        output = {**output, "world_patch": patch}
-        try:
-            validate_extractor_output(output)
-        except AssertionError as exc:
-            err = str(exc)
-            if not (
-                err.startswith("extractor_missing_evidence")
-                or err.startswith("extractor_confidence_invalid")
-            ):
-                raise
-            patch = {}
-            llm_evidence = []
-            field_evidence = {}
-            output = {
-                **output,
-                "world_patch": patch,
-                "field_evidence": field_evidence,
-                "evidence_items": llm_evidence,
-                "reasons": list(output.get("reasons", [])) + [f"validation_error:{err}"],
-                "decisions": {**decisions, "should_update_beliefs": False},
-            }
-        world = dict(base)
-        for key, value in patch.items():
-            world[key] = value
-        generated_items: list[EvidenceItem] = []
-        for field, payload in field_evidence.items():
-            if not isinstance(payload, dict):
-                continue
-            evidence_text = str(payload.get("evidence", "")).strip()
-            if not evidence_text:
-                continue
-            confidence = float(payload.get("confidence", confidence_min))
-            evidence_type = _FIELD_TO_TYPE.get(field, "")
-            if not evidence_type:
-                continue
-            value = patch.get(field)
-            generated_items.append(
-                _make_evidence(
-                    evidence_type,
-                    field,
-                    evidence_text,
-                    value,
-                    "llm",
-                    confidence,
-                    int(base.get("world_state_meta", {}).get("turn_idx", 0) or 0),
-                    raw={"field_evidence": payload},
-                )
-            )
-        if llm_evidence or generated_items:
-            window_turns = int(os.getenv("DEDUP_EVIDENCE_WINDOW_TURNS", "3"))
-            items: list[EvidenceItem] = list(base.get("evidence_items", []) or [])
-            for item in llm_evidence or []:
-                if isinstance(item, dict):
-                    _append_evidence(items, item, window_turns)
-            for item in generated_items:
-                _append_evidence(items, item, window_turns)
-            world["evidence_items"] = items
-            world["world_state_meta"]["last_update_source"] = "llm"
-        meta = build_extractor_meta(output)
-        unknown_claims = list(base.get("world_state_meta", {}).get("unknown_claims", []))
-        claims = list((base.get("world_observations_v2") or {}).get("claims", []) or [])
-        claims = _build_v2_from_evidence(
-            list(world.get("evidence_items", []) or []),
-            claims,
-            turn_idx=turn_idx,
-            unknown_claims=unknown_claims,
-        )
-        unknown_claims = unknown_claims[-EVIDENCE_V2_MAX_UNKNOWN:]
-        world["world_state_meta"]["unknown_claims"] = unknown_claims
-        world.setdefault("world_observations_v2", {"claims": [], "index": _index_init()})
-        world["world_observations_v2"]["claims"] = claims
-        world["world_observations_v2"]["index"] = _rebuild_v2_index(claims, EVIDENCE_V2_RECENT_K)
-        world = _sync_legacy_evidence_from_v2(world)
-        world = _derive_legacy_from_v2(world, confidence_min)
-        world.setdefault("world_observations", {"raw_fields": {}, "evidence_items": []})
-        if isinstance(world["world_observations"].get("raw_fields"), dict):
-            world["world_observations"]["raw_fields"].update(patch)
-        world["world_state_meta"]["updated_fields"] = sorted(
-            [key for key in world.keys() if world.get(key) != base.get(key)]
-        )
-        world["interaction"] = extract_interaction_signals(
->>>>>>> origin/main
+
             user_message,
             base,
             belief_state,

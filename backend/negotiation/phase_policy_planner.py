@@ -22,22 +22,11 @@ from env_compat import getenv_float_preferred, getenv_preferred
 
 logger = logging.getLogger(__name__)
 
-<<<<<<< HEAD
+
 NEGOTIATION_CONFIG = get_negotiation_model_config()
 PLANNER_MODEL = NEGOTIATION_CONFIG.planner.model
 PLANNER_TEMPERATURE = NEGOTIATION_CONFIG.planner.temperature
-=======
-PLANNER_MODEL = getenv_preferred(
-    preferred="NEGOTIATION_PLANNER_MODEL",
-    legacy=("PHASE_POLICY_MODEL_NAME", "PLANNER_MODEL_NAME", "SUMMARY_MODEL_NAME"),
-    default="gpt-4o-mini",
-)
-PLANNER_TEMPERATURE = getenv_float_preferred(
-    preferred="NEGOTIATION_PLANNER_TEMPERATURE",
-    legacy=("PHASE_POLICY_TEMPERATURE", "PLANNER_TEMPERATURE"),
-    default=0.0,
-)
->>>>>>> origin/main
+
 
 _planner_prompt = ChatPromptTemplate.from_messages(
     [("system", PHASE_POLICY_SYSTEM_PROMPT), ("user", PHASE_POLICY_USER_PROMPT)]
@@ -151,7 +140,7 @@ def plan_phase_policy(
         "allowed_policy_ids": allowed_policy_ids,
     }
 
-<<<<<<< HEAD
+
     messages = _planner_prompt.format_messages(
         world_state=json.dumps(world_state, ensure_ascii=False),
         world_diff=json.dumps(world_diff or {}, ensure_ascii=False),
@@ -172,23 +161,7 @@ def plan_phase_policy(
 
     try:
         structured = get_planner_llm().with_structured_output(PhasePolicyDecisionModel)
-=======
-    try:
-        messages = _planner_prompt.format_messages(
-            world_state=json.dumps(world_state, ensure_ascii=False),
-            world_diff=json.dumps(world_diff or {}, ensure_ascii=False),
-            belief_state=json.dumps(belief_state, ensure_ascii=False),
-            intent_hint=json.dumps(intent_hint or {}, ensure_ascii=False),
-            phase_state=json.dumps(progress_state.get("phase_state", {}), ensure_ascii=False),
-            allowed_policy_ids=json.dumps(allowed_policy_ids, ensure_ascii=False),
-            policy_catalog=policy_catalog_text(),
-            objective=objective,
-            constraints=constraints,
-            recent_context=recent_context,
-        )
 
-        structured = _planner_llm.with_structured_output(PhasePolicyDecisionModel)
->>>>>>> origin/main
         result = structured.invoke(messages)
         payload = result.model_dump()
         phase_candidate = {
