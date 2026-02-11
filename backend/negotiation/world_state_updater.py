@@ -1,11 +1,9 @@
 # backend/negotiation/world_state_updater.py
 from __future__ import annotations
 
-import os
 from typing import Any, Tuple
 
-from langchain_openai import ChatOpenAI
-
+from .llm_clients import get_world_llm
 from .schemas import WorldState, default_world_state
 from .validation import normalize_open_claims, normalize_universal_state, normalize_world_state, normalize_world_state_v2
 from .extractors.world_extractor_v4 import extract_world_patch_llm_v4
@@ -16,10 +14,7 @@ from .world_belief_adapters import world_v1_to_v2
 
 
 def _default_world_llm():
-    model = os.getenv("WORLD_EXTRACTOR_MODEL", os.getenv("WORLD_MODEL", "gpt-4o-mini"))
-    temperature = float(os.getenv("WORLD_EXTRACTOR_TEMPERATURE", "0"))
-    timeout = int(os.getenv("WORLD_EXTRACTOR_TIMEOUT_S", "20"))
-    return ChatOpenAI(model=model, temperature=temperature, timeout=timeout)
+    return get_world_llm()
 
 
 def _merge_list_by_key(prev: list[dict], new: list[dict], key_fn, max_n: int) -> list[dict]:

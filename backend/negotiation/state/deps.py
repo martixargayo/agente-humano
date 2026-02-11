@@ -4,16 +4,9 @@ from dataclasses import dataclass
 from typing import Any, Callable, Optional, Tuple
 
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI
-
 from prompts import SUMMARY_SYSTEM_PROMPT, SUMMARY_USER_PROMPT
 
-from ..elementos.execution_definitions import (
-    EXECUTOR_MODEL,
-    EXECUTOR_TEMPERATURE,
-    SUMMARY_MODEL,
-    SUMMARY_TEMPERATURE,
-)
+from ..llm_clients import get_executor_llm, get_summary_llm
 from ..phase_policy_planner import plan_phase_policy
 from ..belief_state_updater import update_belief_state
 from ..schemas import BeliefState, PolicyDecision
@@ -25,15 +18,6 @@ ExecuteFn = Callable[..., str]
 SummarizeFn = Callable[[str, str], str]
 
 
-executor_llm = ChatOpenAI(
-    model=EXECUTOR_MODEL,
-    temperature=EXECUTOR_TEMPERATURE,
-)
-
-summary_llm = ChatOpenAI(
-    model=SUMMARY_MODEL,
-    temperature=SUMMARY_TEMPERATURE,
-)
 
 summary_prompt = ChatPromptTemplate.from_messages(
     [
@@ -52,7 +36,7 @@ class AgentDeps:
 
 
 def _default_execute(messages: Any) -> str:
-    result = executor_llm.invoke(messages)
+    result = get_executor_llm().invoke(messages)
     return getattr(result, "content", str(result))
 
 
@@ -61,7 +45,7 @@ def _default_summarize(existing_summary: str, new_block: str) -> str:
         existing_summary=existing_summary,
         new_block=new_block,
     )
-    result = summary_llm.invoke(messages)
+    result = get_summary_llm().invoke(messages)
     return getattr(result, "content", str(result)).strip()
 
 

@@ -1,13 +1,14 @@
-import os
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, confloat, conlist, field_validator
 
+from ..config import get_negotiation_model_config
 from ..schemas import ReasonKey
 from ..specs.world_keys import ALLOWED_NEGOTIATION_DOMAIN_KEYS
 
-BELIEF_MODEL = os.getenv("BELIEF_MODEL_NAME", os.getenv("SUMMARY_MODEL_NAME", "gpt-4o-mini"))
-BELIEF_TEMPERATURE = float(os.getenv("BELIEF_TEMPERATURE", "0.0"))
+NEGOTIATION_CONFIG = get_negotiation_model_config()
+BELIEF_MODEL = NEGOTIATION_CONFIG.belief.model
+BELIEF_TEMPERATURE = NEGOTIATION_CONFIG.belief.temperature
 
 REASON_PRIORITY = {
     "price_signal": 0,

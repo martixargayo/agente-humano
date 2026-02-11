@@ -3,12 +3,10 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 
-from langchain_openai import ChatOpenAI
-
+from .llm_clients import get_belief_llm
 from .gate_utils import _split_world_diff
-from .elementos.belief_definitions import BELIEF_MODEL, BELIEF_TEMPERATURE, CRITICAL_FLAGS, REASON_PRIORITY
+from .elementos.belief_definitions import CRITICAL_FLAGS, REASON_PRIORITY
 from .elementos.belief.belief_updater_v2_prompts import (
     BELIEF_UPDATER_V2_SYSTEM_PROMPT,
     BELIEF_UPDATER_V2_USER_PROMPT,
@@ -22,7 +20,6 @@ from .validation import normalize_belief_state, normalize_belief_state_v2, norma
 from .belief_governor import derive_behavior_guidance
 from .world_belief_adapters import world_v1_to_v2
 
-_belief_llm = ChatOpenAI(model=BELIEF_MODEL, temperature=BELIEF_TEMPERATURE)
 logger = logging.getLogger(__name__)
 
 def _limit_reasons(reasons: dict) -> dict:
@@ -116,7 +113,7 @@ def extract_belief_patch_llm_v3(
         {"role": "system", "content": BELIEF_UPDATER_V2_SYSTEM_PROMPT.strip()},
         {"role": "user", "content": user_prompt.strip()},
     ]
-    raw = _belief_llm.invoke(messages)
+    raw = get_belief_llm().invoke(messages)
     text = raw if isinstance(raw, str) else getattr(raw, "content", "")
     data = _safe_json_load(text)
 
