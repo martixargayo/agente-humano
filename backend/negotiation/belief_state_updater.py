@@ -183,18 +183,18 @@ def update_belief_state(
             meta["belief_update_skipped"] = True
             return previous, meta
 
-    messages = _belief_prompt.format_messages(
-        prev_belief_state=json.dumps(previous, ensure_ascii=False),
-        prev_world_state=json.dumps(prev_world_state, ensure_ascii=False),
-        world_state=json.dumps(world_state, ensure_ascii=False),
-        world_diff=json.dumps(world_diff, ensure_ascii=False),
-        last_policy_executed=json.dumps(last_policy_executed or {}, ensure_ascii=False),
-        last_assistant_message=last_assistant_message,
-        user_message=user_message,
-        recent_history=context_snippet,
-    )
-
     try:
+        messages = _belief_prompt.format_messages(
+            prev_belief_state=json.dumps(previous, ensure_ascii=False),
+            prev_world_state=json.dumps(prev_world_state, ensure_ascii=False),
+            world_state=json.dumps(world_state, ensure_ascii=False),
+            world_diff=json.dumps(world_diff, ensure_ascii=False),
+            last_policy_executed=json.dumps(last_policy_executed or {}, ensure_ascii=False),
+            last_assistant_message=last_assistant_message,
+            user_message=user_message,
+            recent_history=context_snippet,
+        )
+
         structured_llm = _belief_llm.with_structured_output(_BeliefStateModel)
         result = structured_llm.invoke(messages)
         data = result.model_dump()
