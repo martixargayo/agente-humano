@@ -10,6 +10,7 @@ from google.cloud import speech
 from google.oauth2 import service_account
 
 import io  # arriba del archivo
+import time
 from fastapi.responses import StreamingResponse
 from openai import OpenAI
 
@@ -18,10 +19,12 @@ import base64
 import pathlib
 from fastapi.staticfiles import StaticFiles
 
-from state import get_session_state
+from state import get_session_state, DEFAULT_CONTEXT_LIMIT_TURNS, DEFAULT_KEEP_LAST_TURNS
 from agent import run_agent
 
 from negotiation.negotiation_graph import run_negotiation_agent
+from negotiation.summary_jobs import SUMMARY_JOBS, deferred_summary_enabled, make_turn_job
+from negotiation.state.deps import DEFAULT_DEPS
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -124,6 +127,18 @@ async def warmup_tts():
         print("[warmup] Falló warmup TTS:", repr(e))
 
 
+
+
+@app.on_event("startup")
+async def startup_summary_worker() -> None:
+    if deferred_summary_enabled():
+        SUMMARY_JOBS.start_worker(DEFAULT_DEPS)
+
+
+@app.on_event("shutdown")
+async def shutdown_summary_worker() -> None:
+    SUMMARY_JOBS.stop_worker()
+
 class ChatRequest(BaseModel):
     user_id: str
     session_id: str
@@ -135,12 +150,15 @@ class ChatResponse(BaseModel):
 
 class TTSRequest(BaseModel):
     text: str
+    user_id: str | None = None
+    session_id: str | None = None
     voice: str | None = None   # opcional, por si luego quieres cambiar
     format: str | None = None  # "mp3", "opus", "wav"
 
 class TTSAudioResponse(BaseModel):
     audio_base64: str
     audio_mime_type: str
+
 
 @app.get("/health")
 def health_check():
@@ -514,6 +532,7 @@ async def tts_openai(payload: TTSRequest):
 @app.post("/tts", response_model=TTSAudioResponse)
 async def tts(payload: TTSRequest):
     try:
+        t_tts_request_start = time.perf_counter()
         voice = payload.voice or DEFAULT_VOICE
         fmt = DEFAULT_FORMAT
         if payload.format and payload.format != DEFAULT_FORMAT:
@@ -525,6 +544,27 @@ async def tts(payload: TTSRequest):
             raise HTTPException(
                 status_code=400,
                 detail=f"Formato de audio no soportado: {fmt}",
+            )
+
+        if deferred_summary_enabled() and payload.user_id and payload.session_id:
+            state = get_session_state(payload.user_id, payload.session_id)
+            enqueued = SUMMARY_JOBS.enqueue(
+                make_turn_job(
+                    state,
+                    context_limit_turns=DEFAULT_CONTEXT_LIMIT_TURNS,
+                    keep_last_n_turns=DEFAULT_KEEP_LAST_TURNS,
+                )
+            )
+            logger.info(
+                "summary_job_enqueue_from_tts",
+                extra={
+                    "user_id": payload.user_id,
+                    "session_id": payload.session_id,
+                    "turn_id": state.turn_count,
+                    "enqueued": enqueued,
+                    "t_tts_request_start": t_tts_request_start,
+                    "t_summary_enqueued_from_tts": time.perf_counter(),
+                },
             )
 
         print(f">>> /tts llamado. Texto: {payload.text!r}")
