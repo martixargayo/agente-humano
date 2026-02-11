@@ -3,12 +3,12 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 
 from langchain_openai import ChatOpenAI
 
+from .config import build_chat_openai_kwargs, get_negotiation_model_config
 from .gate_utils import _split_world_diff
-from .elementos.belief_definitions import BELIEF_MODEL, BELIEF_TEMPERATURE, CRITICAL_FLAGS, REASON_PRIORITY
+from .elementos.belief_definitions import CRITICAL_FLAGS, REASON_PRIORITY
 from .elementos.belief.belief_updater_v2_prompts import (
     BELIEF_UPDATER_V2_SYSTEM_PROMPT,
     BELIEF_UPDATER_V2_USER_PROMPT,
@@ -22,7 +22,7 @@ from .validation import normalize_belief_state, normalize_belief_state_v2, norma
 from .belief_governor import derive_behavior_guidance
 from .world_belief_adapters import world_v1_to_v2
 
-_belief_llm = ChatOpenAI(model=BELIEF_MODEL, temperature=BELIEF_TEMPERATURE)
+_belief_llm = ChatOpenAI(**build_chat_openai_kwargs(get_negotiation_model_config().belief))
 logger = logging.getLogger(__name__)
 
 def _limit_reasons(reasons: dict) -> dict:

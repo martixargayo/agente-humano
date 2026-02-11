@@ -33,14 +33,7 @@ from .context_utils import (
     format_memory_block,
     maybe_refresh_summary,
 )
-from .elementos.execution_definitions import (
-    EMBEDDINGS_MODEL,
-    EXECUTOR_MODEL,
-    EXECUTOR_TEMPERATURE,
-    RAG_DIR,
-    SUMMARY_MODEL,
-    SUMMARY_TEMPERATURE,
-)
+from .config import get_negotiation_model_config, negotiation_effective_model_params
 from .gate_utils import (
     gate_belief,
     gate_world,
@@ -99,17 +92,19 @@ from .state.deps import AgentDeps, DEFAULT_DEPS
 
 load_dotenv()
 logger = logging.getLogger(__name__)
+NEGOTIATION_CONFIG = get_negotiation_model_config()
 
 def _load_negotiation_rag_index():
-    if not os.path.isdir(RAG_DIR):
-        logger.warning("rag_dir_not_found=%s", RAG_DIR)
+    rag_dir = NEGOTIATION_CONFIG.rag_dir
+    if not os.path.isdir(rag_dir):
+        logger.warning("rag_dir_not_found=%s", rag_dir)
         return None
 
     docs: List[Document] = []
-    for filename in os.listdir(RAG_DIR):
+    for filename in os.listdir(rag_dir):
         if not filename.lower().endswith((".md", ".txt")):
             continue
-        path = os.path.join(RAG_DIR, filename)
+        path = os.path.join(rag_dir, filename)
         try:
             with open(path, "r", encoding="utf-8") as f:
                 text = f.read().strip()
@@ -130,11 +125,11 @@ def _load_negotiation_rag_index():
             logger.warning("rag_read_error path=%s error=%s", path, exc)
 
     if not docs:
-        logger.warning("rag_docs_not_found dir=%s", RAG_DIR)
+        logger.warning("rag_docs_not_found dir=%s", rag_dir)
         return None
 
     try:
-        embeddings = OpenAIEmbeddings(model=EMBEDDINGS_MODEL)
+        embeddings = OpenAIEmbeddings(model=NEGOTIATION_CONFIG.embeddings.model)
         vs = FAISS.from_documents(docs, embeddings)
         logger.info("rag_index_loaded count=%s", len(docs))
         return vs
@@ -583,6 +578,7 @@ def run_negotiation_agent(
                 "policy_out": policy_issues_out,
                 "progress_out": progress_issues_out,
             },
+            **negotiation_effective_model_params(get_negotiation_model_config()),
             "planner_failed": new_graph_state.get("planner_meta", {}).get("planner_failed", False),
             "planner_error": new_graph_state.get("planner_meta", {}).get("planner_error", ""),
             "planner_fallback_used": new_graph_state.get("planner_meta", {}).get(

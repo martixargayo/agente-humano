@@ -1,23 +1,17 @@
-import os
 import re
 
-NEGOTIATION_DIR = os.path.dirname(os.path.dirname(__file__))
+from ..config import get_negotiation_model_config
 
-EMBEDDINGS_MODEL = os.getenv("EMBEDDINGS_MODEL_NAME", "text-embedding-3-small")
-DEFAULT_RAG_DIR = os.path.join(NEGOTIATION_DIR, "policy_docs")
-RAG_DIR = os.getenv("NEGOTIATION_RAG_DIR", DEFAULT_RAG_DIR)
+NEGOTIATION_CONFIG = get_negotiation_model_config()
 
-EXECUTOR_MODEL = os.getenv(
-    "EXECUTOR_MODEL_NAME",
-    os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini"),
-)
-EXECUTOR_TEMPERATURE = float(os.getenv("EXECUTOR_TEMPERATURE", "0.7"))
+EMBEDDINGS_MODEL = NEGOTIATION_CONFIG.embeddings.model
+RAG_DIR = NEGOTIATION_CONFIG.rag_dir
 
-SUMMARY_MODEL = os.getenv(
-    "SUMMARY_MODEL_NAME",
-    os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini"),
-)
-SUMMARY_TEMPERATURE = float(os.getenv("SUMMARY_TEMPERATURE", "0.2"))
+EXECUTOR_MODEL = NEGOTIATION_CONFIG.executor.model
+EXECUTOR_TEMPERATURE = NEGOTIATION_CONFIG.executor.temperature
+
+SUMMARY_MODEL = NEGOTIATION_CONFIG.summary.model
+SUMMARY_TEMPERATURE = NEGOTIATION_CONFIG.summary.temperature
 
 OUTCOME_GOOD = "good"
 OUTCOME_BAD = "bad"

@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 
 from prompts import PHASE_POLICY_SYSTEM_PROMPT, PHASE_POLICY_USER_PROMPT
+from .config import build_chat_openai_kwargs, get_negotiation_model_config
 from .elementos.strategy_definitions import PhasePolicyDecisionModel, REASON_PREFIXES
 from .policies import get_policy, policy_catalog_text, policy_catalog_with_phases_text, safe_neutral_policy_id
 from .schemas import (
@@ -22,13 +22,11 @@ from .validation import normalize_policy_decision
 
 logger = logging.getLogger(__name__)
 
-PLANNER_MODEL = os.getenv(
-    "PHASE_POLICY_MODEL_NAME",
-    os.getenv("SUMMARY_MODEL_NAME", "gpt-4o-mini"),
-)
-PLANNER_TEMPERATURE = float(os.getenv("PHASE_POLICY_TEMPERATURE", "0.0"))
+NEGOTIATION_CONFIG = get_negotiation_model_config()
+PLANNER_MODEL = NEGOTIATION_CONFIG.planner.model
+PLANNER_TEMPERATURE = NEGOTIATION_CONFIG.planner.temperature
 
-_planner_llm = ChatOpenAI(model=PLANNER_MODEL, temperature=PLANNER_TEMPERATURE)
+_planner_llm = ChatOpenAI(**build_chat_openai_kwargs(NEGOTIATION_CONFIG.planner))
 _planner_prompt = ChatPromptTemplate.from_messages(
     [("system", PHASE_POLICY_SYSTEM_PROMPT), ("user", PHASE_POLICY_USER_PROMPT)]
 )

@@ -8,12 +8,7 @@ from langchain_openai import ChatOpenAI
 
 from prompts import SUMMARY_SYSTEM_PROMPT, SUMMARY_USER_PROMPT
 
-from ..elementos.execution_definitions import (
-    EXECUTOR_MODEL,
-    EXECUTOR_TEMPERATURE,
-    SUMMARY_MODEL,
-    SUMMARY_TEMPERATURE,
-)
+from ..config import build_chat_openai_kwargs, get_negotiation_model_config
 from ..phase_policy_planner import plan_phase_policy
 from ..belief_state_updater import update_belief_state
 from ..schemas import BeliefState, PolicyDecision
@@ -25,15 +20,11 @@ ExecuteFn = Callable[..., str]
 SummarizeFn = Callable[[str, str], str]
 
 
-executor_llm = ChatOpenAI(
-    model=EXECUTOR_MODEL,
-    temperature=EXECUTOR_TEMPERATURE,
-)
+NEGOTIATION_CONFIG = get_negotiation_model_config()
 
-summary_llm = ChatOpenAI(
-    model=SUMMARY_MODEL,
-    temperature=SUMMARY_TEMPERATURE,
-)
+executor_llm = ChatOpenAI(**build_chat_openai_kwargs(NEGOTIATION_CONFIG.executor))
+
+summary_llm = ChatOpenAI(**build_chat_openai_kwargs(NEGOTIATION_CONFIG.summary))
 
 summary_prompt = ChatPromptTemplate.from_messages(
     [
