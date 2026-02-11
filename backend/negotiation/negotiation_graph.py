@@ -86,7 +86,7 @@ from .validation import (
     normalize_progress_state,
     normalize_world_state,
 )
-<<<<<<< HEAD
+
 from .world_state_updater import diff_world_state, update_world_state
 from .nodes.world_node import world_updater_node
 from .nodes.belief_node import belief_updater_node
@@ -96,49 +96,17 @@ from .nodes.progress_node import progress_updater_node
 from .nodes.executor_node import executor_node
 from .telemetry.trace import diff_belief_state, top_evidence_v2
 from .state.deps import AgentDeps, DEFAULT_DEPS
-=======
-from .world_state_updater import (
-    diff_world_state,
-    extract_interaction_signals,
-    update_world_state,
-)
-from env_compat import getenv_float_preferred, getenv_preferred
->>>>>>> origin/main
+
 
 
 load_dotenv()
 logger = logging.getLogger(__name__)
-<<<<<<< HEAD
+
 def _load_negotiation_rag_index(cfg):
     rag_dir = cfg.rag_dir
     if not os.path.isdir(rag_dir):
         logger.warning("rag_dir_not_found=%s", rag_dir)
-=======
 
-# ---- Configuración RAG para técnicas de negociación por policy ----
-
-EMBEDDINGS_MODEL = getenv_preferred(
-    preferred="NEGOTIATION_EMBEDDINGS_MODEL",
-    legacy=("EMBEDDINGS_MODEL_NAME",),
-    default="text-embedding-3-small",
-)
-
-DEFAULT_RAG_DIR = os.path.join(
-    os.path.dirname(__file__),
-    "policy_docs",
-)
-
-RAG_DIR = getenv_preferred(
-    preferred="NEGOTIATION_RAG_DIR",
-    legacy=("NEGOCIATION_RAG_DIR",),
-    default=DEFAULT_RAG_DIR,
-)
-
-
-def _load_negotiation_rag_index():
-    if not os.path.isdir(RAG_DIR):
-        logger.warning("rag_dir_not_found=%s", RAG_DIR)
->>>>>>> origin/main
         return None
 
     docs: List[Document] = []
@@ -198,119 +166,8 @@ def get_negotiation_rag_index(cfg=None):
 
     return _NEGOTIATION_RAG_INDEX
 
-<<<<<<< HEAD
-=======
-# ---- Modelo principal (executor) ----
-
-EXECUTOR_MODEL = getenv_preferred(
-    preferred="NEGOTIATION_EXECUTOR_MODEL",
-    legacy=("EXECUTOR_MODEL_NAME", "OPENAI_MODEL_NAME"),
-    default="gpt-4o-mini",
-)
-
-EXECUTOR_TEMPERATURE = getenv_float_preferred(
-    preferred="NEGOTIATION_EXECUTOR_TEMPERATURE",
-    legacy=("EXECUTOR_TEMPERATURE",),
-    default=0.7,
-)
 
 
-
-def _build_chat_openai(model: str, temperature: float, *, client_name: str) -> ChatOpenAI | None:
-    if not os.getenv("OPENAI_API_KEY"):
-        logger.warning("%s_openai_api_key_missing fallback_enabled=true", client_name)
-        return None
-
-    try:
-        return ChatOpenAI(model=model, temperature=temperature)
-    except Exception as exc:
-        logger.warning("%s_llm_init_error=%s", client_name, exc)
-        return None
-
-
-executor_llm = _build_chat_openai(
-    model=EXECUTOR_MODEL,
-    temperature=EXECUTOR_TEMPERATURE,
-    client_name="executor",
-)
-
-# ---- Modelo de resumen ----
-
-SUMMARY_MODEL = getenv_preferred(
-    preferred="NEGOTIATION_SUMMARY_MODEL",
-    legacy=("SUMMARY_MODEL_NAME", "OPENAI_MODEL_NAME"),
-    default="gpt-4o-mini",
-)
-SUMMARY_TEMPERATURE = getenv_float_preferred(
-    preferred="NEGOTIATION_SUMMARY_TEMPERATURE",
-    legacy=("SUMMARY_TEMPERATURE",),
-    default=0.2,
-)
-
-summary_llm = _build_chat_openai(
-    model=SUMMARY_MODEL,
-    temperature=SUMMARY_TEMPERATURE,
-    client_name="summary",
-)
-
-summary_prompt = ChatPromptTemplate.from_messages(
-    [
-        ("system", SUMMARY_SYSTEM_PROMPT),
-        ("user", SUMMARY_USER_PROMPT),
-    ]
-)
-
-# Tipos “paper-grade”: narrow y explícitos
-PlanFn = Callable[..., Tuple[dict, PolicyDecision, dict]]
-BeliefFn = Callable[..., Tuple[BeliefState, dict]]
-ExecuteFn = Callable[..., str]
-SummarizeFn = Callable[[str, str], str]
-
-
-@dataclass(frozen=True)
-class AgentDeps:
-    plan_phase_policy: PlanFn
-    update_belief_state: BeliefFn
-    execute: ExecuteFn
-    summarize: Optional[SummarizeFn] = None
-
-
-def _default_execute(messages: Any) -> str:
-    # Mantén la lógica real actual, pero encapsulada para injection
-    if executor_llm is None:
-        return "Entendido. Sigamos revisando condiciones y números para avanzar."
-
-    try:
-        result = executor_llm.invoke(messages)
-        return getattr(result, "content", str(result))
-    except Exception as exc:
-        logger.warning("executor_invoke_error=%s", exc)
-        return "Entendido. Sigamos revisando condiciones y números para avanzar."
-
-
-def _default_summarize(existing_summary: str, new_block: str) -> str:
-    if summary_llm is None:
-        return safe_merge_summary(existing_summary, new_block)
-
-    messages = summary_prompt.format_messages(
-        existing_summary=existing_summary,
-        new_block=new_block,
-    )
-    try:
-        result = summary_llm.invoke(messages)
-        return getattr(result, "content", str(result)).strip()
-    except Exception as exc:
-        logger.warning("summary_invoke_error=%s", exc)
-        return safe_merge_summary(existing_summary, new_block)
-
-
-DEFAULT_DEPS = AgentDeps(
-    plan_phase_policy=plan_phase_policy,
-    update_belief_state=update_belief_state,
-    execute=_default_execute,
-    summarize=_default_summarize,
-)
->>>>>>> origin/main
 
 
 class NegotiationTurn(TypedDict):

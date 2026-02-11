@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 
 from .llm_clients import get_belief_llm
 from .gate_utils import _split_world_diff
@@ -14,31 +15,14 @@ from .elementos.belief.belief_updater_v2_prompts import (
     NEGOTIATION_SPEC,
     OUTPUT_SCHEMA,
 )
-<<<<<<< HEAD
+
 from .elementos.belief.belief_contracts import UNIVERSAL_LIMITS
 from .schemas import BeliefState, PolicyDecision, WorldState, default_belief_state
 from .validation import normalize_belief_state, normalize_belief_state_v2, normalize_belief_universal
 from .belief_governor import derive_behavior_guidance
 from .world_belief_adapters import world_v1_to_v2
 
-=======
-from .validation import normalize_belief_state
-from env_compat import getenv_float_preferred, getenv_preferred
 
-
-BELIEF_MODEL = getenv_preferred(
-    preferred="NEGOTIATION_BELIEF_MODEL",
-    legacy=("BELIEF_MODEL_NAME", "SUMMARY_MODEL_NAME"),
-    default="gpt-4o-mini",
-)
-BELIEF_TEMPERATURE = getenv_float_preferred(
-    preferred="NEGOTIATION_BELIEF_TEMPERATURE",
-    legacy=("BELIEF_TEMPERATURE",),
-    default=0.0,
-)
-
-_belief_llm = ChatOpenAI(model=BELIEF_MODEL, temperature=BELIEF_TEMPERATURE)
->>>>>>> origin/main
 logger = logging.getLogger(__name__)
 
 def _limit_reasons(reasons: dict) -> dict:
@@ -243,7 +227,7 @@ def update_belief_state(
             meta["belief_update_skipped"] = True
             return previous, meta
 
-<<<<<<< HEAD
+
     conversation_mode = conversation_mode or "negotiation"
 
     try:
@@ -253,28 +237,7 @@ def update_belief_state(
             world_diff=world_diff,
             prev_belief=previous,
             conversation_mode=conversation_mode,
-=======
-    try:
-        messages = _belief_prompt.format_messages(
-            prev_belief_state=json.dumps(previous, ensure_ascii=False),
-            prev_world_state=json.dumps(prev_world_state, ensure_ascii=False),
-            world_state=json.dumps(world_state, ensure_ascii=False),
-            world_diff=json.dumps(world_diff, ensure_ascii=False),
-            last_policy_executed=json.dumps(last_policy_executed or {}, ensure_ascii=False),
-            last_assistant_message=last_assistant_message,
-            user_message=user_message,
-            recent_history=context_snippet,
-        )
 
-        structured_llm = _belief_llm.with_structured_output(_BeliefStateModel)
-        result = structured_llm.invoke(messages)
-        data = result.model_dump()
-        normalized, issues = normalize_belief_state(data, previous)
-        normalized["stance"]["deal_feasibility"] = _clamp_step(
-            previous["stance"]["deal_feasibility"],
-            normalized["stance"]["deal_feasibility"],
-            0.15,
->>>>>>> origin/main
         )
         meta.update(meta_patch)
     except Exception as exc:

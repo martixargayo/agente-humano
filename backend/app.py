@@ -20,15 +20,11 @@ import base64
 
 from fastapi.staticfiles import StaticFiles
 
-<<<<<<< HEAD
-from state import get_session_state, DEFAULT_CONTEXT_LIMIT_TURNS, DEFAULT_KEEP_LAST_TURNS
-=======
 BASE_DIR = pathlib.Path(__file__).resolve().parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-from state import get_session_state
->>>>>>> origin/main
+from state import get_session_state, DEFAULT_CONTEXT_LIMIT_TURNS, DEFAULT_KEEP_LAST_TURNS
 from agent import run_agent
 
 
