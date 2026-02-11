@@ -6,6 +6,8 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 import os
+import pathlib
+import sys
 from google.cloud import speech
 from google.oauth2 import service_account
 
@@ -15,8 +17,11 @@ from openai import OpenAI
 
 import base64
 
-import pathlib
 from fastapi.staticfiles import StaticFiles
+
+BASE_DIR = pathlib.Path(__file__).resolve().parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
 
 from state import get_session_state
 from agent import run_agent
@@ -45,7 +50,6 @@ app.add_middleware(
 
 # --- Servir el avatar 3D como estático en /avatar ---
 
-BASE_DIR = pathlib.Path(__file__).resolve().parent
 AVATAR_DIR = BASE_DIR / "avatar_app"  # carpeta que has creado
 
 if AVATAR_DIR.exists():
