@@ -134,30 +134,26 @@ SUMMARY_SYSTEM_PROMPT = """
 Tu tarea es condensar la conversación hasta ahora en un estado interno minimalista.
 NO debes generar un resumen narrativo ni texto libre: solo un objeto JSON válido.
 
-El estado interno sirve como notas mentales de Daniel.
+El estado interno sirve como notas mentales del agente.
 No refleja estilo, tono ni forma de hablar. Solo contenido útil.
 
 Áreas que debe cubrir el estado:
-1. Datos personales del usuario.
-2. Estado emocional del usuario.
-3. Temas abiertos o pendientes.
-4. Conclusiones o percepciones importantes.
-5. Directrices para continuar (solo contenido, nunca estilo).
-6. Objetivos a medio/largo plazo.
-7. Planes y estrategias activas.
-8. Estado de negociación o decisión si aplica.
+1. Hechos relevantes.
+2. Preguntas abiertas.
+3. Límites, restricciones o condiciones.
+4. Señales del vendedor.
+5. Señales del comprador.
+6. Decisiones tomadas hasta ahora.
 
 Formato estricto:
 - Objeto JSON con claves:
-  "personal_details",
-  "emotional_state",
-  "open_topics",
-  "conclusions",
-  "continuation_notes",
-  "long_term_objectives",
-  "plans_and_strategies",
-  "negotiation_state"
-- Secciones no aplicables: "".
+  "facts",
+  "open_questions",
+  "constraints_limits",
+  "seller_signals",
+  "buyer_signals",
+  "decisions"
+- Cada clave es una lista (vacía si no aplica).
 - No añadas nada fuera del JSON.
 - Sin comentarios.
 - Sin comillas simples.
@@ -166,7 +162,7 @@ Formato estricto:
 
 <style_protection>
 IMPORTANTE:
-Las reglas de estilo, tono y concisión de Daniel NO deben aparecer, 
+Las reglas de estilo, tono y concisión del agente NO deben aparecer,
 mencionarse, resumirse, alterarse ni interpretarse en el estado interno.
 El summary solo captura contenido, nunca estilo.
 </style_protection>
@@ -188,35 +184,78 @@ Usando la información anterior, genera un NUEVO estado interno en formato JSON.
 Debes devolver EXCLUSIVAMENTE un objeto JSON con esta estructura:
 
 {
-  "personal_details": "",
-  "emotional_state": "",
-  "open_topics": "",
-  "conclusions": "",
-  "continuation_notes": "",
-  "long_term_objectives": "",
-  "plans_and_strategies": "",
-  "negotiation_state": ""
+  "facts": [],
+  "open_questions": [],
+  "constraints_limits": [],
+  "seller_signals": [],
+  "buyer_signals": [],
+  "decisions": []
 }
 
 Reglas:
 - Integra el contenido previo (existing_summary) con el nuevo bloque (new_block).
-- Si la conversación tiene forma de negociación / proceso por fases,
-  utiliza especialmente:
-  - "long_term_objectives" para capturar qué se quiere lograr a medio/largo plazo.
-  - "plans_and_strategies" para describir el plan o sub-estrategias activas.
-  - "negotiation_state" para el estado actual de la negociación, ofertas, bloqueos, etc.
-- Si no aplica negociación, esos campos pueden ser más generales o vacíos.
+- Cada clave debe ser una lista (vacía si no aplica).
 - No añadas texto fuera del JSON.
 - No expliques lo que haces.
 - No uses comillas simples.
 - No añadas comentarios ni campos extra.
-- Rellena cada campo con texto plano conciso y relevante.
+- No añadas claves adicionales.
+- Rellena cada lista con elementos breves y relevantes.
 
 No incluyas nada relacionado con estilo, tono, concisión,
 forma de hablar o recomendaciones discursivas.
 El estilo queda totalmente fuera del JSON.
 
 """
+
+# --- Prompt unificado Phase+Policy planner ---
+
+PHASE_POLICY_SYSTEM_PROMPT = """
+Eres un planificador de fase y policy en una negociación.
+Devuelve SOLO JSON válido que cumpla el schema solicitado.
+
+Reglas:
+- phase ∈ {opening, discovery, bargaining, closing, recovery}
+- reasons: etiquetas normalizadas (world:<flag> | belief:<flag> | intent:<flag> | history:<flag>)
+- signals: señales observables y cortas.
+- policy_id debe estar en allowed_policy_ids.
+- micro_goal breve y accionable.
+- NO texto fuera del JSON, NO markdown.
+""".strip()
+
+PHASE_POLICY_USER_PROMPT = """
+[WorldState]
+{world_state}
+
+[World diff]
+{world_diff}
+
+[BeliefState]
+{belief_state}
+
+[Intent hint]
+{intent_hint}
+
+[PhaseState prev]
+{phase_state}
+
+[Allowed policy ids]
+{allowed_policy_ids}
+
+[Policy catalog]
+{policy_catalog}
+
+[Objective]
+{objective}
+
+[Constraints]
+{constraints}
+
+[Recent context]
+{recent_context}
+
+Devuelve SOLO JSON con phase + policy.
+""".strip()
 
 # --- Prompt de conversación principal (contexto + mensaje actual) ---
 
@@ -244,4 +283,165 @@ Tarea:
 3. Mantén continuidad de contenido (no de estilo).
 4. Si algo importante no está claro, pide una aclaración breve.
 5. Debes obedecer <style_rules_absolute> en todos los turnos.
+"""
+
+# --- Prompts para belief updater (JSON estricto) ---
+
+BELIEF_UPDATE_SYSTEM_PROMPT = """
+Eres un actualizador de creencias para un agente negociador.
+Devuelves SOLO JSON válido, sin texto adicional.
+
+Reglas:
+- Output debe ser un objeto JSON con la estructura exacta del BeliefState.
+- Máximo 6 razones en "reasons".
+- "hypotheses" máximo 5 elementos.
+- No uses campos extra.
+- No incluyas markdown ni explicaciones.
+- Usa números en [0,1] para weights/confidence.
+- Actualiza de forma conservadora: si no hay evidencia nueva, mantén stance similar.
+- Cada evidencia debe anclarse en el WorldState o en citas del mensaje reciente.
+- Usa solo estas keys para reasons: price_signal, deadline_signal, other_buyer_signal,
+  concession_signal, docs_signal, tone_signal.
+- No uses razones abstractas sin ancla (“parece honesto”); al menos una razón debe
+  mencionar un marcador del WorldState cuando price_mentioned o deadline_claimed sean true.
+- WorldState incluye señales observables de tono (tone_signal/tone_marker_hits);
+  la interpretación final va en dynamics.interaction_health.
+- Solo cambia stance si puedes citar evidencia del world_diff o una frase del vendedor.
+- Si world_diff es pequeño o vacío, el update debe ser pequeño.
+"""
+
+BELIEF_UPDATE_USER_PROMPT = """
+[BeliefState previo]
+{prev_belief_state}
+
+[WorldState previo]
+{prev_world_state}
+
+[WorldState actualizado]
+{world_state}
+
+[World diff]
+{world_diff}
+
+[Policy ejecutada del comprador]
+{last_policy_executed}
+
+[Último mensaje del comprador]
+{last_assistant_message}
+
+[Mensaje actual del vendedor]
+{user_message}
+
+[Historial reciente (2–4 turnos)]
+{recent_history}
+
+Devuelve SOLO el nuevo BeliefState como JSON estricto:
+{
+  "stance": {"deal_feasibility": 0.0, "seller_flexibility": 0.0},
+  "reasons": {"razon": {"weight": 0.0, "confidence": 0.0, "evidence": ""}},
+  "hypotheses": [],
+  "dynamics": {"interaction_health": "stable", "last_update_evidence": ""},
+  "tom": {"seller_goals": [], "seller_tactics": [], "seller_belief_about_me": [], "confidence": 0.0}
+}
+"""
+
+# --- Prompts para Phase classifier (JSON estricto) ---
+
+PHASE_UPDATE_SYSTEM_PROMPT = """
+Eres un clasificador de fase en una negociación.
+Devuelves SOLO JSON válido y estricto, sin texto adicional.
+
+Reglas:
+- Output debe ser un objeto JSON con la estructura exacta del PhaseDecision.
+- "phase" debe ser una de: opening, discovery, bargaining, closing, recovery.
+- "reasons" debe referirse a señales presentes en world/belief/intent/history, sin inventar.
+- Si es ambiguo, usa confidence baja.
+- No añadas campos extra ni markdown.
+"""
+
+PHASE_UPDATE_USER_PROMPT = """
+[PhaseState previo]
+{prev_phase_state}
+
+[WorldState]
+{world_state}
+
+[World diff]
+{world_diff}
+
+[BeliefState]
+{belief_state}
+
+[IntentState]
+{intent_state}
+
+[Historial reciente (máx 8 turnos)]
+{recent_history}
+
+Devuelve SOLO JSON:
+{
+  "phase": "opening|discovery|bargaining|closing|recovery",
+  "confidence": 0.0,
+  "reasons": ["..."],
+  "alternatives": ["opening"]
+}
+"""
+
+# --- Prompts para policy planner (JSON estricto) ---
+
+POLICY_PLANNER_SYSTEM_PROMPT = """
+Eres un policy planner que elige exactamente una policy por turno.
+Devuelves SOLO JSON válido con el policy_id del catálogo.
+
+Reglas:
+- Debes elegir un policy_id del catálogo cerrado.
+- Incluye reason (1 línea), micro_goal (1 línea), risk_posture (low/mid/high).
+- Incluye why_short (1 línea) y inputs_used (lista breve de claves exactas usadas).
+- No añadas texto fuera del JSON.
+- Goal reinforcement: debes repetir internamente objetivo + constraints
+  y elegir SOLO policies compatibles con ellos.
+- Si una policy viola constraints, es inválida.
+- inputs_used debe contener SOLO claves presentes en WorldState/BeliefState/IntentHint.
+"""
+
+POLICY_PLANNER_USER_PROMPT = """
+[Catálogo de policies]
+{policy_catalog}
+
+[WorldState]
+{world_state}
+
+[BeliefState]
+{belief_state}
+
+[ProgressState]
+{progress_state}
+
+[IntentHint]
+{intent_hint}
+
+[Contexto reciente (2–4 turnos)]
+{recent_context}
+
+[Objective]
+{objective}
+
+[Constraints]
+{constraints}
+
+[Policies permitidas]
+{allowed_policy_ids}
+
+[Policies preferidas]
+{preferred_policy_ids}
+
+Devuelve SOLO JSON:
+{
+  "policy_id": "<uno de {allowed_policy_ids}>",
+  "reason": "...",
+  "micro_goal": "...",
+  "risk_posture": "low|mid|high",
+  "why_short": "...",
+  "inputs_used": ["price_mentioned", "interaction_health"]
+}
 """

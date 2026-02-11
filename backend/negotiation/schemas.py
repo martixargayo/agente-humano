@@ -1,0 +1,463 @@
+# backend/negotiation/schemas.py
+from __future__ import annotations
+
+from typing import Any, Dict, List, Literal, Set, TypedDict
+InteractionHealth = Literal["stable", "tense", "stalled"]
+RiskPosture = Literal["low", "mid", "high"]
+PolicyOutcome = Literal["good", "neutral", "bad", ""]
+ToneSignal = Literal["neutral", "friendly", "tense"]
+InteractionEscalation = Literal["up", "down", "none"]
+RequiredInputOp = Literal["exists", "true", "non_empty"]
+EvidenceType = Literal[
+    "PRICE",
+    "DEADLINE",
+    "URGENCY",
+    "OTHER_BUYER",
+    "CONCESSION",
+    "DOCS",
+    "MIN_PRICE",
+    "FIRMNESS",
+    "EVIDENCE_DOC",
+    "BATNA",
+    "TONE",
+]
+EvidenceSource = Literal["regex", "llm", "manual"]
+EvidencePolarity = Literal["affirm", "deny"]
+IntentStatus = Literal["inactive", "active", "succeeded", "abandoned", "paused"]
+IntentType = Literal[
+    "info_extract",
+    "relationship",
+    "concession",
+    "closing",
+    "credibility_check",
+]
+CommitmentLevel = Literal["hard", "soft"]
+StepKind = Literal[
+    "probe_open",
+    "probe_narrow",
+    "request_evidence",
+    "trade_incentive",
+    "pressure_soft",
+    "close_next",
+]
+NegotiationPhase = Literal["opening", "discovery", "bargaining", "closing", "recovery"]
+
+
+class IntentSlot(TypedDict):
+    value: object
+    evidence: str
+    confidence: float
+    source: str
+
+
+class IntentSlots(TypedDict):
+    slots_required: List[str]
+    slots_optional: List[str]
+    slots_filled: Dict[str, IntentSlot]
+
+
+class IntentStep(TypedDict):
+    kind: StepKind
+    target_slot: str
+    success_if_filled: List[str]
+
+
+class IntentState(TypedDict):
+    status: IntentStatus
+    intent_goal: str
+    intent_type: IntentType
+    steps: List[IntentStep]
+    step_idx: int
+    step_attempts: int
+    max_attempts_per_step: int
+    success_criteria: List[str]
+    slots: IntentSlots
+    confidence: float
+    no_progress_turns: int
+    slot_fill_count: int
+    slot_fill_count_recent: int
+    created_turn: int
+    last_turn: int
+    continue_until: str
+    abandon_reasons: List[str]
+    last_observation: str
+    next_action_hint: str
+
+
+class WorldState(TypedDict):
+    price_mentioned: bool
+    price_value: float | None
+    deadline_claimed: bool
+    deadline_text: str
+    deadline_days: int | None
+    deadline_kind: str
+    other_buyer_claimed: bool
+    other_buyer_text: str
+    other_buyer_offer_price: float | None
+    other_buyer_timing_text: str
+    concession_made: bool
+    concession_text: str
+    docs_claimed: bool
+    docs_types: List[str]
+    batna_claimed: bool
+    batna_text: str
+    urgency_claimed: bool
+    urgency_text: str
+    urgency_reason: str
+    min_price_claimed: bool
+    min_price_text: str
+    price_firm: bool
+    price_firm_text: str
+    evidence_offered: bool
+    evidence_text: str
+    message_is_vague: bool
+    tone_signal: ToneSignal
+    tone_confidence: float
+    tone_marker_hits: List[str]
+    conflict_markers: List[str]
+    interaction: "InteractionState"
+    evidence_items: List["EvidenceItem"]
+    world_observations: "WorldObservations"
+    world_observations_v2: "WorldObservationsV2"
+    world_derived: "WorldDerived"
+    world_state_meta: "WorldStateMeta"
+
+
+class EvidenceItem(TypedDict):
+    type: EvidenceType
+    field: str
+    polarity: EvidencePolarity
+    text: str
+    value: Any | None
+    source: EvidenceSource
+    confidence: float
+    turn_idx: int | None
+    span: tuple[int, int] | None
+    raw: Dict[str, Any] | None
+
+
+class InteractionState(TypedDict):
+    implicit_acceptance: bool
+    escalation_signal: InteractionEscalation
+    loop_hint: bool
+    evasion_detected: bool
+    soft_commitment: bool
+
+
+class WorldObservations(TypedDict):
+    raw_fields: Dict[str, Any]
+    evidence_items: List["EvidenceItem"]
+
+
+class EvidenceV2Claim(TypedDict):
+    path: str
+    value: Any | None
+    polarity: EvidencePolarity
+    unit: str | None
+    qualifiers: Dict[str, Any]
+
+
+class EvidenceV2Provenance(TypedDict):
+    text: str
+    span: tuple[int, int] | None
+    source: EvidenceSource
+    turn_idx: int
+    raw: Dict[str, Any] | None
+
+
+class EvidenceV2Record(TypedDict):
+    claim: EvidenceV2Claim
+    confidence: float
+    dedupe_key: str
+    provenance: EvidenceV2Provenance
+
+
+class EvidenceV2Index(TypedDict):
+    latest_by_path: Dict[str, EvidenceV2Record]
+    best_by_path: Dict[str, EvidenceV2Record]
+    recent_by_path: Dict[str, List[EvidenceV2Record]]
+
+
+class WorldObservationsV2(TypedDict):
+    claims: List[EvidenceV2Record]
+    index: EvidenceV2Index
+
+
+class WorldDerived(TypedDict):
+    fields: Dict[str, Any]
+
+
+class RequiredInput(TypedDict):
+    key: str
+    op: RequiredInputOp
+
+
+class WorldStateMeta(TypedDict):
+    last_update_source: Literal["regex", "llm", "mixed"]
+    evidence_confidence_min: float
+    updated_fields: List[str]
+    turn_idx: int | None
+    unknown_claims: List[Dict[str, Any]]
+
+
+class BeliefReason(TypedDict):
+    weight: float
+    confidence: float
+    evidence: str
+
+
+class BeliefStance(TypedDict):
+    deal_feasibility: float
+    seller_flexibility: float
+
+
+class BeliefDynamics(TypedDict):
+    interaction_health: InteractionHealth
+    last_update_evidence: str
+
+
+class BeliefToM(TypedDict):
+    seller_goals: List[str]
+    seller_tactics: List[str]
+    seller_belief_about_me: List[str]
+    confidence: float
+
+
+class BeliefState(TypedDict):
+    stance: BeliefStance
+    reasons: Dict["ReasonKey", BeliefReason]
+    hypotheses: List[str]
+    hypotheses_structural: List[str]
+    hypotheses_observational: List[str]
+    evaluations: Dict[str, float]
+    dynamics: BeliefDynamics
+    tom: BeliefToM
+
+
+class PolicyDecision(TypedDict):
+    policy_id: str
+    reason: str
+    micro_goal: str
+    risk_posture: RiskPosture
+    capabilities: Set[str] | None
+    why_short: str
+    inputs_used: List[str]
+
+
+class IntentHint(TypedDict):
+    intent_active: bool
+    intent_goal: str
+    intent_type: str
+    step_kind: str
+    target_slot: str
+    next_action_hint: str
+    slots_missing: List[str]
+    slots_filled_summary: str
+    commitment_level: CommitmentLevel
+
+
+class PhaseState(TypedDict):
+    phase: NegotiationPhase
+    confidence: float
+    reasons: List[str]
+    last_updated_turn: int
+
+
+ReasonKey = Literal[
+    "price_signal",
+    "deadline_signal",
+    "other_buyer_signal",
+    "concession_signal",
+    "docs_signal",
+    "tone_signal",
+]
+
+
+class ProgressState(TypedDict):
+    last_executed_policy_id: str
+    last_executed_policy_outcome: PolicyOutcome
+    last_chosen_policy_id: str
+    policy_last_outcome: Dict[str, PolicyOutcome]
+    policy_attempts: Dict[str, int]
+    loop_flags: List[str]
+    turns_in_same_mode: int
+    intent_state: IntentState
+    phase_state: PhaseState
+    gate_state: "GateState"
+
+
+class GateState(TypedDict):
+    last_world_refresh_turn: int
+    last_belief_refresh_turn: int
+    last_planner_refresh_turn: int
+    world_skip_count: int
+    belief_skip_count: int
+    planner_skip_count: int
+    allowed_ids_hash_prev: str
+    allowed_ids_hash_stable_count: int
+    precedence_signature_prev: str
+    loop_flags_prev: List[str]
+    input_shape_prev: Dict[str, object]
+    interaction_fingerprint_prev: Dict[str, object]
+    interaction_fingerprint_version: int
+
+
+def default_world_state() -> WorldState:
+    return {
+        "price_mentioned": False,
+        "price_value": None,
+        "deadline_claimed": False,
+        "deadline_text": "",
+        "deadline_days": None,
+        "deadline_kind": "unknown",
+        "other_buyer_claimed": False,
+        "other_buyer_text": "",
+        "other_buyer_offer_price": None,
+        "other_buyer_timing_text": "",
+        "concession_made": False,
+        "concession_text": "",
+        "docs_claimed": False,
+        "docs_types": [],
+        "batna_claimed": False,
+        "batna_text": "",
+        "urgency_claimed": False,
+        "urgency_text": "",
+        "urgency_reason": "",
+        "min_price_claimed": False,
+        "min_price_text": "",
+        "price_firm": False,
+        "price_firm_text": "",
+        "evidence_offered": False,
+        "evidence_text": "",
+        "message_is_vague": False,
+        "tone_signal": "neutral",
+        "tone_confidence": 0.0,
+        "tone_marker_hits": [],
+        "conflict_markers": [],
+        "interaction": {
+            "implicit_acceptance": False,
+            "escalation_signal": "none",
+            "loop_hint": False,
+            "evasion_detected": False,
+            "soft_commitment": False,
+        },
+        "evidence_items": [],
+        "world_observations": {
+            "raw_fields": {},
+            "evidence_items": [],
+        },
+        "world_observations_v2": {
+            "claims": [],
+            "index": {
+                "latest_by_path": {},
+                "best_by_path": {},
+                "recent_by_path": {},
+            },
+        },
+        "world_derived": {"fields": {}},
+        "world_state_meta": {
+            "last_update_source": "regex",
+            "evidence_confidence_min": 0.6,
+            "updated_fields": [],
+            "turn_idx": None,
+            "unknown_claims": [],
+        },
+    }
+
+
+def default_belief_state() -> BeliefState:
+    return {
+        "stance": {
+            "deal_feasibility": 0.5,
+            "seller_flexibility": 0.5,
+        },
+        "reasons": {},
+        "hypotheses": [],
+        "hypotheses_structural": [],
+        "hypotheses_observational": [],
+        "evaluations": {},
+        "dynamics": {
+            "interaction_health": "stable",
+            "last_update_evidence": "",
+        },
+        "tom": {
+            "seller_goals": [],
+            "seller_tactics": [],
+            "seller_belief_about_me": [],
+            "confidence": 0.4,
+        },
+    }
+
+
+def default_progress_state() -> ProgressState:
+    return {
+        "last_executed_policy_id": "",
+        "last_executed_policy_outcome": "",
+        "last_chosen_policy_id": "",
+        "policy_last_outcome": {},
+        "policy_attempts": {},
+        "loop_flags": [],
+        "turns_in_same_mode": 0,
+        "intent_state": default_intent_state(),
+        "phase_state": {
+            "phase": "opening",
+            "confidence": 0.6,
+            "reasons": [],
+            "last_updated_turn": 0,
+        },
+        "gate_state": {
+            "last_world_refresh_turn": 0,
+            "last_belief_refresh_turn": 0,
+            "last_planner_refresh_turn": 0,
+            "world_skip_count": 0,
+            "belief_skip_count": 0,
+            "planner_skip_count": 0,
+            "allowed_ids_hash_prev": "",
+            "allowed_ids_hash_stable_count": 0,
+            "precedence_signature_prev": "",
+            "loop_flags_prev": [],
+            "input_shape_prev": {},
+            "interaction_fingerprint_prev": {},
+            "interaction_fingerprint_version": 1,
+        },
+    }
+
+
+def default_intent_state() -> IntentState:
+    return {
+        "status": "inactive",
+        "intent_goal": "",
+        "intent_type": "info_extract",
+        "steps": [],
+        "step_idx": 0,
+        "step_attempts": 0,
+        "max_attempts_per_step": 2,
+        "success_criteria": [],
+        "slots": {
+            "slots_required": [],
+            "slots_optional": [],
+            "slots_filled": {},
+        },
+        "confidence": 0.0,
+        "no_progress_turns": 0,
+        "slot_fill_count": 0,
+        "slot_fill_count_recent": 0,
+        "created_turn": 0,
+        "last_turn": 0,
+        "continue_until": "",
+        "abandon_reasons": [],
+        "last_observation": "",
+        "next_action_hint": "",
+    }
+
+
+def default_policy_decision() -> PolicyDecision:
+    return {
+        "policy_id": "rapport_build",
+        "reason": "Fallback seguro para mantener buen clima.",
+        "micro_goal": "Mantener tono cordial y abrir espacio para información útil.",
+        "risk_posture": "low",
+        "capabilities": None,
+        "why_short": "",
+        "inputs_used": [],
+    }
