@@ -11,6 +11,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 
 from .policies import safe_neutral_policy_id
 from .schemas import PolicyDecision, WorldState
+from env_compat import getenv_preferred
 
 
 _NUMBER_PATTERN = re.compile(r"\b(\d{1,3}(?:[.,]\d{3})+|\d+(?:[.,]\d+)?)\b")
@@ -94,7 +95,11 @@ def validate_and_repair(
     if not violations:
         return response_text, [], meta
 
-    model = os.getenv("RESPONSE_VALIDATOR_MODEL", os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini"))
+    model = getenv_preferred(
+        preferred="RESPONSE_VALIDATOR_MODEL",
+        legacy=("NEGOTIATION_EXECUTOR_MODEL", "OPENAI_MODEL_NAME"),
+        default="gpt-4o-mini",
+    )
     llm = ChatOpenAI(model=model, temperature=0.0)
     meta["model"] = model
     constraints = constraints_struct or {}

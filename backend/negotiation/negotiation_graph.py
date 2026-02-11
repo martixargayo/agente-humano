@@ -85,6 +85,7 @@ from .world_state_updater import (
     extract_interaction_signals,
     update_world_state,
 )
+from env_compat import getenv_float_preferred, getenv_preferred
 
 
 load_dotenv()
@@ -92,14 +93,22 @@ logger = logging.getLogger(__name__)
 
 # ---- Configuración RAG para técnicas de negociación por policy ----
 
-EMBEDDINGS_MODEL = os.getenv("EMBEDDINGS_MODEL_NAME", "text-embedding-3-small")
+EMBEDDINGS_MODEL = getenv_preferred(
+    preferred="NEGOTIATION_EMBEDDINGS_MODEL",
+    legacy=("EMBEDDINGS_MODEL_NAME",),
+    default="text-embedding-3-small",
+)
 
 DEFAULT_RAG_DIR = os.path.join(
     os.path.dirname(__file__),
     "policy_docs",
 )
 
-RAG_DIR = os.getenv("NEGOTIATION_RAG_DIR", DEFAULT_RAG_DIR)
+RAG_DIR = getenv_preferred(
+    preferred="NEGOTIATION_RAG_DIR",
+    legacy=("NEGOCIATION_RAG_DIR",),
+    default=DEFAULT_RAG_DIR,
+)
 
 
 def _load_negotiation_rag_index():
@@ -164,12 +173,17 @@ def get_negotiation_rag_index():
 
 # ---- Modelo principal (executor) ----
 
-EXECUTOR_MODEL = os.getenv(
-    "EXECUTOR_MODEL_NAME",
-    os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini"),
+EXECUTOR_MODEL = getenv_preferred(
+    preferred="NEGOTIATION_EXECUTOR_MODEL",
+    legacy=("EXECUTOR_MODEL_NAME", "OPENAI_MODEL_NAME"),
+    default="gpt-4o-mini",
 )
 
-EXECUTOR_TEMPERATURE = float(os.getenv("EXECUTOR_TEMPERATURE", "0.7"))
+EXECUTOR_TEMPERATURE = getenv_float_preferred(
+    preferred="NEGOTIATION_EXECUTOR_TEMPERATURE",
+    legacy=("EXECUTOR_TEMPERATURE",),
+    default=0.7,
+)
 
 
 
@@ -193,11 +207,16 @@ executor_llm = _build_chat_openai(
 
 # ---- Modelo de resumen ----
 
-SUMMARY_MODEL = os.getenv(
-    "SUMMARY_MODEL_NAME",
-    os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini"),
+SUMMARY_MODEL = getenv_preferred(
+    preferred="NEGOTIATION_SUMMARY_MODEL",
+    legacy=("SUMMARY_MODEL_NAME", "OPENAI_MODEL_NAME"),
+    default="gpt-4o-mini",
 )
-SUMMARY_TEMPERATURE = float(os.getenv("SUMMARY_TEMPERATURE", "0.2"))
+SUMMARY_TEMPERATURE = getenv_float_preferred(
+    preferred="NEGOTIATION_SUMMARY_TEMPERATURE",
+    legacy=("SUMMARY_TEMPERATURE",),
+    default=0.2,
+)
 
 summary_llm = _build_chat_openai(
     model=SUMMARY_MODEL,

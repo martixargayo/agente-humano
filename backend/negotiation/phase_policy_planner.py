@@ -21,14 +21,20 @@ from .schemas import (
     default_policy_decision,
 )
 from .validation import normalize_policy_decision
+from env_compat import getenv_float_preferred, getenv_preferred
 
 logger = logging.getLogger(__name__)
 
-PLANNER_MODEL = os.getenv(
-    "PHASE_POLICY_MODEL_NAME",
-    os.getenv("SUMMARY_MODEL_NAME", "gpt-4o-mini"),
+PLANNER_MODEL = getenv_preferred(
+    preferred="NEGOTIATION_PLANNER_MODEL",
+    legacy=("PHASE_POLICY_MODEL_NAME", "PLANNER_MODEL_NAME", "SUMMARY_MODEL_NAME"),
+    default="gpt-4o-mini",
 )
-PLANNER_TEMPERATURE = float(os.getenv("PHASE_POLICY_TEMPERATURE", "0.0"))
+PLANNER_TEMPERATURE = getenv_float_preferred(
+    preferred="NEGOTIATION_PLANNER_TEMPERATURE",
+    legacy=("PHASE_POLICY_TEMPERATURE", "PLANNER_TEMPERATURE"),
+    default=0.0,
+)
 
 _planner_llm = ChatOpenAI(model=PLANNER_MODEL, temperature=PLANNER_TEMPERATURE)
 _planner_prompt = ChatPromptTemplate.from_messages(

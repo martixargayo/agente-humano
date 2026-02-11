@@ -7,13 +7,15 @@ import os
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
+from env_compat import getenv_preferred
 
 load_dotenv()
 
 # Modelo específico del normalizador (segunda LLM)
-NORMALIZER_MODEL = os.getenv(
-    "NORMALIZER_MODEL_NAME",
-    os.getenv("SUMMARY_MODEL_NAME", os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini")),
+NORMALIZER_MODEL = getenv_preferred(
+    preferred="NORMALIZER_MODEL_NAME",
+    legacy=("NEGOTIATION_SUMMARY_MODEL", "SUMMARY_MODEL_NAME", "OPENAI_MODEL_NAME"),
+    default="gpt-4o-mini",
 )
 
 NORMALIZER_TEMPERATURE = float(os.getenv("NORMALIZER_TEMPERATURE", "0.0"))
