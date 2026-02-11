@@ -124,6 +124,7 @@ class SessionState:
 
     # Resumen acumulado de todo lo "antiguo"
     summary: str = ""
+    summary_meta: Dict = field(default_factory=dict)
 
     # Historial corto: últimos N turnos (ventana recortada)
     history: List[HistoryItem] = field(default_factory=list)

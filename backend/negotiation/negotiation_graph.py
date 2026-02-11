@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
+import time
 from typing import Any, List, Tuple
 
 from dotenv import load_dotenv
@@ -32,6 +33,12 @@ from .context_utils import (
     build_memory_context,
     format_memory_block,
     maybe_refresh_summary,
+)
+from .summary_jobs import (
+    SUMMARY_JOBS,
+    apply_deferred_hard_trim,
+    deferred_summary_enabled,
+    make_turn_job,
 )
 from .config import get_negotiation_model_config, negotiation_effective_model_params
 from .gate_utils import (
@@ -350,14 +357,19 @@ def run_negotiation_agent(
 
     cfg = get_negotiation_model_config()
 
+    t_turn_start = time.perf_counter()
+
     add_message(state, role="user", content=user_message)
 
-    refresh_meta = maybe_refresh_summary(
-        state,
-        deps=deps,
-        context_limit_turns=DEFAULT_CONTEXT_LIMIT_TURNS,
-        keep_last_n_turns=DEFAULT_KEEP_LAST_TURNS,
-    )
+    if deferred_summary_enabled():
+        refresh_meta = {"refreshed": False, "reason": "deferred"}
+    else:
+        refresh_meta = maybe_refresh_summary(
+            state,
+            deps=deps,
+            context_limit_turns=DEFAULT_CONTEXT_LIMIT_TURNS,
+            keep_last_n_turns=DEFAULT_KEEP_LAST_TURNS,
+        )
 
     long_memory, short_memory, memory_meta = build_memory_context(
         state.history,
@@ -467,7 +479,9 @@ def run_negotiation_agent(
         "override_reason": None,
     }
 
+    t_before_graph = time.perf_counter()
     new_graph_state = negotiation_app.invoke(graph_state)
+    t_after_graph = time.perf_counter()
 
     state.negotiation_objective = new_graph_state["objective"]
     new_world_state, world_issues_out = normalize_world_state(new_graph_state["world_state"])
@@ -493,9 +507,37 @@ def run_negotiation_agent(
     reply_text = new_graph_state["response"].strip()
 
     add_message(state, role="assistant", content=reply_text)
+    t_reply_saved = time.perf_counter()
+
+    summary_enqueue_meta = {"enqueued": False, "source": "none", "hard_trim_applied": False}
+    if deferred_summary_enabled():
+        hard_trim_turns = DEFAULT_CONTEXT_LIMIT_TURNS + DEFAULT_KEEP_LAST_TURNS
+        hard_trim_applied = apply_deferred_hard_trim(state, max_user_turns=hard_trim_turns)
+        enqueued = SUMMARY_JOBS.enqueue(
+            make_turn_job(
+                state,
+                context_limit_turns=DEFAULT_CONTEXT_LIMIT_TURNS,
+                keep_last_n_turns=DEFAULT_KEEP_LAST_TURNS,
+            )
+        )
+        summary_enqueue_meta = {
+            "enqueued": enqueued,
+            "source": "run_negotiation_agent",
+            "turn_id": state.turn_count,
+            "hard_trim_applied": hard_trim_applied,
+            "hard_trim_turns": hard_trim_turns,
+        }
+    t_summary_enqueued = time.perf_counter()
+
     state.debug_trace.append(
         {
             "turn": state.turn_count,
+            "t_turn_start": t_turn_start,
+            "t_before_graph": t_before_graph,
+            "t_after_graph": t_after_graph,
+            "t_reply_saved": t_reply_saved,
+            "t_summary_enqueued": t_summary_enqueued,
+            "summary_enqueue_meta": summary_enqueue_meta,
             "world_prev": graph_state["world_state"],
             "world_new": new_world_state,
             "world_diff": new_graph_state.get("world_diff", {}),
