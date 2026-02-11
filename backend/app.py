@@ -6,6 +6,8 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 import os
+import pathlib
+import sys
 from google.cloud import speech
 from google.oauth2 import service_account
 
@@ -15,11 +17,38 @@ from openai import OpenAI
 
 import base64
 
-import pathlib
 from fastapi.staticfiles import StaticFiles
+
+BASE_DIR = pathlib.Path(__file__).resolve().parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
 
 from state import get_session_state
 from agent import run_agent
+
+
+def _migrate_negotiation_env_aliases() -> None:
+    """Promueve variables legacy a las nuevas y elimina aliases deprecados."""
+    env_aliases = {
+        "NEGOCIATION_RAG_DIR": "NEGOTIATION_RAG_DIR",
+        "OPENAI_MODEL_NAME": "NEGOTIATION_WORLD_MODEL",
+        "PLANNER_MODEL_NAME": "NEGOTIATION_PLANNER_MODEL",
+        "PLANNER_TEMPERATURE": "NEGOTIATION_PLANNER_TEMPERATURE",
+        "SUMMARY_MODEL_NAME": "NEGOTIATION_SUMMARY_MODEL",
+        "SUMMARY_TEMPERATURE": "NEGOTIATION_SUMMARY_TEMPERATURE",
+        "EMBEDDINGS_MODEL_NAME": "NEGOTIATION_EMBEDDINGS_MODEL",
+        "EXECUTOR_MODEL_NAME": "NEGOTIATION_EXECUTOR_MODEL",
+        "EXECUTOR_TEMPERATURE": "NEGOTIATION_EXECUTOR_TEMPERATURE",
+    }
+    for old_key, new_key in env_aliases.items():
+        old_value = os.getenv(old_key)
+        if old_value and not os.getenv(new_key):
+            os.environ[new_key] = old_value
+        if old_key in os.environ:
+            del os.environ[old_key]
+
+
+_migrate_negotiation_env_aliases()
 
 from negotiation.negotiation_graph import run_negotiation_agent
 
@@ -45,7 +74,6 @@ app.add_middleware(
 
 # --- Servir el avatar 3D como estático en /avatar ---
 
-BASE_DIR = pathlib.Path(__file__).resolve().parent
 AVATAR_DIR = BASE_DIR / "avatar_app"  # carpeta que has creado
 
 if AVATAR_DIR.exists():

@@ -21,10 +21,19 @@ from .schemas import (
     default_belief_state,
 )
 from .validation import normalize_belief_state
+from env_compat import getenv_float_preferred, getenv_preferred
 
 
-BELIEF_MODEL = os.getenv("BELIEF_MODEL_NAME", os.getenv("SUMMARY_MODEL_NAME", "gpt-4o-mini"))
-BELIEF_TEMPERATURE = float(os.getenv("BELIEF_TEMPERATURE", "0.0"))
+BELIEF_MODEL = getenv_preferred(
+    preferred="NEGOTIATION_BELIEF_MODEL",
+    legacy=("BELIEF_MODEL_NAME", "SUMMARY_MODEL_NAME"),
+    default="gpt-4o-mini",
+)
+BELIEF_TEMPERATURE = getenv_float_preferred(
+    preferred="NEGOTIATION_BELIEF_TEMPERATURE",
+    legacy=("BELIEF_TEMPERATURE",),
+    default=0.0,
+)
 
 _belief_llm = ChatOpenAI(model=BELIEF_MODEL, temperature=BELIEF_TEMPERATURE)
 logger = logging.getLogger(__name__)
