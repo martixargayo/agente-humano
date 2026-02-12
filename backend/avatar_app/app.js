@@ -220,13 +220,14 @@ function cleanupAudio() {
 const canvas = document.getElementById('c');
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(activeTheme.background);
+scene.background = null;
 
 const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.01, 100);
 camera.position.set(0, 0.25, 1.9);
 
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
 renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setClearColor(0x000000, 0);
 renderer.setSize(window.innerWidth, window.innerHeight);
 
 const controls = new OrbitControls(camera, renderer.domElement);
