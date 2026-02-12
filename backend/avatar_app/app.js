@@ -1891,10 +1891,7 @@ async function startConversation() {
 
   if (ui.permissionOverlay) ui.permissionOverlay.style.display = 'none';
   enterIdle();
-
-  const greeting = 'Hola, ¿en qué puedo ayudarte?';
-  updateReplyText(greeting);
-  await enterSpeaking(greeting, { emotion: 'neutral', intensity: 1.0 });
+  updateReplyText('Te escucho. Cuando quieras, empieza tú.');
 }
 
 if (ui.startBtn) {
