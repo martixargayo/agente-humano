@@ -1033,7 +1033,7 @@ loader.load(
       particleMaterial = createParticleMaterial({
         pointSize: POINT_SIZE,
         color: activeTheme.particleColor,
-        blending: THREE.MultiplyBlending,
+        blending: THREE.NormalBlending,
         depthWrite: false,
         blancoMode: 1.0,
         blancoLayer: 0.0,
