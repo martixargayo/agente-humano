@@ -60,8 +60,8 @@ const THEME_PRESETS = {
     densityOutMin: 0.0,
     densityOutMax: 1.0,
     alphaGain: 0.8,
-    // Umbral tipo 1..20 blanco: ink bajo queda recortado y no se pinta.
-    alphaClip: 0.16,
+    // Umbral tipo 1..40 blanco: ink bajo queda recortado y no se pinta.
+    alphaClip: 0.32,
     shadeMin: 0.08,
     shadeMax: 1.0,
     lowDensityAlphaFloor: 0.0,
