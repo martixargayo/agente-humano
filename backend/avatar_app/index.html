@@ -14,6 +14,7 @@
   <style>
     :root {
       color-scheme: dark;
+      --avatar-bg-image: none;
       --glass: rgba(15, 23, 42, 0.35);
       --glass-strong: rgba(15, 23, 42, 0.6);
       --border: rgba(148, 163, 184, 0.25);
@@ -52,7 +53,7 @@
       position: absolute;
       inset: 0;
       background-color: #000;
-      background-image: none;
+      background-image: var(--avatar-bg-image);
       background-repeat: no-repeat;
       background-position: center center;
       background-size: contain;
@@ -61,7 +62,7 @@
 
     html[data-avatar-theme="dark"] #bg,
     html[data-avatar-theme="light"] #bg {
-      background-image: url('./assets/bg/Gemini_Generated_Image_rymww6rymww6rymw.jpg');
+      --avatar-bg-image: url('./assets/bg/Gemini_Generated_Image_rymww6rymww6rymw.jpg');
     }
 
     #bg::after {
@@ -103,7 +104,8 @@
 
     html[data-avatar-theme="whiteColor"] #bg,
     html[data-avatar-theme="white"] #bg {
-      background-image: none !important;
+      /* Imagen dedicada para temas claros (colócala en ./assets/bg/white/). */
+      --avatar-bg-image: url('./assets/bg/white/Gemini_Generated_Image_t1pvlt1pvlt1pvlt.jpg');
     }
 
     html[data-avatar-theme="whiteColor"] #bg::after,
