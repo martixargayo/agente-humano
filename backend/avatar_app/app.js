@@ -49,6 +49,23 @@ const THEME_PRESETS = {
     shadeMin: 0.72,
     shadeMax: 1.0,
   },
+  blanco: {
+    // Basado en la estética original de puntos monocromos,
+    // pero preparado para fondo blanco puro y mejor lectura en bajas densidades.
+    background: 0xffffff,
+    particleColor: 0x2f3640,
+    densityInMin: 0.12,
+    densityInMax: 0.92,
+    densityGamma: 1.0,
+    densityOutMin: 0.24,
+    densityOutMax: 0.82,
+    alphaGain: 1.0,
+    alphaClip: 0.012,
+    shadeMin: 0.86,
+    shadeMax: 1.0,
+    lowDensityAlphaFloor: 0.36,
+    removeHeadCutCap: true,
+  },
   realistic: {
     background: 0xffffff,
     particleColor: 0xffffff,
@@ -81,7 +98,8 @@ const activeTheme = THEME_PRESETS[activeThemeName];
 document.documentElement.dataset.avatarTheme = activeThemeName;
 console.info('[theme] Avatar perceptual theme:', activeThemeName);
 
-if (activeThemeName === 'realistic') {
+const isWhiteCanvasTheme = activeThemeName === 'realistic' || activeThemeName === 'blanco';
+if (isWhiteCanvasTheme) {
   document.body.style.backgroundColor = '#ffffff';
   const stageEl = document.getElementById('stage');
   if (stageEl) stageEl.style.backgroundColor = '#ffffff';
@@ -679,6 +697,7 @@ uniform float uShadeMax;
 uniform float uUseTextureColor;
 uniform float uUseLumaDensity;
 uniform float uSaturation;
+uniform float uLowDensityAlphaFloor;
 
 varying vec2 vUv;
 varying float vHeadWeight;
@@ -705,7 +724,8 @@ void main() {
   float densityNorm = smoothstep(uDensityInMin, uDensityInMax, densityBase);
   float density = mix(uDensityOutMin, uDensityOutMax, pow(densityNorm, uDensityGamma));
 
-  float alpha = circle * density * uAlphaGain;
+  float alphaDensity = mix(uLowDensityAlphaFloor, 1.0, density);
+  float alpha = circle * alphaDensity * uAlphaGain;
   if (alpha < uAlphaClip) discard;
 
   vec3 baseColor = mix(uColor, texColor, uUseTextureColor);
@@ -949,6 +969,7 @@ loader.load(
         uUseTextureColor: { value: activeTheme.useTextureColor ? 1.0 : 0.0 },
         uUseLumaDensity: { value: activeTheme.useLumaDensity === false ? 0.0 : 1.0 },
         uSaturation: { value: activeTheme.saturation ?? 1.0 },
+        uLowDensityAlphaFloor: { value: activeTheme.lowDensityAlphaFloor ?? 0.0 },
 
         uTime: { value: 0.0 },
         uGlobalAmp: { value: 1.5 },
