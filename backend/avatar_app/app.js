@@ -95,8 +95,15 @@ function resolveTheme() {
   const urlTheme = URL_PARAMS.get('theme');
   if (!urlTheme) return DEFAULT_THEME;
 
-  if (urlTheme === 'blanco') return 'white';
-  if (THEME_PRESETS[urlTheme]) return urlTheme;
+  const normalizedTheme = urlTheme.trim();
+  const lowerTheme = normalizedTheme.toLowerCase();
+
+  if (lowerTheme === 'blanco') return 'white';
+  if (lowerTheme === 'whitecolor' || lowerTheme === 'white-color') return 'whiteColor';
+
+  if (THEME_PRESETS[normalizedTheme]) return normalizedTheme;
+  if (THEME_PRESETS[lowerTheme]) return lowerTheme;
+
   return DEFAULT_THEME;
 }
 
@@ -1033,7 +1040,7 @@ loader.load(
       },
     });
 
-    if (activeThemeName === 'white' || activeThemeName === 'blanco') {
+    if (activeThemeName === 'white' || activeThemeName === 'whiteColor' || activeThemeName === 'blanco') {
       particleMaterial = createParticleMaterial({
         pointSize: POINT_SIZE,
         color: activeTheme.particleColor,
