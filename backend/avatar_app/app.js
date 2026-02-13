@@ -49,21 +49,21 @@ const THEME_PRESETS = {
     shadeMin: 0.72,
     shadeMax: 1.0,
   },
-  blanco: {
-    // Basado en la estética original de puntos monocromos,
-    // pero preparado para fondo blanco puro y mejor lectura en bajas densidades.
+  white: {
+    // Fondo blanco: sombra = más tinta (más presencia), luz = menos tinta.
     background: 0xffffff,
-    particleColor: 0x2f3640,
-    densityInMin: 0.12,
-    densityInMax: 0.92,
+    particleColor: 0x111111,
+    densityInMin: 0.0,
+    densityInMax: 1.0,
     densityGamma: 1.0,
-    densityOutMin: 0.24,
-    densityOutMax: 0.82,
+    densityOutMin: 0.0,
+    densityOutMax: 1.0,
     alphaGain: 1.0,
-    alphaClip: 0.012,
-    shadeMin: 0.86,
+    alphaClip: 0.03,
+    shadeMin: 0.45,
     shadeMax: 1.0,
-    lowDensityAlphaFloor: 0.36,
+    lowDensityAlphaFloor: 0.18,
+    invertDensityAsInk: true,
     removeHeadCutCap: true,
   },
   realistic: {
@@ -98,7 +98,7 @@ const activeTheme = THEME_PRESETS[activeThemeName];
 document.documentElement.dataset.avatarTheme = activeThemeName;
 console.info('[theme] Avatar perceptual theme:', activeThemeName);
 
-const isWhiteCanvasTheme = activeThemeName === 'realistic' || activeThemeName === 'blanco';
+const isWhiteCanvasTheme = activeThemeName === 'realistic' || activeThemeName === 'white';
 if (isWhiteCanvasTheme) {
   document.body.style.backgroundColor = '#ffffff';
   const stageEl = document.getElementById('stage');
@@ -698,10 +698,7 @@ uniform float uUseTextureColor;
 uniform float uUseLumaDensity;
 uniform float uSaturation;
 uniform float uLowDensityAlphaFloor;
-uniform float uBlancoMode;
-uniform float uBlancoLayer;
-uniform float uBlancoInkGamma;
-uniform float uFeatureBoost;
+uniform float uInvertDensityAsInk;
 
 varying vec2 vUv;
 varying float vHeadWeight;
@@ -739,47 +736,15 @@ void main() {
 
   float densityNorm = smoothstep(uDensityInMin, uDensityInMax, densityBase);
   float density = mix(uDensityOutMin, uDensityOutMax, pow(densityNorm, uDensityGamma));
+  float ink = mix(density, 1.0 - density, uInvertDensityAsInk);
 
-  if (uBlancoMode > 0.5) {
-    float ink = pow(clamp(1.0 - densityRaw, 0.0, 1.0), uBlancoInkGamma);
-
-    float eyeL = ellipseMask(vUv, vec2(0.34, 0.60), vec2(0.12, 0.08));
-    float eyeR = ellipseMask(vUv, vec2(0.66, 0.60), vec2(0.12, 0.08));
-    float browL = ellipseMask(vUv, vec2(0.34, 0.70), vec2(0.15, 0.06));
-    float browR = ellipseMask(vUv, vec2(0.66, 0.70), vec2(0.15, 0.06));
-    float nose = bandMask(vUv.x, 0.43, 0.57, 0.05) * bandMask(vUv.y, 0.36, 0.64, 0.06);
-    float nostril = bandMask(vUv.x, 0.40, 0.60, 0.08) * bandMask(vUv.y, 0.33, 0.44, 0.05);
-    float mouth = bandMask(vUv.x, 0.34, 0.66, 0.06) * bandMask(vUv.y, 0.21, 0.34, 0.05);
-    float jaw = (1.0 - bandMask(vUv.x, 0.26, 0.74, 0.08)) * bandMask(vUv.y, 0.10, 0.34, 0.07);
-    float featureMask = clamp(max(max(eyeL, eyeR), max(browL, browR)) + nose * 0.8 + nostril + mouth + jaw * 0.65, 0.0, 1.0);
-
-    float alpha;
-    vec3 finalColor;
-    if (uBlancoLayer < 0.5) {
-      float alphaFloor = max(uLowDensityAlphaFloor, 0.25);
-      float softInk = ink * 0.7;
-      alpha = circle * clamp(alphaFloor + softInk * 0.45, alphaFloor, 0.92) * uAlphaGain;
-      finalColor = mix(vec3(0.68), vec3(0.37), softInk);
-    } else {
-      float featureInk = clamp(ink * 0.45 + featureMask * uFeatureBoost, 0.0, 1.0);
-      float alphaFloor = 0.06 + 0.39 * featureMask;
-      alpha = circle * clamp(alphaFloor + featureInk * 0.9, 0.0, 0.98) * uAlphaGain;
-      finalColor = mix(vec3(0.21), vec3(0.03), featureInk);
-    }
-
-    if (alpha < uAlphaClip) discard;
-    gl_FragColor = vec4(finalColor, alpha);
-    return;
-  }
-
-  float alphaDensity = mix(uLowDensityAlphaFloor, 1.0, density);
-  float alpha = circle * alphaDensity * uAlphaGain;
+  float alpha = circle * (uLowDensityAlphaFloor + ink * (1.0 - uLowDensityAlphaFloor)) * uAlphaGain;
   if (alpha < uAlphaClip) discard;
 
   vec3 baseColor = mix(uColor, texColor, uUseTextureColor);
   float baseLuma = dot(baseColor, vec3(0.2126, 0.7152, 0.0722));
   baseColor = mix(vec3(baseLuma), baseColor, uSaturation);
-  vec3 finalColor = mix(baseColor * uShadeMin, baseColor * uShadeMax, density);
+  vec3 finalColor = mix(baseColor * uShadeMax, baseColor * uShadeMin, ink);
   gl_FragColor = vec4(finalColor, alpha);
 }
 `;
@@ -1029,10 +994,7 @@ loader.load(
         uUseLumaDensity: { value: activeTheme.useLumaDensity === false ? 0.0 : 1.0 },
         uSaturation: { value: activeTheme.saturation ?? 1.0 },
         uLowDensityAlphaFloor: { value: activeTheme.lowDensityAlphaFloor ?? 0.0 },
-        uBlancoMode: { value: blancoMode },
-        uBlancoLayer: { value: blancoLayer },
-        uBlancoInkGamma: { value: blancoInkGamma },
-        uFeatureBoost: { value: featureBoost },
+        uInvertDensityAsInk: { value: activeTheme.invertDensityAsInk ? 1.0 : 0.0 },
 
         uTime: { value: 0.0 },
         uGlobalAmp: { value: 1.5 },
@@ -1083,25 +1045,6 @@ loader.load(
         blancoInkGamma: 2.0,
         featureBoost: 0.86,
       });
-
-      particleMaterial = baseMaterial;
-      particleMaterials = [baseMaterial, featureMaterial];
-
-      particlePoints = new THREE.Points(particlesGeo, baseMaterial);
-      particlePoints.frustumCulled = false;
-      particlePoints.renderOrder = 2;
-
-      particlePointsDetail = new THREE.Points(particlesGeo, featureMaterial);
-      particlePointsDetail.frustumCulled = false;
-      particlePointsDetail.renderOrder = 3;
-    } else {
-      particleMaterial = createParticleMaterial();
-      particleMaterials = [particleMaterial];
-      particlePoints = new THREE.Points(particlesGeo, particleMaterial);
-      particlePoints.frustumCulled = false;
-      particlePoints.renderOrder = 2;
-      particlePointsDetail = null;
-    }
 
     if (!activeTheme.removeHeadCutCap) {
       const capGeometry = new THREE.CircleGeometry(HEAD_CUT_CAP.radius, 96);
@@ -1645,32 +1588,10 @@ function animate() {
       offY = 0.01 * Math.sin(elapsed * 0.9) + 0.005 * Math.sin(elapsed * 0.37);
     }
 
-    for (const mat of particleMaterials) {
-      mat.uniforms.uTime.value = elapsed;
-      mat.uniforms.uTalk.value = AvatarState.talkLevel;
-      mat.uniforms.uRestOpen.value = 0.03;
-      mat.uniforms.uDebugHeadWeight.value = DebugView.headWeight ? 1.0 : 0.0;
-
-      mat.uniforms.uHeadRot.value.set(
-        head.x + microPitch + nodPitch,
-        head.y + microYaw,
-        head.z + microRoll
-      );
-
-      mat.uniforms.uBodyRot.value.set(
-        body.x + microPitch * 0.25,
-        body.y + microYaw * 0.25,
-        body.z + microRoll * 0.25
-      );
-
-      mat.uniforms.uBodyOffset.value.set(0.0, offY, 0.0);
-
-      // ✅ (CAMBIO #1) pivotes live SOLO cuando estás en modo editor
-      if (DEBUG_EDIT_ENABLED) {
-        const t = window.NeckTuning;
-        mat.uniforms.uNeckPivot.value.set(0.0, t.neckPivotY, 0.0);
-        mat.uniforms.uBodyPivot.value.set(0.0, t.bodyPivotY, 0.0);
-      }
+    if (DEBUG_EDIT_ENABLED) {
+      const t = window.NeckTuning;
+      particleMaterial.uniforms.uNeckPivot.value.set(0.0, t.neckPivotY, 0.0);
+      particleMaterial.uniforms.uBodyPivot.value.set(0.0, t.bodyPivotY, 0.0);
     }
   }
 
