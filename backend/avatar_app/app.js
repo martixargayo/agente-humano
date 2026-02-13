@@ -68,6 +68,7 @@ const THEME_PRESETS = {
     lowDensityAlphaFloor: 0.0,
     invertDensityAsInk: true,
     inkFloor: 0.21,
+    inkAlphaFloor: 0.42,
     removeHeadCutCap: true,
   },
   whiteColor: {
@@ -86,6 +87,7 @@ const THEME_PRESETS = {
     lowDensityAlphaFloor: 0.0,
     invertDensityAsInk: true,
     inkFloor: 0.21,
+    inkAlphaFloor: 0.42,
     useTextureColor: true,
     useLumaDensity: true,
     saturation: 1.0,
@@ -717,6 +719,7 @@ uniform float uSaturation;
 uniform float uLowDensityAlphaFloor;
 uniform float uInvertDensityAsInk;
 uniform float uInkFloor;
+uniform float uInkAlphaFloor;
 
 varying vec2 vUv;
 varying float vHeadWeight;
@@ -756,8 +759,9 @@ void main() {
   float density = mix(uDensityOutMin, uDensityOutMax, pow(densityNorm, uDensityGamma));
   float ink = mix(density, 1.0 - density, uInvertDensityAsInk);
   float inkClamped = max(ink, uInkFloor);
+  float inkAlpha = max(ink, uInkAlphaFloor);
 
-  float alpha = circle * (uLowDensityAlphaFloor + inkClamped * (1.0 - uLowDensityAlphaFloor)) * uAlphaGain;
+  float alpha = circle * (uLowDensityAlphaFloor + inkAlpha * (1.0 - uLowDensityAlphaFloor)) * uAlphaGain;
   if (alpha < uAlphaClip) discard;
 
   vec3 baseColor = mix(uColor, texColor, uUseTextureColor);
@@ -1015,6 +1019,7 @@ loader.load(
         uLowDensityAlphaFloor: { value: activeTheme.lowDensityAlphaFloor ?? 0.0 },
         uInvertDensityAsInk: { value: activeTheme.invertDensityAsInk ? 1.0 : 0.0 },
         uInkFloor: { value: activeTheme.inkFloor ?? 0.0 },
+        uInkAlphaFloor: { value: activeTheme.inkAlphaFloor ?? 0.0 },
 
         uTime: { value: 0.0 },
         uGlobalAmp: { value: 1.5 },
