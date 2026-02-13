@@ -125,7 +125,9 @@ if (isWhiteCanvasTheme) {
   const bgEl = document.getElementById('bg');
   if (bgEl) {
     bgEl.style.backgroundColor = canvasBg;
-    bgEl.style.backgroundImage = 'none';
+    // Mantener la imagen de fondo definida por CSS para white/whiteColor.
+    // Si forzamos "none" aquí, nunca se mostrará el arte del tema claro.
+    bgEl.style.backgroundImage = '';
   }
 }
 
