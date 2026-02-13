@@ -120,6 +120,7 @@ GOOGLE_STT_MODEL = os.getenv("GOOGLE_STT_MODEL", "latest_long")
 GOOGLE_STT_LANGUAGE = os.getenv("GOOGLE_STT_LANGUAGE", "es-ES")
 GOOGLE_STT_PUNCT = os.getenv("GOOGLE_STT_PUNCTUATION", "true").lower() == "true"
 GOOGLE_STT_ENCODING = os.getenv("GOOGLE_STT_ENCODING", "WEBM_OPUS")
+OPENAI_STT_MODEL = os.getenv("OPENAI_STT_MODEL", "gpt-4o-mini-transcribe")
 
 stt_config = speech.RecognitionConfig(
     language_code=GOOGLE_STT_LANGUAGE,
@@ -127,6 +128,17 @@ stt_config = speech.RecognitionConfig(
     model=GOOGLE_STT_MODEL,
     encoding=getattr(speech.RecognitionConfig.AudioEncoding, GOOGLE_STT_ENCODING),
 )
+
+
+def _guess_transcription_filename(upload: UploadFile) -> str:
+    ct = (upload.content_type or "").lower()
+    if "ogg" in ct:
+        return "audio.ogg"
+    if "mp4" in ct or "mpeg" in ct:
+        return "audio.mp4"
+    if "wav" in ct:
+        return "audio.wav"
+    return "audio.webm"
 
 # --- OpenAI Text-to-Speech (salida de audio) ---
 
@@ -518,32 +530,44 @@ def demo_page():
 
 @app.post("/stt_google")
 async def stt_google(file: UploadFile = File(...)):
-    if speech_client is None:
-        raise HTTPException(
-            status_code=503,
-            detail="Google STT no está configurado en este entorno.",
-        )
+    audio_bytes = await file.read()
+    if not audio_bytes:
+        raise HTTPException(status_code=400, detail="Archivo de audio vacío.")
 
-    try:
-        audio_bytes = await file.read()
-        audio = speech.RecognitionAudio(content=audio_bytes)
+    if speech_client is not None:
+        try:
+            audio = speech.RecognitionAudio(content=audio_bytes)
+            response = speech_client.recognize(
+                config=stt_config,
+                audio=audio
+            )
 
-        response = speech_client.recognize(
-            config=stt_config,
-            audio=audio
-        )
+            text = ""
+            for result in response.results:
+                text += result.alternatives[0].transcript + " "
 
-        text = ""
-        for result in response.results:
-            text += result.alternatives[0].transcript + " "
+            return {"text": text.strip()}
+        except Exception as exc:
+            logger.warning("google_stt_runtime_error=%s", exc)
 
-        return {"text": text.strip()}
+    if openai_client is not None:
+        try:
+            transcription = openai_client.audio.transcriptions.create(
+                model=OPENAI_STT_MODEL,
+                file=(_guess_transcription_filename(file), audio_bytes),
+                language=GOOGLE_STT_LANGUAGE.split("-")[0],
+            )
+            text = (getattr(transcription, "text", "") or "").strip()
+            if not text:
+                raise ValueError("Transcripción vacía")
+            return {"text": text}
+        except Exception as exc:
+            logger.warning("openai_stt_runtime_error=%s", exc)
 
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error en Google STT: {e}",
-        )
+    raise HTTPException(
+        status_code=503,
+        detail="No hay proveedor STT disponible (Google/OpenAI).",
+    )
 
 @app.post("/tts_openai")
 async def tts_openai(payload: TTSRequest):
