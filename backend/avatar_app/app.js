@@ -89,7 +89,10 @@ const THEME_PRESETS = {
 
 function resolveTheme() {
   const urlTheme = URL_PARAMS.get('theme');
-  if (urlTheme && THEME_PRESETS[urlTheme]) return urlTheme;
+  if (!urlTheme) return DEFAULT_THEME;
+
+  if (urlTheme === 'blanco') return 'white';
+  if (THEME_PRESETS[urlTheme]) return urlTheme;
   return DEFAULT_THEME;
 }
 
@@ -1025,7 +1028,7 @@ loader.load(
       },
     });
 
-    if (activeThemeName === 'blanco') {
+    if (activeThemeName === 'white' || activeThemeName === 'blanco') {
       const baseMaterial = createParticleMaterial({
         pointSize: POINT_SIZE,
         color: 0x6f7680,
@@ -1045,6 +1048,25 @@ loader.load(
         blancoInkGamma: 2.0,
         featureBoost: 0.86,
       });
+
+      particleMaterial = baseMaterial;
+      particleMaterials = [baseMaterial, featureMaterial];
+
+      particlePoints = new THREE.Points(particlesGeo, baseMaterial);
+      particlePoints.frustumCulled = false;
+      particlePoints.renderOrder = 2;
+
+      particlePointsDetail = new THREE.Points(particlesGeo, featureMaterial);
+      particlePointsDetail.frustumCulled = false;
+      particlePointsDetail.renderOrder = 3;
+    } else {
+      particleMaterial = createParticleMaterial();
+      particleMaterials = [particleMaterial];
+      particlePoints = new THREE.Points(particlesGeo, particleMaterial);
+      particlePoints.frustumCulled = false;
+      particlePoints.renderOrder = 2;
+      particlePointsDetail = null;
+    }
 
     if (!activeTheme.removeHeadCutCap) {
       const capGeometry = new THREE.CircleGeometry(HEAD_CUT_CAP.radius, 96);
@@ -1588,10 +1610,31 @@ function animate() {
       offY = 0.01 * Math.sin(elapsed * 0.9) + 0.005 * Math.sin(elapsed * 0.37);
     }
 
-    if (DEBUG_EDIT_ENABLED) {
-      const t = window.NeckTuning;
-      particleMaterial.uniforms.uNeckPivot.value.set(0.0, t.neckPivotY, 0.0);
-      particleMaterial.uniforms.uBodyPivot.value.set(0.0, t.bodyPivotY, 0.0);
+    for (const mat of particleMaterials) {
+      mat.uniforms.uTime.value = elapsed;
+      mat.uniforms.uTalk.value = AvatarState.talkLevel;
+      mat.uniforms.uRestOpen.value = 0.03;
+      mat.uniforms.uDebugHeadWeight.value = DebugView.headWeight ? 1.0 : 0.0;
+
+      mat.uniforms.uHeadRot.value.set(
+        head.x + microPitch + nodPitch,
+        head.y + microYaw,
+        head.z + microRoll
+      );
+
+      mat.uniforms.uBodyRot.value.set(
+        body.x + microPitch * 0.25,
+        body.y + microYaw * 0.25,
+        body.z + microRoll * 0.25
+      );
+
+      mat.uniforms.uBodyOffset.value.set(0.0, offY, 0.0);
+
+      if (DEBUG_EDIT_ENABLED) {
+        const t = window.NeckTuning;
+        mat.uniforms.uNeckPivot.value.set(0.0, t.neckPivotY, 0.0);
+        mat.uniforms.uBodyPivot.value.set(0.0, t.bodyPivotY, 0.0);
+      }
     }
   }
 
