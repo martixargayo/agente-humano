@@ -49,6 +49,25 @@ const THEME_PRESETS = {
     shadeMin: 0.72,
     shadeMax: 1.0,
   },
+  realistic: {
+    background: 0xffffff,
+    particleColor: 0xffffff,
+    // Para evitar huecos en zonas oscuras (ojos, cejas, etc.)
+    // en este tema no se usa la luminancia como máscara de densidad.
+    densityInMin: 0.0,
+    densityInMax: 1.0,
+    densityGamma: 1.0,
+    densityOutMin: 0.0,
+    densityOutMax: 1.0,
+    alphaGain: 1.0,
+    alphaClip: 0.02,
+    shadeMin: 0.92,
+    shadeMax: 1.0,
+    useTextureColor: true,
+    useLumaDensity: false,
+    saturation: 0.8,
+    removeHeadCutCap: true,
+  },
 };
 
 function resolveTheme() {
@@ -61,6 +80,17 @@ const activeThemeName = resolveTheme();
 const activeTheme = THEME_PRESETS[activeThemeName];
 document.documentElement.dataset.avatarTheme = activeThemeName;
 console.info('[theme] Avatar perceptual theme:', activeThemeName);
+
+if (activeThemeName === 'realistic') {
+  document.body.style.backgroundColor = '#ffffff';
+  const stageEl = document.getElementById('stage');
+  if (stageEl) stageEl.style.backgroundColor = '#ffffff';
+  const bgEl = document.getElementById('bg');
+  if (bgEl) {
+    bgEl.style.backgroundColor = '#ffffff';
+    bgEl.style.backgroundImage = 'none';
+  }
+}
 
 // ============================================================================
 // ✅ Neck Editor state (DEBE existir antes de animate() y keydown)
@@ -646,6 +676,9 @@ uniform float uAlphaGain;
 uniform float uAlphaClip;
 uniform float uShadeMin;
 uniform float uShadeMax;
+uniform float uUseTextureColor;
+uniform float uUseLumaDensity;
+uniform float uSaturation;
 
 varying vec2 vUv;
 varying float vHeadWeight;
@@ -667,7 +700,7 @@ void main() {
 
   vec3 texColor = texture2D(uColorMap, vUv).rgb;
   float densityRaw = (texColor.r + texColor.g + texColor.b) / 3.0;
-  float densityBase = mix(1.0, densityRaw, uUseMap);
+  float densityBase = mix(1.0, densityRaw, uUseMap * uUseLumaDensity);
 
   float densityNorm = smoothstep(uDensityInMin, uDensityInMax, densityBase);
   float density = mix(uDensityOutMin, uDensityOutMax, pow(densityNorm, uDensityGamma));
@@ -675,7 +708,9 @@ void main() {
   float alpha = circle * density * uAlphaGain;
   if (alpha < uAlphaClip) discard;
 
-  vec3 baseColor = uColor;
+  vec3 baseColor = mix(uColor, texColor, uUseTextureColor);
+  float baseLuma = dot(baseColor, vec3(0.2126, 0.7152, 0.0722));
+  baseColor = mix(vec3(baseLuma), baseColor, uSaturation);
   vec3 finalColor = mix(baseColor * uShadeMin, baseColor * uShadeMax, density);
   gl_FragColor = vec4(finalColor, alpha);
 }
@@ -911,6 +946,9 @@ loader.load(
         uAlphaClip: { value: activeTheme.alphaClip },
         uShadeMin: { value: activeTheme.shadeMin },
         uShadeMax: { value: activeTheme.shadeMax },
+        uUseTextureColor: { value: activeTheme.useTextureColor ? 1.0 : 0.0 },
+        uUseLumaDensity: { value: activeTheme.useLumaDensity === false ? 0.0 : 1.0 },
+        uSaturation: { value: activeTheme.saturation ?? 1.0 },
 
         uTime: { value: 0.0 },
         uGlobalAmp: { value: 1.5 },
@@ -945,19 +983,21 @@ loader.load(
     particlePoints.frustumCulled = false;
     particlePoints.renderOrder = 2;
 
-    const capGeometry = new THREE.CircleGeometry(HEAD_CUT_CAP.radius, 96);
-    const capMaterial = new THREE.MeshBasicMaterial({
-      color: 0x000000,
-      transparent: false,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-    });
-    headCutCapMesh = new THREE.Mesh(capGeometry, capMaterial);
-    headCutCapMesh.scale.set(HEAD_CUT_CAP.scaleX, HEAD_CUT_CAP.scaleY, 1.0);
-    headCutCapMesh.position.set(0.0, HEAD_CUT_CAP.y, HEAD_CUT_CAP.z);
-    headCutCapMesh.renderOrder = 1;
+    if (!activeTheme.removeHeadCutCap) {
+      const capGeometry = new THREE.CircleGeometry(HEAD_CUT_CAP.radius, 96);
+      const capMaterial = new THREE.MeshBasicMaterial({
+        color: activeTheme.background,
+        transparent: false,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      });
+      headCutCapMesh = new THREE.Mesh(capGeometry, capMaterial);
+      headCutCapMesh.scale.set(HEAD_CUT_CAP.scaleX, HEAD_CUT_CAP.scaleY, 1.0);
+      headCutCapMesh.position.set(0.0, HEAD_CUT_CAP.y, HEAD_CUT_CAP.z);
+      headCutCapMesh.renderOrder = 1;
 
-    scene.add(headCutCapMesh);
+      scene.add(headCutCapMesh);
+    }
     scene.add(particlePoints);
 
     controls.target.set(0, 0.15, 0);
