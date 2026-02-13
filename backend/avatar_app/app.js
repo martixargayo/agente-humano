@@ -52,17 +52,12 @@ const THEME_PRESETS = {
   white: {
     // Fondo blanco: sombra = más tinta (más presencia), luz = menos tinta.
     background: 0xf7f7f5,
-    particleColor: 0x222222,
-    densityInMin: 0.0,
-    densityInMax: 1.0,
-    densityGamma: 1.0,
-    densityOutMin: 0.0,
-    densityOutMax: 1.0,
-    alphaGain: 0.5,
-    alphaClip: 0.03,
-    shadeMin: 0.65,
+    particleColor: 0x2e2e2e,     // un punto más suave que 0x222222
+    alphaGain: 0.25,
+    alphaClip: 0.06,
+    shadeMin: 0.86,
     shadeMax: 1.0,
-    lowDensityAlphaFloor: 0.03,
+    lowDensityAlphaFloor: 0.01,
     invertDensityAsInk: true,
     removeHeadCutCap: true,
   },
@@ -1037,7 +1032,7 @@ loader.load(
         depthWrite: false,
         blancoMode: 1.0,
         blancoLayer: 0.0,
-        blancoInkGamma: 1.9,
+        blancoInkGamma: 1,
       });
       particleMaterials = [particleMaterial];
 
