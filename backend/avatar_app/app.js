@@ -69,23 +69,24 @@ const THEME_PRESETS = {
     invertDensityAsInk: true,
     removeHeadCutCap: true,
   },
-  realistic: {
-    background: 0xffffff,
+  whiteColor: {
+    // Igual que white en comportamiento tonal/alpha, pero usando el color real de la textura.
+    background: 0xf7f7f5,
     particleColor: 0xffffff,
-    // Para evitar huecos en zonas oscuras (ojos, cejas, etc.)
-    // en este tema no se usa la luminancia como máscara de densidad.
-    densityInMin: 0.0,
-    densityInMax: 1.0,
-    densityGamma: 1.0,
+    densityInMin: 0.08,
+    densityInMax: 0.88,
+    densityGamma: 1.1,
     densityOutMin: 0.0,
     densityOutMax: 1.0,
-    alphaGain: 1.0,
-    alphaClip: 0.02,
-    shadeMin: 0.92,
+    alphaGain: 0.8,
+    alphaClip: 0.32,
+    shadeMin: 0.26,
     shadeMax: 1.0,
+    lowDensityAlphaFloor: 0.0,
+    invertDensityAsInk: true,
     useTextureColor: true,
-    useLumaDensity: false,
-    saturation: 0.8,
+    useLumaDensity: true,
+    saturation: 1.0,
     removeHeadCutCap: true,
   },
 };
@@ -104,7 +105,7 @@ const activeTheme = THEME_PRESETS[activeThemeName];
 document.documentElement.dataset.avatarTheme = activeThemeName;
 console.info('[theme] Avatar perceptual theme:', activeThemeName);
 
-const isWhiteCanvasTheme = activeThemeName === 'realistic' || activeThemeName === 'white';
+const isWhiteCanvasTheme = activeThemeName === 'white' || activeThemeName === 'whiteColor';
 if (isWhiteCanvasTheme) {
   const canvasBg = `#${activeTheme.background.toString(16).padStart(6, '0')}`;
   document.body.style.backgroundColor = canvasBg;
