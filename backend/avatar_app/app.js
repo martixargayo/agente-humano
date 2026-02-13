@@ -50,14 +50,19 @@ const THEME_PRESETS = {
     shadeMax: 1.0,
   },
   white: {
-    // Fondo blanco: sombra = más tinta (más presencia), luz = menos tinta.
+    // Fondo claro con contraste alto en rasgos: luces casi invisibles + sombras marcadas.
     background: 0xf7f7f5,
-    particleColor: 0xfdfdfb,     // puntos casi blancos
-    alphaGain: 0.28,
-    alphaClip: 0.05,
-    shadeMin: 0.08,              // permite llegar a casi negro
+    particleColor: 0xffffff,
+    densityInMin: 0.08,
+    densityInMax: 0.95,
+    densityGamma: 1.25,
+    densityOutMin: 0.0,
+    densityOutMax: 1.0,
+    alphaGain: 0.8,
+    alphaClip: 0.04,
+    shadeMin: 0.08,
     shadeMax: 1.0,
-    lowDensityAlphaFloor: 0.01,
+    lowDensityAlphaFloor: 0.0,
     invertDensityAsInk: true,
     removeHeadCutCap: true,
   },
