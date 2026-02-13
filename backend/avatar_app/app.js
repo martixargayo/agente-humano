@@ -63,7 +63,7 @@ const THEME_PRESETS = {
     // Umbral tipo 1..40 blanco: ink bajo queda recortado y no se pinta.
     alphaClip: 0.32,
     // 30% menos oscuridad en el tono más oscuro del tema white.
-    shadeMin: 0.36,
+    shadeMin: 0.26,
     shadeMax: 1.0,
     lowDensityAlphaFloor: 0.0,
     invertDensityAsInk: true,
