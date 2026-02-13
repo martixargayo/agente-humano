@@ -52,10 +52,10 @@ const THEME_PRESETS = {
   white: {
     // Fondo blanco: sombra = más tinta (más presencia), luz = menos tinta.
     background: 0xf7f7f5,
-    particleColor: 0x2e2e2e,     // un punto más suave que 0x222222
-    alphaGain: 0.25,
-    alphaClip: 0.06,
-    shadeMin: 0.86,
+    particleColor: 0xfdfdfb,     // puntos casi blancos
+    alphaGain: 0.28,
+    alphaClip: 0.05,
+    shadeMin: 0.08,              // permite llegar a casi negro
     shadeMax: 1.0,
     lowDensityAlphaFloor: 0.01,
     invertDensityAsInk: true,
@@ -1032,7 +1032,7 @@ loader.load(
         depthWrite: false,
         blancoMode: 1.0,
         blancoLayer: 0.0,
-        blancoInkGamma: 1,
+        blancoInkGamma: 1.9,
       });
       particleMaterials = [particleMaterial];
 
