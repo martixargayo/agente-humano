@@ -67,6 +67,7 @@ const THEME_PRESETS = {
     shadeMax: 1.0,
     lowDensityAlphaFloor: 0.0,
     invertDensityAsInk: true,
+    inkFloor: 0.21,
     removeHeadCutCap: true,
   },
   whiteColor: {
@@ -84,6 +85,7 @@ const THEME_PRESETS = {
     shadeMax: 1.0,
     lowDensityAlphaFloor: 0.0,
     invertDensityAsInk: true,
+    inkFloor: 0.21,
     useTextureColor: true,
     useLumaDensity: true,
     saturation: 1.0,
@@ -714,6 +716,7 @@ uniform float uUseLumaDensity;
 uniform float uSaturation;
 uniform float uLowDensityAlphaFloor;
 uniform float uInvertDensityAsInk;
+uniform float uInkFloor;
 
 varying vec2 vUv;
 varying float vHeadWeight;
@@ -752,14 +755,15 @@ void main() {
   float densityNorm = smoothstep(uDensityInMin, uDensityInMax, densityBase);
   float density = mix(uDensityOutMin, uDensityOutMax, pow(densityNorm, uDensityGamma));
   float ink = mix(density, 1.0 - density, uInvertDensityAsInk);
+  float inkClamped = max(ink, uInkFloor);
 
-  float alpha = circle * (uLowDensityAlphaFloor + ink * (1.0 - uLowDensityAlphaFloor)) * uAlphaGain;
+  float alpha = circle * (uLowDensityAlphaFloor + inkClamped * (1.0 - uLowDensityAlphaFloor)) * uAlphaGain;
   if (alpha < uAlphaClip) discard;
 
   vec3 baseColor = mix(uColor, texColor, uUseTextureColor);
   float baseLuma = dot(baseColor, vec3(0.2126, 0.7152, 0.0722));
   baseColor = mix(vec3(baseLuma), baseColor, uSaturation);
-  vec3 finalColor = mix(baseColor * uShadeMax, baseColor * uShadeMin, ink);
+  vec3 finalColor = mix(baseColor * uShadeMax, baseColor * uShadeMin, inkClamped);
   gl_FragColor = vec4(finalColor, alpha);
 }
 `;
@@ -1010,6 +1014,7 @@ loader.load(
         uSaturation: { value: activeTheme.saturation ?? 1.0 },
         uLowDensityAlphaFloor: { value: activeTheme.lowDensityAlphaFloor ?? 0.0 },
         uInvertDensityAsInk: { value: activeTheme.invertDensityAsInk ? 1.0 : 0.0 },
+        uInkFloor: { value: activeTheme.inkFloor ?? 0.0 },
 
         uTime: { value: 0.0 },
         uGlobalAmp: { value: 1.5 },
