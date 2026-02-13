@@ -559,11 +559,15 @@ uniform vec3 uBodyRot;
 uniform vec3 uBodyOffset;
 uniform vec3 uNeckPivot;
 uniform vec3 uBodyPivot;
+uniform float uDissolveStart;
+uniform float uDissolveEnd;
+uniform float uDissolveMotionAmp;
 
 attribute vec3 aBasePosition;
 attribute vec3 aRandom;
 attribute float aClusterId;
 attribute vec2 aUv;
+attribute float aHeightFromTop;
 
 // boca
 attribute float aMouthWeight;
@@ -574,6 +578,8 @@ attribute float aHeadWeight;
 
 varying vec2 vUv;
 varying float vHeadWeight;
+varying float vHeightFromTop;
+varying float vDissolveSeed;
 
 float hash11(float p) {
   return fract(sin(p * 127.1) * 43758.5453123);
@@ -625,6 +631,8 @@ vec3 rotateAroundPivot(vec3 p, vec3 pivot, vec3 r) {
 void main() {
   vUv = aUv;
   vHeadWeight = aHeadWeight;
+  vHeightFromTop = aHeightFromTop;
+  vDissolveSeed = aRandom.x;
 
   vec3 pos = aBasePosition;
   float t = uTime;
@@ -682,6 +690,15 @@ void main() {
     + breathOffset
     + mouthOffset;
 
+  float dissolveBand = smoothstep(uDissolveStart, uDissolveEnd, aHeightFromTop);
+  float dissolveWave = sin(uTime * 2.8 + aRandom.x * 17.0 + aBasePosition.y * 9.0);
+  vec3 dissolveOffset = vec3(
+    (aRandom.x - 0.5) * 0.0035,
+    (0.4 + 0.6 * (0.5 + 0.5 * dissolveWave)) * 0.01,
+    (aRandom.y - 0.5) * 0.003
+  ) * dissolveBand * uDissolveMotionAmp;
+  displaced += dissolveOffset;
+
   vec3 bodyPos = rotateAroundPivot(displaced, uBodyPivot, uBodyRot) + uBodyOffset;
   vec3 headPos = rotateAroundPivot(bodyPos, uNeckPivot, uHeadRot);
   vec3 finalPos = mix(bodyPos, headPos, aHeadWeight);
@@ -720,9 +737,19 @@ uniform float uLowDensityAlphaFloor;
 uniform float uInvertDensityAsInk;
 uniform float uInkFloor;
 uniform float uInkAlphaFloor;
+uniform float uDissolveStart;
+uniform float uDissolveEnd;
+uniform float uDissolveStrength;
+uniform float uDissolveSpeed;
 
 varying vec2 vUv;
 varying float vHeadWeight;
+varying float vHeightFromTop;
+varying float vDissolveSeed;
+
+float hash21(vec2 p) {
+  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+}
 
 float ellipseMask(vec2 uv, vec2 center, vec2 radius) {
   vec2 d = (uv - center) / radius;
@@ -762,6 +789,14 @@ void main() {
   float inkAlpha = max(ink, uInkAlphaFloor);
 
   float alpha = circle * (uLowDensityAlphaFloor + inkAlpha * (1.0 - uLowDensityAlphaFloor)) * uAlphaGain;
+
+  float dissolveBand = smoothstep(uDissolveStart, uDissolveEnd, vHeightFromTop);
+  float temporalStep = floor(uTime * uDissolveSpeed * 18.0) / 18.0;
+  float dissolveNoise = hash21(vec2(vDissolveSeed * 173.3, temporalStep + vUv.y * 4.0));
+  float dissolvePulse = 0.65 + 0.35 * sin(uTime * (uDissolveSpeed * 1.7) + vDissolveSeed * 29.0);
+  float dissolveAmount = dissolveBand * (0.45 + 0.55 * dissolveNoise) * dissolvePulse * uDissolveStrength;
+  alpha *= (1.0 - clamp(dissolveAmount, 0.0, 1.0));
+
   if (alpha < uAlphaClip) discard;
 
   vec3 baseColor = mix(uColor, texColor, uUseTextureColor);
@@ -786,6 +821,11 @@ function generateFaceParticlesFromVertices(srcGeometry) {
 
   const posArray = [];
   const uvArray = [];
+  srcGeometry.computeBoundingBox();
+  const box = srcGeometry.boundingBox;
+  const minY = box ? box.min.y : -1.0;
+  const maxY = box ? box.max.y : 1.0;
+  const yRange = Math.max(1e-6, maxY - minY);
 
   for (let i = 0; i < vertexCount; i++) {
     v.fromBufferAttribute(srcPos, i);
@@ -810,6 +850,7 @@ function generateFaceParticlesFromVertices(srcGeometry) {
 
   const randoms = new Float32Array(count * 3);
   const clusterIds = new Float32Array(count);
+  const heightFromTop = new Float32Array(count);
 
   const mouthWeights = new Float32Array(count);
   const mouthSides = new Float32Array(count);
@@ -823,6 +864,9 @@ function generateFaceParticlesFromVertices(srcGeometry) {
 
     const x = positions[i * 3 + 0];
     const y = positions[i * 3 + 1];
+
+    const y01 = (y - minY) / yRange;
+    heightFromTop[i] = THREE.MathUtils.clamp(1.0 - y01, 0.0, 1.0);
 
     const cx = Math.floor((x + 0.4) * 10.0);
     const cy = Math.floor((y + 0.4) * 10.0);
@@ -896,6 +940,7 @@ function generateFaceParticlesFromVertices(srcGeometry) {
   particlesGeo.setAttribute('aBasePosition', new THREE.BufferAttribute(basePositions, 3));
   particlesGeo.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 3));
   particlesGeo.setAttribute('aClusterId', new THREE.BufferAttribute(clusterIds, 1));
+  particlesGeo.setAttribute('aHeightFromTop', new THREE.BufferAttribute(heightFromTop, 1));
   particlesGeo.setAttribute('aMouthWeight', new THREE.BufferAttribute(mouthWeights, 1));
   particlesGeo.setAttribute('aMouthSide', new THREE.BufferAttribute(mouthSides, 1));
   particlesGeo.setAttribute('aHeadWeight', new THREE.BufferAttribute(headWeights, 1));
@@ -1020,6 +1065,11 @@ loader.load(
         uInvertDensityAsInk: { value: activeTheme.invertDensityAsInk ? 1.0 : 0.0 },
         uInkFloor: { value: activeTheme.inkFloor ?? 0.0 },
         uInkAlphaFloor: { value: activeTheme.inkAlphaFloor ?? 0.0 },
+        uDissolveStart: { value: 0.9 },
+        uDissolveEnd: { value: 1.0 },
+        uDissolveStrength: { value: 0.92 },
+        uDissolveSpeed: { value: 1.45 },
+        uDissolveMotionAmp: { value: 1.0 },
 
         uTime: { value: 0.0 },
         uGlobalAmp: { value: 1.5 },
