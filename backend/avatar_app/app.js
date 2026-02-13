@@ -67,25 +67,30 @@ const THEME_PRESETS = {
     shadeMax: 1.0,
     lowDensityAlphaFloor: 0.0,
     invertDensityAsInk: true,
+    inkFloor: 0.21,
+    inkAlphaFloor: 0.42,
     removeHeadCutCap: true,
   },
-  realistic: {
-    background: 0xffffff,
+  whiteColor: {
+    // Igual que white en comportamiento tonal/alpha, pero usando el color real de la textura.
+    background: 0xf7f7f5,
     particleColor: 0xffffff,
-    // Para evitar huecos en zonas oscuras (ojos, cejas, etc.)
-    // en este tema no se usa la luminancia como máscara de densidad.
-    densityInMin: 0.0,
-    densityInMax: 1.0,
-    densityGamma: 1.0,
+    densityInMin: 0.08,
+    densityInMax: 0.88,
+    densityGamma: 1.1,
     densityOutMin: 0.0,
     densityOutMax: 1.0,
-    alphaGain: 1.0,
-    alphaClip: 0.02,
-    shadeMin: 0.92,
+    alphaGain: 0.8,
+    alphaClip: 0.32,
+    shadeMin: 0.26,
     shadeMax: 1.0,
+    lowDensityAlphaFloor: 0.0,
+    invertDensityAsInk: true,
+    inkFloor: 0.21,
+    inkAlphaFloor: 0.42,
     useTextureColor: true,
-    useLumaDensity: false,
-    saturation: 0.8,
+    useLumaDensity: true,
+    saturation: 1.0,
     removeHeadCutCap: true,
   },
 };
@@ -94,8 +99,15 @@ function resolveTheme() {
   const urlTheme = URL_PARAMS.get('theme');
   if (!urlTheme) return DEFAULT_THEME;
 
-  if (urlTheme === 'blanco') return 'white';
-  if (THEME_PRESETS[urlTheme]) return urlTheme;
+  const normalizedTheme = urlTheme.trim();
+  const lowerTheme = normalizedTheme.toLowerCase();
+
+  if (lowerTheme === 'blanco') return 'white';
+  if (lowerTheme === 'whitecolor' || lowerTheme === 'white-color') return 'whiteColor';
+
+  if (THEME_PRESETS[normalizedTheme]) return normalizedTheme;
+  if (THEME_PRESETS[lowerTheme]) return lowerTheme;
+
   return DEFAULT_THEME;
 }
 
@@ -104,7 +116,7 @@ const activeTheme = THEME_PRESETS[activeThemeName];
 document.documentElement.dataset.avatarTheme = activeThemeName;
 console.info('[theme] Avatar perceptual theme:', activeThemeName);
 
-const isWhiteCanvasTheme = activeThemeName === 'realistic' || activeThemeName === 'white';
+const isWhiteCanvasTheme = activeThemeName === 'white' || activeThemeName === 'whiteColor';
 if (isWhiteCanvasTheme) {
   const canvasBg = `#${activeTheme.background.toString(16).padStart(6, '0')}`;
   document.body.style.backgroundColor = canvasBg;
@@ -706,6 +718,8 @@ uniform float uUseLumaDensity;
 uniform float uSaturation;
 uniform float uLowDensityAlphaFloor;
 uniform float uInvertDensityAsInk;
+uniform float uInkFloor;
+uniform float uInkAlphaFloor;
 
 varying vec2 vUv;
 varying float vHeadWeight;
@@ -744,14 +758,16 @@ void main() {
   float densityNorm = smoothstep(uDensityInMin, uDensityInMax, densityBase);
   float density = mix(uDensityOutMin, uDensityOutMax, pow(densityNorm, uDensityGamma));
   float ink = mix(density, 1.0 - density, uInvertDensityAsInk);
+  float inkClamped = max(ink, uInkFloor);
+  float inkAlpha = max(ink, uInkAlphaFloor);
 
-  float alpha = circle * (uLowDensityAlphaFloor + ink * (1.0 - uLowDensityAlphaFloor)) * uAlphaGain;
+  float alpha = circle * (uLowDensityAlphaFloor + inkAlpha * (1.0 - uLowDensityAlphaFloor)) * uAlphaGain;
   if (alpha < uAlphaClip) discard;
 
   vec3 baseColor = mix(uColor, texColor, uUseTextureColor);
   float baseLuma = dot(baseColor, vec3(0.2126, 0.7152, 0.0722));
   baseColor = mix(vec3(baseLuma), baseColor, uSaturation);
-  vec3 finalColor = mix(baseColor * uShadeMax, baseColor * uShadeMin, ink);
+  vec3 finalColor = mix(baseColor * uShadeMax, baseColor * uShadeMin, inkClamped);
   gl_FragColor = vec4(finalColor, alpha);
 }
 `;
@@ -1002,6 +1018,8 @@ loader.load(
         uSaturation: { value: activeTheme.saturation ?? 1.0 },
         uLowDensityAlphaFloor: { value: activeTheme.lowDensityAlphaFloor ?? 0.0 },
         uInvertDensityAsInk: { value: activeTheme.invertDensityAsInk ? 1.0 : 0.0 },
+        uInkFloor: { value: activeTheme.inkFloor ?? 0.0 },
+        uInkAlphaFloor: { value: activeTheme.inkAlphaFloor ?? 0.0 },
 
         uTime: { value: 0.0 },
         uGlobalAmp: { value: 1.5 },
@@ -1032,7 +1050,7 @@ loader.load(
       },
     });
 
-    if (activeThemeName === 'white' || activeThemeName === 'blanco') {
+    if (activeThemeName === 'white' || activeThemeName === 'whiteColor' || activeThemeName === 'blanco') {
       particleMaterial = createParticleMaterial({
         pointSize: POINT_SIZE,
         color: activeTheme.particleColor,
