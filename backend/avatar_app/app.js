@@ -1990,9 +1990,15 @@ async function startConversation() {
   if (ui.permissionError) ui.permissionError.textContent = '';
   const ok = await requestMicPermissions();
   if (!ok) {
+    // Fallback no bloqueante: permitir continuar en modo texto si no hay micro.
     if (ui.permissionError) {
-      ui.permissionError.textContent = 'No pudimos acceder al micrófono. Reintenta.';
+      ui.permissionError.textContent = 'No pudimos acceder al micrófono. Continuamos en modo escritura.';
     }
+    if (ui.permissionOverlay) ui.permissionOverlay.style.display = 'none';
+    setInputMode(InputMode.WRITE);
+    enterIdle();
+    updateReplyText('No detectamos micrófono. Puedes escribir tu mensaje y continuar.');
+    flashStatus('Micrófono no disponible. Modo escritura activado.');
     return;
   }
 
