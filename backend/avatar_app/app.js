@@ -51,18 +51,18 @@ const THEME_PRESETS = {
   },
   white: {
     // Fondo blanco: sombra = más tinta (más presencia), luz = menos tinta.
-    background: 0xffffff,
-    particleColor: 0x111111,
+    background: 0xf7f7f5,
+    particleColor: 0x222222,
     densityInMin: 0.0,
     densityInMax: 1.0,
     densityGamma: 1.0,
     densityOutMin: 0.0,
     densityOutMax: 1.0,
-    alphaGain: 1.0,
+    alphaGain: 0.5,
     alphaClip: 0.03,
-    shadeMin: 0.45,
+    shadeMin: 0.65,
     shadeMax: 1.0,
-    lowDensityAlphaFloor: 0.18,
+    lowDensityAlphaFloor: 0.03,
     invertDensityAsInk: true,
     removeHeadCutCap: true,
   },
@@ -103,12 +103,13 @@ console.info('[theme] Avatar perceptual theme:', activeThemeName);
 
 const isWhiteCanvasTheme = activeThemeName === 'realistic' || activeThemeName === 'white';
 if (isWhiteCanvasTheme) {
-  document.body.style.backgroundColor = '#ffffff';
+  const canvasBg = `#${activeTheme.background.toString(16).padStart(6, '0')}`;
+  document.body.style.backgroundColor = canvasBg;
   const stageEl = document.getElementById('stage');
-  if (stageEl) stageEl.style.backgroundColor = '#ffffff';
+  if (stageEl) stageEl.style.backgroundColor = canvasBg;
   const bgEl = document.getElementById('bg');
   if (bgEl) {
-    bgEl.style.backgroundColor = '#ffffff';
+    bgEl.style.backgroundColor = canvasBg;
     bgEl.style.backgroundImage = 'none';
   }
 }
@@ -1029,36 +1030,21 @@ loader.load(
     });
 
     if (activeThemeName === 'white' || activeThemeName === 'blanco') {
-      const baseMaterial = createParticleMaterial({
+      particleMaterial = createParticleMaterial({
         pointSize: POINT_SIZE,
-        color: 0x6f7680,
+        color: activeTheme.particleColor,
         blending: THREE.MultiplyBlending,
         depthWrite: false,
         blancoMode: 1.0,
         blancoLayer: 0.0,
         blancoInkGamma: 1.9,
       });
-      const featureMaterial = createParticleMaterial({
-        pointSize: POINT_SIZE * 1.14,
-        color: 0x14171b,
-        blending: THREE.NormalBlending,
-        depthWrite: false,
-        blancoMode: 1.0,
-        blancoLayer: 1.0,
-        blancoInkGamma: 2.0,
-        featureBoost: 0.86,
-      });
+      particleMaterials = [particleMaterial];
 
-      particleMaterial = baseMaterial;
-      particleMaterials = [baseMaterial, featureMaterial];
-
-      particlePoints = new THREE.Points(particlesGeo, baseMaterial);
+      particlePoints = new THREE.Points(particlesGeo, particleMaterial);
       particlePoints.frustumCulled = false;
       particlePoints.renderOrder = 2;
-
-      particlePointsDetail = new THREE.Points(particlesGeo, featureMaterial);
-      particlePointsDetail.frustumCulled = false;
-      particlePointsDetail.renderOrder = 3;
+      particlePointsDetail = null;
     } else {
       particleMaterial = createParticleMaterial();
       particleMaterials = [particleMaterial];
