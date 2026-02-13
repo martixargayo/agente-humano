@@ -741,6 +741,7 @@ uniform float uDissolveStart;
 uniform float uDissolveEnd;
 uniform float uDissolveStrength;
 uniform float uDissolveSpeed;
+uniform float uTime;
 
 varying vec2 vUv;
 varying float vHeadWeight;
