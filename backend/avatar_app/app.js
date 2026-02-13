@@ -703,6 +703,18 @@ uniform float uInvertDensityAsInk;
 varying vec2 vUv;
 varying float vHeadWeight;
 
+float ellipseMask(vec2 uv, vec2 center, vec2 radius) {
+  vec2 d = (uv - center) / radius;
+  float r = length(d);
+  return 1.0 - smoothstep(0.82, 1.0, r);
+}
+
+float bandMask(float x, float minX, float maxX, float feather) {
+  float left = smoothstep(minX - feather, minX + feather, x);
+  float right = 1.0 - smoothstep(maxX - feather, maxX + feather, x);
+  return clamp(left * right, 0.0, 1.0);
+}
+
 void main() {
   vec2 p = gl_PointCoord * 2.0 - 1.0;
   float r2 = dot(p, p);
@@ -884,7 +896,9 @@ const HEAD_CUT_CAP = {
 const loader = new GLTFLoader();
 
 let particleMaterial = null;
+let particleMaterials = [];
 let particlePoints = null;
+let particlePointsDetail = null;
 let headCutCapMesh = null;
 
 loader.load(
@@ -945,15 +959,24 @@ loader.load(
 
     const t = window.NeckTuning;
 
-    particleMaterial = new THREE.ShaderMaterial({
+    const createParticleMaterial = ({
+      pointSize = POINT_SIZE,
+      color = activeTheme.particleColor,
+      blending = THREE.NormalBlending,
+      depthWrite = true,
+      blancoMode = 0.0,
+      blancoLayer = 0.0,
+      blancoInkGamma = 1.85,
+      featureBoost = 0.0,
+    } = {}) => new THREE.ShaderMaterial({
       vertexShader,
       fragmentShader,
       transparent: true,
-      depthWrite: true,
-      blending: THREE.NormalBlending,
+      depthWrite,
+      blending,
       uniforms: {
-        uPointSize: { value: POINT_SIZE },
-        uColor: { value: new THREE.Color(activeTheme.particleColor) },
+        uPointSize: { value: pointSize },
+        uColor: { value: new THREE.Color(color) },
         uColorMap: { value: colorMap },
         uUseMap: { value: colorMap ? 1.0 : 0.0 },
 
@@ -1002,9 +1025,26 @@ loader.load(
       },
     });
 
-    particlePoints = new THREE.Points(particlesGeo, particleMaterial);
-    particlePoints.frustumCulled = false;
-    particlePoints.renderOrder = 2;
+    if (activeThemeName === 'blanco') {
+      const baseMaterial = createParticleMaterial({
+        pointSize: POINT_SIZE,
+        color: 0x6f7680,
+        blending: THREE.MultiplyBlending,
+        depthWrite: false,
+        blancoMode: 1.0,
+        blancoLayer: 0.0,
+        blancoInkGamma: 1.9,
+      });
+      const featureMaterial = createParticleMaterial({
+        pointSize: POINT_SIZE * 1.14,
+        color: 0x14171b,
+        blending: THREE.NormalBlending,
+        depthWrite: false,
+        blancoMode: 1.0,
+        blancoLayer: 1.0,
+        blancoInkGamma: 2.0,
+        featureBoost: 0.86,
+      });
 
     if (!activeTheme.removeHeadCutCap) {
       const capGeometry = new THREE.CircleGeometry(HEAD_CUT_CAP.radius, 96);
@@ -1022,6 +1062,7 @@ loader.load(
       scene.add(headCutCapMesh);
     }
     scene.add(particlePoints);
+    if (particlePointsDetail) scene.add(particlePointsDetail);
 
     controls.target.set(0, 0.15, 0);
     controls.update();
@@ -1515,19 +1556,12 @@ function animate() {
   const elapsed = clock.getElapsedTime();
   const delta = clock.getDelta();
 
-  if (particleMaterial) {
-    particleMaterial.uniforms.uTime.value = elapsed;
-
+  if (particleMaterials.length) {
     let targetTalk = 0.0;
     if (lipHoldActive) targetTalk = 1.0;
     else targetTalk = getTalkLevelFromAudio();
 
     AvatarState.talkLevel = targetTalk;
-    particleMaterial.uniforms.uTalk.value = AvatarState.talkLevel;
-
-    particleMaterial.uniforms.uRestOpen.value = 0.03;
-
-    particleMaterial.uniforms.uDebugHeadWeight.value = DebugView.headWeight ? 1.0 : 0.0;
 
     updateChannel(MotionState.head, MotionConfig.head, elapsed, delta);
     updateChannel(MotionState.body, MotionConfig.body, elapsed, delta);
@@ -1547,24 +1581,12 @@ function animate() {
     const nodPitch = updateNod(elapsed, delta);
 
     const head = MotionState.head.current;
-    particleMaterial.uniforms.uHeadRot.value.set(
-      head.x + microPitch + nodPitch,
-      head.y + microYaw,
-      head.z + microRoll
-    );
-
     const body = MotionState.body.current;
-    particleMaterial.uniforms.uBodyRot.value.set(
-      body.x + microPitch * 0.25,
-      body.y + microYaw * 0.25,
-      body.z + microRoll * 0.25
-    );
 
     let offY = 0.0;
     if (AvatarState.idleMotionEnabled) {
       offY = 0.01 * Math.sin(elapsed * 0.9) + 0.005 * Math.sin(elapsed * 0.37);
     }
-    particleMaterial.uniforms.uBodyOffset.value.set(0.0, offY, 0.0);
 
     if (DEBUG_EDIT_ENABLED) {
       const t = window.NeckTuning;
@@ -1576,6 +1598,10 @@ function animate() {
   if (particlePoints) {
     particlePoints.rotation.set(0, 0, 0);
     particlePoints.position.set(0, 0, 0);
+  }
+  if (particlePointsDetail) {
+    particlePointsDetail.rotation.set(0, 0, 0);
+    particlePointsDetail.position.set(0, 0, 0);
   }
 
   controls.update();
