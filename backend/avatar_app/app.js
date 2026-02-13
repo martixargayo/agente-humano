@@ -54,12 +54,14 @@ const THEME_PRESETS = {
     background: 0xf7f7f5,
     particleColor: 0xffffff,
     densityInMin: 0.08,
-    densityInMax: 0.95,
-    densityGamma: 1.25,
+    // Empuja más área al tramo claro para que más puntos queden "blancos/invisibles".
+    densityInMax: 0.88,
+    densityGamma: 1.1,
     densityOutMin: 0.0,
     densityOutMax: 1.0,
     alphaGain: 0.8,
-    alphaClip: 0.04,
+    // Umbral tipo 1..20 blanco: ink bajo queda recortado y no se pinta.
+    alphaClip: 0.16,
     shadeMin: 0.08,
     shadeMax: 1.0,
     lowDensityAlphaFloor: 0.0,
