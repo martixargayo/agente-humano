@@ -75,12 +75,19 @@ const DEMO_MODE_CONFIG = {
   },
 };
 
+const DEMO_MODE_ALIASES = {
+  'demo-feedback': 'demo_feedback',
+  demofeedback: 'demo_feedback',
+};
+
 export function createDemoFeedbackMode({
   urlParams = new URLSearchParams(window.location.search),
   onFinish = () => {},
 } = {}) {
   let finishHook = onFinish;
-  const modeName = urlParams.get('mode') || '';
+  const rawModeName = urlParams.get('mode') || '';
+  const normalizedModeName = rawModeName.trim().toLowerCase();
+  const modeName = DEMO_MODE_ALIASES[normalizedModeName] || normalizedModeName;
   const config = DEMO_MODE_CONFIG[modeName] || null;
 
   const state = {
