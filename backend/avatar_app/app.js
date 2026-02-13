@@ -747,6 +747,10 @@ varying float vHeadWeight;
 varying float vHeightFromTop;
 varying float vDissolveSeed;
 
+float hash21(vec2 p) {
+  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+}
+
 float ellipseMask(vec2 uv, vec2 center, vec2 radius) {
   vec2 d = (uv - center) / radius;
   float r = length(d);
