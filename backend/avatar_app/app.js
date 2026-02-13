@@ -52,8 +52,8 @@ const THEME_PRESETS = {
   realistic: {
     background: 0xffffff,
     particleColor: 0xffffff,
-    // Mantiene la misma dinámica de densidad que dark,
-    // pero coloreando cada punto con la textura del rostro.
+    // Para evitar huecos en zonas oscuras (ojos, cejas, etc.)
+    // en este tema no se usa la luminancia como máscara de densidad.
     densityInMin: 0.0,
     densityInMax: 1.0,
     densityGamma: 1.0,
@@ -64,6 +64,8 @@ const THEME_PRESETS = {
     shadeMin: 0.92,
     shadeMax: 1.0,
     useTextureColor: true,
+    useLumaDensity: false,
+    saturation: 0.8,
     removeHeadCutCap: true,
   },
 };
@@ -675,6 +677,8 @@ uniform float uAlphaClip;
 uniform float uShadeMin;
 uniform float uShadeMax;
 uniform float uUseTextureColor;
+uniform float uUseLumaDensity;
+uniform float uSaturation;
 
 varying vec2 vUv;
 varying float vHeadWeight;
@@ -696,7 +700,7 @@ void main() {
 
   vec3 texColor = texture2D(uColorMap, vUv).rgb;
   float densityRaw = (texColor.r + texColor.g + texColor.b) / 3.0;
-  float densityBase = mix(1.0, densityRaw, uUseMap);
+  float densityBase = mix(1.0, densityRaw, uUseMap * uUseLumaDensity);
 
   float densityNorm = smoothstep(uDensityInMin, uDensityInMax, densityBase);
   float density = mix(uDensityOutMin, uDensityOutMax, pow(densityNorm, uDensityGamma));
@@ -705,6 +709,8 @@ void main() {
   if (alpha < uAlphaClip) discard;
 
   vec3 baseColor = mix(uColor, texColor, uUseTextureColor);
+  float baseLuma = dot(baseColor, vec3(0.2126, 0.7152, 0.0722));
+  baseColor = mix(vec3(baseLuma), baseColor, uSaturation);
   vec3 finalColor = mix(baseColor * uShadeMin, baseColor * uShadeMax, density);
   gl_FragColor = vec4(finalColor, alpha);
 }
@@ -941,6 +947,8 @@ loader.load(
         uShadeMin: { value: activeTheme.shadeMin },
         uShadeMax: { value: activeTheme.shadeMax },
         uUseTextureColor: { value: activeTheme.useTextureColor ? 1.0 : 0.0 },
+        uUseLumaDensity: { value: activeTheme.useLumaDensity === false ? 0.0 : 1.0 },
+        uSaturation: { value: activeTheme.saturation ?? 1.0 },
 
         uTime: { value: 0.0 },
         uGlobalAmp: { value: 1.5 },

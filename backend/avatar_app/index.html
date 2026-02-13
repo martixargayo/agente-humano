@@ -79,6 +79,28 @@
       z-index: 1;
     }
 
+
+    :root[data-avatar-theme="realistic"] {
+      color-scheme: light;
+    }
+
+    html[data-avatar-theme="realistic"],
+    html[data-avatar-theme="realistic"] body,
+    html[data-avatar-theme="realistic"] #stage,
+    html[data-avatar-theme="realistic"] #bg {
+      background-color: #fff !important;
+    }
+
+    html[data-avatar-theme="realistic"] #bg {
+      background-image: none !important;
+    }
+
+    html[data-avatar-theme="realistic"] #bg::after,
+    html[data-avatar-theme="realistic"] body::before {
+      content: none !important;
+      background: none !important;
+    }
+
     #c {
       position: absolute;
       inset: 0;
