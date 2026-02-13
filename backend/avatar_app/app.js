@@ -20,7 +20,7 @@ const DEFAULT_THEME = 'dark';
 
 const THEME_PRESETS = {
   dark: {
-    background: 0x000000,
+    background: 0xffffff,
     particleColor: 0xdddddd,
     // Dark actual: preservar respuesta histórica sin remapeo.
     densityInMin: 0.0,
