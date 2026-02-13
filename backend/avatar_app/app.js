@@ -1025,26 +1025,10 @@ loader.load(
       },
     });
 
-    if (activeThemeName === 'blanco') {
-      const baseMaterial = createParticleMaterial({
-        pointSize: POINT_SIZE,
-        color: 0x6f7680,
-        blending: THREE.MultiplyBlending,
-        depthWrite: false,
-        blancoMode: 1.0,
-        blancoLayer: 0.0,
-        blancoInkGamma: 1.9,
-      });
-      const featureMaterial = createParticleMaterial({
-        pointSize: POINT_SIZE * 1.14,
-        color: 0x14171b,
-        blending: THREE.NormalBlending,
-        depthWrite: false,
-        blancoMode: 1.0,
-        blancoLayer: 1.0,
-        blancoInkGamma: 2.0,
-        featureBoost: 0.86,
-      });
+    const particleMaterial = createParticleMaterial();
+    particlePoints = new THREE.Points(particlesGeo, particleMaterial);
+    particlePoints.frustumCulled = false;
+    particlePoints.renderOrder = 2;
 
     if (!activeTheme.removeHeadCutCap) {
       const capGeometry = new THREE.CircleGeometry(HEAD_CUT_CAP.radius, 96);
