@@ -52,11 +52,16 @@
       position: absolute;
       inset: 0;
       background-color: #000;
-      background-image: url('./assets/bg/Gemini_Generated_Image_rymww6rymww6rymw.jpg');
+      background-image: none;
       background-repeat: no-repeat;
       background-position: center center;
       background-size: contain;
       z-index: 0;
+    }
+
+    html[data-avatar-theme="dark"] #bg,
+    html[data-avatar-theme="light"] #bg {
+      background-image: url('./assets/bg/Gemini_Generated_Image_rymww6rymww6rymw.jpg');
     }
 
     #bg::after {
@@ -77,6 +82,36 @@
       opacity: 0.2;
       pointer-events: none;
       z-index: 1;
+    }
+
+
+    :root[data-avatar-theme="realistic"],
+    :root[data-avatar-theme="white"] {
+      color-scheme: light;
+    }
+
+    html[data-avatar-theme="realistic"],
+    html[data-avatar-theme="realistic"] body,
+    html[data-avatar-theme="realistic"] #stage,
+    html[data-avatar-theme="realistic"] #bg,
+    html[data-avatar-theme="white"],
+    html[data-avatar-theme="white"] body,
+    html[data-avatar-theme="white"] #stage,
+    html[data-avatar-theme="white"] #bg {
+      background-color: #fff !important;
+    }
+
+    html[data-avatar-theme="realistic"] #bg,
+    html[data-avatar-theme="white"] #bg {
+      background-image: none !important;
+    }
+
+    html[data-avatar-theme="realistic"] #bg::after,
+    html[data-avatar-theme="realistic"] body::before,
+    html[data-avatar-theme="white"] #bg::after,
+    html[data-avatar-theme="white"] body::before {
+      content: none !important;
+      background: none !important;
     }
 
     #c {
