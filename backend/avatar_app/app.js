@@ -49,6 +49,23 @@ const THEME_PRESETS = {
     shadeMin: 0.72,
     shadeMax: 1.0,
   },
+  realistic: {
+    background: 0xffffff,
+    particleColor: 0xffffff,
+    // Mantiene la misma dinámica de densidad que dark,
+    // pero coloreando cada punto con la textura del rostro.
+    densityInMin: 0.0,
+    densityInMax: 1.0,
+    densityGamma: 1.0,
+    densityOutMin: 0.0,
+    densityOutMax: 1.0,
+    alphaGain: 1.0,
+    alphaClip: 0.02,
+    shadeMin: 0.92,
+    shadeMax: 1.0,
+    useTextureColor: true,
+    removeHeadCutCap: true,
+  },
 };
 
 function resolveTheme() {
@@ -61,6 +78,17 @@ const activeThemeName = resolveTheme();
 const activeTheme = THEME_PRESETS[activeThemeName];
 document.documentElement.dataset.avatarTheme = activeThemeName;
 console.info('[theme] Avatar perceptual theme:', activeThemeName);
+
+if (activeThemeName === 'realistic') {
+  document.body.style.backgroundColor = '#ffffff';
+  const stageEl = document.getElementById('stage');
+  if (stageEl) stageEl.style.backgroundColor = '#ffffff';
+  const bgEl = document.getElementById('bg');
+  if (bgEl) {
+    bgEl.style.backgroundColor = '#ffffff';
+    bgEl.style.backgroundImage = 'none';
+  }
+}
 
 // ============================================================================
 // ✅ Neck Editor state (DEBE existir antes de animate() y keydown)
@@ -646,6 +674,7 @@ uniform float uAlphaGain;
 uniform float uAlphaClip;
 uniform float uShadeMin;
 uniform float uShadeMax;
+uniform float uUseTextureColor;
 
 varying vec2 vUv;
 varying float vHeadWeight;
@@ -675,7 +704,7 @@ void main() {
   float alpha = circle * density * uAlphaGain;
   if (alpha < uAlphaClip) discard;
 
-  vec3 baseColor = uColor;
+  vec3 baseColor = mix(uColor, texColor, uUseTextureColor);
   vec3 finalColor = mix(baseColor * uShadeMin, baseColor * uShadeMax, density);
   gl_FragColor = vec4(finalColor, alpha);
 }
@@ -911,6 +940,7 @@ loader.load(
         uAlphaClip: { value: activeTheme.alphaClip },
         uShadeMin: { value: activeTheme.shadeMin },
         uShadeMax: { value: activeTheme.shadeMax },
+        uUseTextureColor: { value: activeTheme.useTextureColor ? 1.0 : 0.0 },
 
         uTime: { value: 0.0 },
         uGlobalAmp: { value: 1.5 },
@@ -945,19 +975,21 @@ loader.load(
     particlePoints.frustumCulled = false;
     particlePoints.renderOrder = 2;
 
-    const capGeometry = new THREE.CircleGeometry(HEAD_CUT_CAP.radius, 96);
-    const capMaterial = new THREE.MeshBasicMaterial({
-      color: 0x000000,
-      transparent: false,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-    });
-    headCutCapMesh = new THREE.Mesh(capGeometry, capMaterial);
-    headCutCapMesh.scale.set(HEAD_CUT_CAP.scaleX, HEAD_CUT_CAP.scaleY, 1.0);
-    headCutCapMesh.position.set(0.0, HEAD_CUT_CAP.y, HEAD_CUT_CAP.z);
-    headCutCapMesh.renderOrder = 1;
+    if (!activeTheme.removeHeadCutCap) {
+      const capGeometry = new THREE.CircleGeometry(HEAD_CUT_CAP.radius, 96);
+      const capMaterial = new THREE.MeshBasicMaterial({
+        color: activeTheme.background,
+        transparent: false,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      });
+      headCutCapMesh = new THREE.Mesh(capGeometry, capMaterial);
+      headCutCapMesh.scale.set(HEAD_CUT_CAP.scaleX, HEAD_CUT_CAP.scaleY, 1.0);
+      headCutCapMesh.position.set(0.0, HEAD_CUT_CAP.y, HEAD_CUT_CAP.z);
+      headCutCapMesh.renderOrder = 1;
 
-    scene.add(headCutCapMesh);
+      scene.add(headCutCapMesh);
+    }
     scene.add(particlePoints);
 
     controls.target.set(0, 0.15, 0);
