@@ -814,6 +814,13 @@ function generateFaceParticlesFromVertices(srcGeometry) {
 
 // Tamaño de punto fijo
 const POINT_SIZE = 3.5 * window.devicePixelRatio;
+const HEAD_CUT_CAP = {
+  radius: 0.56,
+  scaleX: 0.9,
+  scaleY: 1.15,
+  y: 0.14,
+  z: -0.055,
+};
 
 // =========================
 // 4. Cargar GLB, fusionar capas, crear partículas
@@ -822,6 +829,7 @@ const loader = new GLTFLoader();
 
 let particleMaterial = null;
 let particlePoints = null;
+let headCutCapMesh = null;
 
 loader.load(
   './FaceVolumen.glb',
@@ -935,6 +943,21 @@ loader.load(
 
     particlePoints = new THREE.Points(particlesGeo, particleMaterial);
     particlePoints.frustumCulled = false;
+    particlePoints.renderOrder = 2;
+
+    const capGeometry = new THREE.CircleGeometry(HEAD_CUT_CAP.radius, 96);
+    const capMaterial = new THREE.MeshBasicMaterial({
+      color: 0x000000,
+      transparent: false,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    headCutCapMesh = new THREE.Mesh(capGeometry, capMaterial);
+    headCutCapMesh.scale.set(HEAD_CUT_CAP.scaleX, HEAD_CUT_CAP.scaleY, 1.0);
+    headCutCapMesh.position.set(0.0, HEAD_CUT_CAP.y, HEAD_CUT_CAP.z);
+    headCutCapMesh.renderOrder = 1;
+
+    scene.add(headCutCapMesh);
     scene.add(particlePoints);
 
     controls.target.set(0, 0.15, 0);
