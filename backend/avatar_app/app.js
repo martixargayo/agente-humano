@@ -2111,8 +2111,9 @@ async function startConversation() {
   } catch (_) {}
 
   if (ui.permissionOverlay) ui.permissionOverlay.style.display = 'none';
-  enterIdle();
-  updateReplyText('Te escucho. Cuando quieras, empieza tú.');
+  setInputMode(InputMode.TALK);
+  updateReplyText('Te escucho. Empieza a hablar cuando quieras.');
+  await enterListening();
 }
 
 if (ui.startBtn) {
