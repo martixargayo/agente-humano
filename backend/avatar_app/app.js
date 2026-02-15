@@ -11,6 +11,19 @@ const URL_PARAMS = new URLSearchParams(window.location.search);
 const DEBUG_EDIT_ENABLED = URL_PARAMS.get('debugEdit') === '1';
 const demoFeedbackMode = createDemoFeedbackMode({ urlParams: URL_PARAMS });
 
+function resolveHexColorParam(paramName, fallbackColor) {
+  const rawValue = URL_PARAMS.get(paramName);
+  if (!rawValue) return fallbackColor;
+
+  const normalizedValue = rawValue.trim().replace(/^#/, '').replace(/^0x/i, '');
+  if (!/^[0-9a-fA-F]{6}$/.test(normalizedValue)) {
+    console.warn(`[theme] Valor inválido para ${paramName}:`, rawValue);
+    return fallbackColor;
+  }
+
+  return Number.parseInt(normalizedValue, 16);
+}
+
 // =========================
 // Tema perceptual del avatar (dark/light)
 // - Geometría, rig, lipsync y animación NO cambian con el tema.
@@ -34,6 +47,25 @@ const THEME_PRESETS = {
   },
   realistic: {
     // Tema principal: fondo blanco puro, sin arte de fondo ni capa de puntos.
+    background: 0xffffff,
+    particleColor: 0xffffff,
+    densityInMin: 0.0,
+    densityInMax: 1.0,
+    densityGamma: 1.0,
+    densityOutMin: 0.0,
+    densityOutMax: 1.0,
+    alphaGain: 1.0,
+    alphaClip: 0.0,
+    shadeMin: 1.0,
+    shadeMax: 1.0,
+    useTextureColor: true,
+    useLumaDensity: false,
+    saturation: 1.0,
+    removeHeadCutCap: true,
+    disableBackgroundArt: true,
+  },
+  realistic: {
+    // Tema realista: fondo blanco puro, sin arte de fondo ni capa de puntos.
     background: 0xffffff,
     particleColor: 0xffffff,
     densityInMin: 0.0,
