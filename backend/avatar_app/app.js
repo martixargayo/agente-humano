@@ -93,6 +93,25 @@ const THEME_PRESETS = {
     saturation: 1.0,
     removeHeadCutCap: true,
   },
+  realistic: {
+    // Tema realista: fondo blanco puro, sin arte de fondo ni capa de puntos.
+    background: 0xffffff,
+    particleColor: 0xffffff,
+    densityInMin: 0.0,
+    densityInMax: 1.0,
+    densityGamma: 1.0,
+    densityOutMin: 0.0,
+    densityOutMax: 1.0,
+    alphaGain: 1.0,
+    alphaClip: 0.0,
+    shadeMin: 1.0,
+    shadeMax: 1.0,
+    useTextureColor: true,
+    useLumaDensity: false,
+    saturation: 1.0,
+    removeHeadCutCap: true,
+    disableBackgroundArt: true,
+  },
 };
 
 function resolveTheme() {
@@ -104,6 +123,7 @@ function resolveTheme() {
 
   if (lowerTheme === 'blanco') return 'white';
   if (lowerTheme === 'whitecolor' || lowerTheme === 'white-color') return 'whiteColor';
+  if (lowerTheme === 'realista') return 'realistic';
 
   if (THEME_PRESETS[normalizedTheme]) return normalizedTheme;
   if (THEME_PRESETS[lowerTheme]) return lowerTheme;
@@ -113,10 +133,11 @@ function resolveTheme() {
 
 const activeThemeName = resolveTheme();
 const activeTheme = THEME_PRESETS[activeThemeName];
+const isRealisticTheme = activeThemeName === 'realistic';
 document.documentElement.dataset.avatarTheme = activeThemeName;
 console.info('[theme] Avatar perceptual theme:', activeThemeName);
 
-const isWhiteCanvasTheme = activeThemeName === 'white' || activeThemeName === 'whiteColor';
+const isWhiteCanvasTheme = activeThemeName === 'white' || activeThemeName === 'whiteColor' || isRealisticTheme;
 if (isWhiteCanvasTheme) {
   const canvasBg = `#${activeTheme.background.toString(16).padStart(6, '0')}`;
   document.body.style.backgroundColor = canvasBg;
@@ -125,9 +146,7 @@ if (isWhiteCanvasTheme) {
   const bgEl = document.getElementById('bg');
   if (bgEl) {
     bgEl.style.backgroundColor = canvasBg;
-    // Mantener la imagen de fondo definida por CSS para white/whiteColor.
-    // Si forzamos "none" aquí, nunca se mostrará el arte del tema claro.
-    bgEl.style.backgroundImage = '';
+    bgEl.style.backgroundImage = activeTheme.disableBackgroundArt ? 'none' : '';
   }
 }
 
@@ -970,7 +989,199 @@ let particleMaterial = null;
 let particleMaterials = [];
 let particlePoints = null;
 let particlePointsDetail = null;
+let particleSurfaceMesh = null;
 let headCutCapMesh = null;
+
+// =========================
+// Bloque temático "realistic"
+// - Concentrado en esta sección para activar/desactivar fácil.
+// =========================
+function generateAnimatedSurfaceGeometry(srcGeometry) {
+  const geo = srcGeometry.clone();
+  const srcPos = geo.getAttribute('position');
+  const srcUv = geo.getAttribute('uv');
+  const count = srcPos.count;
+
+  const basePositions = new Float32Array(count * 3);
+  const randoms = new Float32Array(count * 3);
+  const clusterIds = new Float32Array(count);
+  const heightFromTop = new Float32Array(count);
+  const mouthWeights = new Float32Array(count);
+  const mouthSides = new Float32Array(count);
+  const headWeights = new Float32Array(count);
+  const uvArray = new Float32Array(count * 2);
+
+  geo.computeBoundingBox();
+  const box = geo.boundingBox;
+  const minY = box ? box.min.y : -1.0;
+  const maxY = box ? box.max.y : 1.0;
+  const yRange = Math.max(1e-6, maxY - minY);
+
+  const v = new THREE.Vector3();
+  const uv = new THREE.Vector2();
+
+  for (let i = 0; i < count; i++) {
+    v.fromBufferAttribute(srcPos, i);
+    basePositions[i * 3 + 0] = v.x;
+    basePositions[i * 3 + 1] = v.y;
+    basePositions[i * 3 + 2] = v.z;
+
+    if (srcUv) {
+      uv.fromBufferAttribute(srcUv, i);
+      uvArray[i * 2 + 0] = uv.x;
+      uvArray[i * 2 + 1] = uv.y;
+    }
+
+    randoms[i * 3 + 0] = Math.random();
+    randoms[i * 3 + 1] = Math.random();
+    randoms[i * 3 + 2] = Math.random();
+
+    const y01 = (v.y - minY) / yRange;
+    heightFromTop[i] = THREE.MathUtils.clamp(1.0 - y01, 0.0, 1.0);
+
+    const cx = Math.floor((v.x + 0.4) * 10.0);
+    const cy = Math.floor((v.y + 0.4) * 10.0);
+    clusterIds[i] = cx + cy * 10.0;
+
+    const mt = window.MouthTuning;
+    const mwAbs = Math.max(1e-6, Math.abs(mt.width));
+    const mhAbs = Math.max(1e-6, Math.abs(mt.height));
+
+    const dx = v.x - mt.centerX;
+    const ax = Math.abs(dx);
+    let weight = 0.0;
+    let side = 0.0;
+
+    if (ax <= mwAbs) {
+      const normX = dx / mwAbs;
+      const curveY = mt.centerY - mt.curve * normX * normX;
+      const dy = v.y - curveY;
+      const ay = Math.abs(dy);
+      if (ay <= mhAbs) {
+        const wx = 1.0 - ax / mwAbs;
+        const wy = 1.0 - ay / mhAbs;
+        weight = THREE.MathUtils.clamp(wx * wy, 0.0, 1.0);
+        side = dy > 0.0 ? 1.0 : (dy < 0.0 ? -1.0 : 0.0);
+      }
+    }
+    mouthWeights[i] = weight;
+    mouthSides[i] = side;
+
+    const t = window.NeckTuning;
+    const wAbs = Math.max(1e-6, Math.abs(t.width));
+    const dxN = v.x - t.centerX;
+    const insideWidth = Math.abs(dxN) <= wAbs;
+    const nx = dxN / wAbs;
+    const curve = t.curve * THREE.MathUtils.clamp(nx, -1.0, 1.0) ** 2;
+    let yTop = insideWidth ? (t.topY - curve) : t.topY;
+    let yBot = insideWidth ? (t.bottomY - curve) : t.bottomY;
+    if (yTop < yBot) [yTop, yBot] = [yBot, yTop];
+    headWeights[i] = v.y >= yTop ? 1.0 : (v.y <= yBot ? 0.0 : smoothstepJS(yBot, yTop, v.y));
+  }
+
+  geo.setAttribute('aUv', new THREE.BufferAttribute(uvArray, 2));
+  geo.setAttribute('aBasePosition', new THREE.BufferAttribute(basePositions, 3));
+  geo.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 3));
+  geo.setAttribute('aClusterId', new THREE.BufferAttribute(clusterIds, 1));
+  geo.setAttribute('aHeightFromTop', new THREE.BufferAttribute(heightFromTop, 1));
+  geo.setAttribute('aMouthWeight', new THREE.BufferAttribute(mouthWeights, 1));
+  geo.setAttribute('aMouthSide', new THREE.BufferAttribute(mouthSides, 1));
+  geo.setAttribute('aHeadWeight', new THREE.BufferAttribute(headWeights, 1));
+
+  return geo;
+}
+
+const realisticSurfaceVertexShader = /* glsl */ `
+precision highp float;
+uniform float uTime;
+uniform float uGlobalAmp;
+uniform float uClusterAmp;
+uniform float uNoiseAmp;
+uniform float uTalk;
+uniform float uTalkAmpTop;
+uniform float uTalkAmpBot;
+uniform float uTalkFreq;
+uniform float uLipDepthAmp;
+uniform float uRestOpen;
+uniform float uBreathAmp;
+uniform float uBreathFreq;
+uniform vec3 uHeadRot;
+uniform vec3 uBodyRot;
+uniform vec3 uBodyOffset;
+uniform vec3 uNeckPivot;
+uniform vec3 uBodyPivot;
+uniform float uDissolveStart;
+uniform float uDissolveEnd;
+uniform float uDissolveMotionAmp;
+attribute vec3 aBasePosition;
+attribute vec3 aRandom;
+attribute float aClusterId;
+attribute vec2 aUv;
+attribute float aHeightFromTop;
+attribute float aMouthWeight;
+attribute float aMouthSide;
+attribute float aHeadWeight;
+varying vec2 vUv;
+varying float vHeadWeight;
+
+float hash11(float p){ return fract(sin(p * 127.1) * 43758.5453123); }
+float hash21(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453123); }
+float simpleNoise(vec3 p, float t){ return (hash21(p.xy + t) + hash21(p.yz - t * 0.5)) * 0.5; }
+mat3 rotX(float a){ float s=sin(a), c=cos(a); return mat3(1.,0.,0.,0.,c,-s,0.,s,c); }
+mat3 rotY(float a){ float s=sin(a), c=cos(a); return mat3(c,0.,s,0.,1.,0.,-s,0.,c); }
+mat3 rotZ(float a){ float s=sin(a), c=cos(a); return mat3(c,-s,0.,s,c,0.,0.,0.,1.); }
+vec3 rotateAroundPivot(vec3 p, vec3 pivot, vec3 r){ vec3 q = p - pivot; q = rotY(r.y) * rotX(r.x) * rotZ(r.z) * q; return q + pivot; }
+
+void main() {
+  vUv = aUv;
+  vHeadWeight = aHeadWeight;
+
+  vec3 pos = aBasePosition;
+  float t = uTime;
+  vec3 globalOffset = vec3(sin(t * 0.5 + aRandom.x * 6.2831) * 0.003, cos(t * 0.4 + aRandom.y * 6.2831) * 0.002, 0.0);
+  float clusterPhase = hash11(aClusterId + 10.0) * 6.2831;
+  vec3 clusterDir = normalize(vec3(hash11(aClusterId + 1.0) - 0.5, hash11(aClusterId + 2.0) - 0.5, hash11(aClusterId + 3.0) - 0.5));
+  vec3 clusterOffset = clusterDir * sin(t * 0.8 + clusterPhase) * 0.004;
+  float micro = simpleNoise(aBasePosition * 1.5, t * 0.6) - 0.5;
+  vec3 microOffset = normalize(aRandom * 2.0 - 1.0) * micro * 0.002;
+  float breathPhase = sin(uTime * uBreathFreq) * 0.5 + 0.5;
+  float heightFactor = clamp(1.0 - (aBasePosition.y + 0.3) * 2.0, 0.0, 1.0);
+  vec3 breathOffset = vec3(0.0, breathPhase * heightFactor * uBreathAmp * 0.01, breathPhase * heightFactor * uBreathAmp * 0.005);
+  float totalOpen = clamp(uRestOpen + max(sin(uTime * uTalkFreq), 0.0) * uTalk, 0.0, 1.0);
+  float mouthFactor = aMouthWeight * totalOpen;
+  vec3 mouthOffset = vec3(0.0, aMouthSide * mix(uTalkAmpBot, uTalkAmpTop, step(0.0, aMouthSide)) * mouthFactor, -uLipDepthAmp * mouthFactor);
+
+  vec3 displaced = pos + globalOffset * uGlobalAmp + clusterOffset * uClusterAmp + microOffset * uNoiseAmp + breathOffset + mouthOffset;
+  float dissolveBand = smoothstep(uDissolveStart, uDissolveEnd, aHeightFromTop);
+  vec3 dissolveOffset = vec3((aRandom.x - 0.5) * 0.0035, (0.4 + 0.6 * (0.5 + 0.5 * sin(uTime * 2.8 + aRandom.x * 17.0 + aBasePosition.y * 9.0))) * 0.01, (aRandom.y - 0.5) * 0.003) * dissolveBand * uDissolveMotionAmp;
+  displaced += dissolveOffset;
+
+  vec3 bodyPos = rotateAroundPivot(displaced, uBodyPivot, uBodyRot) + uBodyOffset;
+  vec3 headPos = rotateAroundPivot(bodyPos, uNeckPivot, uHeadRot);
+  vec3 finalPos = mix(bodyPos, headPos, aHeadWeight);
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(finalPos, 1.0);
+}
+`;
+
+const realisticSurfaceFragmentShader = /* glsl */ `
+precision highp float;
+uniform sampler2D uColorMap;
+uniform float uUseMap;
+uniform vec3 uColor;
+uniform float uDebugHeadWeight;
+varying vec2 vUv;
+varying float vHeadWeight;
+
+void main() {
+  if (uDebugHeadWeight > 0.5) {
+    gl_FragColor = vec4(vec3(clamp(vHeadWeight, 0.0, 1.0)), 1.0);
+    return;
+  }
+  vec3 texColor = texture2D(uColorMap, vUv).rgb;
+  vec3 finalColor = mix(uColor, texColor, uUseMap);
+  gl_FragColor = vec4(finalColor, 1.0);
+}
+`;
 
 loader.load(
   './FaceVolumen.glb',
@@ -1019,15 +1230,9 @@ loader.load(
     mergedGeom.translate(-center.x, -center.y, -center.z);
 
     const particlesGeo = generateFaceParticlesFromVertices(mergedGeom);
+    const realisticSurfaceGeo = generateAnimatedSurfaceGeometry(mergedGeom);
 
     // refs para edición / recompute
-    particlesGeometryRef = particlesGeo;
-    headWeightAttrRef = particlesGeo.getAttribute('aHeadWeight');
-    basePosAttrRef = particlesGeo.getAttribute('aBasePosition');
-
-    mouthWeightAttrRef = particlesGeo.getAttribute('aMouthWeight');
-    mouthSideAttrRef = particlesGeo.getAttribute('aMouthSide');
-
     const t = window.NeckTuning;
 
     const createParticleMaterial = ({
@@ -1103,7 +1308,51 @@ loader.load(
       },
     });
 
-    if (activeThemeName === 'white' || activeThemeName === 'whiteColor' || activeThemeName === 'blanco') {
+    if (isRealisticTheme) {
+      particleMaterial = new THREE.ShaderMaterial({
+        vertexShader: realisticSurfaceVertexShader,
+        fragmentShader: realisticSurfaceFragmentShader,
+        side: THREE.DoubleSide,
+        uniforms: {
+          uColor: { value: new THREE.Color(0xffffff) },
+          uColorMap: { value: colorMap },
+          uUseMap: { value: colorMap ? 1.0 : 0.0 },
+          uTime: { value: 0.0 },
+          uGlobalAmp: { value: 1.5 },
+          uClusterAmp: { value: 1.5 },
+          uNoiseAmp: { value: 1.6 },
+          uTalk: { value: 0.0 },
+          uTalkAmpTop: { value: 0.024 },
+          uTalkAmpBot: { value: 0.075 },
+          uTalkFreq: { value: 24.0 },
+          uLipDepthAmp: { value: 0.1 },
+          uRestOpen: { value: 0.30 },
+          uBreathAmp: { value: 1.0 },
+          uBreathFreq: { value: 0.6 },
+          uHeadRot: { value: new THREE.Vector3(0, 0, 0) },
+          uBodyRot: { value: new THREE.Vector3(0, 0, 0) },
+          uBodyOffset: { value: new THREE.Vector3(0, 0, 0) },
+          uNeckPivot: { value: new THREE.Vector3(0.0, t.neckPivotY, 0.0) },
+          uBodyPivot: { value: new THREE.Vector3(0.0, t.bodyPivotY, 0.0) },
+          uDissolveStart: { value: 0.9 },
+          uDissolveEnd: { value: 1.0 },
+          uDissolveMotionAmp: { value: 1.0 },
+          uDebugHeadWeight: { value: DebugView.headWeight ? 1.0 : 0.0 },
+        },
+      });
+      particleMaterials = [particleMaterial];
+      particleSurfaceMesh = new THREE.Mesh(realisticSurfaceGeo, particleMaterial);
+      particleSurfaceMesh.frustumCulled = false;
+      particleSurfaceMesh.renderOrder = 2;
+      particlePoints = null;
+      particlePointsDetail = null;
+
+      particlesGeometryRef = realisticSurfaceGeo;
+      headWeightAttrRef = realisticSurfaceGeo.getAttribute('aHeadWeight');
+      basePosAttrRef = realisticSurfaceGeo.getAttribute('aBasePosition');
+      mouthWeightAttrRef = realisticSurfaceGeo.getAttribute('aMouthWeight');
+      mouthSideAttrRef = realisticSurfaceGeo.getAttribute('aMouthSide');
+    } else if (activeThemeName === 'white' || activeThemeName === 'whiteColor' || activeThemeName === 'blanco') {
       particleMaterial = createParticleMaterial({
         pointSize: POINT_SIZE,
         color: activeTheme.particleColor,
@@ -1119,6 +1368,12 @@ loader.load(
       particlePoints.frustumCulled = false;
       particlePoints.renderOrder = 2;
       particlePointsDetail = null;
+
+      particlesGeometryRef = particlesGeo;
+      headWeightAttrRef = particlesGeo.getAttribute('aHeadWeight');
+      basePosAttrRef = particlesGeo.getAttribute('aBasePosition');
+      mouthWeightAttrRef = particlesGeo.getAttribute('aMouthWeight');
+      mouthSideAttrRef = particlesGeo.getAttribute('aMouthSide');
     } else {
       particleMaterial = createParticleMaterial();
       particleMaterials = [particleMaterial];
@@ -1126,6 +1381,12 @@ loader.load(
       particlePoints.frustumCulled = false;
       particlePoints.renderOrder = 2;
       particlePointsDetail = null;
+
+      particlesGeometryRef = particlesGeo;
+      headWeightAttrRef = particlesGeo.getAttribute('aHeadWeight');
+      basePosAttrRef = particlesGeo.getAttribute('aBasePosition');
+      mouthWeightAttrRef = particlesGeo.getAttribute('aMouthWeight');
+      mouthSideAttrRef = particlesGeo.getAttribute('aMouthSide');
     }
 
     if (!activeTheme.removeHeadCutCap) {
@@ -1145,6 +1406,7 @@ loader.load(
     }
     scene.add(particlePoints);
     if (particlePointsDetail) scene.add(particlePointsDetail);
+    if (particleSurfaceMesh) scene.add(particleSurfaceMesh);
 
     controls.target.set(0, 0.15, 0);
     controls.update();
@@ -1705,6 +1967,10 @@ function animate() {
   if (particlePointsDetail) {
     particlePointsDetail.rotation.set(0, 0, 0);
     particlePointsDetail.position.set(0, 0, 0);
+  }
+  if (particleSurfaceMesh) {
+    particleSurfaceMesh.rotation.set(0, 0, 0);
+    particleSurfaceMesh.position.set(0, 0, 0);
   }
 
   controls.update();
