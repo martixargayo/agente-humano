@@ -377,6 +377,15 @@ window.EyeBlinkTuning = window.EyeBlinkTuning || {
   }
 };
 
+window.BrowsDebugTuning = window.BrowsDebugTuning || {
+  eyeMarkerAspectY: 0.7,
+  eyeMarkerRadiusScale: 1.0,
+  eyeMarkerFeather: 0.18,
+  browYOffset: 0.085,
+  browThickness: 0.018,
+  browXSpan: 10.0,
+};
+
 // =========================
 // Config cuello / separación cabeza-cuerpo (TUNED)
 // =========================
@@ -1217,6 +1226,12 @@ uniform vec4 uEyeRightMain;
 uniform vec4 uEyeRightUpper;
 uniform vec4 uEyeRightLower;
 uniform float uDebugBrows;
+uniform float uBrowYOffset;
+uniform float uBrowThickness;
+uniform float uBrowXSpan;
+uniform float uEyeMarkerAspect;
+uniform float uEyeMarkerScale;
+uniform float uEyeMarkerFeather;
 varying vec2 vUv;
 varying float vHeadWeight;
 varying float vBaseZ;
@@ -1267,11 +1282,19 @@ void main() {
   if (uDebugBrows > 0.5) {
     vec2 leftLocal = invRot(uEyeLeftMain.w) * (vBaseXY - uEyeLeftMain.xy);
     vec2 rightLocal = invRot(uEyeRightMain.w) * (vBaseXY - uEyeRightMain.xy);
-    float leftEyeMarker = 1.0 - smoothstep(0.82, 1.0, length(vec2(leftLocal.x / max(1e-4, uEyeLeftMain.z), leftLocal.y / max(1e-4, uEyeLeftMain.z * 0.7))));
-    float rightEyeMarker = 1.0 - smoothstep(0.82, 1.0, length(vec2(rightLocal.x / max(1e-4, uEyeRightMain.z), rightLocal.y / max(1e-4, uEyeRightMain.z * 0.7))));
 
-    float browY = 0.5 * (uEyeLeftMain.y + uEyeRightMain.y) + 0.085;
-    float browBand = 1.0 - smoothstep(0.0, 0.018, abs(vBaseXY.y - browY));
+    float markerScale = max(1e-4, uEyeMarkerScale);
+    float markerAspect = max(1e-4, uEyeMarkerAspect);
+    float markerInner = max(0.0, 1.0 - max(0.0, uEyeMarkerFeather));
+
+    float leftEyeMarker = 1.0 - smoothstep(markerInner, 1.0, length(vec2(leftLocal.x / max(1e-4, uEyeLeftMain.z * markerScale), leftLocal.y / max(1e-4, uEyeLeftMain.z * markerAspect * markerScale))));
+    float rightEyeMarker = 1.0 - smoothstep(markerInner, 1.0, length(vec2(rightLocal.x / max(1e-4, uEyeRightMain.z * markerScale), rightLocal.y / max(1e-4, uEyeRightMain.z * markerAspect * markerScale))));
+
+    float browY = 0.5 * (uEyeLeftMain.y + uEyeRightMain.y) + uBrowYOffset;
+    float browBand = 1.0 - smoothstep(0.0, max(1e-4, uBrowThickness), abs(vBaseXY.y - browY));
+    float browXMask = 1.0 - smoothstep(max(0.0, uBrowXSpan), max(0.0, uBrowXSpan) + 0.06, abs(vBaseXY.x));
+    browBand *= browXMask;
+
     float centerLine = 1.0 - smoothstep(0.0, 0.006, abs(vBaseXY.x));
 
     vec3 overlay = vec3(0.0);
@@ -1533,7 +1556,13 @@ loader.load(
           uEyeRightMain: { value: new THREE.Vector4(0, 0, 0.1, 0) },
           uEyeRightUpper: { value: new THREE.Vector4(0.03, -0.01, 0, 0) },
           uEyeRightLower: { value: new THREE.Vector4(-0.03, 0.01, 0, 0) },
-          uDebugBrows: { value: DEBUG_BROWS_ENABLED ? 1.0 : 0.0 },
+          uDebugBrows: { value: (DEBUG_BROWS_ENABLED || DEBUG_EDIT_ENABLED) ? 1.0 : 0.0 },
+          uBrowYOffset: { value: window.BrowsDebugTuning.browYOffset },
+          uBrowThickness: { value: window.BrowsDebugTuning.browThickness },
+          uBrowXSpan: { value: window.BrowsDebugTuning.browXSpan },
+          uEyeMarkerAspect: { value: window.BrowsDebugTuning.eyeMarkerAspectY },
+          uEyeMarkerScale: { value: window.BrowsDebugTuning.eyeMarkerRadiusScale },
+          uEyeMarkerFeather: { value: window.BrowsDebugTuning.eyeMarkerFeather },
           uDebugHeadWeight: { value: DebugView.headWeight ? 1.0 : 0.0 },
         },
       });
@@ -2097,6 +2126,29 @@ function updateEyelidBlink(elapsed, delta) {
   }
 }
 
+function getBrowsDebugTuning() {
+  const t = window.BrowsDebugTuning || {};
+  return {
+    eyeMarkerAspectY: Math.max(1e-4, Number.isFinite(t.eyeMarkerAspectY) ? t.eyeMarkerAspectY : 0.7),
+    eyeMarkerRadiusScale: Math.max(1e-4, Number.isFinite(t.eyeMarkerRadiusScale) ? t.eyeMarkerRadiusScale : 1.0),
+    eyeMarkerFeather: Math.max(0.0, Number.isFinite(t.eyeMarkerFeather) ? t.eyeMarkerFeather : 0.18),
+    browYOffset: Number.isFinite(t.browYOffset) ? t.browYOffset : 0.085,
+    browThickness: Math.max(1e-4, Number.isFinite(t.browThickness) ? t.browThickness : 0.018),
+    browXSpan: Math.max(0.0, Number.isFinite(t.browXSpan) ? t.browXSpan : 10.0),
+  };
+}
+
+function applyBrowsDebugUniforms(mat) {
+  if (!mat?.uniforms) return;
+  const t = getBrowsDebugTuning();
+  if (mat.uniforms.uBrowYOffset) mat.uniforms.uBrowYOffset.value = t.browYOffset;
+  if (mat.uniforms.uBrowThickness) mat.uniforms.uBrowThickness.value = t.browThickness;
+  if (mat.uniforms.uBrowXSpan) mat.uniforms.uBrowXSpan.value = t.browXSpan;
+  if (mat.uniforms.uEyeMarkerAspect) mat.uniforms.uEyeMarkerAspect.value = t.eyeMarkerAspectY;
+  if (mat.uniforms.uEyeMarkerScale) mat.uniforms.uEyeMarkerScale.value = t.eyeMarkerRadiusScale;
+  if (mat.uniforms.uEyeMarkerFeather) mat.uniforms.uEyeMarkerFeather.value = t.eyeMarkerFeather;
+}
+
 function applyEyeBlinkUniforms(mat) {
   const left = window.EyeBlinkTuning.left;
   const right = window.EyeBlinkTuning.right;
@@ -2115,6 +2167,8 @@ function applyEyeBlinkUniforms(mat) {
     mat.uniforms.uEyeRightLower.value.set(right.lower.offset, right.lower.curve, 0.0, 0.0);
   }
 
+  applyBrowsDebugUniforms(mat);
+
   if (DEBUG_BROWS_ENABLED && performance.now() - lastBrowsUniformLogMs > 1200) {
     lastBrowsUniformLogMs = performance.now();
     console.info('[debug-brows] uniforms frame snapshot', {
@@ -2132,6 +2186,7 @@ function applyEyeBlinkUniforms(mat) {
         rotation: mat.uniforms.uEyeRightMain.value.w,
       } : null,
       debugBrowsUniform: mat.uniforms.uDebugBrows?.value,
+      browsDebugTuning: getBrowsDebugTuning(),
     });
   }
 }
@@ -2990,6 +3045,37 @@ function getHandlesModel() {
     eye_right_lower_center: getEyeHandlePoint('right', 'lower', 'center'),
     eye_right_lower_right: getEyeHandlePoint('right', 'lower', 'right'),
     eye_right_rotate: (() => { const e = window.EyeBlinkTuning.right; const r = e.rotation || 0.0; return { x: e.centerX + Math.cos(r) * (e.halfWidth + 0.06), y: e.centerY + Math.sin(r) * (e.halfWidth + 0.06) }; })(),
+
+    brow_line_center: (() => {
+      const t = getBrowsDebugTuning();
+      const browY = 0.5 * (window.EyeBlinkTuning.left.centerY + window.EyeBlinkTuning.right.centerY) + t.browYOffset;
+      return { x: 0.0, y: browY };
+    })(),
+    brow_thickness: (() => {
+      const t = getBrowsDebugTuning();
+      const browY = 0.5 * (window.EyeBlinkTuning.left.centerY + window.EyeBlinkTuning.right.centerY) + t.browYOffset;
+      return { x: 0.0, y: browY + t.browThickness };
+    })(),
+    brow_span: (() => {
+      const t = getBrowsDebugTuning();
+      const browY = 0.5 * (window.EyeBlinkTuning.left.centerY + window.EyeBlinkTuning.right.centerY) + t.browYOffset;
+      return { x: t.browXSpan, y: browY };
+    })(),
+    eye_marker_scale_left: (() => {
+      const t = getBrowsDebugTuning();
+      const e = window.EyeBlinkTuning.left;
+      return { x: e.centerX + e.halfWidth * t.eyeMarkerRadiusScale, y: e.centerY };
+    })(),
+    eye_marker_aspect_left: (() => {
+      const t = getBrowsDebugTuning();
+      const e = window.EyeBlinkTuning.left;
+      return { x: e.centerX, y: e.centerY + e.halfWidth * t.eyeMarkerRadiusScale * t.eyeMarkerAspectY };
+    })(),
+    eye_marker_feather_left: (() => {
+      const t = getBrowsDebugTuning();
+      const e = window.EyeBlinkTuning.left;
+      return { x: e.centerX + e.halfWidth * t.eyeMarkerRadiusScale * (1.0 - t.eyeMarkerFeather), y: e.centerY };
+    })(),
   };
 }
 
@@ -3012,6 +3098,48 @@ function pickHandle(clientX, clientY) {
 
 function applyDrag(key, worldPoint, startPoint, startNeckTuning, startMouthTuning, startEyeBlinkTuning) {
   const minBand = 1e-4;
+
+  if (key.startsWith('brow_') || key.startsWith('eye_marker_')) {
+    const t = getBrowsDebugTuning();
+    const midEyeY = 0.5 * (window.EyeBlinkTuning.left.centerY + window.EyeBlinkTuning.right.centerY);
+    const browY = midEyeY + t.browYOffset;
+
+    if (key === 'brow_line_center') {
+      window.BrowsDebugTuning.browYOffset = worldPoint.y - midEyeY;
+      return;
+    }
+
+    if (key === 'brow_thickness') {
+      window.BrowsDebugTuning.browThickness = Math.max(1e-4, Math.abs(worldPoint.y - browY));
+      return;
+    }
+
+    if (key === 'brow_span') {
+      window.BrowsDebugTuning.browXSpan = Math.max(0.0, Math.abs(worldPoint.x));
+      return;
+    }
+
+    const baseHalf = Math.max(1e-4, Math.abs(window.EyeBlinkTuning.left.halfWidth));
+    if (key === 'eye_marker_scale_left') {
+      window.BrowsDebugTuning.eyeMarkerRadiusScale = Math.max(0.1, Math.abs(worldPoint.x - window.EyeBlinkTuning.left.centerX) / baseHalf);
+      return;
+    }
+
+    if (key === 'eye_marker_aspect_left') {
+      const denom = baseHalf * Math.max(1e-4, getBrowsDebugTuning().eyeMarkerRadiusScale);
+      window.BrowsDebugTuning.eyeMarkerAspectY = Math.max(0.1, Math.abs(worldPoint.y - window.EyeBlinkTuning.left.centerY) / denom);
+      return;
+    }
+
+    if (key === 'eye_marker_feather_left') {
+      const scale = Math.max(1e-4, getBrowsDebugTuning().eyeMarkerRadiusScale);
+      const outerX = window.EyeBlinkTuning.left.centerX + baseHalf * scale;
+      const innerX = Math.max(window.EyeBlinkTuning.left.centerX, Math.min(outerX, worldPoint.x));
+      const ratio = (innerX - window.EyeBlinkTuning.left.centerX) / Math.max(1e-4, outerX - window.EyeBlinkTuning.left.centerX);
+      window.BrowsDebugTuning.eyeMarkerFeather = Math.max(0.0, Math.min(0.95, 1.0 - ratio));
+      return;
+    }
+  }
 
   if (key.startsWith('eye_')) {
     const parts = key.split('_');
@@ -3172,6 +3300,10 @@ function onNeckEditorUp() {
   NeckEditor.dragging = null;
   controls.enabled = true;
   if (draggedKey.startsWith('eye_')) logEyeBlinkTuning(`drag:${draggedKey}`);
+  if (draggedKey.startsWith('brow_') || draggedKey.startsWith('eye_marker_')) {
+    console.info('[brows-debug-editor] update', window.BrowsDebugTuning);
+    console.log('[brows-debug-editor] Pega esto en app.js\nwindow.BrowsDebugTuning = ' + JSON.stringify(window.BrowsDebugTuning, null, 2) + ';');
+  }
 }
 
 function onNeckEditorTouchStart(e) {
@@ -3419,6 +3551,8 @@ function drawNeckEditorOverlay() {
 
     const isMouth = key.startsWith('mouth_');
     const isEye = key.startsWith('eye_');
+    const isBrow = key.startsWith('brow_');
+    const isEyeMarker = key.startsWith('eye_marker_');
     const isPivot = (key === 'neckPivot' || key === 'bodyPivot');
     const isCurve = (key === 'curve' || key === 'mouth_curve');
 
@@ -3426,6 +3560,8 @@ function drawNeckEditorOverlay() {
     if (isMouth) color = 'rgba(103,232,249,0.95)';
     else if (isEye && key.startsWith('eye_left')) color = 'rgba(253,224,71,0.95)';
     else if (isEye && key.startsWith('eye_right')) color = 'rgba(34,197,94,0.95)';
+    else if (isBrow) color = 'rgba(34,197,94,0.95)';
+    else if (isEyeMarker) color = 'rgba(244,63,94,0.95)';
     else if (isPivot) color = 'rgba(255,0,0,0.75)';
     else if (isCurve) color = 'rgba(255,0,0,0.95)';
 
