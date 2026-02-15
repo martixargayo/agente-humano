@@ -9,8 +9,31 @@ import { createDemoFeedbackMode } from './demo_feedback_mode.js';
 // =========================
 const URL_PARAMS = new URLSearchParams(window.location.search);
 const DEBUG_EDIT_ENABLED = URL_PARAMS.get('debugEdit') === '1';
-const DEBUG_BLINK_ENABLED = URL_PARAMS.get('debugBlink') === '1';
+const FREEZE_IN_EDIT = DEBUG_EDIT_ENABLED; // En ?debugEdit=1 congelamos motion/UI conversacional para ajustar handles con precisión.
 const demoFeedbackMode = createDemoFeedbackMode({ urlParams: URL_PARAMS });
+
+function hideConversationUiForDebugEdit() {
+  if (!DEBUG_EDIT_ENABLED) return;
+  // Bypass UI conversacional incluso antes de inicializar renderer/audio.
+  [
+    'permissionOverlay',
+    'startBtn',
+    'finishTurnBtn',
+    'replyContainer',
+    'listeningGlow',
+    'inputOrb',
+  ].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.style.display = 'none';
+      el.setAttribute('aria-hidden', 'true');
+    }
+  });
+  document.querySelector('.bottom-bar')?.setAttribute('style', 'display:none');
+}
+
+hideConversationUiForDebugEdit();
+
 
 function resolveHexColorParam(paramName, fallbackColor) {
   const rawValue = URL_PARAMS.get(paramName);
@@ -142,6 +165,11 @@ const AvatarState = {
   speechIntensity: 1.0,
   idleMotionEnabled: true,
 };
+
+if (FREEZE_IN_EDIT) {
+  AvatarState.mode = 'IDLE';
+  AvatarState.idleMotionEnabled = false;
+}
 
 const InputMode = {
   TALK: 'talk',
@@ -1210,28 +1238,6 @@ float blinkCover(vec2 baseXY, vec4 eyeMain, vec4 upperCfg, vec4 lowerCfg, float 
   return xMask * aboveMoved * belowBase;
 }
 
-float eyeEnvelope(vec2 uv, vec2 c, vec2 r) {
-  vec2 q = (uv - c) / max(r, vec2(1e-4));
-  float d = dot(q, q);
-  return 1.0 - smoothstep(0.95, 1.22, d);
-}
-
-float lidCover(vec2 uv, vec2 c, vec2 r, float blink) {
-  float top = c.y + r.y * 1.03;
-  float bottom = c.y - r.y * 1.03;
-  float lidY = mix(top, bottom, blink);
-  float cut = 1.0 - smoothstep(lidY - r.y * 0.22, lidY + r.y * 0.10, uv.y);
-  return eyeEnvelope(uv, c, r) * cut;
-}
-
-vec3 sampledLidColor(vec2 uv, vec2 c, vec2 r) {
-  vec2 sampleUv = vec2(
-    uv.x,
-    clamp(c.y + r.y * 0.95 + (c.y - uv.y) * 0.08, 0.0, 1.0)
-  );
-  return texture2D(uColorMap, sampleUv).rgb;
-}
-
 void main() {
   if (uDebugHeadWeight > 0.5) {
     gl_FragColor = vec4(vec3(clamp(vHeadWeight, 0.0, 1.0)), 1.0);
@@ -1904,6 +1910,8 @@ const MotionState = {
   nod: { active: false, t0: 0, dur: 0.32, amp: 0.012 },
 };
 
+const ZERO_VEC3 = new THREE.Vector3(0, 0, 0);
+
 
 
 function clamp01(v) {
@@ -1926,7 +1934,7 @@ function startEyelidBlink(durationSec) {
 }
 
 function updateEyelidBlink(elapsed, delta) {
-  if (!isRealisticTheme) {
+  if (!isRealisticTheme || FREEZE_IN_EDIT) {
     EyelidMotionState.value = 0.0;
     return;
   }
@@ -2088,30 +2096,37 @@ function animate() {
 
     AvatarState.talkLevel = targetTalk;
 
-    updateChannel(MotionState.head, MotionConfig.head, elapsed, delta);
-    updateChannel(MotionState.body, MotionConfig.body, elapsed, delta);
-
-    const microYaw =
-      (Math.sin(elapsed * 2.1 + MotionState.seed) * MotionConfig.micro.yaw) +
-      (Math.sin(elapsed * 3.7 + MotionState.seed * 0.3) * MotionConfig.micro.yaw * 0.45);
-
-    const microPitch =
-      (Math.sin(elapsed * 1.8 + MotionState.seed * 0.7) * MotionConfig.micro.pitch) +
-      (Math.sin(elapsed * 3.2 + MotionState.seed * 0.2) * MotionConfig.micro.pitch * 0.45);
-
-    const microRoll =
-      (Math.sin(elapsed * 1.5 + MotionState.seed * 1.3) * MotionConfig.micro.roll) +
-      (Math.sin(elapsed * 2.9 + MotionState.seed * 0.4) * MotionConfig.micro.roll * 0.45);
-
-    const nodPitch = updateNod(elapsed, delta);
-
-    const head = MotionState.head.current;
-    const body = MotionState.body.current;
-
+    let microYaw = 0.0;
+    let microPitch = 0.0;
+    let microRoll = 0.0;
+    let nodPitch = 0.0;
     let offY = 0.0;
-    if (AvatarState.idleMotionEnabled) {
-      offY = 0.01 * Math.sin(elapsed * 0.9) + 0.005 * Math.sin(elapsed * 0.37);
+
+    if (!FREEZE_IN_EDIT) {
+      updateChannel(MotionState.head, MotionConfig.head, elapsed, delta);
+      updateChannel(MotionState.body, MotionConfig.body, elapsed, delta);
+
+      microYaw =
+        (Math.sin(elapsed * 2.1 + MotionState.seed) * MotionConfig.micro.yaw) +
+        (Math.sin(elapsed * 3.7 + MotionState.seed * 0.3) * MotionConfig.micro.yaw * 0.45);
+
+      microPitch =
+        (Math.sin(elapsed * 1.8 + MotionState.seed * 0.7) * MotionConfig.micro.pitch) +
+        (Math.sin(elapsed * 3.2 + MotionState.seed * 0.2) * MotionConfig.micro.pitch * 0.45);
+
+      microRoll =
+        (Math.sin(elapsed * 1.5 + MotionState.seed * 1.3) * MotionConfig.micro.roll) +
+        (Math.sin(elapsed * 2.9 + MotionState.seed * 0.4) * MotionConfig.micro.roll * 0.45);
+
+      nodPitch = updateNod(elapsed, delta);
+
+      if (AvatarState.idleMotionEnabled) {
+        offY = 0.01 * Math.sin(elapsed * 0.9) + 0.005 * Math.sin(elapsed * 0.37);
+      }
     }
+
+    const head = FREEZE_IN_EDIT ? ZERO_VEC3 : MotionState.head.current;
+    const body = FREEZE_IN_EDIT ? ZERO_VEC3 : MotionState.body.current;
 
     for (const mat of particleMaterials) {
       mat.uniforms.uTime.value = elapsed;
@@ -2192,6 +2207,11 @@ const chatUiContainers = [
   ui.permissionOverlay,
   ui.listeningGlow,
 ].filter(Boolean);
+
+if (DEBUG_EDIT_ENABLED) {
+  // Refuerzo: volvemos a ocultar UI conversacional cuando ya están resueltos todos los nodos `ui`.
+  hideConversationUiForDebugEdit();
+}
 
 let statusResetId = null;
 
@@ -2564,68 +2584,70 @@ async function startConversation() {
   await enterListening();
 }
 
-if (ui.startBtn) {
-  ui.startBtn.addEventListener('click', () => {
-    startConversation();
-  });
-}
+if (!DEBUG_EDIT_ENABLED) {
+  if (ui.startBtn) {
+    ui.startBtn.addEventListener('click', () => {
+      startConversation();
+    });
+  }
 
-if (ui.finishTurnBtn) {
-  ui.finishTurnBtn.addEventListener('click', () => {
-    finishUserTurn();
-  });
-}
+  if (ui.finishTurnBtn) {
+    ui.finishTurnBtn.addEventListener('click', () => {
+      finishUserTurn();
+    });
+  }
 
-if (ui.modeTalk) {
-  ui.modeTalk.addEventListener('click', () => setInputMode(InputMode.TALK));
-}
-if (ui.modeWrite) {
-  ui.modeWrite.addEventListener('click', () => setInputMode(InputMode.WRITE));
-}
-if (ui.agentChat) {
-  ui.agentChat.addEventListener('click', () => setAgentMode(AgentMode.CHAT));
-}
-if (ui.agentNegotiation) {
-  ui.agentNegotiation.addEventListener('click', () => setAgentMode(AgentMode.NEGOCIAR));
-}
-if (ui.sendTextBtn) {
-  ui.sendTextBtn.addEventListener('click', handleTextSend);
-}
-if (ui.textInput) {
-  ui.textInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+  if (ui.modeTalk) {
+    ui.modeTalk.addEventListener('click', () => setInputMode(InputMode.TALK));
+  }
+  if (ui.modeWrite) {
+    ui.modeWrite.addEventListener('click', () => setInputMode(InputMode.WRITE));
+  }
+  if (ui.agentChat) {
+    ui.agentChat.addEventListener('click', () => setAgentMode(AgentMode.CHAT));
+  }
+  if (ui.agentNegotiation) {
+    ui.agentNegotiation.addEventListener('click', () => setAgentMode(AgentMode.NEGOCIAR));
+  }
+  if (ui.sendTextBtn) {
+    ui.sendTextBtn.addEventListener('click', handleTextSend);
+  }
+  if (ui.textInput) {
+    ui.textInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        handleTextSend();
+      }
+    });
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.repeat && AvatarState.mode === 'LISTENING') {
       e.preventDefault();
-      handleTextSend();
+      finishUserTurn();
     }
   });
+
+  demoFeedbackMode.mount({
+    hiddenContainers: chatUiContainers,
+    onFinish: () => {
+      stopInputOrb();
+      cancelRecording();
+      cleanupAudio();
+      setListeningGlowEnabled(false);
+      enterIdle();
+    },
+  });
+
+  setInputMode(currentInputMode);
+  setAgentMode(currentAgentMode);
+  updateUiForMode();
 }
-
-window.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.repeat && AvatarState.mode === 'LISTENING') {
-    e.preventDefault();
-    finishUserTurn();
-  }
-});
-
-demoFeedbackMode.mount({
-  hiddenContainers: chatUiContainers,
-  onFinish: () => {
-    stopInputOrb();
-    cancelRecording();
-    cleanupAudio();
-    setListeningGlowEnabled(false);
-    enterIdle();
-  },
-});
-
-setInputMode(currentInputMode);
-setAgentMode(currentAgentMode);
-updateUiForMode();
 
 // =========================
 // 10. Botón "Hablar (test)" – solo frontend, sin backend (debug)
 // =========================
-if (URL_PARAMS.get('debugTalk') === '1') {
+if (!DEBUG_EDIT_ENABLED && URL_PARAMS.get('debugTalk') === '1') {
   const testTalkBtn = document.createElement('button');
   testTalkBtn.textContent = 'Hablar (test)';
   Object.assign(testTalkBtn.style, {
