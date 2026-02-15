@@ -1923,7 +1923,11 @@ function nextBlinkInterval() {
 }
 
 function scheduleEyelidBlink(now, minDelay = 0.0) {
-  EyelidMotionState.nextBlinkAt = now + minDelay + nextBlinkInterval();
+  EyelidMotionState.nextBlinkAt = now + minDelay;
+}
+
+function scheduleNextRegularBlink(now) {
+  scheduleEyelidBlink(now, nextBlinkInterval());
 }
 
 function startEyelidBlink(durationSec) {
@@ -1976,7 +1980,7 @@ function updateEyelidBlink(elapsed, delta) {
       EyelidMotionState.pendingDouble = false;
       EyelidMotionState.nextBlinkAt = elapsed + randRange(0.08, 0.16);
     } else {
-      scheduleEyelidBlink(elapsed);
+      scheduleNextRegularBlink(elapsed);
     }
   }
 }
@@ -2081,12 +2085,15 @@ function updateNod(t, dt) {
 let lipTestActive = false;
 let lipTestStartTime = 0;
 let testLipsBtn = null;
+let prevFrameElapsed = 0;
 
 function animate() {
   requestAnimationFrame(animate);
 
+  // Usamos una sola lectura de tiempo por frame para evitar dt≈0 por doble muestreo del clock.
   const elapsed = clock.getElapsedTime();
-  const delta = clock.getDelta();
+  const delta = prevFrameElapsed > 0 ? Math.max(0.0, elapsed - prevFrameElapsed) : 0.0;
+  prevFrameElapsed = elapsed;
   updateEyelidBlink(elapsed, delta);
 
   if (particleMaterials.length) {
