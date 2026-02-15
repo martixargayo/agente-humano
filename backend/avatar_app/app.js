@@ -9,6 +9,7 @@ import { createDemoFeedbackMode } from './demo_feedback_mode.js';
 // =========================
 const URL_PARAMS = new URLSearchParams(window.location.search);
 const DEBUG_EDIT_ENABLED = URL_PARAMS.get('debugEdit') === '1';
+const DEBUG_BLINK_ENABLED = URL_PARAMS.get('debugBlink') === '1';
 const demoFeedbackMode = createDemoFeedbackMode({ urlParams: URL_PARAMS });
 
 function resolveHexColorParam(paramName, fallbackColor) {
@@ -222,6 +223,27 @@ let silentFrameCount = 0;
 let audioSource = null;
 let lipHoldActive = false;
 let lipsyncLevel = 0; // nivel suavizado 0..1
+
+const BlinkState = {
+  value: 0.0,
+  phase: 'idle', // idle | closing | opening
+  timer: 0.0,
+  duration: 0.12,
+  nextBlinkAt: 2.5,
+  pendingDoubleBlink: false,
+  initialized: false,
+};
+
+const FALLBACK_EYES = {
+  left: {
+    center: new THREE.Vector2(0.365, 0.582),
+    radius: new THREE.Vector2(0.092, 0.075),
+  },
+  right: {
+    center: new THREE.Vector2(0.635, 0.582),
+    radius: new THREE.Vector2(0.092, 0.075),
+  },
+};
 const debugStats = {
   frames: 0,
   rmsSum: 0,
@@ -1141,9 +1163,37 @@ uniform sampler2D uColorMap;
 uniform float uUseMap;
 uniform vec3 uColor;
 uniform float uDebugHeadWeight;
+uniform float uBlink;
+uniform vec2 uEyeC0;
+uniform vec2 uEyeR0;
+uniform vec2 uEyeC1;
+uniform vec2 uEyeR1;
+uniform float uBlinkDebug;
 varying vec2 vUv;
 varying float vHeadWeight;
 varying float vBaseZ;
+
+float eyeEnvelope(vec2 uv, vec2 c, vec2 r) {
+  vec2 q = (uv - c) / max(r, vec2(1e-4));
+  float d = dot(q, q);
+  return 1.0 - smoothstep(0.95, 1.22, d);
+}
+
+float lidCover(vec2 uv, vec2 c, vec2 r, float blink) {
+  float top = c.y + r.y * 1.03;
+  float bottom = c.y - r.y * 1.03;
+  float lidY = mix(top, bottom, blink);
+  float cut = 1.0 - smoothstep(lidY - r.y * 0.22, lidY + r.y * 0.10, uv.y);
+  return eyeEnvelope(uv, c, r) * cut;
+}
+
+vec3 sampledLidColor(vec2 uv, vec2 c, vec2 r) {
+  vec2 sampleUv = vec2(
+    uv.x,
+    clamp(c.y + r.y * 0.95 + (c.y - uv.y) * 0.08, 0.0, 1.0)
+  );
+  return texture2D(uColorMap, sampleUv).rgb;
+}
 
 void main() {
   if (uDebugHeadWeight > 0.5) {
@@ -1154,6 +1204,27 @@ void main() {
 
   vec3 texColor = texture2D(uColorMap, vUv).rgb;
   vec3 finalColor = mix(uColor, texColor, uUseMap);
+
+  float blink = clamp(uBlink, 0.0, 1.0);
+  float leftCover = lidCover(vUv, uEyeC0, uEyeR0, blink);
+  float rightCover = lidCover(vUv, uEyeC1, uEyeR1, blink);
+  float cover = max(leftCover, rightCover);
+
+  vec3 lidColorL = sampledLidColor(vUv, uEyeC0, uEyeR0);
+  vec3 lidColorR = sampledLidColor(vUv, uEyeC1, uEyeR1);
+  vec3 lidColor = mix(lidColorL, lidColorR, step(leftCover, rightCover));
+
+  finalColor = mix(finalColor, lidColor, cover * smoothstep(0.02, 0.98, blink));
+
+  if (uBlinkDebug > 0.5) {
+    vec3 dbg = finalColor;
+    dbg = mix(dbg, vec3(1.0, 0.25, 0.25), leftCover * 0.9);
+    dbg = mix(dbg, vec3(0.2, 0.6, 1.0), rightCover * 0.9);
+    dbg = mix(dbg, vec3(1.0), cover * blink * 0.35);
+    gl_FragColor = vec4(dbg, 1.0);
+    return;
+  }
+
   gl_FragColor = vec4(finalColor, 1.0);
 }
 `;
@@ -1181,6 +1252,8 @@ loader.load(
     if (!colorMap) {
       console.warn('No se ha encontrado material.map (textura de color). Se usará densidad = 1 en todo.');
     }
+
+    const eyeDetection = detectEyesFromTexture(colorMap);
 
     const geoms = [];
     meshes.forEach((m) => {
@@ -1312,6 +1385,12 @@ loader.load(
           uDissolveStart: { value: 0.9 },
           uDissolveEnd: { value: 1.0 },
           uDissolveMotionAmp: { value: 1.0 },
+          uBlink: { value: 0.0 },
+          uEyeC0: { value: eyeDetection.left.center.clone() },
+          uEyeR0: { value: eyeDetection.left.radius.clone() },
+          uEyeC1: { value: eyeDetection.right.center.clone() },
+          uEyeR1: { value: eyeDetection.right.radius.clone() },
+          uBlinkDebug: { value: DEBUG_BLINK_ENABLED ? 1.0 : 0.0 },
           uDebugHeadWeight: { value: DebugView.headWeight ? 1.0 : 0.0 },
         },
       });
@@ -1799,6 +1878,204 @@ const MotionState = {
   nod: { active: false, t0: 0, dur: 0.32, amp: 0.012 },
 };
 
+
+
+function clamp01(v) {
+  return THREE.MathUtils.clamp(v, 0.0, 1.0);
+}
+
+function randomBlinkInterval() {
+  return randRange(2.0, 6.0);
+}
+
+function configureNextBlink(now, minDelay = 0.0) {
+  BlinkState.nextBlinkAt = now + minDelay + randomBlinkInterval();
+}
+
+function startBlink(durationSec) {
+  BlinkState.phase = 'closing';
+  BlinkState.timer = 0.0;
+  BlinkState.duration = durationSec;
+  BlinkState.value = 0.0;
+}
+
+function updateBlink(elapsed, delta) {
+  if (!isRealisticTheme) {
+    BlinkState.value = 0.0;
+    return;
+  }
+
+  if (!BlinkState.initialized) {
+    BlinkState.initialized = true;
+    configureNextBlink(elapsed, randRange(0.4, 1.4));
+  }
+
+  if (BlinkState.phase === 'idle') {
+    if (elapsed >= BlinkState.nextBlinkAt) {
+      startBlink(randRange(0.09, 0.15));
+      BlinkState.pendingDoubleBlink = Math.random() < 0.2;
+    }
+    return;
+  }
+
+  BlinkState.timer += delta;
+  const closeDuration = BlinkState.duration * 0.36;
+  const openDuration = BlinkState.duration * 0.64;
+
+  if (BlinkState.phase === 'closing') {
+    const t = clamp01(BlinkState.timer / closeDuration);
+    BlinkState.value = t;
+    if (t >= 1.0) {
+      BlinkState.phase = 'opening';
+      BlinkState.timer = 0.0;
+    }
+    return;
+  }
+
+  const t = clamp01(BlinkState.timer / openDuration);
+  BlinkState.value = 1.0 - t;
+  if (t >= 1.0) {
+    BlinkState.phase = 'idle';
+    BlinkState.timer = 0.0;
+    BlinkState.value = 0.0;
+    if (BlinkState.pendingDoubleBlink) {
+      BlinkState.pendingDoubleBlink = false;
+      BlinkState.nextBlinkAt = elapsed + randRange(0.09, 0.18);
+    } else {
+      configureNextBlink(elapsed);
+    }
+  }
+}
+
+function detectEyesFromTexture(colorMap) {
+  const fallback = {
+    left: {
+      center: FALLBACK_EYES.left.center.clone(),
+      radius: FALLBACK_EYES.left.radius.clone(),
+    },
+    right: {
+      center: FALLBACK_EYES.right.center.clone(),
+      radius: FALLBACK_EYES.right.radius.clone(),
+    },
+  };
+
+  if (!colorMap || !colorMap.image) {
+    console.warn('[blink] Textura no disponible, usando fallback.');
+    return fallback;
+  }
+
+  try {
+    const image = colorMap.image;
+    const width = image.videoWidth || image.naturalWidth || image.width;
+    const height = image.videoHeight || image.naturalHeight || image.height;
+    if (!width || !height) throw new Error('Image sin dimensiones válidas');
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) throw new Error('No se pudo crear contexto 2D');
+
+    ctx.drawImage(image, 0, 0, width, height);
+    const imgData = ctx.getImageData(0, 0, width, height).data;
+
+    const roiU0 = Math.floor(width * 0.14);
+    const roiU1 = Math.ceil(width * 0.86);
+    const roiV0 = Math.floor(height * 0.26);
+    const roiV1 = Math.ceil(height * 0.72);
+
+    const left = { count: 0, minX: Infinity, minY: Infinity, maxX: -1, maxY: -1, sumX: 0, sumY: 0 };
+    const right = { count: 0, minX: Infinity, minY: Infinity, maxX: -1, maxY: -1, sumX: 0, sumY: 0 };
+
+    const satLimit = 0.22;
+    const lumaLimit = 0.66;
+
+    for (let y = roiV0; y < roiV1; y += 1) {
+      for (let x = roiU0; x < roiU1; x += 1) {
+        const idx = (y * width + x) * 4;
+        const r = imgData[idx] / 255;
+        const g = imgData[idx + 1] / 255;
+        const b = imgData[idx + 2] / 255;
+
+        const maxC = Math.max(r, g, b);
+        const minC = Math.min(r, g, b);
+        const chroma = maxC - minC;
+        const sat = maxC > 1e-5 ? chroma / maxC : 0;
+        const luma = r * 0.2126 + g * 0.7152 + b * 0.0722;
+
+        if (luma < lumaLimit || sat > satLimit) continue;
+
+        const bucket = x < width * 0.5 ? left : right;
+        bucket.count += 1;
+        bucket.sumX += x;
+        bucket.sumY += y;
+        if (x < bucket.minX) bucket.minX = x;
+        if (x > bucket.maxX) bucket.maxX = x;
+        if (y < bucket.minY) bucket.minY = y;
+        if (y > bucket.maxY) bucket.maxY = y;
+      }
+    }
+
+    const buildEye = (bucket, fbEye) => {
+      if (bucket.count < 30 || bucket.maxX <= bucket.minX || bucket.maxY <= bucket.minY) {
+        return {
+          center: fbEye.center.clone(),
+          radius: fbEye.radius.clone(),
+          ok: false,
+        };
+      }
+
+      const cx = bucket.sumX / bucket.count;
+      const cy = bucket.sumY / bucket.count;
+      const spanX = (bucket.maxX - bucket.minX + 1) / width;
+      const spanY = (bucket.maxY - bucket.minY + 1) / height;
+
+      const ru = clamp01(Math.max(0.05, spanX * 0.72));
+      const rv = clamp01(Math.max(0.045, spanY * 1.25));
+      const u = clamp01(cx / width);
+      const v = clamp01(1.0 - (cy / height));
+
+      return {
+        center: new THREE.Vector2(u, v),
+        radius: new THREE.Vector2(ru, rv),
+        ok: true,
+      };
+    };
+
+    const leftEye = buildEye(left, FALLBACK_EYES.left);
+    const rightEye = buildEye(right, FALLBACK_EYES.right);
+
+    const bothDetected = leftEye.ok && rightEye.ok;
+    if (!bothDetected) {
+      console.warn('[blink] Detección parcial o fallida, aplicando fallback en ojos faltantes.', {
+        leftCount: left.count,
+        rightCount: right.count,
+      });
+    }
+
+    const result = {
+      left: { center: leftEye.center, radius: leftEye.radius },
+      right: { center: rightEye.center, radius: rightEye.radius },
+    };
+
+    console.info('[blink] Eye UV detection', {
+      left: {
+        center: { u: Number(result.left.center.x.toFixed(4)), v: Number(result.left.center.y.toFixed(4)) },
+        radius: { ru: Number(result.left.radius.x.toFixed(4)), rv: Number(result.left.radius.y.toFixed(4)) },
+      },
+      right: {
+        center: { u: Number(result.right.center.x.toFixed(4)), v: Number(result.right.center.y.toFixed(4)) },
+        radius: { ru: Number(result.right.radius.x.toFixed(4)), rv: Number(result.right.radius.y.toFixed(4)) },
+      },
+    });
+
+    return result;
+  } catch (err) {
+    console.warn('[blink] Error detectando ojos en textura, usando fallback.', err);
+    return fallback;
+  }
+}
+
 function pickTarget(cfg) {
   const bias = 0.65;
   const s = () => (Math.random() * 2 - 1);
@@ -1855,6 +2132,7 @@ function animate() {
 
   const elapsed = clock.getElapsedTime();
   const delta = clock.getDelta();
+  updateBlink(elapsed, delta);
 
   if (particleMaterials.length) {
     let targetTalk = 0.0;
@@ -1892,6 +2170,8 @@ function animate() {
       mat.uniforms.uTime.value = elapsed;
       mat.uniforms.uTalk.value = AvatarState.talkLevel;
       mat.uniforms.uRestOpen.value = 0.03;
+      if (mat.uniforms.uBlink) mat.uniforms.uBlink.value = BlinkState.value;
+      if (mat.uniforms.uBlinkDebug) mat.uniforms.uBlinkDebug.value = DEBUG_BLINK_ENABLED ? 1.0 : 0.0;
       mat.uniforms.uDebugHeadWeight.value = DebugView.headWeight ? 1.0 : 0.0;
 
       mat.uniforms.uHeadRot.value.set(
