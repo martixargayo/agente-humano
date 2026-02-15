@@ -1013,6 +1013,20 @@ let headCutCapMesh = null;
 // - Concentrado en esta sección para activar/desactivar fácil.
 // =========================
 function generateAnimatedSurfaceGeometry(srcGeometry) {
+  // Random estable por posición para evitar grietas visuales en costuras UV.
+  // Si dos vértices comparten posición espacial, recibirán el mismo offset.
+  const stableHash = (n) => {
+    const x = Math.sin(n) * 43758.5453123;
+    return x - Math.floor(x);
+  };
+  const stableRandomFromPosition = (x, y, z, salt = 0.0) => {
+    const qx = Math.round(x * 10000.0) / 10000.0;
+    const qy = Math.round(y * 10000.0) / 10000.0;
+    const qz = Math.round(z * 10000.0) / 10000.0;
+    const seed = qx * 127.1 + qy * 311.7 + qz * 74.7 + salt * 19.19;
+    return stableHash(seed);
+  };
+
   const geo = srcGeometry.clone();
   const srcPos = geo.getAttribute('position');
   const srcUv = geo.getAttribute('uv');
@@ -1048,9 +1062,9 @@ function generateAnimatedSurfaceGeometry(srcGeometry) {
       uvArray[i * 2 + 1] = uv.y;
     }
 
-    randoms[i * 3 + 0] = Math.random();
-    randoms[i * 3 + 1] = Math.random();
-    randoms[i * 3 + 2] = Math.random();
+    randoms[i * 3 + 0] = stableRandomFromPosition(v.x, v.y, v.z, 1.0);
+    randoms[i * 3 + 1] = stableRandomFromPosition(v.x, v.y, v.z, 2.0);
+    randoms[i * 3 + 2] = stableRandomFromPosition(v.x, v.y, v.z, 3.0);
 
     const y01 = (v.y - minY) / yRange;
     heightFromTop[i] = THREE.MathUtils.clamp(1.0 - y01, 0.0, 1.0);
