@@ -2334,7 +2334,7 @@ let testLipsBtn = null;
 let prevFrameElapsed = 0;
 let motionTime = 0;
 
-function reportMotionDebug({ elapsed, elapsedJump, deltaRaw, dtMotion, kHead, kBody, headRotMag, microYaw, microPitch, microRoll, offY }) {
+const reportMotionFrameDebug = ({ elapsed, elapsedJump, deltaRaw, dtMotion, kHead, kBody, headRotMag, microYaw, microPitch, microRoll, offY }) => {
   if (!DEBUG_MOTION_ENABLED) return;
 
   MotionDebugState.deltaMin = Math.min(MotionDebugState.deltaMin, deltaRaw);
@@ -2392,49 +2392,7 @@ function reportMotionDebug({ elapsed, elapsedJump, deltaRaw, dtMotion, kHead, kB
     MotionDebugState.deltaCount = 0;
     MotionDebugState.lastReportAt = elapsed;
   }
-}
-
-function reportMotionDebug(elapsed, deltaRaw, kHead, kBody, headRotMag) {
-  if (!DEBUG_MOTION_ENABLED) return;
-
-  MotionDebugState.deltaMin = Math.min(MotionDebugState.deltaMin, deltaRaw);
-  MotionDebugState.deltaMax = Math.max(MotionDebugState.deltaMax, deltaRaw);
-  MotionDebugState.deltaSum += deltaRaw;
-  MotionDebugState.deltaCount += 1;
-
-  if (deltaRaw > 0.1) {
-    console.warn('[debug-motion] delta spike > 100ms', {
-      elapsed: Number(elapsed.toFixed(3)),
-      delta: Number(deltaRaw.toFixed(4)),
-    });
-  } else if (deltaRaw > 0.05) {
-    console.warn('[debug-motion] delta spike > 50ms', {
-      elapsed: Number(elapsed.toFixed(3)),
-      delta: Number(deltaRaw.toFixed(4)),
-    });
-  }
-
-  if (elapsed - MotionDebugState.lastReportAt >= 1.0) {
-    const deltaAvg = MotionDebugState.deltaCount > 0
-      ? MotionDebugState.deltaSum / MotionDebugState.deltaCount
-      : 0.0;
-    console.info('[debug-motion] 1s-report', {
-      elapsed: Number(elapsed.toFixed(3)),
-      delta: Number(deltaRaw.toFixed(4)),
-      deltaMin: Number(MotionDebugState.deltaMin.toFixed(4)),
-      deltaMax: Number(MotionDebugState.deltaMax.toFixed(4)),
-      deltaAvg: Number(deltaAvg.toFixed(4)),
-      kHead: Number(kHead.toFixed(4)),
-      kBody: Number(kBody.toFixed(4)),
-      headRotMag: Number(headRotMag.toFixed(4)),
-    });
-    MotionDebugState.deltaMin = Number.POSITIVE_INFINITY;
-    MotionDebugState.deltaMax = 0;
-    MotionDebugState.deltaSum = 0;
-    MotionDebugState.deltaCount = 0;
-    MotionDebugState.lastReportAt = elapsed;
-  }
-}
+};
 
 function animate() {
   requestAnimationFrame(animate);
@@ -2496,7 +2454,7 @@ function animate() {
       (head.y + microYaw) * HEAD_MOTION_GAIN,
       (head.z + microRoll) * HEAD_MOTION_GAIN,
     );
-    reportMotionDebug({
+    reportMotionFrameDebug({
       elapsed,
       elapsedJump,
       deltaRaw,
