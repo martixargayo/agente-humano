@@ -1153,6 +1153,7 @@ attribute float aMouthSide;
 attribute float aHeadWeight;
 varying vec2 vUv;
 varying float vHeadWeight;
+varying float vBaseZ;
 
 float hash11(float p){ return fract(sin(p * 127.1) * 43758.5453123); }
 float hash21(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453123); }
@@ -1165,6 +1166,7 @@ vec3 rotateAroundPivot(vec3 p, vec3 pivot, vec3 r){ vec3 q = p - pivot; q = rotY
 void main() {
   vUv = aUv;
   vHeadWeight = aHeadWeight;
+  vBaseZ = aBasePosition.z;
 
   vec3 pos = aBasePosition;
   float t = uTime;
@@ -1201,12 +1203,15 @@ uniform vec3 uColor;
 uniform float uDebugHeadWeight;
 varying vec2 vUv;
 varying float vHeadWeight;
+varying float vBaseZ;
 
 void main() {
   if (uDebugHeadWeight > 0.5) {
     gl_FragColor = vec4(vec3(clamp(vHeadWeight, 0.0, 1.0)), 1.0);
     return;
   }
+  if (vBaseZ < 0.0) discard;
+
   vec3 texColor = texture2D(uColorMap, vUv).rgb;
   vec3 finalColor = mix(uColor, texColor, uUseMap);
   gl_FragColor = vec4(finalColor, 1.0);
@@ -1862,9 +1867,12 @@ function randRange(a, b) {
 
 const MotionConfig = {
   head: { ampYaw: 0.055, ampPitch: 0.050, ampRoll: 0.030, holdMin: 1.0, holdMax: 3.2, smooth: 10.0 },
+  // En tema realistic, duplicamos rango de movimiento de cabeza (parte superior del cuello).
   body: { ampYaw: 0.012, ampPitch: 0.010, ampRoll: 0.010, holdMin: 1.2, holdMax: 4.0, smooth: 6.0 },
   micro: { yaw: 0.006, pitch: 0.004, roll: 0.004 },
 };
+
+const HEAD_MOTION_GAIN = isRealisticTheme ? 2.0 : 1.0;
 
 const MotionState = {
   seed: Math.random() * 1000.0,
@@ -1969,9 +1977,9 @@ function animate() {
       mat.uniforms.uDebugHeadWeight.value = DebugView.headWeight ? 1.0 : 0.0;
 
       mat.uniforms.uHeadRot.value.set(
-        head.x + microPitch + nodPitch,
-        head.y + microYaw,
-        head.z + microRoll
+        (head.x + microPitch + nodPitch) * HEAD_MOTION_GAIN,
+        (head.y + microYaw) * HEAD_MOTION_GAIN,
+        (head.z + microRoll) * HEAD_MOTION_GAIN
       );
 
       mat.uniforms.uBodyRot.value.set(
