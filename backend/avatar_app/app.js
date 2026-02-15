@@ -224,26 +224,16 @@ let audioSource = null;
 let lipHoldActive = false;
 let lipsyncLevel = 0; // nivel suavizado 0..1
 
-const BlinkState = {
+const EyelidMotionState = {
   value: 0.0,
   phase: 'idle', // idle | closing | opening
   timer: 0.0,
   duration: 0.12,
-  nextBlinkAt: 2.5,
-  pendingDoubleBlink: false,
+  nextBlinkAt: 2.2,
+  pendingDouble: false,
   initialized: false,
 };
 
-const FALLBACK_EYES = {
-  left: {
-    center: new THREE.Vector2(0.365, 0.582),
-    radius: new THREE.Vector2(0.092, 0.075),
-  },
-  right: {
-    center: new THREE.Vector2(0.635, 0.582),
-    radius: new THREE.Vector2(0.092, 0.075),
-  },
-};
 const debugStats = {
   frames: 0,
   rmsSum: 0,
@@ -331,6 +321,25 @@ window.MouthTuning = window.MouthTuning || {
   width: 0.18,     // ancho de la región de boca
   height: 0.14,    // alto máximo (labios + hueco)
   curve: 0.0,      // curvatura en U (0 = recto)
+};
+
+window.EyeBlinkTuning = window.EyeBlinkTuning || {
+  left: {
+    centerX: -0.165,
+    centerY: 0.365,
+    halfWidth: 0.12,
+    rotation: -0.06,
+    upper: { offset: 0.036, curve: -0.018 },
+    lower: { offset: -0.028, curve: 0.010 },
+  },
+  right: {
+    centerX: 0.16,
+    centerY: 0.365,
+    halfWidth: 0.12,
+    rotation: 0.06,
+    upper: { offset: 0.036, curve: -0.018 },
+    lower: { offset: -0.028, curve: 0.010 },
+  },
 };
 
 // =========================
@@ -1116,6 +1125,7 @@ attribute float aHeadWeight;
 varying vec2 vUv;
 varying float vHeadWeight;
 varying float vBaseZ;
+varying vec2 vBaseXY;
 
 float hash11(float p){ return fract(sin(p * 127.1) * 43758.5453123); }
 float hash21(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453123); }
@@ -1129,6 +1139,7 @@ void main() {
   vUv = aUv;
   vHeadWeight = aHeadWeight;
   vBaseZ = aBasePosition.z;
+  vBaseXY = aBasePosition.xy;
 
   vec3 pos = aBasePosition;
   float t = uTime;
@@ -1164,14 +1175,40 @@ uniform float uUseMap;
 uniform vec3 uColor;
 uniform float uDebugHeadWeight;
 uniform float uBlink;
-uniform vec2 uEyeC0;
-uniform vec2 uEyeR0;
-uniform vec2 uEyeC1;
-uniform vec2 uEyeR1;
-uniform float uBlinkDebug;
+uniform vec4 uEyeLeftMain;   // centerX, centerY, halfWidth, rotation
+uniform vec4 uEyeLeftUpper;  // offsetY, curve, reserved, reserved
+uniform vec4 uEyeLeftLower;  // offsetY, curve, reserved, reserved
+uniform vec4 uEyeRightMain;
+uniform vec4 uEyeRightUpper;
+uniform vec4 uEyeRightLower;
 varying vec2 vUv;
 varying float vHeadWeight;
 varying float vBaseZ;
+varying vec2 vBaseXY;
+
+mat2 invRot(float a) {
+  float s = sin(a);
+  float c = cos(a);
+  return mat2(c, s, -s, c);
+}
+
+float blinkCover(vec2 baseXY, vec4 eyeMain, vec4 upperCfg, vec4 lowerCfg, float blink) {
+  vec2 local = invRot(eyeMain.w) * (baseXY - eyeMain.xy);
+  float halfWidth = max(eyeMain.z, 1e-4);
+  float xN = clamp(local.x / halfWidth, -1.0, 1.0);
+
+  float upperBase = upperCfg.x + upperCfg.y * (xN * xN);
+  float lowerBase = lowerCfg.x + lowerCfg.y * (xN * xN);
+
+  float upperNow = mix(upperBase, lowerBase, blink);
+  float yFeather = max(0.003, halfWidth * 0.08);
+  float xMask = 1.0 - smoothstep(halfWidth * 0.96, halfWidth * 1.08, abs(local.x));
+
+  float aboveMoved = smoothstep(upperNow - yFeather, upperNow + yFeather, local.y);
+  float belowBase = 1.0 - smoothstep(upperBase - yFeather, upperBase + yFeather, local.y);
+
+  return xMask * aboveMoved * belowBase;
+}
 
 float eyeEnvelope(vec2 uv, vec2 c, vec2 r) {
   vec2 q = (uv - c) / max(r, vec2(1e-4));
@@ -1206,28 +1243,17 @@ void main() {
   vec3 finalColor = mix(uColor, texColor, uUseMap);
 
   float blink = clamp(uBlink, 0.0, 1.0);
-  float leftCover = lidCover(vUv, uEyeC0, uEyeR0, blink);
-  float rightCover = lidCover(vUv, uEyeC1, uEyeR1, blink);
-  float cover = max(leftCover, rightCover);
+  float leftCover = blinkCover(vBaseXY, uEyeLeftMain, uEyeLeftUpper, uEyeLeftLower, blink);
+  float rightCover = blinkCover(vBaseXY, uEyeRightMain, uEyeRightUpper, uEyeRightLower, blink);
+  float cover = max(leftCover, rightCover) * smoothstep(0.02, 0.95, blink);
 
-  vec3 lidColorL = sampledLidColor(vUv, uEyeC0, uEyeR0);
-  vec3 lidColorR = sampledLidColor(vUv, uEyeC1, uEyeR1);
-  vec3 lidColor = mix(lidColorL, lidColorR, step(leftCover, rightCover));
-
-  finalColor = mix(finalColor, lidColor, cover * smoothstep(0.02, 0.98, blink));
-
-  if (uBlinkDebug > 0.5) {
-    vec3 dbg = finalColor;
-    dbg = mix(dbg, vec3(1.0, 0.25, 0.25), leftCover * 0.9);
-    dbg = mix(dbg, vec3(0.2, 0.6, 1.0), rightCover * 0.9);
-    dbg = mix(dbg, vec3(1.0), cover * blink * 0.35);
-    gl_FragColor = vec4(dbg, 1.0);
-    return;
-  }
+  vec3 lidColor = texture2D(uColorMap, clamp(vUv + vec2(0.0, 0.03), 0.0, 1.0)).rgb;
+  finalColor = mix(finalColor, lidColor, cover);
 
   gl_FragColor = vec4(finalColor, 1.0);
 }
 `;
+
 
 loader.load(
   './FaceVolumen.glb',
@@ -1253,7 +1279,6 @@ loader.load(
       console.warn('No se ha encontrado material.map (textura de color). Se usará densidad = 1 en todo.');
     }
 
-    const eyeDetection = detectEyesFromTexture(colorMap);
 
     const geoms = [];
     meshes.forEach((m) => {
@@ -1386,11 +1411,12 @@ loader.load(
           uDissolveEnd: { value: 1.0 },
           uDissolveMotionAmp: { value: 1.0 },
           uBlink: { value: 0.0 },
-          uEyeC0: { value: eyeDetection.left.center.clone() },
-          uEyeR0: { value: eyeDetection.left.radius.clone() },
-          uEyeC1: { value: eyeDetection.right.center.clone() },
-          uEyeR1: { value: eyeDetection.right.radius.clone() },
-          uBlinkDebug: { value: DEBUG_BLINK_ENABLED ? 1.0 : 0.0 },
+          uEyeLeftMain: { value: new THREE.Vector4(0, 0, 0.1, 0) },
+          uEyeLeftUpper: { value: new THREE.Vector4(0.03, -0.01, 0, 0) },
+          uEyeLeftLower: { value: new THREE.Vector4(-0.03, 0.01, 0, 0) },
+          uEyeRightMain: { value: new THREE.Vector4(0, 0, 0.1, 0) },
+          uEyeRightUpper: { value: new THREE.Vector4(0.03, -0.01, 0, 0) },
+          uEyeRightLower: { value: new THREE.Vector4(-0.03, 0.01, 0, 0) },
           uDebugHeadWeight: { value: DebugView.headWeight ? 1.0 : 0.0 },
         },
       });
@@ -1884,196 +1910,117 @@ function clamp01(v) {
   return THREE.MathUtils.clamp(v, 0.0, 1.0);
 }
 
-function randomBlinkInterval() {
+function nextBlinkInterval() {
   return randRange(2.0, 6.0);
 }
 
-function configureNextBlink(now, minDelay = 0.0) {
-  BlinkState.nextBlinkAt = now + minDelay + randomBlinkInterval();
+function scheduleEyelidBlink(now, minDelay = 0.0) {
+  EyelidMotionState.nextBlinkAt = now + minDelay + nextBlinkInterval();
 }
 
-function startBlink(durationSec) {
-  BlinkState.phase = 'closing';
-  BlinkState.timer = 0.0;
-  BlinkState.duration = durationSec;
-  BlinkState.value = 0.0;
+function startEyelidBlink(durationSec) {
+  EyelidMotionState.phase = 'closing';
+  EyelidMotionState.timer = 0.0;
+  EyelidMotionState.duration = durationSec;
+  EyelidMotionState.value = 0.0;
 }
 
-function updateBlink(elapsed, delta) {
+function updateEyelidBlink(elapsed, delta) {
   if (!isRealisticTheme) {
-    BlinkState.value = 0.0;
+    EyelidMotionState.value = 0.0;
     return;
   }
 
-  if (!BlinkState.initialized) {
-    BlinkState.initialized = true;
-    configureNextBlink(elapsed, randRange(0.4, 1.4));
+  if (!EyelidMotionState.initialized) {
+    EyelidMotionState.initialized = true;
+    scheduleEyelidBlink(elapsed, randRange(0.45, 1.35));
   }
 
-  if (BlinkState.phase === 'idle') {
-    if (elapsed >= BlinkState.nextBlinkAt) {
-      startBlink(randRange(0.09, 0.15));
-      BlinkState.pendingDoubleBlink = Math.random() < 0.2;
+  if (EyelidMotionState.phase === 'idle') {
+    if (elapsed >= EyelidMotionState.nextBlinkAt) {
+      startEyelidBlink(randRange(0.09, 0.15));
+      EyelidMotionState.pendingDouble = Math.random() < 0.2;
     }
     return;
   }
 
-  BlinkState.timer += delta;
-  const closeDuration = BlinkState.duration * 0.36;
-  const openDuration = BlinkState.duration * 0.64;
+  EyelidMotionState.timer += delta;
+  const closeDuration = EyelidMotionState.duration * 0.34;
+  const openDuration = EyelidMotionState.duration * 0.66;
 
-  if (BlinkState.phase === 'closing') {
-    const t = clamp01(BlinkState.timer / closeDuration);
-    BlinkState.value = t;
+  if (EyelidMotionState.phase === 'closing') {
+    const t = clamp01(EyelidMotionState.timer / closeDuration);
+    EyelidMotionState.value = t;
     if (t >= 1.0) {
-      BlinkState.phase = 'opening';
-      BlinkState.timer = 0.0;
+      EyelidMotionState.phase = 'opening';
+      EyelidMotionState.timer = 0.0;
     }
     return;
   }
 
-  const t = clamp01(BlinkState.timer / openDuration);
-  BlinkState.value = 1.0 - t;
+  const t = clamp01(EyelidMotionState.timer / openDuration);
+  EyelidMotionState.value = 1.0 - t;
   if (t >= 1.0) {
-    BlinkState.phase = 'idle';
-    BlinkState.timer = 0.0;
-    BlinkState.value = 0.0;
-    if (BlinkState.pendingDoubleBlink) {
-      BlinkState.pendingDoubleBlink = false;
-      BlinkState.nextBlinkAt = elapsed + randRange(0.09, 0.18);
+    EyelidMotionState.phase = 'idle';
+    EyelidMotionState.timer = 0.0;
+    EyelidMotionState.value = 0.0;
+    if (EyelidMotionState.pendingDouble) {
+      EyelidMotionState.pendingDouble = false;
+      EyelidMotionState.nextBlinkAt = elapsed + randRange(0.08, 0.16);
     } else {
-      configureNextBlink(elapsed);
+      scheduleEyelidBlink(elapsed);
     }
   }
 }
 
-function detectEyesFromTexture(colorMap) {
-  const fallback = {
-    left: {
-      center: FALLBACK_EYES.left.center.clone(),
-      radius: FALLBACK_EYES.left.radius.clone(),
-    },
-    right: {
-      center: FALLBACK_EYES.right.center.clone(),
-      radius: FALLBACK_EYES.right.radius.clone(),
-    },
+function applyEyeBlinkUniforms(mat) {
+  const left = window.EyeBlinkTuning.left;
+  const right = window.EyeBlinkTuning.right;
+
+  if (mat.uniforms.uBlink) mat.uniforms.uBlink.value = EyelidMotionState.value;
+
+  if (mat.uniforms.uEyeLeftMain) {
+    mat.uniforms.uEyeLeftMain.value.set(left.centerX, left.centerY, Math.max(1e-4, Math.abs(left.halfWidth)), left.rotation || 0.0);
+    mat.uniforms.uEyeLeftUpper.value.set(left.upper.offset, left.upper.curve, 0.0, 0.0);
+    mat.uniforms.uEyeLeftLower.value.set(left.lower.offset, left.lower.curve, 0.0, 0.0);
+  }
+
+  if (mat.uniforms.uEyeRightMain) {
+    mat.uniforms.uEyeRightMain.value.set(right.centerX, right.centerY, Math.max(1e-4, Math.abs(right.halfWidth)), right.rotation || 0.0);
+    mat.uniforms.uEyeRightUpper.value.set(right.upper.offset, right.upper.curve, 0.0, 0.0);
+    mat.uniforms.uEyeRightLower.value.set(right.lower.offset, right.lower.curve, 0.0, 0.0);
+  }
+}
+
+function getEyeHandlePoint(side, lid, part) {
+  const eye = window.EyeBlinkTuning[side];
+  const hw = Math.max(1e-4, Math.abs(eye.halfWidth));
+  const cfg = eye[lid];
+  const xLocal = part === 'left' ? -hw : (part === 'right' ? hw : 0.0);
+  const yLocal = cfg.offset + (part === 'center' ? 0.0 : cfg.curve);
+  const s = Math.sin(eye.rotation || 0.0);
+  const c = Math.cos(eye.rotation || 0.0);
+  return {
+    x: eye.centerX + xLocal * c - yLocal * s,
+    y: eye.centerY + xLocal * s + yLocal * c,
   };
+}
 
-  if (!colorMap || !colorMap.image) {
-    console.warn('[blink] Textura no disponible, usando fallback.');
-    return fallback;
-  }
+function worldToEyeLocal(side, worldPoint, startEyeTuning) {
+  const eye = startEyeTuning[side];
+  const dx = worldPoint.x - eye.centerX;
+  const dy = worldPoint.y - eye.centerY;
+  const s = Math.sin(eye.rotation || 0.0);
+  const c = Math.cos(eye.rotation || 0.0);
+  return {
+    x: dx * c + dy * s,
+    y: -dx * s + dy * c,
+  };
+}
 
-  try {
-    const image = colorMap.image;
-    const width = image.videoWidth || image.naturalWidth || image.width;
-    const height = image.videoHeight || image.naturalHeight || image.height;
-    if (!width || !height) throw new Error('Image sin dimensiones válidas');
-
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    if (!ctx) throw new Error('No se pudo crear contexto 2D');
-
-    ctx.drawImage(image, 0, 0, width, height);
-    const imgData = ctx.getImageData(0, 0, width, height).data;
-
-    const roiU0 = Math.floor(width * 0.14);
-    const roiU1 = Math.ceil(width * 0.86);
-    const roiV0 = Math.floor(height * 0.26);
-    const roiV1 = Math.ceil(height * 0.72);
-
-    const left = { count: 0, minX: Infinity, minY: Infinity, maxX: -1, maxY: -1, sumX: 0, sumY: 0 };
-    const right = { count: 0, minX: Infinity, minY: Infinity, maxX: -1, maxY: -1, sumX: 0, sumY: 0 };
-
-    const satLimit = 0.22;
-    const lumaLimit = 0.66;
-
-    for (let y = roiV0; y < roiV1; y += 1) {
-      for (let x = roiU0; x < roiU1; x += 1) {
-        const idx = (y * width + x) * 4;
-        const r = imgData[idx] / 255;
-        const g = imgData[idx + 1] / 255;
-        const b = imgData[idx + 2] / 255;
-
-        const maxC = Math.max(r, g, b);
-        const minC = Math.min(r, g, b);
-        const chroma = maxC - minC;
-        const sat = maxC > 1e-5 ? chroma / maxC : 0;
-        const luma = r * 0.2126 + g * 0.7152 + b * 0.0722;
-
-        if (luma < lumaLimit || sat > satLimit) continue;
-
-        const bucket = x < width * 0.5 ? left : right;
-        bucket.count += 1;
-        bucket.sumX += x;
-        bucket.sumY += y;
-        if (x < bucket.minX) bucket.minX = x;
-        if (x > bucket.maxX) bucket.maxX = x;
-        if (y < bucket.minY) bucket.minY = y;
-        if (y > bucket.maxY) bucket.maxY = y;
-      }
-    }
-
-    const buildEye = (bucket, fbEye) => {
-      if (bucket.count < 30 || bucket.maxX <= bucket.minX || bucket.maxY <= bucket.minY) {
-        return {
-          center: fbEye.center.clone(),
-          radius: fbEye.radius.clone(),
-          ok: false,
-        };
-      }
-
-      const cx = bucket.sumX / bucket.count;
-      const cy = bucket.sumY / bucket.count;
-      const spanX = (bucket.maxX - bucket.minX + 1) / width;
-      const spanY = (bucket.maxY - bucket.minY + 1) / height;
-
-      const ru = clamp01(Math.max(0.05, spanX * 0.72));
-      const rv = clamp01(Math.max(0.045, spanY * 1.25));
-      const u = clamp01(cx / width);
-      const v = clamp01(1.0 - (cy / height));
-
-      return {
-        center: new THREE.Vector2(u, v),
-        radius: new THREE.Vector2(ru, rv),
-        ok: true,
-      };
-    };
-
-    const leftEye = buildEye(left, FALLBACK_EYES.left);
-    const rightEye = buildEye(right, FALLBACK_EYES.right);
-
-    const bothDetected = leftEye.ok && rightEye.ok;
-    if (!bothDetected) {
-      console.warn('[blink] Detección parcial o fallida, aplicando fallback en ojos faltantes.', {
-        leftCount: left.count,
-        rightCount: right.count,
-      });
-    }
-
-    const result = {
-      left: { center: leftEye.center, radius: leftEye.radius },
-      right: { center: rightEye.center, radius: rightEye.radius },
-    };
-
-    console.info('[blink] Eye UV detection', {
-      left: {
-        center: { u: Number(result.left.center.x.toFixed(4)), v: Number(result.left.center.y.toFixed(4)) },
-        radius: { ru: Number(result.left.radius.x.toFixed(4)), rv: Number(result.left.radius.y.toFixed(4)) },
-      },
-      right: {
-        center: { u: Number(result.right.center.x.toFixed(4)), v: Number(result.right.center.y.toFixed(4)) },
-        radius: { ru: Number(result.right.radius.x.toFixed(4)), rv: Number(result.right.radius.y.toFixed(4)) },
-      },
-    });
-
-    return result;
-  } catch (err) {
-    console.warn('[blink] Error detectando ojos en textura, usando fallback.', err);
-    return fallback;
-  }
+function logEyeBlinkTuning(reason = 'update') {
+  console.info(`[blink-editor] ${reason}`, window.EyeBlinkTuning);
+  console.log('[blink-editor] Pega esto en app.js\nwindow.EyeBlinkTuning = ' + JSON.stringify(window.EyeBlinkTuning, null, 2) + ';');
 }
 
 function pickTarget(cfg) {
@@ -2132,7 +2079,7 @@ function animate() {
 
   const elapsed = clock.getElapsedTime();
   const delta = clock.getDelta();
-  updateBlink(elapsed, delta);
+  updateEyelidBlink(elapsed, delta);
 
   if (particleMaterials.length) {
     let targetTalk = 0.0;
@@ -2170,8 +2117,7 @@ function animate() {
       mat.uniforms.uTime.value = elapsed;
       mat.uniforms.uTalk.value = AvatarState.talkLevel;
       mat.uniforms.uRestOpen.value = 0.03;
-      if (mat.uniforms.uBlink) mat.uniforms.uBlink.value = BlinkState.value;
-      if (mat.uniforms.uBlinkDebug) mat.uniforms.uBlinkDebug.value = DEBUG_BLINK_ENABLED ? 1.0 : 0.0;
+      applyEyeBlinkUniforms(mat);
       mat.uniforms.uDebugHeadWeight.value = DebugView.headWeight ? 1.0 : 0.0;
 
       mat.uniforms.uHeadRot.value.set(
@@ -2777,13 +2723,14 @@ function initNeckEditorOverlay() {
     userSelect: 'none',
   });
   info.innerHTML = `
-    <div style="font-weight:700; margin-bottom:6px;">Neck + Mouth Editor</div>
+    <div style="font-weight:700; margin-bottom:6px;">Neck + Mouth + Eyelid Editor</div>
     <div>Arrastra handles. Tecla <b>E</b> ocultar/mostrar.</div>
     <div style="margin-top:6px; opacity:.9">
       <div><span style="color:#ff6b6b">■</span> Neck: <b>center</b>, <b>top</b>, <b>bottom</b>, <b>left</b>, <b>right</b>, <b>curve</b>, <b>neckPivot</b>, <b>bodyPivot</b></div>
       <div style="margin-top:4px;"><span style="color:#67e8f9">■</span> Mouth: <b>mouth_center</b>, <b>mouth_left</b>, <b>mouth_right</b>, <b>mouth_top</b>, <b>mouth_bottom</b>, <b>mouth_curve</b></div>
+      <div style="margin-top:4px;"><span style="color:#fde047">■</span> Blink: <b>eye_*_center</b> + <b>eye_*_upper/lower_(left|center|right)</b> + <b>eye_*_rotate</b></div>
     </div>
-    <div style="margin-top:8px; opacity:.85">Cada cambio imprime JSON en consola (neck y/o mouth).</div>
+    <div style="margin-top:8px; opacity:.85">Cada cambio imprime JSON en consola (neck, mouth y blink).</div>
   `;
   document.body.appendChild(info);
   NeckEditor.infoEl = info;
@@ -2839,20 +2786,16 @@ function getHandlesModel() {
   const t = window.NeckTuning;
   const midY = (t.topY + t.bottomY) * 0.5;
   const wAbs = Math.max(1e-6, Math.abs(t.width));
-
-  // curve handle: lo ponemos en el borde derecho del top (x = centerX + width)
   const curveX = t.centerX + wAbs;
-  const curveY = t.topY - t.curve; // coincide con fórmula en el borde (nx=1)
+  const curveY = t.topY - t.curve;
 
-  // Mouth handles
   const m = window.MouthTuning;
   const mwAbs = Math.max(1e-6, Math.abs(m.width));
   const mhAbs = Math.max(1e-6, Math.abs(m.height));
   const mCurveX = m.centerX + mwAbs;
-  const mCurveY = m.centerY - m.curve; // en el borde (nx=1), centro de la banda
+  const mCurveY = m.centerY - m.curve;
 
   return {
-    // Neck
     center: { x: t.centerX, y: midY },
     top: { x: t.centerX, y: t.topY },
     bottom: { x: t.centerX, y: t.bottomY },
@@ -2862,13 +2805,30 @@ function getHandlesModel() {
     neckPivot: { x: t.centerX, y: t.neckPivotY },
     bodyPivot: { x: t.centerX, y: t.bodyPivotY },
 
-    // Mouth
     mouth_center: { x: m.centerX, y: m.centerY },
     mouth_left: { x: m.centerX - mwAbs, y: m.centerY },
     mouth_right: { x: m.centerX + mwAbs, y: m.centerY },
     mouth_top: { x: m.centerX, y: m.centerY + mhAbs },
     mouth_bottom: { x: m.centerX, y: m.centerY - mhAbs },
     mouth_curve: { x: mCurveX, y: mCurveY },
+
+    eye_left_center: { x: window.EyeBlinkTuning.left.centerX, y: window.EyeBlinkTuning.left.centerY },
+    eye_left_upper_left: getEyeHandlePoint('left', 'upper', 'left'),
+    eye_left_upper_center: getEyeHandlePoint('left', 'upper', 'center'),
+    eye_left_upper_right: getEyeHandlePoint('left', 'upper', 'right'),
+    eye_left_lower_left: getEyeHandlePoint('left', 'lower', 'left'),
+    eye_left_lower_center: getEyeHandlePoint('left', 'lower', 'center'),
+    eye_left_lower_right: getEyeHandlePoint('left', 'lower', 'right'),
+    eye_left_rotate: (() => { const e = window.EyeBlinkTuning.left; const r = e.rotation || 0.0; return { x: e.centerX + Math.cos(r) * (e.halfWidth + 0.06), y: e.centerY + Math.sin(r) * (e.halfWidth + 0.06) }; })(),
+
+    eye_right_center: { x: window.EyeBlinkTuning.right.centerX, y: window.EyeBlinkTuning.right.centerY },
+    eye_right_upper_left: getEyeHandlePoint('right', 'upper', 'left'),
+    eye_right_upper_center: getEyeHandlePoint('right', 'upper', 'center'),
+    eye_right_upper_right: getEyeHandlePoint('right', 'upper', 'right'),
+    eye_right_lower_left: getEyeHandlePoint('right', 'lower', 'left'),
+    eye_right_lower_center: getEyeHandlePoint('right', 'lower', 'center'),
+    eye_right_lower_right: getEyeHandlePoint('right', 'lower', 'right'),
+    eye_right_rotate: (() => { const e = window.EyeBlinkTuning.right; const r = e.rotation || 0.0; return { x: e.centerX + Math.cos(r) * (e.halfWidth + 0.06), y: e.centerY + Math.sin(r) * (e.halfWidth + 0.06) }; })(),
   };
 }
 
@@ -2889,12 +2849,42 @@ function pickHandle(clientX, clientY) {
   return best;
 }
 
-function applyDrag(key, worldPoint, startPoint, startNeckTuning, startMouthTuning) {
+function applyDrag(key, worldPoint, startPoint, startNeckTuning, startMouthTuning, startEyeBlinkTuning) {
   const minBand = 1e-4;
 
-  // ======================
-  // NECK
-  // ======================
+  if (key.startsWith('eye_')) {
+    const parts = key.split('_');
+    const side = parts[1]; // left/right
+    const eye = window.EyeBlinkTuning[side];
+    const startEye = startEyeBlinkTuning[side];
+
+    if (parts[2] === 'center') {
+      const dx = worldPoint.x - startPoint.x;
+      const dy = worldPoint.y - startPoint.y;
+      eye.centerX = startEye.centerX + dx;
+      eye.centerY = startEye.centerY + dy;
+      return;
+    }
+
+    if (parts[2] === 'rotate') {
+      eye.rotation = Math.atan2(worldPoint.y - eye.centerY, worldPoint.x - eye.centerX);
+      return;
+    }
+
+    const lid = parts[2]; // upper/lower
+    const part = parts[3]; // left/center/right
+    const local = worldToEyeLocal(side, worldPoint, startEyeBlinkTuning);
+
+    if (part === 'center') {
+      eye[lid].offset = local.y;
+      return;
+    }
+
+    eye.halfWidth = Math.max(0.03, Math.abs(local.x));
+    eye[lid].curve = local.y - eye[lid].offset;
+    return;
+  }
+
   if (!key.startsWith('mouth_')) {
     const t = window.NeckTuning;
 
@@ -2917,9 +2907,6 @@ function applyDrag(key, worldPoint, startPoint, startNeckTuning, startMouthTunin
     if (key === 'bottom') {
       t.bottomY = worldPoint.y;
       if (t.bottomY > t.topY - minBand) t.bottomY = t.topY - minBand;
-
-      // si quieres que pivotes sigan al bottom por defecto:
-      // (comenta estas dos líneas si NO quieres auto-follow)
       t.neckPivotY = t.bottomY;
       t.bodyPivotY = t.bottomY - 0.12;
     }
@@ -2935,26 +2922,16 @@ function applyDrag(key, worldPoint, startPoint, startNeckTuning, startMouthTunin
     }
 
     if (key === 'curve') {
-      // curve = topY - y_en_el_borde (nx=1)
-      const newCurve = (t.topY - worldPoint.y);
-      t.curve = newCurve;
+      t.curve = (t.topY - worldPoint.y);
     }
 
-    if (key === 'neckPivot') {
-      t.neckPivotY = worldPoint.y;
-    }
-
-    if (key === 'bodyPivot') {
-      t.bodyPivotY = worldPoint.y;
-    }
+    if (key === 'neckPivot') t.neckPivotY = worldPoint.y;
+    if (key === 'bodyPivot') t.bodyPivotY = worldPoint.y;
 
     scheduleRecomputeHeadWeights(`drag:${key}`);
     return;
   }
 
-  // ======================
-  // MOUTH
-  // ======================
   const m = window.MouthTuning;
 
   if (key === 'mouth_center') {
@@ -2986,7 +2963,6 @@ function applyDrag(key, worldPoint, startPoint, startNeckTuning, startMouthTunin
   }
 
   if (key === 'mouth_curve') {
-    // en el borde (nx=1): y = centerY - curve  => curve = centerY - y
     m.curve = (m.centerY - worldPoint.y);
   }
 
@@ -3006,6 +2982,7 @@ function onNeckEditorDown(e) {
     startPoint: p,
     startNeckTuning: { ...window.NeckTuning },
     startMouthTuning: { ...window.MouthTuning },
+    startEyeBlinkTuning: JSON.parse(JSON.stringify(window.EyeBlinkTuning)),
   };
 
   controls.enabled = false;
@@ -3020,18 +2997,20 @@ function onNeckEditorMove(e) {
     return;
   }
 
-  const { key, startPoint, startNeckTuning, startMouthTuning } = NeckEditor.dragging;
+  const { key, startPoint, startNeckTuning, startMouthTuning, startEyeBlinkTuning } = NeckEditor.dragging;
   const p = rayToPlane(e.clientX, e.clientY);
   if (!p) return;
 
-  applyDrag(key, p, startPoint, startNeckTuning, startMouthTuning);
+  applyDrag(key, p, startPoint, startNeckTuning, startMouthTuning, startEyeBlinkTuning);
   e.preventDefault();
 }
 
 function onNeckEditorUp() {
   if (!NeckEditor.dragging) return;
+  const draggedKey = NeckEditor.dragging.key;
   NeckEditor.dragging = null;
   controls.enabled = true;
+  if (draggedKey.startsWith('eye_')) logEyeBlinkTuning(`drag:${draggedKey}`);
 }
 
 function onNeckEditorTouchStart(e) {
@@ -3068,7 +3047,9 @@ function drawHandle(ctx, key, color, filled, clientX, clientY) {
   ctx.strokeStyle = color;
 
   if (filled) {
-    ctx.fillStyle = color.includes('67e8f9') ? 'rgba(103,232,249,0.12)' : 'rgba(255,0,0,0.15)';
+    ctx.fillStyle = color.includes('67e8f9')
+      ? 'rgba(103,232,249,0.12)'
+      : (color.includes('253,224,71') ? 'rgba(253,224,71,0.16)' : (color.includes('34,197,94') ? 'rgba(34,197,94,0.16)' : 'rgba(255,0,0,0.15)'));
     ctx.fill();
   }
 
@@ -3212,19 +3193,80 @@ function drawNeckEditorOverlay() {
   }
 
   // =========================
-  // HANDLES (neck + mouth)
+  // EYES (amarillo / verde)
+  // =========================
+  {
+    const drawEye = (side, colorUpper, colorLower) => {
+      const eye = window.EyeBlinkTuning[side];
+      const hw = Math.max(1e-4, Math.abs(eye.halfWidth));
+      const rot = eye.rotation || 0.0;
+      const s = Math.sin(rot);
+      const c = Math.cos(rot);
+      const seg = 48;
+
+      const upperPts = [];
+      const lowerPts = [];
+
+      for (let i = 0; i <= seg; i++) {
+        const u = i / seg;
+        const x = -hw + 2.0 * hw * u;
+        const xN = x / hw;
+
+        const yUpper = eye.upper.offset + eye.upper.curve * xN * xN;
+        const yLower = eye.lower.offset + eye.lower.curve * xN * xN;
+
+        const ux = eye.centerX + x * c - yUpper * s;
+        const uy = eye.centerY + x * s + yUpper * c;
+        const lx = eye.centerX + x * c - yLower * s;
+        const ly = eye.centerY + x * s + yLower * c;
+
+        upperPts.push(screenProject(ux, uy, 0));
+        lowerPts.push(screenProject(lx, ly, 0));
+      }
+
+      ctx.save();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = colorUpper;
+      ctx.beginPath();
+      ctx.moveTo(upperPts[0].x, upperPts[0].y);
+      for (let i = 1; i < upperPts.length; i++) ctx.lineTo(upperPts[i].x, upperPts[i].y);
+      ctx.stroke();
+
+      ctx.strokeStyle = colorLower;
+      ctx.beginPath();
+      ctx.moveTo(lowerPts[0].x, lowerPts[0].y);
+      for (let i = 1; i < lowerPts.length; i++) ctx.lineTo(lowerPts[i].x, lowerPts[i].y);
+      ctx.stroke();
+
+      const cpt = screenProject(eye.centerX, eye.centerY, 0);
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
+      ctx.fillText(`eye_${side}`, cpt.x + 8, cpt.y - 8);
+      ctx.restore();
+    };
+
+    drawEye('left', 'rgba(253,224,71,0.95)', 'rgba(250,204,21,0.75)');
+    drawEye('right', 'rgba(34,197,94,0.95)', 'rgba(22,163,74,0.75)');
+  }
+
+  // =========================
+  // HANDLES (neck + mouth + blink)
   // =========================
   const handles = getHandlesModel();
   for (const key of Object.keys(handles)) {
     const s = screenProject(handles[key].x, handles[key].y, 0);
 
     const isMouth = key.startsWith('mouth_');
+    const isEye = key.startsWith('eye_');
     const isPivot = (key === 'neckPivot' || key === 'bodyPivot');
     const isCurve = (key === 'curve' || key === 'mouth_curve');
 
-    const color = isMouth
-      ? 'rgba(103,232,249,0.95)'
-      : (isPivot ? 'rgba(255,0,0,0.75)' : (isCurve ? 'rgba(255,0,0,0.95)' : 'rgba(255,0,0,0.95)'));
+    let color = 'rgba(255,0,0,0.95)';
+    if (isMouth) color = 'rgba(103,232,249,0.95)';
+    else if (isEye && key.startsWith('eye_left')) color = 'rgba(253,224,71,0.95)';
+    else if (isEye && key.startsWith('eye_right')) color = 'rgba(34,197,94,0.95)';
+    else if (isPivot) color = 'rgba(255,0,0,0.75)';
+    else if (isCurve) color = 'rgba(255,0,0,0.95)';
 
     drawHandle(ctx, key, color, true, s.x, s.y);
 
