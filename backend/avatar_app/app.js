@@ -11,12 +11,26 @@ const URL_PARAMS = new URLSearchParams(window.location.search);
 const DEBUG_EDIT_ENABLED = URL_PARAMS.get('debugEdit') === '1';
 const demoFeedbackMode = createDemoFeedbackMode({ urlParams: URL_PARAMS });
 
+function resolveHexColorParam(paramName, fallbackColor) {
+  const rawValue = URL_PARAMS.get(paramName);
+  if (!rawValue) return fallbackColor;
+
+  const normalizedValue = rawValue.trim().replace(/^#/, '').replace(/^0x/i, '');
+  if (!/^[0-9a-fA-F]{6}$/.test(normalizedValue)) {
+    console.warn(`[theme] Valor inválido para ${paramName}:`, rawValue);
+    return fallbackColor;
+  }
+
+  return Number.parseInt(normalizedValue, 16);
+}
+
 // =========================
 // Tema perceptual del avatar (dark/light)
 // - Geometría, rig, lipsync y animación NO cambian con el tema.
 // - Solo cambia la capa perceptual: fondo + respuesta tonal/alpha del shader.
 // =========================
 const DEFAULT_THEME = 'dark';
+const WHITE_THEME_INK_COLOR = resolveHexColorParam('whiteInkColor', 0x1b2a41);
 
 const THEME_PRESETS = {
   dark: {
@@ -52,7 +66,9 @@ const THEME_PRESETS = {
   white: {
     // Fondo claro con contraste alto en rasgos: luces casi invisibles + sombras marcadas.
     background: 0xf7f7f5,
-    particleColor: 0xffffff,
+    // Color base configurable para que el rango tonal no sea solo negro/gris.
+    // Ejemplos URL: ?theme=white&whiteInkColor=1e3a8a (azul), 14532d (verde).
+    particleColor: WHITE_THEME_INK_COLOR,
     densityInMin: 0.08,
     // Empuja más área al tramo claro para que más puntos queden "blancos/invisibles".
     densityInMax: 0.88,
