@@ -9,6 +9,7 @@ import { createDemoFeedbackMode } from './demo_feedback_mode.js';
 // =========================
 const URL_PARAMS = new URLSearchParams(window.location.search);
 const DEBUG_EDIT_ENABLED = URL_PARAMS.get('debugEdit') === '1';
+const DEBUG_BROWS_ENABLED = URL_PARAMS.get('debugBrows') === '1';
 const FREEZE_IN_EDIT = DEBUG_EDIT_ENABLED; // En ?debugEdit=1 congelamos motion/UI conversacional para ajustar handles con precisión.
 const demoFeedbackMode = createDemoFeedbackMode({ urlParams: URL_PARAMS });
 
@@ -228,6 +229,10 @@ const DebugView = { headWeight: false };
   } else {
     console.info('Para depurar el movimiento de labios añade ?audioDebug=1&minRms=0.01&levelScale=15 a la URL.');
   }
+
+  if (DEBUG_BROWS_ENABLED) {
+    console.info('[debug-brows] Activado (?debugBrows=1). Se habilitan logs geométricos + overlay shader usando vBaseXY.');
+  }
 })();
 
 window.addEventListener('keydown', (e) => {
@@ -251,6 +256,8 @@ let silentFrameCount = 0;
 let audioSource = null;
 let lipHoldActive = false;
 let lipsyncLevel = 0; // nivel suavizado 0..1
+let browsDiagnosticsLogged = false;
+let lastBrowsUniformLogMs = 0;
 
 const EyelidMotionState = {
   value: 0.0,
@@ -1209,6 +1216,7 @@ uniform vec4 uEyeLeftLower;  // offsetY, curve, reserved, reserved
 uniform vec4 uEyeRightMain;
 uniform vec4 uEyeRightUpper;
 uniform vec4 uEyeRightLower;
+uniform float uDebugBrows;
 varying vec2 vUv;
 varying float vHeadWeight;
 varying float vBaseZ;
@@ -1256,9 +1264,111 @@ void main() {
   vec3 lidColor = texture2D(uColorMap, clamp(vUv + vec2(0.0, 0.03), 0.0, 1.0)).rgb;
   finalColor = mix(finalColor, lidColor, cover);
 
+  if (uDebugBrows > 0.5) {
+    vec2 leftLocal = invRot(uEyeLeftMain.w) * (vBaseXY - uEyeLeftMain.xy);
+    vec2 rightLocal = invRot(uEyeRightMain.w) * (vBaseXY - uEyeRightMain.xy);
+    float leftEyeMarker = 1.0 - smoothstep(0.82, 1.0, length(vec2(leftLocal.x / max(1e-4, uEyeLeftMain.z), leftLocal.y / max(1e-4, uEyeLeftMain.z * 0.7))));
+    float rightEyeMarker = 1.0 - smoothstep(0.82, 1.0, length(vec2(rightLocal.x / max(1e-4, uEyeRightMain.z), rightLocal.y / max(1e-4, uEyeRightMain.z * 0.7))));
+
+    float browY = 0.5 * (uEyeLeftMain.y + uEyeRightMain.y) + 0.085;
+    float browBand = 1.0 - smoothstep(0.0, 0.018, abs(vBaseXY.y - browY));
+    float centerLine = 1.0 - smoothstep(0.0, 0.006, abs(vBaseXY.x));
+
+    vec3 overlay = vec3(0.0);
+    overlay += vec3(1.0, 0.2, 0.2) * max(leftEyeMarker, rightEyeMarker);
+    overlay += vec3(0.15, 0.95, 0.2) * browBand;
+    overlay += vec3(0.2, 0.6, 1.0) * centerLine * 0.6;
+    finalColor = mix(finalColor, overlay, clamp(max(max(leftEyeMarker, rightEyeMarker), browBand) * 0.75 + centerLine * 0.25, 0.0, 0.85));
+  }
+
   gl_FragColor = vec4(finalColor, 1.0);
 }
 `;
+
+function logBrowsDiagnostics(geo, material) {
+  if (!DEBUG_BROWS_ENABLED || browsDiagnosticsLogged || !geo) return;
+  const baseAttr = geo.getAttribute('aBasePosition');
+  const uvAttr = geo.getAttribute('aUv');
+  if (!baseAttr) {
+    console.warn('[debug-brows] No hay aBasePosition en la geometría renderizada.');
+    return;
+  }
+
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  const yValues = new Float32Array(baseAttr.count);
+  for (let i = 0; i < baseAttr.count; i++) {
+    const x = baseAttr.getX(i);
+    const y = baseAttr.getY(i);
+    yValues[i] = y;
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+
+  const sortedY = Array.from(yValues).sort((a, b) => a - b);
+  const yCut = sortedY[Math.floor((sortedY.length - 1) * 0.9)] ?? maxY;
+
+  const bins = 10;
+  const binCounts = Array.from({ length: bins }, () => ({ count: 0, sumX: 0, sumY: 0, sumU: 0, sumV: 0 }));
+  let topCount = 0;
+  let topSumX = 0;
+  let topSumY = 0;
+  for (let i = 0; i < baseAttr.count; i++) {
+    const x = baseAttr.getX(i);
+    const y = baseAttr.getY(i);
+    if (y < yCut) continue;
+    topCount += 1;
+    topSumX += x;
+    topSumY += y;
+    const t = (x - minX) / Math.max(1e-6, maxX - minX);
+    const idx = Math.max(0, Math.min(bins - 1, Math.floor(t * bins)));
+    const b = binCounts[idx];
+    b.count += 1;
+    b.sumX += x;
+    b.sumY += y;
+    if (uvAttr) {
+      b.sumU += uvAttr.getX(i);
+      b.sumV += uvAttr.getY(i);
+    }
+  }
+
+  const left = window.EyeBlinkTuning?.left;
+  const right = window.EyeBlinkTuning?.right;
+  console.info('[debug-brows] realistic geometry aBasePosition bbox XY', { minX, maxX, minY, maxY, vertexCount: baseAttr.count });
+  console.info('[debug-brows] EyeBlinkTuning snapshot', { left, right, blink: EyelidMotionState.value });
+  console.info('[debug-brows] top-band (10% superior en Y)', {
+    yCut,
+    topCount,
+    centerOfMass: {
+      x: topCount ? topSumX / topCount : null,
+      y: topCount ? topSumY / topCount : null,
+    },
+  });
+  console.table(binCounts.map((b, i) => ({
+    bin: i,
+    xRange: [minX + (i / bins) * (maxX - minX), minX + ((i + 1) / bins) * (maxX - minX)],
+    count: b.count,
+    avgX: b.count ? b.sumX / b.count : null,
+    avgY: b.count ? b.sumY / b.count : null,
+    avgU: b.count && uvAttr ? b.sumU / b.count : null,
+    avgV: b.count && uvAttr ? b.sumV / b.count : null,
+  })));
+
+  if (material?.uniforms) {
+    console.info('[debug-brows] material/uniform sanity', {
+      hasBlinkUniform: !!material.uniforms.uBlink,
+      hasEyeLeftUniform: !!material.uniforms.uEyeLeftMain,
+      hasEyeRightUniform: !!material.uniforms.uEyeRightMain,
+      hasDebugBrowsUniform: !!material.uniforms.uDebugBrows,
+      materialType: material.type,
+    });
+  }
+  browsDiagnosticsLogged = true;
+}
 
 
 loader.load(
@@ -1423,6 +1533,7 @@ loader.load(
           uEyeRightMain: { value: new THREE.Vector4(0, 0, 0.1, 0) },
           uEyeRightUpper: { value: new THREE.Vector4(0.03, -0.01, 0, 0) },
           uEyeRightLower: { value: new THREE.Vector4(-0.03, 0.01, 0, 0) },
+          uDebugBrows: { value: DEBUG_BROWS_ENABLED ? 1.0 : 0.0 },
           uDebugHeadWeight: { value: DebugView.headWeight ? 1.0 : 0.0 },
         },
       });
@@ -1438,6 +1549,7 @@ loader.load(
       basePosAttrRef = realisticSurfaceGeo.getAttribute('aBasePosition');
       mouthWeightAttrRef = realisticSurfaceGeo.getAttribute('aMouthWeight');
       mouthSideAttrRef = realisticSurfaceGeo.getAttribute('aMouthSide');
+      logBrowsDiagnostics(realisticSurfaceGeo, particleMaterial);
     } else {
       particleMaterial = createParticleMaterial();
       particleMaterials = [particleMaterial];
@@ -2001,6 +2113,26 @@ function applyEyeBlinkUniforms(mat) {
     mat.uniforms.uEyeRightMain.value.set(right.centerX, right.centerY, Math.max(1e-4, Math.abs(right.halfWidth)), right.rotation || 0.0);
     mat.uniforms.uEyeRightUpper.value.set(right.upper.offset, right.upper.curve, 0.0, 0.0);
     mat.uniforms.uEyeRightLower.value.set(right.lower.offset, right.lower.curve, 0.0, 0.0);
+  }
+
+  if (DEBUG_BROWS_ENABLED && performance.now() - lastBrowsUniformLogMs > 1200) {
+    lastBrowsUniformLogMs = performance.now();
+    console.info('[debug-brows] uniforms frame snapshot', {
+      blink: EyelidMotionState.value,
+      leftMain: mat.uniforms.uEyeLeftMain?.value ? {
+        x: mat.uniforms.uEyeLeftMain.value.x,
+        y: mat.uniforms.uEyeLeftMain.value.y,
+        halfWidth: mat.uniforms.uEyeLeftMain.value.z,
+        rotation: mat.uniforms.uEyeLeftMain.value.w,
+      } : null,
+      rightMain: mat.uniforms.uEyeRightMain?.value ? {
+        x: mat.uniforms.uEyeRightMain.value.x,
+        y: mat.uniforms.uEyeRightMain.value.y,
+        halfWidth: mat.uniforms.uEyeRightMain.value.z,
+        rotation: mat.uniforms.uEyeRightMain.value.w,
+      } : null,
+      debugBrowsUniform: mat.uniforms.uDebugBrows?.value,
+    });
   }
 }
 
