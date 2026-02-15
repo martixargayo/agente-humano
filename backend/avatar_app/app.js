@@ -352,22 +352,22 @@ window.MouthTuning = window.MouthTuning || {
 };
 
 window.EyeBlinkTuning = window.EyeBlinkTuning || {
-  left: {
-    centerX: -0.165,
-    centerY: 0.365,
-    halfWidth: 0.12,
-    rotation: -0.06,
-    upper: { offset: 0.036, curve: -0.018 },
-    lower: { offset: -0.028, curve: 0.010 },
+  "left": {
+    "centerX": -0.2827208735080821,
+    "centerY": 0.5774244638127382,
+    "halfWidth": 0.07647198235556732,
+    "rotation": 0.048119995817101774,
+    "upper": { "offset": 0.015333409431849491, "curve": -0.01375947353731123 },
+    "lower": { "offset": -0.012817365534143615, "curve": 0.004398359546727952 }
   },
-  right: {
-    centerX: 0.16,
-    centerY: 0.365,
-    halfWidth: 0.12,
-    rotation: 0.06,
-    upper: { offset: 0.036, curve: -0.018 },
-    lower: { offset: -0.028, curve: 0.010 },
-  },
+  "right": {
+    "centerX": 0.14101099760355848,
+    "centerY": 0.578773855297069,
+    "halfWidth": 0.08131487769157097,
+    "rotation": -0.07219613864912759,
+    "upper": { "offset": 0.009755191469550624, "curve": -0.013990511698837487 },
+    "lower": { "offset": -0.018494072161187834, "curve": 0.0027252480420008746 }
+  }
 };
 
 // =========================
