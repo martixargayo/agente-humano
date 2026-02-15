@@ -95,7 +95,7 @@
       --border: rgba(15, 23, 42, 0.18);
       --text-muted: rgba(15, 23, 42, 0.72);
       --text-primary: rgba(15, 23, 42, 0.95);
-      --surface-shadow: 0 18px 40px rgba(15, 23, 42, 0.14);
+      --surface-shadow: none;
     }
 
     html[data-avatar-theme="realistic"],
@@ -114,6 +114,10 @@
     html[data-avatar-theme="realistic"] body::before {
       content: none !important;
       background: none !important;
+    }
+
+    html[data-avatar-theme="realistic"] .listening-glow {
+      display: none !important;
     }
 
     #c {
