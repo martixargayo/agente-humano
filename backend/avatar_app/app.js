@@ -11,6 +11,7 @@ const URL_PARAMS = new URLSearchParams(window.location.search);
 const DEBUG_EDIT_ENABLED = URL_PARAMS.get('debugEdit') === '1';
 const DEBUG_BROWS_ENABLED = URL_PARAMS.get('debugBrows') === '1';
 const DEBUG_BLINK_COVER_ENABLED = URL_PARAMS.get('debugBlinkCover') === '1';
+const DEBUG_MOTION_ENABLED = URL_PARAMS.get('debugMotion') === '1';
 const FORCE_BLINK_ENABLED = URL_PARAMS.get('forceBlink') === '1';
 const FORCE_BLINK_DURATION_SEC = 2.0;
 const FREEZE_IN_EDIT = DEBUG_EDIT_ENABLED; // En ?debugEdit=1 congelamos motion/UI conversacional para ajustar handles con precisión.
@@ -203,6 +204,13 @@ const AudioDebug = {
 //   - Toggle con tecla N
 // =========================
 const DebugView = { headWeight: false };
+const MotionDebugState = {
+  deltaMin: Number.POSITIVE_INFINITY,
+  deltaMax: 0,
+  deltaSum: 0,
+  deltaCount: 0,
+  lastReportAt: 0,
+};
 
 (() => {
   if (URL_PARAMS.get('audioDebug') === '1') AudioDebug.enabled = true;
@@ -238,6 +246,9 @@ const DebugView = { headWeight: false };
   }
   if (DEBUG_BLINK_COVER_ENABLED) {
     console.info('[debug-brows] Contorno de blinkCover ACTIVADO (?debugBlinkCover=1).');
+  }
+  if (DEBUG_MOTION_ENABLED) {
+    console.info('[debug-motion] Activado (?debugMotion=1). Se reportan métricas de delta y motion cada ~1s.');
   }
   if (FORCE_BLINK_ENABLED) {
     console.info(`[blink-debug] forceBlink=1 activo: blink fijado en 1.0 durante ${FORCE_BLINK_DURATION_SEC.toFixed(1)}s.`);
@@ -2061,9 +2072,9 @@ function randRange(a, b) {
 }
 
 const MotionConfig = {
-  head: { ampYaw: 0.055, ampPitch: 0.050, ampRoll: 0.030, holdMin: 1.0, holdMax: 3.2, smooth: 10.0 },
+  head: { name: 'head', ampYaw: 0.055, ampPitch: 0.050, ampRoll: 0.030, holdMin: 1.0, holdMax: 3.2, smooth: 10.0 },
   // En tema realistic, duplicamos rango de movimiento de cabeza (parte superior del cuello).
-  body: { ampYaw: 0.012, ampPitch: 0.010, ampRoll: 0.010, holdMin: 1.2, holdMax: 4.0, smooth: 6.0 },
+  body: { name: 'body', ampYaw: 0.012, ampPitch: 0.010, ampRoll: 0.010, holdMin: 1.2, holdMax: 4.0, smooth: 6.0 },
   micro: { yaw: 0.006, pitch: 0.004, roll: 0.004 },
 };
 
@@ -2273,9 +2284,22 @@ function updateChannel(ch, cfg, t, dt) {
   if (t >= ch.nextSwitch) {
     ch.target.copy(pickTarget(cfg));
     ch.nextSwitch = t + randRange(cfg.holdMin, cfg.holdMax);
+    if (DEBUG_MOTION_ENABLED) {
+      console.info('[debug-motion] target-switch', {
+        channel: cfg.name,
+        now: Number(t.toFixed(3)),
+        nextSwitch: Number(ch.nextSwitch.toFixed(3)),
+        target: {
+          pitch: Number(ch.target.x.toFixed(4)),
+          yaw: Number(ch.target.y.toFixed(4)),
+          roll: Number(ch.target.z.toFixed(4)),
+        },
+      });
+    }
   }
   const k = 1.0 - Math.exp(-dt * cfg.smooth);
   ch.current.lerp(ch.target, k);
+  return k;
 }
 
 function updateNod(t, dt) {
@@ -2309,14 +2333,60 @@ let lipTestStartTime = 0;
 let testLipsBtn = null;
 let prevFrameElapsed = 0;
 
+function reportMotionDebug(elapsed, deltaRaw, kHead, kBody, headRotMag) {
+  if (!DEBUG_MOTION_ENABLED) return;
+
+  MotionDebugState.deltaMin = Math.min(MotionDebugState.deltaMin, deltaRaw);
+  MotionDebugState.deltaMax = Math.max(MotionDebugState.deltaMax, deltaRaw);
+  MotionDebugState.deltaSum += deltaRaw;
+  MotionDebugState.deltaCount += 1;
+
+  if (deltaRaw > 0.1) {
+    console.warn('[debug-motion] delta spike > 100ms', {
+      elapsed: Number(elapsed.toFixed(3)),
+      delta: Number(deltaRaw.toFixed(4)),
+    });
+  } else if (deltaRaw > 0.05) {
+    console.warn('[debug-motion] delta spike > 50ms', {
+      elapsed: Number(elapsed.toFixed(3)),
+      delta: Number(deltaRaw.toFixed(4)),
+    });
+  }
+
+  if (elapsed - MotionDebugState.lastReportAt >= 1.0) {
+    const deltaAvg = MotionDebugState.deltaCount > 0
+      ? MotionDebugState.deltaSum / MotionDebugState.deltaCount
+      : 0.0;
+    console.info('[debug-motion] 1s-report', {
+      elapsed: Number(elapsed.toFixed(3)),
+      delta: Number(deltaRaw.toFixed(4)),
+      deltaMin: Number(MotionDebugState.deltaMin.toFixed(4)),
+      deltaMax: Number(MotionDebugState.deltaMax.toFixed(4)),
+      deltaAvg: Number(deltaAvg.toFixed(4)),
+      kHead: Number(kHead.toFixed(4)),
+      kBody: Number(kBody.toFixed(4)),
+      headRotMag: Number(headRotMag.toFixed(4)),
+    });
+    MotionDebugState.deltaMin = Number.POSITIVE_INFINITY;
+    MotionDebugState.deltaMax = 0;
+    MotionDebugState.deltaSum = 0;
+    MotionDebugState.deltaCount = 0;
+    MotionDebugState.lastReportAt = elapsed;
+  }
+}
+
 function animate() {
   requestAnimationFrame(animate);
 
   // Usamos una sola lectura de tiempo por frame para evitar dt≈0 por doble muestreo del clock.
   const elapsed = clock.getElapsedTime();
-  const delta = prevFrameElapsed > 0 ? Math.max(0.0, elapsed - prevFrameElapsed) : 0.0;
+  const deltaRaw = prevFrameElapsed > 0 ? Math.max(0.0, elapsed - prevFrameElapsed) : 0.0;
   prevFrameElapsed = elapsed;
-  updateEyelidBlink(elapsed, delta);
+
+  // dt separado para evitar snaps en motion con spikes de RAF (tab switch/frame drops)
+  const dtBlink = Math.min(deltaRaw, 0.05);
+  const dtMotion = Math.min(deltaRaw, 1.0 / 30.0);
+  updateEyelidBlink(elapsed, dtBlink);
 
   if (particleMaterials.length) {
     let targetTalk = 0.0;
@@ -2330,10 +2400,12 @@ function animate() {
     let microRoll = 0.0;
     let nodPitch = 0.0;
     let offY = 0.0;
+    let kHead = 0.0;
+    let kBody = 0.0;
 
     if (!FREEZE_IN_EDIT) {
-      updateChannel(MotionState.head, MotionConfig.head, elapsed, delta);
-      updateChannel(MotionState.body, MotionConfig.body, elapsed, delta);
+      kHead = updateChannel(MotionState.head, MotionConfig.head, elapsed, dtMotion);
+      kBody = updateChannel(MotionState.body, MotionConfig.body, elapsed, dtMotion);
 
       microYaw =
         (Math.sin(elapsed * 2.1 + MotionState.seed) * MotionConfig.micro.yaw) +
@@ -2347,7 +2419,7 @@ function animate() {
         (Math.sin(elapsed * 1.5 + MotionState.seed * 1.3) * MotionConfig.micro.roll) +
         (Math.sin(elapsed * 2.9 + MotionState.seed * 0.4) * MotionConfig.micro.roll * 0.45);
 
-      nodPitch = updateNod(elapsed, delta);
+      nodPitch = updateNod(elapsed, dtMotion);
 
       if (AvatarState.idleMotionEnabled) {
         offY = 0.01 * Math.sin(elapsed * 0.9) + 0.005 * Math.sin(elapsed * 0.37);
@@ -2356,6 +2428,12 @@ function animate() {
 
     const head = FREEZE_IN_EDIT ? ZERO_VEC3 : MotionState.head.current;
     const body = FREEZE_IN_EDIT ? ZERO_VEC3 : MotionState.body.current;
+    const headRotMag = Math.hypot(
+      (head.x + microPitch + nodPitch) * HEAD_MOTION_GAIN,
+      (head.y + microYaw) * HEAD_MOTION_GAIN,
+      (head.z + microRoll) * HEAD_MOTION_GAIN,
+    );
+    reportMotionDebug(elapsed, deltaRaw, kHead, kBody, headRotMag);
 
     for (const mat of particleMaterials) {
       mat.uniforms.uTime.value = elapsed;
