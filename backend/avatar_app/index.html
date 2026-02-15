@@ -90,7 +90,8 @@
 
 
     :root[data-avatar-theme="whiteColor"],
-    :root[data-avatar-theme="white"] {
+    :root[data-avatar-theme="white"],
+    :root[data-avatar-theme="realistic"] {
       color-scheme: light;
       --glass: rgba(255, 255, 255, 0.55);
       --glass-strong: rgba(255, 255, 255, 0.78);
@@ -117,10 +118,24 @@
       --avatar-bg-image: url('./assets/bg/white/Gemini_Generated_Image_t1pvlt1pvlt1pvlt.jpg');
     }
 
+    html[data-avatar-theme="realistic"],
+    html[data-avatar-theme="realistic"] body,
+    html[data-avatar-theme="realistic"] #stage,
+    html[data-avatar-theme="realistic"] #bg {
+      background-color: #fff !important;
+    }
+
+    html[data-avatar-theme="realistic"] #bg {
+      --avatar-bg-image: none;
+      background-image: none !important;
+    }
+
     html[data-avatar-theme="whiteColor"] #bg::after,
     html[data-avatar-theme="whiteColor"] body::before,
     html[data-avatar-theme="white"] #bg::after,
-    html[data-avatar-theme="white"] body::before {
+    html[data-avatar-theme="white"] body::before,
+    html[data-avatar-theme="realistic"] #bg::after,
+    html[data-avatar-theme="realistic"] body::before {
       content: none !important;
       background: none !important;
     }
