@@ -2602,6 +2602,38 @@ const reportMotionFrameDebug = ({
     });
   }
 
+  if (DEBUG_MOTION_VERBOSE && (elapsed - MotionDebugState.lastFrameLogAt >= 0.2)) {
+    MotionDebugState.lastFrameLogAt = elapsed;
+    console.info('[debug-motion] frame-200ms', {
+      elapsed: Number(elapsed.toFixed(3)),
+      deltaRaw: Number(deltaRaw.toFixed(4)),
+      dtMotion: Number(dtMotion.toFixed(4)),
+      motionTime: Number(motionTime.toFixed(4)),
+      kHead: Number(kHead.toFixed(4)),
+      kBody: Number(kBody.toFixed(4)),
+      headCurrent: { pitch: Number(head.x.toFixed(4)), yaw: Number(head.y.toFixed(4)), roll: Number(head.z.toFixed(4)) },
+      headTarget: {
+        pitch: Number(MotionState.head.target.x.toFixed(4)),
+        yaw: Number(MotionState.head.target.y.toFixed(4)),
+        roll: Number(MotionState.head.target.z.toFixed(4)),
+      },
+      bodyCurrent: { pitch: Number(body.x.toFixed(4)), yaw: Number(body.y.toFixed(4)), roll: Number(body.z.toFixed(4)) },
+      bodyTarget: {
+        pitch: Number(MotionState.body.target.x.toFixed(4)),
+        yaw: Number(MotionState.body.target.y.toFixed(4)),
+        roll: Number(MotionState.body.target.z.toFixed(4)),
+      },
+      microYaw: Number(microYaw.toFixed(4)),
+      microPitch: Number(microPitch.toFixed(4)),
+      microRoll: Number(microRoll.toFixed(4)),
+      nodPitch: Number(nodPitch.toFixed(4)),
+      uHeadRot: { x: Number(headRot.x.toFixed(4)), y: Number(headRot.y.toFixed(4)), z: Number(headRot.z.toFixed(4)) },
+      uBodyRot: { x: Number(bodyRot.x.toFixed(4)), y: Number(bodyRot.y.toFixed(4)), z: Number(bodyRot.z.toFixed(4)) },
+      headRotMag: Number(headRotMag.toFixed(4)),
+      offY: Number(offY.toFixed(4)),
+    });
+  }
+
   if (elapsed - MotionDebugState.lastReportAt >= 1.0) {
     const deltaAvg = MotionDebugState.deltaCount > 0 ? MotionDebugState.deltaSum / MotionDebugState.deltaCount : 0.0;
     console.info('[debug-motion] 1s-report', {
