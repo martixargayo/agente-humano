@@ -9,6 +9,7 @@ import { createDemoFeedbackMode } from './demo_feedback_mode.js';
 // =========================
 const URL_PARAMS = new URLSearchParams(window.location.search);
 const DEBUG_EDIT_ENABLED = URL_PARAMS.get('debugEdit') === '1';
+const DEBUG_BLINK_ENABLED = URL_PARAMS.get('debugBlink') === '1';
 const demoFeedbackMode = createDemoFeedbackMode({ urlParams: URL_PARAMS });
 
 function resolveHexColorParam(paramName, fallbackColor) {
@@ -1207,6 +1208,28 @@ float blinkCover(vec2 baseXY, vec4 eyeMain, vec4 upperCfg, vec4 lowerCfg, float 
   float belowBase = 1.0 - smoothstep(upperBase - yFeather, upperBase + yFeather, local.y);
 
   return xMask * aboveMoved * belowBase;
+}
+
+float eyeEnvelope(vec2 uv, vec2 c, vec2 r) {
+  vec2 q = (uv - c) / max(r, vec2(1e-4));
+  float d = dot(q, q);
+  return 1.0 - smoothstep(0.95, 1.22, d);
+}
+
+float lidCover(vec2 uv, vec2 c, vec2 r, float blink) {
+  float top = c.y + r.y * 1.03;
+  float bottom = c.y - r.y * 1.03;
+  float lidY = mix(top, bottom, blink);
+  float cut = 1.0 - smoothstep(lidY - r.y * 0.22, lidY + r.y * 0.10, uv.y);
+  return eyeEnvelope(uv, c, r) * cut;
+}
+
+vec3 sampledLidColor(vec2 uv, vec2 c, vec2 r) {
+  vec2 sampleUv = vec2(
+    uv.x,
+    clamp(c.y + r.y * 0.95 + (c.y - uv.y) * 0.08, 0.0, 1.0)
+  );
+  return texture2D(uColorMap, sampleUv).rgb;
 }
 
 void main() {
