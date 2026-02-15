@@ -63,8 +63,7 @@
       z-index: 0;
     }
 
-    html[data-avatar-theme="dark"] #bg,
-    html[data-avatar-theme="light"] #bg {
+    html[data-avatar-theme="dark"] #bg {
       --avatar-bg-image: url('./assets/bg/Gemini_Generated_Image_rymww6rymww6rymw.jpg');
     }
 
@@ -89,8 +88,6 @@
     }
 
 
-    :root[data-avatar-theme="whiteColor"],
-    :root[data-avatar-theme="white"],
     :root[data-avatar-theme="realistic"] {
       color-scheme: light;
       --glass: rgba(255, 255, 255, 0.55);
@@ -99,23 +96,6 @@
       --text-muted: rgba(15, 23, 42, 0.72);
       --text-primary: rgba(15, 23, 42, 0.95);
       --surface-shadow: 0 18px 40px rgba(15, 23, 42, 0.14);
-    }
-
-    html[data-avatar-theme="whiteColor"],
-    html[data-avatar-theme="whiteColor"] body,
-    html[data-avatar-theme="whiteColor"] #stage,
-    html[data-avatar-theme="whiteColor"] #bg,
-    html[data-avatar-theme="white"],
-    html[data-avatar-theme="white"] body,
-    html[data-avatar-theme="white"] #stage,
-    html[data-avatar-theme="white"] #bg {
-      background-color: #fff !important;
-    }
-
-    html[data-avatar-theme="whiteColor"] #bg,
-    html[data-avatar-theme="white"] #bg {
-      /* Imagen dedicada para temas claros (colócala en ./assets/bg/white/). */
-      --avatar-bg-image: url('./assets/bg/white/Gemini_Generated_Image_t1pvlt1pvlt1pvlt.jpg');
     }
 
     html[data-avatar-theme="realistic"],
@@ -130,10 +110,6 @@
       background-image: none !important;
     }
 
-    html[data-avatar-theme="whiteColor"] #bg::after,
-    html[data-avatar-theme="whiteColor"] body::before,
-    html[data-avatar-theme="white"] #bg::after,
-    html[data-avatar-theme="white"] body::before,
     html[data-avatar-theme="realistic"] #bg::after,
     html[data-avatar-theme="realistic"] body::before {
       content: none !important;
@@ -462,25 +438,19 @@
     }
 
 
-    html[data-avatar-theme="whiteColor"] .mode-tabs,
-    html[data-avatar-theme="white"] .mode-tabs {
+    html[data-avatar-theme="realistic"] .mode-tabs {
       background: rgba(255, 255, 255, 0.68);
       border-color: rgba(15, 23, 42, 0.18);
     }
 
-    html[data-avatar-theme="whiteColor"] .mode-tab.active,
-    html[data-avatar-theme="white"] .mode-tab.active {
+    html[data-avatar-theme="realistic"] .mode-tab.active {
       color: var(--text-primary);
     }
 
-    html[data-avatar-theme="whiteColor"] .agent-toggle button,
-    html[data-avatar-theme="white"] .agent-toggle button,
-    html[data-avatar-theme="whiteColor"] .finish-button,
-    html[data-avatar-theme="white"] .finish-button,
-    html[data-avatar-theme="whiteColor"] .keycap,
-    html[data-avatar-theme="white"] .keycap,
-    html[data-avatar-theme="whiteColor"] .write-area textarea,
-    html[data-avatar-theme="white"] .write-area textarea {
+    html[data-avatar-theme="realistic"] .agent-toggle button,
+    html[data-avatar-theme="realistic"] .finish-button,
+    html[data-avatar-theme="realistic"] .keycap,
+    html[data-avatar-theme="realistic"] .write-area textarea {
       background: var(--glass-strong);
       border-color: rgba(15, 23, 42, 0.18);
       color: var(--text-primary);

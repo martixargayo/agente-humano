@@ -29,14 +29,12 @@ function resolveHexColorParam(paramName, fallbackColor) {
 // - Geometría, rig, lipsync y animación NO cambian con el tema.
 // - Solo cambia la capa perceptual: fondo + respuesta tonal/alpha del shader.
 // =========================
-const DEFAULT_THEME = 'dark';
-const WHITE_THEME_INK_COLOR = resolveHexColorParam('whiteInkColor', 0x1b2a41);
+const DEFAULT_THEME = 'realistic';
 
 const THEME_PRESETS = {
   dark: {
     background: 0x000000,
     particleColor: 0xdddddd,
-    // Dark actual: preservar respuesta histórica sin remapeo.
     densityInMin: 0.0,
     densityInMax: 1.0,
     densityGamma: 1.0,
@@ -47,67 +45,24 @@ const THEME_PRESETS = {
     shadeMin: 0.6,
     shadeMax: 1.0,
   },
-  light: {
-    background: 0xf2f4f7, // off-white técnico (no blanco puro)
-    particleColor: 0x2f3640, // grafito oscuro (no negro puro)
-    // Recalibración perceptual:
-    // - limpia bajas densidades periféricas (menos grano)
-    // - comprime altas densidades (evita manchas tipo tinta)
-    densityInMin: 0.22,
-    densityInMax: 0.92,
-    densityGamma: 1.12,
-    densityOutMin: 0.08,
-    densityOutMax: 0.72,
-    alphaGain: 0.94,
-    alphaClip: 0.03,
-    shadeMin: 0.72,
-    shadeMax: 1.0,
-  },
-  white: {
-    // Fondo claro con contraste alto en rasgos: luces casi invisibles + sombras marcadas.
-    background: 0xf7f7f5,
-    // Color base configurable para que el rango tonal no sea solo negro/gris.
-    // Ejemplos URL: ?theme=white&whiteInkColor=1e3a8a (azul), 14532d (verde).
-    particleColor: WHITE_THEME_INK_COLOR,
-    densityInMin: 0.08,
-    // Empuja más área al tramo claro para que más puntos queden "blancos/invisibles".
-    densityInMax: 0.88,
-    densityGamma: 1.1,
-    densityOutMin: 0.0,
-    densityOutMax: 1.0,
-    alphaGain: 0.8,
-    // Umbral tipo 1..40 blanco: ink bajo queda recortado y no se pinta.
-    alphaClip: 0.32,
-    // 30% menos oscuridad en el tono más oscuro del tema white.
-    shadeMin: 0.26,
-    shadeMax: 1.0,
-    lowDensityAlphaFloor: 0.0,
-    invertDensityAsInk: true,
-    inkFloor: 0.21,
-    inkAlphaFloor: 0.42,
-    removeHeadCutCap: true,
-  },
-  whiteColor: {
-    // Igual que white en comportamiento tonal/alpha, pero usando el color real de la textura.
-    background: 0xf7f7f5,
+  realistic: {
+    // Tema principal: fondo blanco puro, sin arte de fondo ni capa de puntos.
+    background: 0xffffff,
     particleColor: 0xffffff,
-    densityInMin: 0.08,
-    densityInMax: 0.88,
-    densityGamma: 1.1,
+    densityInMin: 0.0,
+    densityInMax: 1.0,
+    densityGamma: 1.0,
     densityOutMin: 0.0,
     densityOutMax: 1.0,
-    alphaGain: 0.8,
-    alphaClip: 0.32,
-    shadeMin: 0.26,
+    alphaGain: 1.0,
+    alphaClip: 0.0,
+    shadeMin: 1.0,
     shadeMax: 1.0,
-    lowDensityAlphaFloor: 0.0,
-    invertDensityAsInk: true,
-    inkFloor: 0.21,
-    inkAlphaFloor: 0.42,
     useTextureColor: true,
-    useLumaDensity: true,
+    useLumaDensity: false,
     saturation: 1.0,
     removeHeadCutCap: true,
+    disableBackgroundArt: true,
   },
   realistic: {
     // Tema realista: fondo blanco puro, sin arte de fondo ni capa de puntos.
@@ -134,16 +89,9 @@ function resolveTheme() {
   const urlTheme = URL_PARAMS.get('theme');
   if (!urlTheme) return DEFAULT_THEME;
 
-  const normalizedTheme = urlTheme.trim();
-  const lowerTheme = normalizedTheme.toLowerCase();
-
-  if (lowerTheme === 'blanco') return 'white';
-  if (lowerTheme === 'whitecolor' || lowerTheme === 'white-color') return 'whiteColor';
-  if (lowerTheme === 'realista') return 'realistic';
-
-  if (THEME_PRESETS[normalizedTheme]) return normalizedTheme;
-  if (THEME_PRESETS[lowerTheme]) return lowerTheme;
-
+  const lowerTheme = urlTheme.trim().toLowerCase();
+  if (lowerTheme === 'realista' || lowerTheme === 'realistic') return 'realistic';
+  if (lowerTheme === 'dark') return 'dark';
   return DEFAULT_THEME;
 }
 
@@ -153,7 +101,7 @@ const isRealisticTheme = activeThemeName === 'realistic';
 document.documentElement.dataset.avatarTheme = activeThemeName;
 console.info('[theme] Avatar perceptual theme:', activeThemeName);
 
-const isWhiteCanvasTheme = activeThemeName === 'white' || activeThemeName === 'whiteColor' || isRealisticTheme;
+const isWhiteCanvasTheme = isRealisticTheme;
 if (isWhiteCanvasTheme) {
   const canvasBg = `#${activeTheme.background.toString(16).padStart(6, '0')}`;
   document.body.style.backgroundColor = canvasBg;
@@ -349,14 +297,6 @@ scene.add(rimLight);
 
 const ambient = new THREE.AmbientLight(0xffffff, 0.2);
 scene.add(ambient);
-
-// Ajuste lumínico mínimo en modo claro: recuperar separación de planos
-// sin tocar tipos de luz ni lógica de animación.
-if (activeThemeName === 'light') {
-  keyLight.intensity = 0.84;
-  rimLight.intensity = 0.46;
-  ambient.intensity = 0.26;
-}
 
 const clock = new THREE.Clock();
 
@@ -1387,28 +1327,6 @@ loader.load(
       basePosAttrRef = realisticSurfaceGeo.getAttribute('aBasePosition');
       mouthWeightAttrRef = realisticSurfaceGeo.getAttribute('aMouthWeight');
       mouthSideAttrRef = realisticSurfaceGeo.getAttribute('aMouthSide');
-    } else if (activeThemeName === 'white' || activeThemeName === 'whiteColor' || activeThemeName === 'blanco') {
-      particleMaterial = createParticleMaterial({
-        pointSize: POINT_SIZE,
-        color: activeTheme.particleColor,
-        blending: THREE.NormalBlending,
-        depthWrite: false,
-        blancoMode: 1.0,
-        blancoLayer: 0.0,
-        blancoInkGamma: 1.9,
-      });
-      particleMaterials = [particleMaterial];
-
-      particlePoints = new THREE.Points(particlesGeo, particleMaterial);
-      particlePoints.frustumCulled = false;
-      particlePoints.renderOrder = 2;
-      particlePointsDetail = null;
-
-      particlesGeometryRef = particlesGeo;
-      headWeightAttrRef = particlesGeo.getAttribute('aHeadWeight');
-      basePosAttrRef = particlesGeo.getAttribute('aBasePosition');
-      mouthWeightAttrRef = particlesGeo.getAttribute('aMouthWeight');
-      mouthSideAttrRef = particlesGeo.getAttribute('aMouthSide');
     } else {
       particleMaterial = createParticleMaterial();
       particleMaterials = [particleMaterial];
