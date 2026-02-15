@@ -10,6 +10,9 @@ import { createDemoFeedbackMode } from './demo_feedback_mode.js';
 const URL_PARAMS = new URLSearchParams(window.location.search);
 const DEBUG_EDIT_ENABLED = URL_PARAMS.get('debugEdit') === '1';
 const DEBUG_BROWS_ENABLED = URL_PARAMS.get('debugBrows') === '1';
+const DEBUG_BLINK_COVER_ENABLED = URL_PARAMS.get('debugBlinkCover') === '1';
+const FORCE_BLINK_ENABLED = URL_PARAMS.get('forceBlink') === '1';
+const FORCE_BLINK_DURATION_SEC = 2.0;
 const FREEZE_IN_EDIT = DEBUG_EDIT_ENABLED; // En ?debugEdit=1 congelamos motion/UI conversacional para ajustar handles con precisión.
 const demoFeedbackMode = createDemoFeedbackMode({ urlParams: URL_PARAMS });
 
@@ -233,6 +236,12 @@ const DebugView = { headWeight: false };
   if (DEBUG_BROWS_ENABLED) {
     console.info('[debug-brows] Activado (?debugBrows=1). Se habilitan logs geométricos + overlay shader usando vBaseXY.');
   }
+  if (DEBUG_BLINK_COVER_ENABLED) {
+    console.info('[debug-brows] Contorno de blinkCover ACTIVADO (?debugBlinkCover=1).');
+  }
+  if (FORCE_BLINK_ENABLED) {
+    console.info(`[blink-debug] forceBlink=1 activo: blink fijado en 1.0 durante ${FORCE_BLINK_DURATION_SEC.toFixed(1)}s.`);
+  }
 })();
 
 window.addEventListener('keydown', (e) => {
@@ -267,6 +276,7 @@ const EyelidMotionState = {
   nextBlinkAt: 2.2,
   pendingDouble: false,
   initialized: false,
+  forceUntil: FORCE_BLINK_ENABLED ? FORCE_BLINK_DURATION_SEC : 0.0,
 };
 
 const debugStats = {
@@ -360,18 +370,18 @@ window.MouthTuning = window.MouthTuning || {
 
 window.EyeBlinkTuning = window.EyeBlinkTuning || {
   "left": {
-    "centerX": -0.2827208735080821,
-    "centerY": 0.5774244638127382,
-    "halfWidth": 0.07647198235556732,
-    "rotation": 0.048119995817101774,
+    "centerX": -0.21262084897756595,
+    "centerY": 0.49398826434773013,
+    "halfWidth": 0.06927066702311041,
+    "rotation": -0.07747718419813834,
     "upper": { "offset": 0.015333409431849491, "curve": -0.01375947353731123 },
     "lower": { "offset": -0.012817365534143615, "curve": 0.004398359546727952 }
   },
   "right": {
-    "centerX": 0.14101099760355848,
-    "centerY": 0.578773855297069,
-    "halfWidth": 0.08131487769157097,
-    "rotation": -0.07219613864912759,
+    "centerX": 0.09769628198016435,
+    "centerY": 0.48632749262174674,
+    "halfWidth": 0.07165083081892201,
+    "rotation": 0.05966598604243294,
     "upper": { "offset": 0.009755191469550624, "curve": -0.013990511698837487 },
     "lower": { "offset": -0.018494072161187834, "curve": 0.0027252480420008746 }
   }
@@ -1232,6 +1242,7 @@ uniform float uBrowXSpan;
 uniform float uEyeMarkerAspect;
 uniform float uEyeMarkerScale;
 uniform float uEyeMarkerFeather;
+uniform float uDebugBlinkCover;
 varying vec2 vUv;
 varying float vHeadWeight;
 varying float vBaseZ;
@@ -1297,11 +1308,24 @@ void main() {
 
     float centerLine = 1.0 - smoothstep(0.0, 0.006, abs(vBaseXY.x));
 
+    float coverOpen = max(blinkCover(vBaseXY, uEyeLeftMain, uEyeLeftUpper, uEyeLeftLower, 0.0), blinkCover(vBaseXY, uEyeRightMain, uEyeRightUpper, uEyeRightLower, 0.0));
+    float coverClosed = max(blinkCover(vBaseXY, uEyeLeftMain, uEyeLeftUpper, uEyeLeftLower, 1.0), blinkCover(vBaseXY, uEyeRightMain, uEyeRightUpper, uEyeRightLower, 1.0));
+    float coverOpenLine = smoothstep(0.25, 0.35, coverOpen) - smoothstep(0.35, 0.45, coverOpen);
+    float coverClosedLine = smoothstep(0.70, 0.80, coverClosed) - smoothstep(0.80, 0.90, coverClosed);
+
     vec3 overlay = vec3(0.0);
     overlay += vec3(1.0, 0.2, 0.2) * max(leftEyeMarker, rightEyeMarker);
     overlay += vec3(0.15, 0.95, 0.2) * browBand;
     overlay += vec3(0.2, 0.6, 1.0) * centerLine * 0.6;
-    finalColor = mix(finalColor, overlay, clamp(max(max(leftEyeMarker, rightEyeMarker), browBand) * 0.75 + centerLine * 0.25, 0.0, 0.85));
+    if (uDebugBlinkCover > 0.5) {
+      overlay += vec3(0.9, 0.2, 1.0) * coverOpenLine;
+      overlay += vec3(0.2, 1.0, 1.0) * coverClosedLine;
+    }
+    float overlayMask = clamp(max(max(leftEyeMarker, rightEyeMarker), browBand) * 0.75 + centerLine * 0.25, 0.0, 0.85);
+    if (uDebugBlinkCover > 0.5) {
+      overlayMask = max(overlayMask, clamp(max(coverOpenLine, coverClosedLine) * 0.9, 0.0, 0.9));
+    }
+    finalColor = mix(finalColor, overlay, overlayMask);
   }
 
   gl_FragColor = vec4(finalColor, 1.0);
@@ -1563,6 +1587,7 @@ loader.load(
           uEyeMarkerAspect: { value: window.BrowsDebugTuning.eyeMarkerAspectY },
           uEyeMarkerScale: { value: window.BrowsDebugTuning.eyeMarkerRadiusScale },
           uEyeMarkerFeather: { value: window.BrowsDebugTuning.eyeMarkerFeather },
+          uDebugBlinkCover: { value: DEBUG_BLINK_COVER_ENABLED ? 1.0 : 0.0 },
           uDebugHeadWeight: { value: DebugView.headWeight ? 1.0 : 0.0 },
         },
       });
@@ -2079,7 +2104,17 @@ function startEyelidBlink(durationSec) {
 }
 
 function updateEyelidBlink(elapsed, delta) {
-  if (!isRealisticTheme || FREEZE_IN_EDIT) {
+  if (!isRealisticTheme) {
+    EyelidMotionState.value = 0.0;
+    return;
+  }
+
+  if (FORCE_BLINK_ENABLED && elapsed <= EyelidMotionState.forceUntil) {
+    EyelidMotionState.value = 1.0;
+    return;
+  }
+
+  if (FREEZE_IN_EDIT) {
     EyelidMotionState.value = 0.0;
     return;
   }
@@ -2169,7 +2204,7 @@ function applyEyeBlinkUniforms(mat) {
 
   applyBrowsDebugUniforms(mat);
 
-  if (DEBUG_BROWS_ENABLED && performance.now() - lastBrowsUniformLogMs > 1200) {
+  if ((DEBUG_BROWS_ENABLED || FORCE_BLINK_ENABLED) && performance.now() - lastBrowsUniformLogMs > 1200) {
     lastBrowsUniformLogMs = performance.now();
     console.info('[debug-brows] uniforms frame snapshot', {
       blink: EyelidMotionState.value,
