@@ -15,6 +15,7 @@ const DEBUG_MOTION_LEVEL = Number.parseInt(URL_PARAMS.get('debugMotion') || '0',
 const DEBUG_MOTION_ENABLED = DEBUG_MOTION_LEVEL >= 1;
 const DEBUG_MOTION_VERBOSE = DEBUG_MOTION_LEVEL >= 2;
 const DEBUG_MOTION_HUD_ENABLED = URL_PARAMS.get('debugMotionHud') === '1';
+const DEBUG_CONTROLS_ENABLED = URL_PARAMS.get('debugControls') === '1';
 const FORCE_BLINK_ENABLED = URL_PARAMS.get('forceBlink') === '1';
 const FORCE_BLINK_DURATION_SEC = 2.0;
 const FREEZE_IN_EDIT = DEBUG_EDIT_ENABLED; // En ?debugEdit=1 congelamos motion/UI conversacional para ajustar handles con precisión.
@@ -219,11 +220,22 @@ const MotionDebugState = {
   deltaMax: 0,
   deltaSum: 0,
   deltaCount: 0,
+  spikeCount: 0,
+  lastSpikeLogAt: 0,
   lastReportAt: 0,
   lastFrameLogAt: 0,
+  lastHudUpdateAt: 0,
   lastTargetSwitchAt: 0,
   snapCount: 0,
   modeTransitions: 0,
+  controlsLogAt: 0,
+  renderMsSum: 0,
+  renderMsMax: 0,
+  overlayMsSum: 0,
+  overlayMsMax: 0,
+  frameBudgetCount: 0,
+  lastFrameBudgetReportAt: 0,
+  lastFrameBudgetLogMs: 0,
   prevHeadCurrent: new THREE.Vector3(0, 0, 0),
   prevHeadUniform: new THREE.Vector3(0, 0, 0),
   prevBodyUniform: new THREE.Vector3(0, 0, 0),
@@ -372,7 +384,10 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.target.set(0, 0.2, 0);
-if (DEBUG_MOTION_VERBOSE) controls.addEventListener('change', () => {
+if (DEBUG_CONTROLS_ENABLED) controls.addEventListener('change', () => {
+  const now = performance.now();
+  if (now - MotionDebugState.controlsLogAt < 250) return;
+  MotionDebugState.controlsLogAt = now;
   console.info('[debug-motion] controls-change', {
     cameraPos: { x: Number(camera.position.x.toFixed(3)), y: Number(camera.position.y.toFixed(3)), z: Number(camera.position.z.toFixed(3)) },
     target: { x: Number(controls.target.x.toFixed(3)), y: Number(controls.target.y.toFixed(3)), z: Number(controls.target.z.toFixed(3)) },
@@ -2170,12 +2185,14 @@ const MotionState = {
 };
 
 const ZERO_VEC3 = new THREE.Vector3(0, 0, 0);
-
+const HEAD_ROT_TMP = new THREE.Vector3(0, 0, 0);
+const BODY_ROT_TMP = new THREE.Vector3(0, 0, 0);
 
 if (DEBUG_MOTION_ENABLED) {
   console.info('[debug-motion] params', {
     level: DEBUG_MOTION_LEVEL,
     hud: DEBUG_MOTION_HUD_ENABLED,
+    debugControls: DEBUG_CONTROLS_ENABLED,
     headGain: HEAD_MOTION_GAIN,
     noMicro: MOTION_NO_MICRO,
     noNod: MOTION_NO_NOD,
@@ -2535,26 +2552,52 @@ const reportMotionFrameDebug = ({
     });
   }
 
-  if (deltaRaw > 0.1) {
-    console.warn('[debug-motion] delta spike > 100ms', {
+  const deltaSpikeLevel = deltaRaw > 0.1 ? 100 : (deltaRaw > 0.05 ? 50 : 0);
+  if (deltaSpikeLevel > 0) {
+    MotionDebugState.spikeCount += 1;
+    if (DEBUG_MOTION_VERBOSE && (elapsed - MotionDebugState.lastSpikeLogAt >= 0.25)) {
+      MotionDebugState.lastSpikeLogAt = elapsed;
+      console.warn(`[debug-motion] delta spike > ${deltaSpikeLevel}ms`, {
+        elapsed: Number(elapsed.toFixed(3)),
+        elapsedJump: Number(elapsedJump.toFixed(4)),
+        deltaRaw: Number(deltaRaw.toFixed(4)),
+        dtMotion: Number(dtMotion.toFixed(4)),
+        microYaw: Number(microYaw.toFixed(4)),
+        microPitch: Number(microPitch.toFixed(4)),
+        microRoll: Number(microRoll.toFixed(4)),
+        offY: Number(offY.toFixed(4)),
+      });
+    }
+  }
+
+  if (DEBUG_MOTION_VERBOSE && (elapsed - MotionDebugState.lastFrameLogAt >= 0.2)) {
+    MotionDebugState.lastFrameLogAt = elapsed;
+    console.info('[debug-motion] frame-200ms', {
       elapsed: Number(elapsed.toFixed(3)),
-      elapsedJump: Number(elapsedJump.toFixed(4)),
       deltaRaw: Number(deltaRaw.toFixed(4)),
       dtMotion: Number(dtMotion.toFixed(4)),
+      motionTime: Number(motionTime.toFixed(4)),
+      kHead: Number(kHead.toFixed(4)),
+      kBody: Number(kBody.toFixed(4)),
+      headCurrent: { pitch: Number(head.x.toFixed(4)), yaw: Number(head.y.toFixed(4)), roll: Number(head.z.toFixed(4)) },
+      headTarget: {
+        pitch: Number(MotionState.head.target.x.toFixed(4)),
+        yaw: Number(MotionState.head.target.y.toFixed(4)),
+        roll: Number(MotionState.head.target.z.toFixed(4)),
+      },
+      bodyCurrent: { pitch: Number(body.x.toFixed(4)), yaw: Number(body.y.toFixed(4)), roll: Number(body.z.toFixed(4)) },
+      bodyTarget: {
+        pitch: Number(MotionState.body.target.x.toFixed(4)),
+        yaw: Number(MotionState.body.target.y.toFixed(4)),
+        roll: Number(MotionState.body.target.z.toFixed(4)),
+      },
       microYaw: Number(microYaw.toFixed(4)),
       microPitch: Number(microPitch.toFixed(4)),
       microRoll: Number(microRoll.toFixed(4)),
-      offY: Number(offY.toFixed(4)),
-    });
-  } else if (deltaRaw > 0.05) {
-    console.warn('[debug-motion] delta spike > 50ms', {
-      elapsed: Number(elapsed.toFixed(3)),
-      elapsedJump: Number(elapsedJump.toFixed(4)),
-      deltaRaw: Number(deltaRaw.toFixed(4)),
-      dtMotion: Number(dtMotion.toFixed(4)),
-      microYaw: Number(microYaw.toFixed(4)),
-      microPitch: Number(microPitch.toFixed(4)),
-      microRoll: Number(microRoll.toFixed(4)),
+      nodPitch: Number(nodPitch.toFixed(4)),
+      uHeadRot: { x: Number(headRot.x.toFixed(4)), y: Number(headRot.y.toFixed(4)), z: Number(headRot.z.toFixed(4)) },
+      uBodyRot: { x: Number(bodyRot.x.toFixed(4)), y: Number(bodyRot.y.toFixed(4)), z: Number(bodyRot.z.toFixed(4)) },
+      headRotMag: Number(headRotMag.toFixed(4)),
       offY: Number(offY.toFixed(4)),
     });
   }
@@ -2606,6 +2649,7 @@ const reportMotionFrameDebug = ({
       headCurrentDelta: Number(headCurrentDelta.toFixed(4)),
       headUniformDelta: Number(headUniformDelta.toFixed(4)),
       snapCount: MotionDebugState.snapCount,
+      spikeCount: MotionDebugState.spikeCount,
       microYaw: Number(microYaw.toFixed(4)),
       microPitch: Number(microPitch.toFixed(4)),
       microRoll: Number(microRoll.toFixed(4)),
@@ -2619,11 +2663,13 @@ const reportMotionFrameDebug = ({
     MotionDebugState.deltaMax = 0;
     MotionDebugState.deltaSum = 0;
     MotionDebugState.deltaCount = 0;
+    MotionDebugState.spikeCount = 0;
     MotionDebugState.lastReportAt = elapsed;
   }
 
   ensureMotionDebugHud();
-  if (MotionDebugState.hudEl) {
+  if (MotionDebugState.hudEl && (elapsed - MotionDebugState.lastHudUpdateAt >= 0.2)) {
+    MotionDebugState.lastHudUpdateAt = elapsed;
     MotionDebugState.hudEl.textContent = [
       `dtRaw: ${deltaRaw.toFixed(4)}`,
       `dtMotion: ${dtMotion.toFixed(4)}`,
@@ -2638,6 +2684,38 @@ const reportMotionFrameDebug = ({
   MotionDebugState.prevHeadUniform.copy(headRot);
   MotionDebugState.prevBodyUniform.copy(bodyRot);
 };
+
+
+function reportFrameBudget(elapsed, renderMs, overlayMs) {
+  if (!DEBUG_MOTION_ENABLED) return;
+
+  MotionDebugState.renderMsSum += renderMs;
+  MotionDebugState.renderMsMax = Math.max(MotionDebugState.renderMsMax, renderMs);
+  MotionDebugState.overlayMsSum += overlayMs;
+  MotionDebugState.overlayMsMax = Math.max(MotionDebugState.overlayMsMax, overlayMs);
+  MotionDebugState.frameBudgetCount += 1;
+
+  const nowMs = performance.now();
+  if (nowMs - MotionDebugState.lastFrameBudgetLogMs < 1000) return;
+
+  const n = Math.max(1, MotionDebugState.frameBudgetCount);
+  console.info('[debug-motion] frame-budget-1s', {
+    elapsed: Number(elapsed.toFixed(3)),
+    renderMsAvg: Number((MotionDebugState.renderMsSum / n).toFixed(3)),
+    renderMsMax: Number(MotionDebugState.renderMsMax.toFixed(3)),
+    overlayMsAvg: Number((MotionDebugState.overlayMsSum / n).toFixed(3)),
+    overlayMsMax: Number(MotionDebugState.overlayMsMax.toFixed(3)),
+    samples: n,
+  });
+
+  MotionDebugState.renderMsSum = 0;
+  MotionDebugState.renderMsMax = 0;
+  MotionDebugState.overlayMsSum = 0;
+  MotionDebugState.overlayMsMax = 0;
+  MotionDebugState.frameBudgetCount = 0;
+  MotionDebugState.lastFrameBudgetReportAt = elapsed;
+  MotionDebugState.lastFrameBudgetLogMs = nowMs;
+}
 
 function animate() {
   requestAnimationFrame(animate);
@@ -2696,12 +2774,12 @@ function animate() {
 
     const head = (FREEZE_IN_EDIT || MOTION_NO_HEAD) ? ZERO_VEC3 : MotionState.head.current;
     const body = (FREEZE_IN_EDIT || MOTION_NO_BODY) ? ZERO_VEC3 : MotionState.body.current;
-    const headRot = new THREE.Vector3(
+    const headRot = HEAD_ROT_TMP.set(
       (head.x + microPitch + nodPitch) * HEAD_MOTION_GAIN,
       (head.y + microYaw) * HEAD_MOTION_GAIN,
       (head.z + microRoll) * HEAD_MOTION_GAIN,
     );
-    const bodyRot = new THREE.Vector3(
+    const bodyRot = BODY_ROT_TMP.set(
       body.x + microPitch * 0.25,
       body.y + microYaw * 0.25,
       body.z + microRoll * 0.25,
@@ -2761,9 +2839,18 @@ function animate() {
   }
 
   controls.update();
+  const renderT0 = performance.now();
   renderer.render(scene, camera);
+  const renderMs = performance.now() - renderT0;
 
-  if (NeckEditor && NeckEditor.visible) drawNeckEditorOverlay();
+  let overlayMs = 0;
+  if (NeckEditor && NeckEditor.visible) {
+    const overlayT0 = performance.now();
+    drawNeckEditorOverlay();
+    overlayMs = performance.now() - overlayT0;
+  }
+
+  reportFrameBudget(elapsed, renderMs, overlayMs);
 }
 
 if (!window.__avatarRAFStarted) {
