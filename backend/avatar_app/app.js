@@ -1645,7 +1645,7 @@ loader.load(
 
       scene.add(headCutCapMesh);
     }
-    scene.add(particlePoints);
+    if (particlePoints) scene.add(particlePoints);
     if (particlePointsDetail) scene.add(particlePointsDetail);
     if (particleSurfaceMesh) scene.add(particleSurfaceMesh);
 
@@ -2332,6 +2332,67 @@ let lipTestActive = false;
 let lipTestStartTime = 0;
 let testLipsBtn = null;
 let prevFrameElapsed = 0;
+let motionTime = 0;
+
+function reportMotionDebug({ elapsed, elapsedJump, deltaRaw, dtMotion, kHead, kBody, headRotMag, microYaw, microPitch, microRoll, offY }) {
+  if (!DEBUG_MOTION_ENABLED) return;
+
+  MotionDebugState.deltaMin = Math.min(MotionDebugState.deltaMin, deltaRaw);
+  MotionDebugState.deltaMax = Math.max(MotionDebugState.deltaMax, deltaRaw);
+  MotionDebugState.deltaSum += deltaRaw;
+  MotionDebugState.deltaCount += 1;
+
+  if (deltaRaw > 0.1) {
+    console.warn('[debug-motion] delta spike > 100ms', {
+      elapsed: Number(elapsed.toFixed(3)),
+      elapsedJump: Number(elapsedJump.toFixed(4)),
+      deltaRaw: Number(deltaRaw.toFixed(4)),
+      dtMotion: Number(dtMotion.toFixed(4)),
+      microYaw: Number(microYaw.toFixed(4)),
+      microPitch: Number(microPitch.toFixed(4)),
+      microRoll: Number(microRoll.toFixed(4)),
+      offY: Number(offY.toFixed(4)),
+    });
+  } else if (deltaRaw > 0.05) {
+    console.warn('[debug-motion] delta spike > 50ms', {
+      elapsed: Number(elapsed.toFixed(3)),
+      elapsedJump: Number(elapsedJump.toFixed(4)),
+      deltaRaw: Number(deltaRaw.toFixed(4)),
+      dtMotion: Number(dtMotion.toFixed(4)),
+      microYaw: Number(microYaw.toFixed(4)),
+      microPitch: Number(microPitch.toFixed(4)),
+      microRoll: Number(microRoll.toFixed(4)),
+      offY: Number(offY.toFixed(4)),
+    });
+  }
+
+  if (elapsed - MotionDebugState.lastReportAt >= 1.0) {
+    const deltaAvg = MotionDebugState.deltaCount > 0
+      ? MotionDebugState.deltaSum / MotionDebugState.deltaCount
+      : 0.0;
+    console.info('[debug-motion] 1s-report', {
+      elapsed: Number(elapsed.toFixed(3)),
+      elapsedJump: Number(elapsedJump.toFixed(4)),
+      deltaRaw: Number(deltaRaw.toFixed(4)),
+      dtMotion: Number(dtMotion.toFixed(4)),
+      deltaMin: Number(MotionDebugState.deltaMin.toFixed(4)),
+      deltaMax: Number(MotionDebugState.deltaMax.toFixed(4)),
+      deltaAvg: Number(deltaAvg.toFixed(4)),
+      kHead: Number(kHead.toFixed(4)),
+      kBody: Number(kBody.toFixed(4)),
+      microYaw: Number(microYaw.toFixed(4)),
+      microPitch: Number(microPitch.toFixed(4)),
+      microRoll: Number(microRoll.toFixed(4)),
+      offY: Number(offY.toFixed(4)),
+      headRotMag: Number(headRotMag.toFixed(4)),
+    });
+    MotionDebugState.deltaMin = Number.POSITIVE_INFINITY;
+    MotionDebugState.deltaMax = 0;
+    MotionDebugState.deltaSum = 0;
+    MotionDebugState.deltaCount = 0;
+    MotionDebugState.lastReportAt = elapsed;
+  }
+}
 
 function reportMotionDebug(elapsed, deltaRaw, kHead, kBody, headRotMag) {
   if (!DEBUG_MOTION_ENABLED) return;
@@ -2380,12 +2441,14 @@ function animate() {
 
   // Usamos una sola lectura de tiempo por frame para evitar dt≈0 por doble muestreo del clock.
   const elapsed = clock.getElapsedTime();
-  const deltaRaw = prevFrameElapsed > 0 ? Math.max(0.0, elapsed - prevFrameElapsed) : 0.0;
+  const elapsedJump = prevFrameElapsed > 0 ? Math.max(0.0, elapsed - prevFrameElapsed) : 0.0;
+  const deltaRaw = elapsedJump;
   prevFrameElapsed = elapsed;
 
   // dt separado para evitar snaps en motion con spikes de RAF (tab switch/frame drops)
   const dtBlink = Math.min(deltaRaw, 0.05);
   const dtMotion = Math.min(deltaRaw, 1.0 / 30.0);
+  motionTime += dtMotion;
   updateEyelidBlink(elapsed, dtBlink);
 
   if (particleMaterials.length) {
@@ -2404,25 +2467,25 @@ function animate() {
     let kBody = 0.0;
 
     if (!FREEZE_IN_EDIT) {
-      kHead = updateChannel(MotionState.head, MotionConfig.head, elapsed, dtMotion);
-      kBody = updateChannel(MotionState.body, MotionConfig.body, elapsed, dtMotion);
+      kHead = updateChannel(MotionState.head, MotionConfig.head, motionTime, dtMotion);
+      kBody = updateChannel(MotionState.body, MotionConfig.body, motionTime, dtMotion);
 
       microYaw =
-        (Math.sin(elapsed * 2.1 + MotionState.seed) * MotionConfig.micro.yaw) +
-        (Math.sin(elapsed * 3.7 + MotionState.seed * 0.3) * MotionConfig.micro.yaw * 0.45);
+        (Math.sin(motionTime * 2.1 + MotionState.seed) * MotionConfig.micro.yaw) +
+        (Math.sin(motionTime * 3.7 + MotionState.seed * 0.3) * MotionConfig.micro.yaw * 0.45);
 
       microPitch =
-        (Math.sin(elapsed * 1.8 + MotionState.seed * 0.7) * MotionConfig.micro.pitch) +
-        (Math.sin(elapsed * 3.2 + MotionState.seed * 0.2) * MotionConfig.micro.pitch * 0.45);
+        (Math.sin(motionTime * 1.8 + MotionState.seed * 0.7) * MotionConfig.micro.pitch) +
+        (Math.sin(motionTime * 3.2 + MotionState.seed * 0.2) * MotionConfig.micro.pitch * 0.45);
 
       microRoll =
-        (Math.sin(elapsed * 1.5 + MotionState.seed * 1.3) * MotionConfig.micro.roll) +
-        (Math.sin(elapsed * 2.9 + MotionState.seed * 0.4) * MotionConfig.micro.roll * 0.45);
+        (Math.sin(motionTime * 1.5 + MotionState.seed * 1.3) * MotionConfig.micro.roll) +
+        (Math.sin(motionTime * 2.9 + MotionState.seed * 0.4) * MotionConfig.micro.roll * 0.45);
 
-      nodPitch = updateNod(elapsed, dtMotion);
+      nodPitch = updateNod(motionTime, dtMotion);
 
       if (AvatarState.idleMotionEnabled) {
-        offY = 0.01 * Math.sin(elapsed * 0.9) + 0.005 * Math.sin(elapsed * 0.37);
+        offY = 0.01 * Math.sin(motionTime * 0.9) + 0.005 * Math.sin(motionTime * 0.37);
       }
     }
 
@@ -2433,7 +2496,19 @@ function animate() {
       (head.y + microYaw) * HEAD_MOTION_GAIN,
       (head.z + microRoll) * HEAD_MOTION_GAIN,
     );
-    reportMotionDebug(elapsed, deltaRaw, kHead, kBody, headRotMag);
+    reportMotionDebug({
+      elapsed,
+      elapsedJump,
+      deltaRaw,
+      dtMotion,
+      kHead,
+      kBody,
+      headRotMag,
+      microYaw,
+      microPitch,
+      microRoll,
+      offY,
+    });
 
     for (const mat of particleMaterials) {
       mat.uniforms.uTime.value = elapsed;
@@ -2483,7 +2558,12 @@ function animate() {
   if (NeckEditor && NeckEditor.visible) drawNeckEditorOverlay();
 }
 
-animate();
+if (!window.__avatarRAFStarted) {
+  window.__avatarRAFStarted = true;
+  animate();
+} else if (DEBUG_MOTION_ENABLED) {
+  console.warn('[debug-motion] animate() ya estaba iniciado; se evita doble RAF loop.');
+}
 
 // =========================
 // 8. UI (turnos automáticos)
