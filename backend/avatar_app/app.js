@@ -16,6 +16,12 @@ const DEBUG_MOTION_ENABLED = DEBUG_MOTION_LEVEL >= 1;
 const DEBUG_MOTION_VERBOSE = DEBUG_MOTION_LEVEL >= 2;
 const DEBUG_MOTION_HUD_ENABLED = URL_PARAMS.get('debugMotionHud') === '1';
 const DEBUG_CONTROLS_ENABLED = URL_PARAMS.get('debugControls') === '1';
+const DEBUG_MOUTH_ENABLED = URL_PARAMS.get('debugMouth') === '1';
+const DEBUG_MOUTH_CUT_ENABLED = URL_PARAMS.get('debugMouthCut') === '1';
+const MOUTH_SOFT_EDGE_ENABLED = URL_PARAMS.get('mouthSoft') === '1';
+const FORCE_TALK_LEVEL_RAW = URL_PARAMS.get('forceTalk');
+const FORCE_TALK_LEVEL = FORCE_TALK_LEVEL_RAW != null ? Number.parseFloat(FORCE_TALK_LEVEL_RAW) : null;
+const DEBUG_EDIT_FORCE_TALK = resolveNumberParam('debugEditForceTalk', 0.85);
 const FORCE_BLINK_ENABLED = URL_PARAMS.get('forceBlink') === '1';
 const FORCE_BLINK_DURATION_SEC = 2.0;
 const FREEZE_IN_EDIT = DEBUG_EDIT_ENABLED; // En ?debugEdit=1 congelamos motion/UI conversacional para ajustar handles con precisión.
@@ -103,25 +109,7 @@ const THEME_PRESETS = {
     saturation: 1.0,
     removeHeadCutCap: true,
     disableBackgroundArt: true,
-  },
-  realistic: {
-    // Tema realista: fondo blanco puro, sin arte de fondo ni capa de puntos.
-    background: 0xffffff,
-    particleColor: 0xffffff,
-    densityInMin: 0.0,
-    densityInMax: 1.0,
-    densityGamma: 1.0,
-    densityOutMin: 0.0,
-    densityOutMax: 1.0,
-    alphaGain: 1.0,
-    alphaClip: 0.0,
-    shadeMin: 1.0,
-    shadeMax: 1.0,
-    useTextureColor: true,
-    useLumaDensity: false,
-    saturation: 1.0,
-    removeHeadCutCap: true,
-    disableBackgroundArt: true,
+    useMouthInterior: true,
   },
 };
 
@@ -418,6 +406,18 @@ window.MouthTuning = window.MouthTuning || {
   curve: 0.0,      // curvatura en U (0 = recto)
 };
 
+window.MouthCutTuning = window.MouthCutTuning || {
+  centerX: -0.045,
+  centerY: 0.14,
+  width: 0.07,
+  height: 0.032,
+  openMin: 0.05,
+  openFade: 0.15,
+  innerScaleX: 0.95,
+  innerScaleYMin: 0.30,
+  innerScaleYMax: 1.10,
+};
+
 window.EyeBlinkTuning = window.EyeBlinkTuning || {
   "left": {
     "centerX": -0.21262084897756595,
@@ -693,6 +693,7 @@ varying vec2 vUv;
 varying float vHeadWeight;
 varying float vHeightFromTop;
 varying float vDissolveSeed;
+varying vec2 vBaseXY;
 
 float hash11(float p) {
   return fract(sin(p * 127.1) * 43758.5453123);
@@ -746,6 +747,7 @@ void main() {
   vHeadWeight = aHeadWeight;
   vHeightFromTop = aHeightFromTop;
   vDissolveSeed = aRandom.x;
+  vBaseXY = aBasePosition.xy;
 
   vec3 pos = aBasePosition;
   float t = uTime;
@@ -855,11 +857,22 @@ uniform float uDissolveEnd;
 uniform float uDissolveStrength;
 uniform float uDissolveSpeed;
 uniform float uTime;
+uniform float uMouthCutEnabled;
+uniform float uMouthOpen;
+uniform vec2 uMouthCenter;
+uniform vec2 uMouthSize;
+uniform float uMouthOpenMin;
+uniform float uMouthOpenFade;
+uniform float uMouthHoleInnerX;
+uniform float uMouthHoleInnerYMin;
+uniform float uMouthHoleInnerYMax;
+uniform float uDebugMouthCut;
 
 varying vec2 vUv;
 varying float vHeadWeight;
 varying float vHeightFromTop;
 varying float vDissolveSeed;
+varying vec2 vBaseXY;
 
 float hash21(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
@@ -890,6 +903,20 @@ void main() {
     vec3 dbg = vec3(clamp(vHeadWeight, 0.0, 1.0));
     gl_FragColor = vec4(dbg, circle);
     return;
+  }
+
+  float mouthOpenMask = smoothstep(uMouthOpenMin, uMouthOpenFade, uMouthOpen) * uMouthCutEnabled;
+  if (mouthOpenMask > 0.001) {
+    vec2 pMouth = (vBaseXY - uMouthCenter) / max(uMouthSize, vec2(1e-4));
+    float yScale = mix(uMouthHoleInnerYMin, uMouthHoleInnerYMax, mouthOpenMask);
+    vec2 e = vec2(pMouth.x / max(uMouthHoleInnerX, 1e-4), pMouth.y / max(yScale, 1e-4));
+    float mouthHoleSdf = length(e) - 1.0;
+    if (uDebugMouthCut > 0.5) {
+      vec3 dbgCut = mouthHoleSdf < 0.0 ? vec3(1.0, 0.15, 0.15) : vec3(0.12, 0.95, 0.25);
+      gl_FragColor = vec4(dbgCut, circle);
+      return;
+    }
+    if (mouthHoleSdf < 0.0) discard;
   }
 
   vec3 texColor = texture2D(uColorMap, vUv).rgb;
@@ -1083,6 +1110,276 @@ let particlePoints = null;
 let particlePointsDetail = null;
 let particleSurfaceMesh = null;
 let headCutCapMesh = null;
+
+// =========================
+// MOUTH_INTERIOR
+// =========================
+const MOUTH_INTERIOR = {
+  WIDTH: 0.2,
+  HEIGHT: 0.14,
+  DEPTH_OFFSET: 0.016,
+  EXTRA_DEPTH: 0.01,
+  OPEN_MIN: 0.05,
+  OPEN_FADE: 0.15,
+  ALPHA_CLIP_STABLE: 0.3,
+  DARKEN_MIN: 0.6,
+  LOG_INTERVAL_MS: 500,
+};
+
+// =========================
+// MOUTH_CUTOUT
+// =========================
+const MOUTH_CUTOUT = {
+  OPEN_MIN: 0.05,
+  OPEN_FADE: 0.15,
+  HOLE_INNER_SCALE_X: 0.95,
+  HOLE_INNER_SCALE_Y_MIN: 0.30,
+  HOLE_INNER_SCALE_Y_MAX: 1.10,
+};
+
+let _mouthCutLogPending = false;
+
+function logMouthCutTuning(reason = 'update') {
+  const t = window.MouthCutTuning;
+  console.info(`[mouth-cut] ${reason}`, {
+    centerX: t.centerX,
+    centerY: t.centerY,
+    width: t.width,
+    height: t.height,
+    openMin: t.openMin,
+    openFade: t.openFade,
+    innerScaleX: t.innerScaleX,
+    innerScaleYMin: t.innerScaleYMin,
+    innerScaleYMax: t.innerScaleYMax,
+  });
+  console.log('[mouth-cut] Pega esto en app.js:\nwindow.MouthCutTuning = ' + JSON.stringify(t, null, 2) + ';');
+}
+
+function scheduleLogMouthCutTuning(reason = 'update') {
+  if (_mouthCutLogPending) return;
+  _mouthCutLogPending = true;
+  requestAnimationFrame(() => {
+    _mouthCutLogPending = false;
+    logMouthCutTuning(reason);
+  });
+}
+
+function applyMouthCutoutUniforms(mat, mouthOpen) {
+  if (!mat?.uniforms?.uMouthOpen) return;
+  const mouthCutTuning = window.MouthCutTuning || {
+    centerX: -0.045,
+    centerY: 0.14,
+    width: 0.07,
+    height: 0.032,
+    openMin: 0.05,
+    openFade: 0.15,
+    innerScaleX: 0.95,
+    innerScaleYMin: 0.30,
+    innerScaleYMax: 1.10,
+  };
+
+  mat.uniforms.uMouthCutEnabled.value = (isRealisticTheme && activeTheme.useMouthInterior) ? 1.0 : 0.0;
+  mat.uniforms.uMouthOpen.value = mouthOpen;
+  mat.uniforms.uMouthCenter.value.set(mouthCutTuning.centerX, mouthCutTuning.centerY);
+  mat.uniforms.uMouthSize.value.set(Math.max(1e-4, Math.abs(mouthCutTuning.width)), Math.max(1e-4, Math.abs(mouthCutTuning.height)));
+  mat.uniforms.uMouthOpenMin.value = mouthCutTuning.openMin ?? MOUTH_CUTOUT.OPEN_MIN;
+  mat.uniforms.uMouthOpenFade.value = mouthCutTuning.openFade ?? MOUTH_CUTOUT.OPEN_FADE;
+  mat.uniforms.uMouthHoleInnerX.value = mouthCutTuning.innerScaleX ?? MOUTH_CUTOUT.HOLE_INNER_SCALE_X;
+  mat.uniforms.uMouthHoleInnerYMin.value = mouthCutTuning.innerScaleYMin ?? MOUTH_CUTOUT.HOLE_INNER_SCALE_Y_MIN;
+  mat.uniforms.uMouthHoleInnerYMax.value = mouthCutTuning.innerScaleYMax ?? MOUTH_CUTOUT.HOLE_INNER_SCALE_Y_MAX;
+  mat.uniforms.uDebugMouthCut.value = DEBUG_MOUTH_CUT_ENABLED ? 1.0 : 0.0;
+}
+
+let mouthInteriorMesh = null;
+let mouthInteriorMaterial = null;
+let mouthInteriorDebugEl = null;
+let mouthInteriorLastLogAtMs = 0;
+let mouthInteriorLastHudAtMs = 0;
+
+const MOUTH_CENTER_TMP = new THREE.Vector3();
+const MOUTH_RIG_POS_TMP = new THREE.Vector3();
+const MOUTH_ROTATE_TMP = new THREE.Vector3();
+const MOUTH_RIG_EULER_TMP = new THREE.Euler(0, 0, 0, 'YXZ');
+const MOUTH_RIG_QUAT_TMP = new THREE.Quaternion();
+const MOUTH_BODY_PIVOT_TMP = new THREE.Vector3(0, 0, 0);
+const MOUTH_NECK_PIVOT_TMP = new THREE.Vector3(0, 0, 0);
+
+function createMouthInteriorTexture(size = 128) {
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+
+  const baseGrad = ctx.createRadialGradient(size * 0.5, size * 0.6, size * 0.05, size * 0.5, size * 0.6, size * 0.5);
+  baseGrad.addColorStop(0.0, '#120608');
+  baseGrad.addColorStop(0.42, '#1d070b');
+  baseGrad.addColorStop(1.0, '#351016');
+  ctx.fillStyle = baseGrad;
+  ctx.fillRect(0, 0, size, size);
+
+  const palateGrad = ctx.createLinearGradient(0, 0, 0, size);
+  palateGrad.addColorStop(0.0, 'rgba(145,40,55,0.34)');
+  palateGrad.addColorStop(0.55, 'rgba(90,20,31,0.0)');
+  ctx.fillStyle = palateGrad;
+  ctx.fillRect(0, 0, size, size);
+
+  const gloss = ctx.createRadialGradient(size * 0.5, size * 0.28, size * 0.01, size * 0.5, size * 0.28, size * 0.25);
+  gloss.addColorStop(0.0, 'rgba(255,175,188,0.16)');
+  gloss.addColorStop(1.0, 'rgba(255,175,188,0.0)');
+  ctx.fillStyle = gloss;
+  ctx.fillRect(0, 0, size, size);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.minFilter = THREE.LinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.generateMipmaps = false;
+  return tex;
+}
+
+function computeMouthCenterFromGeometry(geometry) {
+  const basePos = geometry?.getAttribute('aBasePosition');
+  const mouthWeight = geometry?.getAttribute('aMouthWeight');
+  if (!basePos || !mouthWeight) return null;
+
+  let sumW = 0;
+  let sx = 0;
+  let sy = 0;
+  let sz = 0;
+  for (let i = 0; i < mouthWeight.count; i++) {
+    const w = mouthWeight.array[i];
+    if (w < 0.3) continue;
+    const k = w * w;
+    const j = i * 3;
+    sx += basePos.array[j + 0] * k;
+    sy += basePos.array[j + 1] * k;
+    sz += basePos.array[j + 2] * k;
+    sumW += k;
+  }
+
+  if (sumW <= 1e-6) return null;
+  MOUTH_CENTER_TMP.set(sx / sumW, sy / sumW, sz / sumW);
+  return MOUTH_CENTER_TMP;
+}
+
+function createMouthInteriorMesh(geometry, renderOrder = 1) {
+  const center = computeMouthCenterFromGeometry(geometry);
+  if (!center) {
+    console.warn('[mouth-interior] No se pudo inferir mouth center.');
+    return null;
+  }
+
+  const mapTex = createMouthInteriorTexture();
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      uMap: { value: mapTex },
+      uOpen: { value: 0.0 },
+      uOpenMin: { value: MOUTH_INTERIOR.OPEN_MIN },
+      uOpenFade: { value: MOUTH_INTERIOR.OPEN_FADE },
+      uDarkenMin: { value: MOUTH_INTERIOR.DARKEN_MIN },
+      uFeather: { value: 0.06 },
+    },
+    vertexShader: /* glsl */ `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      precision highp float;
+      uniform sampler2D uMap;
+      uniform float uOpen;
+      uniform float uOpenMin;
+      uniform float uOpenFade;
+      uniform float uDarkenMin;
+      uniform float uFeather;
+      varying vec2 vUv;
+
+      void main() {
+        vec2 p = vUv * 2.0 - 1.0;
+        float open = clamp(uOpen, 0.0, 1.0);
+        float yScale = mix(0.28, 1.0, open);
+        vec2 e = vec2(p.x / 0.92, p.y / yScale);
+        float sdf = length(e) - 1.0;
+        float alphaShape = 1.0 - smoothstep(0.0, uFeather, sdf);
+        float alphaOpen = smoothstep(uOpenMin, uOpenFade, open);
+        float alpha = alphaShape * alphaOpen;
+        if (alpha <= 0.001) discard;
+        vec3 cavity = texture2D(uMap, vUv).rgb;
+        cavity *= mix(1.0, uDarkenMin, open);
+        gl_FragColor = vec4(cavity, alpha);
+      }
+    `,
+    side: THREE.DoubleSide,
+    transparent: MOUTH_SOFT_EDGE_ENABLED,
+    depthTest: true,
+    depthWrite: !MOUTH_SOFT_EDGE_ENABLED,
+  });
+  mat.alphaTest = MOUTH_SOFT_EDGE_ENABLED ? 0.0 : MOUTH_INTERIOR.ALPHA_CLIP_STABLE;
+  mat.polygonOffset = true;
+  mat.polygonOffsetFactor = 1;
+  mat.polygonOffsetUnits = 1;
+
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(MOUTH_INTERIOR.WIDTH, MOUTH_INTERIOR.HEIGHT, 1, 1), mat);
+  mesh.position.set(center.x, center.y, center.z - MOUTH_INTERIOR.DEPTH_OFFSET);
+  mesh.renderOrder = renderOrder;
+  mesh.visible = DEBUG_MOUTH_ENABLED;
+  if (DEBUG_MOUTH_ENABLED) {
+    mat.wireframe = true;
+  }
+
+  mesh.userData.basePosition = new THREE.Vector3(center.x, center.y, center.z);
+  mouthInteriorMaterial = mat;
+  return mesh;
+}
+
+function ensureMouthDebugOverlay() {
+  if (!DEBUG_MOUTH_ENABLED || mouthInteriorDebugEl) return;
+  const el = document.createElement('div');
+  el.style.position = 'fixed';
+  el.style.left = '12px';
+  el.style.bottom = '12px';
+  el.style.padding = '4px 8px';
+  el.style.background = 'rgba(0,0,0,0.72)';
+  el.style.color = '#a7f3d0';
+  el.style.fontFamily = 'monospace';
+  el.style.fontSize = '12px';
+  el.style.zIndex = '9';
+  el.textContent = 'mouthOpen: 0.00';
+  document.body.appendChild(el);
+  mouthInteriorDebugEl = el;
+}
+
+function updateMouthInteriorRig(headRot, bodyRot, bodyOffsetY) {
+  if (!mouthInteriorMesh) return;
+  const base = mouthInteriorMesh.userData.basePosition;
+  if (!base) return;
+  const t = window.NeckTuning || { neckPivotY: -0.53, bodyPivotY: -0.65 };
+  const open = mouthInteriorMaterial ? mouthInteriorMaterial.uniforms.uOpen.value : 0.0;
+  const depth = MOUTH_INTERIOR.DEPTH_OFFSET + open * MOUTH_INTERIOR.EXTRA_DEPTH;
+
+  MOUTH_RIG_POS_TMP.copy(base);
+  MOUTH_RIG_POS_TMP.z = base.z - depth;
+  MOUTH_RIG_POS_TMP.y += bodyOffsetY;
+
+  MOUTH_BODY_PIVOT_TMP.set(0.0, t.bodyPivotY, 0.0);
+  MOUTH_NECK_PIVOT_TMP.set(0.0, t.neckPivotY, 0.0);
+
+  MOUTH_ROTATE_TMP.copy(MOUTH_RIG_POS_TMP).sub(MOUTH_BODY_PIVOT_TMP);
+  MOUTH_RIG_EULER_TMP.set(bodyRot.x, bodyRot.y, bodyRot.z);
+  MOUTH_RIG_QUAT_TMP.setFromEuler(MOUTH_RIG_EULER_TMP);
+  MOUTH_ROTATE_TMP.applyQuaternion(MOUTH_RIG_QUAT_TMP).add(MOUTH_BODY_PIVOT_TMP);
+
+  MOUTH_ROTATE_TMP.sub(MOUTH_NECK_PIVOT_TMP);
+  MOUTH_RIG_EULER_TMP.set(headRot.x, headRot.y, headRot.z);
+  MOUTH_RIG_QUAT_TMP.setFromEuler(MOUTH_RIG_EULER_TMP);
+  MOUTH_ROTATE_TMP.applyQuaternion(MOUTH_RIG_QUAT_TMP).add(MOUTH_NECK_PIVOT_TMP);
+
+  mouthInteriorMesh.position.copy(MOUTH_ROTATE_TMP);
+  mouthInteriorMesh.rotation.set(headRot.x + bodyRot.x, headRot.y + bodyRot.y, headRot.z + bodyRot.z);
+}
 
 // =========================
 // Bloque temático "realistic"
@@ -1294,6 +1591,16 @@ uniform float uEyeMarkerAspect;
 uniform float uEyeMarkerScale;
 uniform float uEyeMarkerFeather;
 uniform float uDebugBlinkCover;
+uniform float uMouthCutEnabled;
+uniform float uMouthOpen;
+uniform vec2 uMouthCenter;
+uniform vec2 uMouthSize;
+uniform float uMouthOpenMin;
+uniform float uMouthOpenFade;
+uniform float uMouthHoleInnerX;
+uniform float uMouthHoleInnerYMin;
+uniform float uMouthHoleInnerYMax;
+uniform float uDebugMouthCut;
 varying vec2 vUv;
 varying float vHeadWeight;
 varying float vBaseZ;
@@ -1327,6 +1634,20 @@ void main() {
   if (uDebugHeadWeight > 0.5) {
     gl_FragColor = vec4(vec3(clamp(vHeadWeight, 0.0, 1.0)), 1.0);
     return;
+  }
+
+  float mouthOpenMask = smoothstep(uMouthOpenMin, uMouthOpenFade, uMouthOpen) * uMouthCutEnabled;
+  if (mouthOpenMask > 0.001) {
+    vec2 pMouth = (vBaseXY - uMouthCenter) / max(uMouthSize, vec2(1e-4));
+    float yScale = mix(uMouthHoleInnerYMin, uMouthHoleInnerYMax, mouthOpenMask);
+    vec2 e = vec2(pMouth.x / max(uMouthHoleInnerX, 1e-4), pMouth.y / max(yScale, 1e-4));
+    float mouthHoleSdf = length(e) - 1.0;
+    if (uDebugMouthCut > 0.5) {
+      vec3 dbgCut = mouthHoleSdf < 0.0 ? vec3(1.0, 0.15, 0.15) : vec3(0.12, 0.95, 0.25);
+      gl_FragColor = vec4(dbgCut, 1.0);
+      return;
+    }
+    if (mouthHoleSdf < 0.0) discard;
   }
   if (vBaseZ < 0.0) discard;
 
@@ -1565,6 +1886,16 @@ loader.load(
         uDissolveStrength: { value: 0.92 },
         uDissolveSpeed: { value: 1.45 },
         uDissolveMotionAmp: { value: 1.0 },
+        uMouthCutEnabled: { value: 0.0 },
+        uMouthOpen: { value: 0.0 },
+        uMouthCenter: { value: new THREE.Vector2(window.MouthCutTuning.centerX, window.MouthCutTuning.centerY) },
+        uMouthSize: { value: new THREE.Vector2(window.MouthCutTuning.width, window.MouthCutTuning.height) },
+        uMouthOpenMin: { value: window.MouthCutTuning.openMin ?? MOUTH_CUTOUT.OPEN_MIN },
+        uMouthOpenFade: { value: window.MouthCutTuning.openFade ?? MOUTH_CUTOUT.OPEN_FADE },
+        uMouthHoleInnerX: { value: window.MouthCutTuning.innerScaleX ?? MOUTH_CUTOUT.HOLE_INNER_SCALE_X },
+        uMouthHoleInnerYMin: { value: window.MouthCutTuning.innerScaleYMin ?? MOUTH_CUTOUT.HOLE_INNER_SCALE_Y_MIN },
+        uMouthHoleInnerYMax: { value: window.MouthCutTuning.innerScaleYMax ?? MOUTH_CUTOUT.HOLE_INNER_SCALE_Y_MAX },
+        uDebugMouthCut: { value: DEBUG_MOUTH_CUT_ENABLED ? 1.0 : 0.0 },
 
         uTime: { value: 0.0 },
         uGlobalAmp: { value: 1.5 },
@@ -1640,6 +1971,16 @@ loader.load(
           uEyeMarkerFeather: { value: window.BrowsDebugTuning.eyeMarkerFeather },
           uDebugBlinkCover: { value: DEBUG_BLINK_COVER_ENABLED ? 1.0 : 0.0 },
           uDebugHeadWeight: { value: DebugView.headWeight ? 1.0 : 0.0 },
+          uMouthCutEnabled: { value: 0.0 },
+          uMouthOpen: { value: 0.0 },
+          uMouthCenter: { value: new THREE.Vector2(window.MouthCutTuning.centerX, window.MouthCutTuning.centerY) },
+          uMouthSize: { value: new THREE.Vector2(window.MouthCutTuning.width, window.MouthCutTuning.height) },
+          uMouthOpenMin: { value: window.MouthCutTuning.openMin ?? MOUTH_CUTOUT.OPEN_MIN },
+          uMouthOpenFade: { value: window.MouthCutTuning.openFade ?? MOUTH_CUTOUT.OPEN_FADE },
+          uMouthHoleInnerX: { value: window.MouthCutTuning.innerScaleX ?? MOUTH_CUTOUT.HOLE_INNER_SCALE_X },
+          uMouthHoleInnerYMin: { value: window.MouthCutTuning.innerScaleYMin ?? MOUTH_CUTOUT.HOLE_INNER_SCALE_Y_MIN },
+          uMouthHoleInnerYMax: { value: window.MouthCutTuning.innerScaleYMax ?? MOUTH_CUTOUT.HOLE_INNER_SCALE_Y_MAX },
+          uDebugMouthCut: { value: DEBUG_MOUTH_CUT_ENABLED ? 1.0 : 0.0 },
         },
       });
       particleMaterials = [particleMaterial];
@@ -1688,6 +2029,15 @@ loader.load(
     if (particlePoints) scene.add(particlePoints);
     if (particlePointsDetail) scene.add(particlePointsDetail);
     if (particleSurfaceMesh) scene.add(particleSurfaceMesh);
+
+    if (isRealisticTheme && activeTheme.useMouthInterior) {
+      const renderBase = (particleSurfaceMesh || particlePoints || particlePointsDetail)?.renderOrder ?? 2;
+      mouthInteriorMesh = createMouthInteriorMesh(particlesGeometryRef, renderBase - 1);
+      if (mouthInteriorMesh) {
+        scene.add(mouthInteriorMesh);
+        ensureMouthDebugOverlay();
+      }
+    }
 
     controls.target.set(0, 0.15, 0);
     controls.update();
@@ -2784,6 +3134,12 @@ function animate() {
       body.y + microYaw * 0.25,
       body.z + microRoll * 0.25,
     );
+    const forcedTalkLevel = (FORCE_TALK_LEVEL == null || Number.isNaN(FORCE_TALK_LEVEL))
+      ? (DEBUG_EDIT_ENABLED ? DEBUG_EDIT_FORCE_TALK : null)
+      : FORCE_TALK_LEVEL;
+    const mouthOpen = forcedTalkLevel == null
+      ? clamp01(AvatarState.talkLevel)
+      : clamp01(forcedTalkLevel);
     const headRotMag = headRot.length();
     reportMotionFrameDebug({
       elapsed,
@@ -2816,11 +3172,38 @@ function animate() {
       mat.uniforms.uBodyRot.value.copy(bodyRot);
 
       mat.uniforms.uBodyOffset.value.set(0.0, offY, 0.0);
+      applyMouthCutoutUniforms(mat, mouthOpen);
 
       if (DEBUG_EDIT_ENABLED) {
         const t = window.NeckTuning;
         mat.uniforms.uNeckPivot.value.set(0.0, t.neckPivotY, 0.0);
         mat.uniforms.uBodyPivot.value.set(0.0, t.bodyPivotY, 0.0);
+      }
+    }
+
+    if (mouthInteriorMaterial && mouthInteriorMesh) {
+      mouthInteriorMaterial.uniforms.uOpen.value = mouthOpen;
+      mouthInteriorMesh.visible = DEBUG_MOUTH_ENABLED || mouthOpen > MOUTH_INTERIOR.OPEN_MIN;
+      updateMouthInteriorRig(headRot, bodyRot, offY);
+
+      if (DEBUG_MOUTH_ENABLED) {
+        const nowMs = performance.now();
+        if (mouthInteriorDebugEl && nowMs - mouthInteriorLastHudAtMs >= MOUTH_INTERIOR.LOG_INTERVAL_MS) {
+          mouthInteriorLastHudAtMs = nowMs;
+          mouthInteriorDebugEl.textContent = `mouthOpen: ${mouthOpen.toFixed(2)}`;
+        }
+        if (nowMs - mouthInteriorLastLogAtMs >= MOUTH_INTERIOR.LOG_INTERVAL_MS) {
+          mouthInteriorLastLogAtMs = nowMs;
+          console.info('[mouth-interior] debug', {
+            mouthOpen: Number(mouthOpen.toFixed(3)),
+            visible: mouthInteriorMesh.visible,
+            pos: {
+              x: Number(mouthInteriorMesh.position.x.toFixed(3)),
+              y: Number(mouthInteriorMesh.position.y.toFixed(3)),
+              z: Number(mouthInteriorMesh.position.z.toFixed(3)),
+            },
+          });
+        }
       }
     }
   }
@@ -3432,9 +3815,10 @@ function initNeckEditorOverlay() {
     <div style="margin-top:6px; opacity:.9">
       <div><span style="color:#ff6b6b">■</span> Neck: <b>center</b>, <b>top</b>, <b>bottom</b>, <b>left</b>, <b>right</b>, <b>curve</b>, <b>neckPivot</b>, <b>bodyPivot</b></div>
       <div style="margin-top:4px;"><span style="color:#67e8f9">■</span> Mouth: <b>mouth_center</b>, <b>mouth_left</b>, <b>mouth_right</b>, <b>mouth_top</b>, <b>mouth_bottom</b>, <b>mouth_curve</b></div>
+      <div style="margin-top:4px;"><span style="color:#f0abfc">■</span> MouthCut: <b>mouthcut_center</b>, <b>mouthcut_left</b>, <b>mouthcut_right</b>, <b>mouthcut_top</b>, <b>mouthcut_bottom</b></div>
       <div style="margin-top:4px;"><span style="color:#fde047">■</span> Blink: <b>eye_*_center</b> + <b>eye_*_upper/lower_(left|center|right)</b> + <b>eye_*_rotate</b></div>
     </div>
-    <div style="margin-top:8px; opacity:.85">Cada cambio imprime JSON en consola (neck, mouth y blink).</div>
+    <div style="margin-top:8px; opacity:.85">Cada cambio imprime JSON en consola (neck, mouth, mouth-cut y blink).</div>
   `;
   document.body.appendChild(info);
   NeckEditor.infoEl = info;
@@ -3499,6 +3883,10 @@ function getHandlesModel() {
   const mCurveX = m.centerX + mwAbs;
   const mCurveY = m.centerY - m.curve;
 
+  const mc = window.MouthCutTuning;
+  const mcwAbs = Math.max(1e-6, Math.abs(mc.width));
+  const mchAbs = Math.max(1e-6, Math.abs(mc.height));
+
   return {
     center: { x: t.centerX, y: midY },
     top: { x: t.centerX, y: t.topY },
@@ -3515,6 +3903,12 @@ function getHandlesModel() {
     mouth_top: { x: m.centerX, y: m.centerY + mhAbs },
     mouth_bottom: { x: m.centerX, y: m.centerY - mhAbs },
     mouth_curve: { x: mCurveX, y: mCurveY },
+
+    mouthcut_center: { x: mc.centerX, y: mc.centerY },
+    mouthcut_left: { x: mc.centerX - mcwAbs, y: mc.centerY },
+    mouthcut_right: { x: mc.centerX + mcwAbs, y: mc.centerY },
+    mouthcut_top: { x: mc.centerX, y: mc.centerY + mchAbs },
+    mouthcut_bottom: { x: mc.centerX, y: mc.centerY - mchAbs },
 
     eye_left_center: { x: window.EyeBlinkTuning.left.centerX, y: window.EyeBlinkTuning.left.centerY },
     eye_left_upper_left: getEyeHandlePoint('left', 'upper', 'left'),
@@ -3586,6 +3980,48 @@ function pickHandle(clientX, clientY) {
 
 function applyDrag(key, worldPoint, startPoint, startNeckTuning, startMouthTuning, startEyeBlinkTuning) {
   const minBand = 1e-4;
+
+  if (key.startsWith('mouthcut_')) {
+    const mc = window.MouthCutTuning;
+    const startMc = startMouthTuning.__mouthCut || window.MouthCutTuning;
+
+    if (key === 'mouthcut_center') {
+      const dx = worldPoint.x - startPoint.x;
+      const dy = worldPoint.y - startPoint.y;
+      mc.centerX = startMc.centerX + dx;
+      mc.centerY = startMc.centerY + dy;
+      scheduleLogMouthCutTuning(`drag:${key}`);
+      return;
+    }
+
+    if (key === 'mouthcut_left') {
+      const w = startMc.centerX - worldPoint.x;
+      mc.width = Math.max(1e-6, Math.abs(w));
+      scheduleLogMouthCutTuning(`drag:${key}`);
+      return;
+    }
+
+    if (key === 'mouthcut_right') {
+      const w = worldPoint.x - startMc.centerX;
+      mc.width = Math.max(1e-6, Math.abs(w));
+      scheduleLogMouthCutTuning(`drag:${key}`);
+      return;
+    }
+
+    if (key === 'mouthcut_top') {
+      const h = worldPoint.y - startMc.centerY;
+      mc.height = Math.max(1e-6, Math.abs(h));
+      scheduleLogMouthCutTuning(`drag:${key}`);
+      return;
+    }
+
+    if (key === 'mouthcut_bottom') {
+      const h = startMc.centerY - worldPoint.y;
+      mc.height = Math.max(1e-6, Math.abs(h));
+      scheduleLogMouthCutTuning(`drag:${key}`);
+      return;
+    }
+  }
 
   if (key.startsWith('brow_') || key.startsWith('eye_marker_')) {
     const t = getBrowsDebugTuning();
@@ -3758,7 +4194,7 @@ function onNeckEditorDown(e) {
     key,
     startPoint: p,
     startNeckTuning: { ...window.NeckTuning },
-    startMouthTuning: { ...window.MouthTuning },
+    startMouthTuning: { ...window.MouthTuning, __mouthCut: { ...window.MouthCutTuning } },
     startEyeBlinkTuning: JSON.parse(JSON.stringify(window.EyeBlinkTuning)),
   };
 
@@ -3788,6 +4224,7 @@ function onNeckEditorUp() {
   NeckEditor.dragging = null;
   controls.enabled = true;
   if (draggedKey.startsWith('eye_')) logEyeBlinkTuning(`drag:${draggedKey}`);
+  if (draggedKey.startsWith('mouthcut_')) logMouthCutTuning(`drag:${draggedKey}`);
   if (draggedKey.startsWith('brow_') || draggedKey.startsWith('eye_marker_')) {
     console.info('[brows-debug-editor] update', window.BrowsDebugTuning);
     console.log('[brows-debug-editor] Pega esto en app.js\nwindow.BrowsDebugTuning = ' + JSON.stringify(window.BrowsDebugTuning, null, 2) + ';');
@@ -3974,6 +4411,44 @@ function drawNeckEditorOverlay() {
   }
 
   // =========================
+  // MOUTH CUTOUT REGION (magenta)
+  // =========================
+  {
+    const mc = window.MouthCutTuning;
+    const wAbs = Math.max(1e-6, Math.abs(mc.width));
+    const hAbs = Math.max(1e-6, Math.abs(mc.height));
+
+    const c = screenProject(mc.centerX, mc.centerY, 0);
+    const l = screenProject(mc.centerX - wAbs, mc.centerY, 0);
+    const r = screenProject(mc.centerX + wAbs, mc.centerY, 0);
+    const t = screenProject(mc.centerX, mc.centerY + hAbs, 0);
+    const b = screenProject(mc.centerX, mc.centerY - hAbs, 0);
+
+    const rx = Math.max(2.0, Math.abs(r.x - c.x));
+    const ry = Math.max(2.0, Math.abs(t.y - c.y));
+
+    ctx.save();
+    ctx.strokeStyle = 'rgba(240,171,252,0.95)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    if (ctx.ellipse) {
+      ctx.ellipse(c.x, c.y, rx, ry, 0, 0, Math.PI * 2);
+    } else {
+      ctx.arc(c.x, c.y, Math.max(rx, ry), 0, Math.PI * 2);
+    }
+    ctx.stroke();
+
+    ctx.setLineDash([5, 4]);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(l.x, l.y); ctx.lineTo(r.x, r.y);
+    ctx.moveTo(t.x, t.y); ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  // =========================
   // EYES (amarillo / verde)
   // =========================
   {
@@ -4038,6 +4513,7 @@ function drawNeckEditorOverlay() {
     const s = screenProject(handles[key].x, handles[key].y, 0);
 
     const isMouth = key.startsWith('mouth_');
+    const isMouthCut = key.startsWith('mouthcut_');
     const isEye = key.startsWith('eye_');
     const isBrow = key.startsWith('brow_');
     const isEyeMarker = key.startsWith('eye_marker_');
@@ -4046,6 +4522,7 @@ function drawNeckEditorOverlay() {
 
     let color = 'rgba(255,0,0,0.95)';
     if (isMouth) color = 'rgba(103,232,249,0.95)';
+    else if (isMouthCut) color = 'rgba(240,171,252,0.95)';
     else if (isEye && key.startsWith('eye_left')) color = 'rgba(253,224,71,0.95)';
     else if (isEye && key.startsWith('eye_right')) color = 'rgba(34,197,94,0.95)';
     else if (isBrow) color = 'rgba(34,197,94,0.95)';
