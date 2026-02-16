@@ -17,7 +17,10 @@ const DEBUG_MOTION_VERBOSE = DEBUG_MOTION_LEVEL >= 2;
 const DEBUG_MOTION_HUD_ENABLED = URL_PARAMS.get('debugMotionHud') === '1';
 const DEBUG_CONTROLS_ENABLED = URL_PARAMS.get('debugControls') === '1';
 const DEBUG_MOUTH_ENABLED = URL_PARAMS.get('debugMouth') === '1';
+const DEBUG_MOUTH_CUT_ENABLED = URL_PARAMS.get('debugMouthCut') === '1';
 const MOUTH_SOFT_EDGE_ENABLED = URL_PARAMS.get('mouthSoft') === '1';
+const FORCE_TALK_LEVEL_RAW = URL_PARAMS.get('forceTalk');
+const FORCE_TALK_LEVEL = FORCE_TALK_LEVEL_RAW != null ? Number.parseFloat(FORCE_TALK_LEVEL_RAW) : null;
 const FORCE_BLINK_ENABLED = URL_PARAMS.get('forceBlink') === '1';
 const NEW_BOX_ENABLED = URL_PARAMS.get('newbox') === '1';
 const FORCE_BLINK_DURATION_SEC = 2.0;
@@ -678,6 +681,7 @@ varying vec2 vUv;
 varying float vHeadWeight;
 varying float vHeightFromTop;
 varying float vDissolveSeed;
+varying vec2 vBaseXY;
 
 float hash11(float p) {
   return fract(sin(p * 127.1) * 43758.5453123);
@@ -731,6 +735,7 @@ void main() {
   vHeadWeight = aHeadWeight;
   vHeightFromTop = aHeightFromTop;
   vDissolveSeed = aRandom.x;
+  vBaseXY = aBasePosition.xy;
 
   vec3 pos = aBasePosition;
   float t = uTime;
@@ -840,11 +845,22 @@ uniform float uDissolveEnd;
 uniform float uDissolveStrength;
 uniform float uDissolveSpeed;
 uniform float uTime;
+uniform float uMouthCutEnabled;
+uniform float uMouthOpen;
+uniform vec2 uMouthCenter;
+uniform vec2 uMouthSize;
+uniform float uMouthOpenMin;
+uniform float uMouthOpenFade;
+uniform float uMouthHoleInnerX;
+uniform float uMouthHoleInnerYMin;
+uniform float uMouthHoleInnerYMax;
+uniform float uDebugMouthCut;
 
 varying vec2 vUv;
 varying float vHeadWeight;
 varying float vHeightFromTop;
 varying float vDissolveSeed;
+varying vec2 vBaseXY;
 
 float hash21(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
@@ -875,6 +891,20 @@ void main() {
     vec3 dbg = vec3(clamp(vHeadWeight, 0.0, 1.0));
     gl_FragColor = vec4(dbg, circle);
     return;
+  }
+
+  float mouthOpenMask = smoothstep(uMouthOpenMin, uMouthOpenFade, uMouthOpen) * uMouthCutEnabled;
+  if (mouthOpenMask > 0.001) {
+    vec2 pMouth = (vBaseXY - uMouthCenter) / max(uMouthSize, vec2(1e-4));
+    float yScale = mix(uMouthHoleInnerYMin, uMouthHoleInnerYMax, mouthOpenMask);
+    vec2 e = vec2(pMouth.x / max(uMouthHoleInnerX, 1e-4), pMouth.y / max(yScale, 1e-4));
+    float mouthHoleSdf = length(e) - 1.0;
+    if (uDebugMouthCut > 0.5) {
+      vec3 dbgCut = mouthHoleSdf < 0.0 ? vec3(1.0, 0.15, 0.15) : vec3(0.12, 0.95, 0.25);
+      gl_FragColor = vec4(dbgCut, circle);
+      return;
+    }
+    if (mouthHoleSdf < 0.0) discard;
   }
 
   vec3 texColor = texture2D(uColorMap, vUv).rgb;
@@ -1083,6 +1113,38 @@ const MOUTH_INTERIOR = {
   DARKEN_MIN: 0.6,
   LOG_INTERVAL_MS: 500,
 };
+
+// =========================
+// MOUTH_CUTOUT
+// =========================
+const MOUTH_CUTOUT = {
+  OPEN_MIN: 0.05,
+  OPEN_FADE: 0.15,
+  HOLE_INNER_SCALE_X: 0.78,
+  HOLE_INNER_SCALE_Y_MIN: 0.20,
+  HOLE_INNER_SCALE_Y_MAX: 0.95,
+};
+
+function applyMouthCutoutUniforms(mat, mouthOpen) {
+  if (!mat?.uniforms?.uMouthOpen) return;
+  const mouthTuning = window.MouthTuning || {
+    centerX: -0.045,
+    centerY: 0.16,
+    width: 0.18,
+    height: 0.14,
+  };
+
+  mat.uniforms.uMouthCutEnabled.value = (isRealisticTheme && activeTheme.useMouthInterior) ? 1.0 : 0.0;
+  mat.uniforms.uMouthOpen.value = mouthOpen;
+  mat.uniforms.uMouthCenter.value.set(mouthTuning.centerX, mouthTuning.centerY);
+  mat.uniforms.uMouthSize.value.set(Math.max(1e-4, Math.abs(mouthTuning.width)), Math.max(1e-4, Math.abs(mouthTuning.height)));
+  mat.uniforms.uMouthOpenMin.value = MOUTH_CUTOUT.OPEN_MIN;
+  mat.uniforms.uMouthOpenFade.value = MOUTH_CUTOUT.OPEN_FADE;
+  mat.uniforms.uMouthHoleInnerX.value = MOUTH_CUTOUT.HOLE_INNER_SCALE_X;
+  mat.uniforms.uMouthHoleInnerYMin.value = MOUTH_CUTOUT.HOLE_INNER_SCALE_Y_MIN;
+  mat.uniforms.uMouthHoleInnerYMax.value = MOUTH_CUTOUT.HOLE_INNER_SCALE_Y_MAX;
+  mat.uniforms.uDebugMouthCut.value = DEBUG_MOUTH_CUT_ENABLED ? 1.0 : 0.0;
+}
 
 let mouthInteriorMesh = null;
 let mouthInteriorMaterial = null;
@@ -1485,6 +1547,16 @@ uniform float uEyeMarkerAspect;
 uniform float uEyeMarkerScale;
 uniform float uEyeMarkerFeather;
 uniform float uDebugBlinkCover;
+uniform float uMouthCutEnabled;
+uniform float uMouthOpen;
+uniform vec2 uMouthCenter;
+uniform vec2 uMouthSize;
+uniform float uMouthOpenMin;
+uniform float uMouthOpenFade;
+uniform float uMouthHoleInnerX;
+uniform float uMouthHoleInnerYMin;
+uniform float uMouthHoleInnerYMax;
+uniform float uDebugMouthCut;
 varying vec2 vUv;
 varying float vHeadWeight;
 varying float vBaseZ;
@@ -1518,6 +1590,20 @@ void main() {
   if (uDebugHeadWeight > 0.5) {
     gl_FragColor = vec4(vec3(clamp(vHeadWeight, 0.0, 1.0)), 1.0);
     return;
+  }
+
+  float mouthOpenMask = smoothstep(uMouthOpenMin, uMouthOpenFade, uMouthOpen) * uMouthCutEnabled;
+  if (mouthOpenMask > 0.001) {
+    vec2 pMouth = (vBaseXY - uMouthCenter) / max(uMouthSize, vec2(1e-4));
+    float yScale = mix(uMouthHoleInnerYMin, uMouthHoleInnerYMax, mouthOpenMask);
+    vec2 e = vec2(pMouth.x / max(uMouthHoleInnerX, 1e-4), pMouth.y / max(yScale, 1e-4));
+    float mouthHoleSdf = length(e) - 1.0;
+    if (uDebugMouthCut > 0.5) {
+      vec3 dbgCut = mouthHoleSdf < 0.0 ? vec3(1.0, 0.15, 0.15) : vec3(0.12, 0.95, 0.25);
+      gl_FragColor = vec4(dbgCut, 1.0);
+      return;
+    }
+    if (mouthHoleSdf < 0.0) discard;
   }
   if (vBaseZ < 0.0) discard;
 
@@ -1756,6 +1842,16 @@ loader.load(
         uDissolveStrength: { value: 0.92 },
         uDissolveSpeed: { value: 1.45 },
         uDissolveMotionAmp: { value: 1.0 },
+        uMouthCutEnabled: { value: 0.0 },
+        uMouthOpen: { value: 0.0 },
+        uMouthCenter: { value: new THREE.Vector2(window.MouthTuning.centerX, window.MouthTuning.centerY) },
+        uMouthSize: { value: new THREE.Vector2(window.MouthTuning.width, window.MouthTuning.height) },
+        uMouthOpenMin: { value: MOUTH_CUTOUT.OPEN_MIN },
+        uMouthOpenFade: { value: MOUTH_CUTOUT.OPEN_FADE },
+        uMouthHoleInnerX: { value: MOUTH_CUTOUT.HOLE_INNER_SCALE_X },
+        uMouthHoleInnerYMin: { value: MOUTH_CUTOUT.HOLE_INNER_SCALE_Y_MIN },
+        uMouthHoleInnerYMax: { value: MOUTH_CUTOUT.HOLE_INNER_SCALE_Y_MAX },
+        uDebugMouthCut: { value: DEBUG_MOUTH_CUT_ENABLED ? 1.0 : 0.0 },
 
         uTime: { value: 0.0 },
         uGlobalAmp: { value: 1.5 },
@@ -1831,6 +1927,16 @@ loader.load(
           uEyeMarkerFeather: { value: window.BrowsDebugTuning.eyeMarkerFeather },
           uDebugBlinkCover: { value: DEBUG_BLINK_COVER_ENABLED ? 1.0 : 0.0 },
           uDebugHeadWeight: { value: DebugView.headWeight ? 1.0 : 0.0 },
+          uMouthCutEnabled: { value: 0.0 },
+          uMouthOpen: { value: 0.0 },
+          uMouthCenter: { value: new THREE.Vector2(window.MouthTuning.centerX, window.MouthTuning.centerY) },
+          uMouthSize: { value: new THREE.Vector2(window.MouthTuning.width, window.MouthTuning.height) },
+          uMouthOpenMin: { value: MOUTH_CUTOUT.OPEN_MIN },
+          uMouthOpenFade: { value: MOUTH_CUTOUT.OPEN_FADE },
+          uMouthHoleInnerX: { value: MOUTH_CUTOUT.HOLE_INNER_SCALE_X },
+          uMouthHoleInnerYMin: { value: MOUTH_CUTOUT.HOLE_INNER_SCALE_Y_MIN },
+          uMouthHoleInnerYMax: { value: MOUTH_CUTOUT.HOLE_INNER_SCALE_Y_MAX },
+          uDebugMouthCut: { value: DEBUG_MOUTH_CUT_ENABLED ? 1.0 : 0.0 },
         },
       });
       particleMaterials = [particleMaterial];
@@ -2984,7 +3090,9 @@ function animate() {
       body.y + microYaw * 0.25,
       body.z + microRoll * 0.25,
     );
-    const mouthOpen = clamp01(AvatarState.talkLevel);
+    const mouthOpen = FORCE_TALK_LEVEL == null || Number.isNaN(FORCE_TALK_LEVEL)
+      ? clamp01(AvatarState.talkLevel)
+      : clamp01(FORCE_TALK_LEVEL);
     const headRotMag = headRot.length();
     reportMotionFrameDebug({
       elapsed,
@@ -3017,6 +3125,7 @@ function animate() {
       mat.uniforms.uBodyRot.value.copy(bodyRot);
 
       mat.uniforms.uBodyOffset.value.set(0.0, offY, 0.0);
+      applyMouthCutoutUniforms(mat, mouthOpen);
 
       if (DEBUG_EDIT_ENABLED) {
         const t = window.NeckTuning;
