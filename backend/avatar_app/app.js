@@ -17,6 +17,7 @@ const DEBUG_MOTION_VERBOSE = DEBUG_MOTION_LEVEL >= 2;
 const DEBUG_MOTION_HUD_ENABLED = URL_PARAMS.get('debugMotionHud') === '1';
 const DEBUG_CONTROLS_ENABLED = URL_PARAMS.get('debugControls') === '1';
 const FORCE_BLINK_ENABLED = URL_PARAMS.get('forceBlink') === '1';
+const NEW_BOX_ENABLED = URL_PARAMS.get('newbox') === '1';
 const FORCE_BLINK_DURATION_SEC = 2.0;
 const FREEZE_IN_EDIT = DEBUG_EDIT_ENABLED; // En ?debugEdit=1 congelamos motion/UI conversacional para ajustar handles con precisión.
 const demoFeedbackMode = createDemoFeedbackMode({ urlParams: URL_PARAMS });
@@ -139,6 +140,7 @@ const activeThemeName = resolveTheme();
 const activeTheme = THEME_PRESETS[activeThemeName];
 const isRealisticTheme = activeThemeName === 'realistic';
 document.documentElement.dataset.avatarTheme = activeThemeName;
+document.documentElement.dataset.newbox = NEW_BOX_ENABLED ? '1' : '0';
 console.info('[theme] Avatar perceptual theme:', activeThemeName);
 
 const isWhiteCanvasTheme = isRealisticTheme;
@@ -194,7 +196,6 @@ const InputMode = {
 
 const AgentMode = {
   CHAT: 'chat',
-  NEGOCIAR: 'negociar',
 };
 
 let currentInputMode = InputMode.TALK;
@@ -1819,7 +1820,7 @@ async function requestTTS(text) {
 }
 
 async function fetchAgentReply(message, { mode = AgentMode.CHAT } = {}) {
-  const endpoint = mode === AgentMode.CHAT ? '/chat' : '/negociar';
+  const endpoint = '/chat';
   const res = await fetch(`${BACKEND_URL}${endpoint}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -2878,7 +2879,6 @@ const ui = {
   talkMode: document.getElementById('talkMode'),
   writeMode: document.getElementById('writeMode'),
   agentChat: document.getElementById('agentChat'),
-  agentNegotiation: document.getElementById('agentNegotiation'),
   textInput: document.getElementById('textInput'),
   sendTextBtn: document.getElementById('sendTextBtn'),
 };
@@ -2979,14 +2979,13 @@ function setInputMode(mode) {
 }
 
 function setAgentMode(mode) {
-  currentAgentMode = mode;
-  if (ui.agentChat) ui.agentChat.classList.toggle('active', mode === AgentMode.CHAT);
-  if (ui.agentChat) ui.agentChat.setAttribute('aria-pressed', String(mode === AgentMode.CHAT));
-  if (ui.agentNegotiation) ui.agentNegotiation.classList.toggle('active', mode === AgentMode.NEGOCIAR);
-  if (ui.agentNegotiation) {
-    ui.agentNegotiation.setAttribute('aria-pressed', String(mode === AgentMode.NEGOCIAR));
+  currentAgentMode = AgentMode.CHAT;
+  if (ui.agentChat) {
+    ui.agentChat.classList.add('active');
+    ui.agentChat.setAttribute('aria-pressed', 'true');
   }
 }
+
 
 async function handleTextSend() {
   const text = (ui.textInput?.value || '').trim();
@@ -3287,9 +3286,6 @@ if (!DEBUG_EDIT_ENABLED) {
   }
   if (ui.agentChat) {
     ui.agentChat.addEventListener('click', () => setAgentMode(AgentMode.CHAT));
-  }
-  if (ui.agentNegotiation) {
-    ui.agentNegotiation.addEventListener('click', () => setAgentMode(AgentMode.NEGOCIAR));
   }
   if (ui.sendTextBtn) {
     ui.sendTextBtn.addEventListener('click', handleTextSend);
