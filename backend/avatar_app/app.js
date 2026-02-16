@@ -19,6 +19,7 @@ const DEBUG_CONTROLS_ENABLED = URL_PARAMS.get('debugControls') === '1';
 const DEBUG_MOUTH_POINTS_ENABLED = URL_PARAMS.get('debugMouthPoints') === '1';
 const DEBUG_MOUTH_FADE_ENABLED = URL_PARAMS.get('debugMouthFade') === '1';
 const MOUTH_POINTS_ONLY_ENABLED = URL_PARAMS.get('mouthPointsOnly') === '1';
+const DEBUG_MOUTH_DIAMOND_ENABLED = DEBUG_EDIT_ENABLED || URL_PARAMS.get('debugMouthDiamond') === '1';
 const FORCE_BLINK_ENABLED = URL_PARAMS.get('forceBlink') === '1';
 const FORCE_BLINK_DURATION_SEC = 2.0;
 const FREEZE_IN_EDIT = DEBUG_EDIT_ENABLED; // En ?debugEdit=1 congelamos motion/UI conversacional para ajustar handles con precisión.
@@ -292,6 +293,9 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'n' || e.key === 'N') {
     DebugView.headWeight = !DebugView.headWeight;
     console.info('[debug] Debug cuello/cabeza (aHeadWeight):', DebugView.headWeight ? 'ON' : 'OFF');
+  }
+  if (DEBUG_EDIT_ENABLED && (e.key === 'p' || e.key === 'P')) {
+    logMouthDiamondSnippet('hotkey');
   }
   if (DEBUG_EDIT_ENABLED && (e.key === 'e' || e.key === 'E')) {
     NeckEditor.visible = !NeckEditor.visible;
@@ -1118,7 +1122,71 @@ window.MouthRenderTuning = window.MouthRenderTuning || {
   meshAlphaMin: 0.01,
   meshFadeGamma: 3.0,
   meshFadeGain: 2.2,
+  useDiamondFade: true,
+  fadeDiamondCX: -0.045,
+  fadeDiamondCY: 0.16,
+  fadeDiamondRX: 0.11,
+  fadeDiamondRY: 0.07,
+  fadeDiamondRot: 0.0,
 };
+
+
+const MOUTH_DIAMOND_STORAGE_KEY = 'avatar_mouth_diamond_v1';
+
+function loadMouthDiamondFromStorage() {
+  if (!DEBUG_EDIT_ENABLED) return;
+  try {
+    const raw = localStorage.getItem(MOUTH_DIAMOND_STORAGE_KEY);
+    if (!raw) return;
+    const v = JSON.parse(raw);
+    if (!v || typeof v !== 'object') return;
+    const t = window.MouthRenderTuning;
+    for (const k of ['fadeDiamondCX', 'fadeDiamondCY', 'fadeDiamondRX', 'fadeDiamondRY', 'fadeDiamondRot']) {
+      if (Number.isFinite(v[k])) t[k] = v[k];
+    }
+    if (typeof v.useDiamondFade === 'boolean') t.useDiamondFade = v.useDiamondFade;
+  } catch (err) {
+    console.warn('[mouth-diamond] no se pudo cargar localStorage', err);
+  }
+}
+
+function saveMouthDiamondToStorage() {
+  if (!DEBUG_EDIT_ENABLED) return;
+  try {
+    const t = window.MouthRenderTuning;
+    localStorage.setItem(MOUTH_DIAMOND_STORAGE_KEY, JSON.stringify({
+      fadeDiamondCX: t.fadeDiamondCX,
+      fadeDiamondCY: t.fadeDiamondCY,
+      fadeDiamondRX: t.fadeDiamondRX,
+      fadeDiamondRY: t.fadeDiamondRY,
+      fadeDiamondRot: t.fadeDiamondRot,
+      useDiamondFade: !!t.useDiamondFade,
+    }));
+  } catch (err) {
+    console.warn('[mouth-diamond] no se pudo guardar localStorage', err);
+  }
+}
+
+function logMouthDiamondSnippet(reason = 'manual') {
+  const t = window.MouthRenderTuning;
+  console.info(`[mouth-diamond] ${reason}`, {
+    cx: t.fadeDiamondCX,
+    cy: t.fadeDiamondCY,
+    rx: t.fadeDiamondRX,
+    ry: t.fadeDiamondRY,
+    rot: t.fadeDiamondRot,
+  });
+  console.log('Object.assign(window.MouthRenderTuning, ' + JSON.stringify({
+    fadeDiamondCX: t.fadeDiamondCX,
+    fadeDiamondCY: t.fadeDiamondCY,
+    fadeDiamondRX: t.fadeDiamondRX,
+    fadeDiamondRY: t.fadeDiamondRY,
+    fadeDiamondRot: t.fadeDiamondRot,
+    useDiamondFade: !!t.useDiamondFade,
+  }, null, 2) + ');');
+}
+
+loadMouthDiamondFromStorage();
 
 function mouthRimMaskFromWeight(w, tuning = window.MouthRenderTuning) {
   const rimMask = smoothstepJS(tuning.rimA, tuning.rimB, w) * (1.0 - smoothstepJS(tuning.rimC, tuning.rimD, w));
@@ -1582,6 +1650,14 @@ uniform float uMouthMeshAlphaMin;
 uniform float uMouthMeshFadeGamma;
 uniform float uMouthMeshFadeGain;
 uniform float uDebugMouthFade;
+uniform float uUseDiamondFade;
+uniform float uFadeDiamondCX;
+uniform float uFadeDiamondCY;
+uniform float uFadeDiamondRX;
+uniform float uFadeDiamondRY;
+uniform float uFadeDiamondRot;
+uniform float uMouthHoleActive;
+uniform float uDebugMouthDiamond;
 varying vec2 vUv;
 varying float vHeadWeight;
 varying float vBaseZ;
@@ -1634,6 +1710,14 @@ void main() {
   float mouthFadeRaw = clamp(uMouthOpenVisual * uMouthMeshFadeGain * innerFadeMask, 0.0, 1.0);
   float mouthFade = pow(mouthFadeRaw, max(0.01, uMouthMeshFadeGamma));
   mouthFade = clamp(mouthFade * uMouthMeshFade, 0.0, 1.0);
+
+  vec2 localDiamond = invRot(uFadeDiamondRot) * (vBaseXY - vec2(uFadeDiamondCX, uFadeDiamondCY));
+  float diamondField = abs(localDiamond.x) / max(1e-5, abs(uFadeDiamondRX)) + abs(localDiamond.y) / max(1e-5, abs(uFadeDiamondRY));
+  float diamondInside = step(diamondField, 1.0);
+  float mouthHoleActive = step(0.5, uMouthHoleActive) * step(0.5, uUseDiamondFade);
+  if (mouthHoleActive > 0.5 && diamondInside > 0.5) {
+    discard;
+  }
   finalColor = mix(finalColor, finalColor * 0.88, mouthFade * 0.35);
 
   if (uDebugBrows > 0.5) {
@@ -1674,8 +1758,12 @@ void main() {
     finalColor = mix(finalColor, overlay, overlayMask);
   }
 
-  if (uDebugMouthFade > 0.5) {
+  if (uDebugMouthFade > 0.5 || uDebugMouthDiamond > 0.5) {
     vec3 dbg = mix(finalColor, vec3(1.0, 0.1, 0.1), clamp(mouthFade, 0.0, 0.8));
+    if (uDebugMouthDiamond > 0.5) {
+      float edge = 1.0 - smoothstep(0.98, 1.02, diamondField);
+      dbg = mix(dbg, vec3(1.0, 0.0, 1.0), clamp(edge, 0.0, 0.8));
+    }
     float dbgAlpha = mix(1.0, clamp(uMouthMeshAlphaMin, 0.0, 1.0), mouthFade);
     gl_FragColor = vec4(dbg, dbgAlpha);
     return;
@@ -1951,6 +2039,14 @@ loader.load(
           uMouthMeshFadeGamma: { value: window.MouthRenderTuning.meshFadeGamma },
           uMouthMeshFadeGain: { value: window.MouthRenderTuning.meshFadeGain },
           uDebugMouthFade: { value: DEBUG_MOUTH_FADE_ENABLED ? 1.0 : 0.0 },
+          uUseDiamondFade: { value: window.MouthRenderTuning.useDiamondFade ? 1.0 : 0.0 },
+          uFadeDiamondCX: { value: window.MouthRenderTuning.fadeDiamondCX },
+          uFadeDiamondCY: { value: window.MouthRenderTuning.fadeDiamondCY },
+          uFadeDiamondRX: { value: window.MouthRenderTuning.fadeDiamondRX },
+          uFadeDiamondRY: { value: window.MouthRenderTuning.fadeDiamondRY },
+          uFadeDiamondRot: { value: window.MouthRenderTuning.fadeDiamondRot },
+          uMouthHoleActive: { value: 0.0 },
+          uDebugMouthDiamond: { value: DEBUG_MOUTH_DIAMOND_ENABLED ? 1.0 : 0.0 },
         },
       });
       particleMaterials = [particleMaterial];
@@ -3192,6 +3288,14 @@ function animate() {
       if (mat.uniforms.uMouthMeshAlphaMin) mat.uniforms.uMouthMeshAlphaMin.value = window.MouthRenderTuning.meshAlphaMin;
       if (mat.uniforms.uMouthMeshFadeGamma) mat.uniforms.uMouthMeshFadeGamma.value = window.MouthRenderTuning.meshFadeGamma;
       if (mat.uniforms.uMouthMeshFadeGain) mat.uniforms.uMouthMeshFadeGain.value = window.MouthRenderTuning.meshFadeGain;
+      if (mat.uniforms.uUseDiamondFade) mat.uniforms.uUseDiamondFade.value = window.MouthRenderTuning.useDiamondFade ? 1.0 : 0.0;
+      if (mat.uniforms.uFadeDiamondCX) mat.uniforms.uFadeDiamondCX.value = window.MouthRenderTuning.fadeDiamondCX;
+      if (mat.uniforms.uFadeDiamondCY) mat.uniforms.uFadeDiamondCY.value = window.MouthRenderTuning.fadeDiamondCY;
+      if (mat.uniforms.uFadeDiamondRX) mat.uniforms.uFadeDiamondRX.value = window.MouthRenderTuning.fadeDiamondRX;
+      if (mat.uniforms.uFadeDiamondRY) mat.uniforms.uFadeDiamondRY.value = window.MouthRenderTuning.fadeDiamondRY;
+      if (mat.uniforms.uFadeDiamondRot) mat.uniforms.uFadeDiamondRot.value = window.MouthRenderTuning.fadeDiamondRot;
+      if (mat.uniforms.uMouthHoleActive) mat.uniforms.uMouthHoleActive.value = mouthPointsVisibleLatched ? 1.0 : 0.0;
+      if (mat.uniforms.uDebugMouthDiamond) mat.uniforms.uDebugMouthDiamond.value = DEBUG_MOUTH_DIAMOND_ENABLED ? 1.0 : 0.0;
       if (mat.uniforms.uDebugMouthFade) mat.uniforms.uDebugMouthFade.value = DEBUG_MOUTH_FADE_ENABLED ? 1.0 : 0.0;
 
       mat.uniforms.uHeadRot.value.copy(headRot);
@@ -3926,6 +4030,21 @@ function getHandlesModel() {
     mouth_bottom: { x: m.centerX, y: m.centerY - mhAbs },
     mouth_curve: { x: mCurveX, y: mCurveY },
 
+    mouth_diamond_center: { x: window.MouthRenderTuning.fadeDiamondCX, y: window.MouthRenderTuning.fadeDiamondCY },
+    mouth_diamond_rx: (() => {
+      const t = window.MouthRenderTuning;
+      return { x: t.fadeDiamondCX + Math.cos(t.fadeDiamondRot) * Math.max(1e-6, Math.abs(t.fadeDiamondRX)), y: t.fadeDiamondCY + Math.sin(t.fadeDiamondRot) * Math.max(1e-6, Math.abs(t.fadeDiamondRX)) };
+    })(),
+    mouth_diamond_ry: (() => {
+      const t = window.MouthRenderTuning;
+      return { x: t.fadeDiamondCX - Math.sin(t.fadeDiamondRot) * Math.max(1e-6, Math.abs(t.fadeDiamondRY)), y: t.fadeDiamondCY + Math.cos(t.fadeDiamondRot) * Math.max(1e-6, Math.abs(t.fadeDiamondRY)) };
+    })(),
+    mouth_diamond_rot: (() => {
+      const t = window.MouthRenderTuning;
+      const r = Math.max(Math.abs(t.fadeDiamondRX), Math.abs(t.fadeDiamondRY)) + 0.05;
+      return { x: t.fadeDiamondCX + Math.cos(t.fadeDiamondRot) * r, y: t.fadeDiamondCY + Math.sin(t.fadeDiamondRot) * r };
+    })(),
+
     eye_left_center: { x: window.EyeBlinkTuning.left.centerX, y: window.EyeBlinkTuning.left.centerY },
     eye_left_upper_left: getEyeHandlePoint('left', 'upper', 'left'),
     eye_left_upper_center: getEyeHandlePoint('left', 'upper', 'center'),
@@ -3994,7 +4113,7 @@ function pickHandle(clientX, clientY) {
   return best;
 }
 
-function applyDrag(key, worldPoint, startPoint, startNeckTuning, startMouthTuning, startEyeBlinkTuning) {
+function applyDrag(key, worldPoint, startPoint, startNeckTuning, startMouthTuning, startEyeBlinkTuning, startMouthRenderTuning) {
   const minBand = 1e-4;
 
   if (key.startsWith('brow_') || key.startsWith('eye_marker_')) {
@@ -4069,6 +4188,41 @@ function applyDrag(key, worldPoint, startPoint, startNeckTuning, startMouthTunin
 
     eye.halfWidth = Math.max(0.03, Math.abs(local.x));
     eye[lid].curve = local.y - eye[lid].offset;
+    return;
+  }
+
+  if (key.startsWith('mouth_diamond_')) {
+    const t = window.MouthRenderTuning;
+    const start = NeckEditor.dragging?.startMouthRenderTuning || { ...window.MouthRenderTuning };
+    const dx = worldPoint.x - startPoint.x;
+    const dy = worldPoint.y - startPoint.y;
+
+    if (key === 'mouth_diamond_center') {
+      t.fadeDiamondCX = start.fadeDiamondCX + dx;
+      t.fadeDiamondCY = start.fadeDiamondCY + dy;
+    }
+
+    if (key === 'mouth_diamond_rx') {
+      const ax = Math.cos(start.fadeDiamondRot);
+      const ay = Math.sin(start.fadeDiamondRot);
+      const vx = worldPoint.x - t.fadeDiamondCX;
+      const vy = worldPoint.y - t.fadeDiamondCY;
+      t.fadeDiamondRX = Math.max(1e-4, Math.abs(vx * ax + vy * ay));
+    }
+
+    if (key === 'mouth_diamond_ry') {
+      const ax = -Math.sin(start.fadeDiamondRot);
+      const ay = Math.cos(start.fadeDiamondRot);
+      const vx = worldPoint.x - t.fadeDiamondCX;
+      const vy = worldPoint.y - t.fadeDiamondCY;
+      t.fadeDiamondRY = Math.max(1e-4, Math.abs(vx * ax + vy * ay));
+    }
+
+    if (key === 'mouth_diamond_rot') {
+      t.fadeDiamondRot = Math.atan2(worldPoint.y - t.fadeDiamondCY, worldPoint.x - t.fadeDiamondCX);
+    }
+
+    saveMouthDiamondToStorage();
     return;
   }
 
@@ -4169,6 +4323,7 @@ function onNeckEditorDown(e) {
     startPoint: p,
     startNeckTuning: { ...window.NeckTuning },
     startMouthTuning: { ...window.MouthTuning },
+    startMouthRenderTuning: { ...window.MouthRenderTuning },
     startEyeBlinkTuning: JSON.parse(JSON.stringify(window.EyeBlinkTuning)),
   };
 
@@ -4184,11 +4339,11 @@ function onNeckEditorMove(e) {
     return;
   }
 
-  const { key, startPoint, startNeckTuning, startMouthTuning, startEyeBlinkTuning } = NeckEditor.dragging;
+  const { key, startPoint, startNeckTuning, startMouthTuning, startEyeBlinkTuning, startMouthRenderTuning } = NeckEditor.dragging;
   const p = rayToPlane(e.clientX, e.clientY);
   if (!p) return;
 
-  applyDrag(key, p, startPoint, startNeckTuning, startMouthTuning, startEyeBlinkTuning);
+  applyDrag(key, p, startPoint, startNeckTuning, startMouthTuning, startEyeBlinkTuning, startMouthRenderTuning);
   e.preventDefault();
 }
 
@@ -4384,6 +4539,45 @@ function drawNeckEditorOverlay() {
   }
 
   // =========================
+  // MOUTH DIAMOND (magenta)
+  // =========================
+  if (DEBUG_MOUTH_DIAMOND_ENABLED) {
+    const t = window.MouthRenderTuning;
+    const cx = t.fadeDiamondCX;
+    const cy = t.fadeDiamondCY;
+    const rx = Math.max(1e-6, Math.abs(t.fadeDiamondRX));
+    const ry = Math.max(1e-6, Math.abs(t.fadeDiamondRY));
+    const c = Math.cos(t.fadeDiamondRot);
+    const s = Math.sin(t.fadeDiamondRot);
+    const vx = { x: c * rx, y: s * rx };
+    const vy = { x: -s * ry, y: c * ry };
+
+    const p1 = screenProject(cx + vx.x, cy + vx.y, 0);
+    const p2 = screenProject(cx + vy.x, cy + vy.y, 0);
+    const p3 = screenProject(cx - vx.x, cy - vx.y, 0);
+    const p4 = screenProject(cx - vy.x, cy - vy.y, 0);
+
+    ctx.save();
+    ctx.strokeStyle = 'rgba(244,63,94,0.95)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.lineTo(p3.x, p3.y);
+    ctx.lineTo(p4.x, p4.y);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(244,63,94,0.12)';
+    ctx.fill();
+
+    const cpt = screenProject(cx, cy, 0);
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.font = '12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+    ctx.fillText(`diamond cx=${cx.toFixed(3)} cy=${cy.toFixed(3)} rx=${rx.toFixed(3)} ry=${ry.toFixed(3)} rot=${t.fadeDiamondRot.toFixed(3)}`, cpt.x + 12, cpt.y + 22);
+    ctx.restore();
+  }
+
+  // =========================
   // EYES (amarillo / verde)
   // =========================
   {
@@ -4455,7 +4649,8 @@ function drawNeckEditorOverlay() {
     const isCurve = (key === 'curve' || key === 'mouth_curve');
 
     let color = 'rgba(255,0,0,0.95)';
-    if (isMouth) color = 'rgba(103,232,249,0.95)';
+    if (key.startsWith('mouth_diamond_')) color = 'rgba(244,63,94,0.95)';
+    else if (isMouth) color = 'rgba(103,232,249,0.95)';
     else if (isEye && key.startsWith('eye_left')) color = 'rgba(253,224,71,0.95)';
     else if (isEye && key.startsWith('eye_right')) color = 'rgba(34,197,94,0.95)';
     else if (isBrow) color = 'rgba(34,197,94,0.95)';
