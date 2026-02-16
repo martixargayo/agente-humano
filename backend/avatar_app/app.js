@@ -267,17 +267,19 @@ const MotionDebugState = {
     console.info('[neck-editor] Modo editor ACTIVADO (?debugEdit=1). Tecla E para ocultar/mostrar.');
   }
 
-  if (MouthTestHarness.enabled) {
+  if (MOUTH_TEST_ENABLED) {
+    const mouthMin = THREE.MathUtils.clamp(Math.min(MOUTH_TEST_MIN, MOUTH_TEST_MAX), 0.0, 1.0);
+    const mouthMax = THREE.MathUtils.clamp(Math.max(MOUTH_TEST_MIN, MOUTH_TEST_MAX), 0.0, 1.0);
     console.info('[mouth-test] enabled', {
-      pattern: MouthTestHarness.pattern,
-      seed: MouthTestHarness.seed,
-      periodMs: MouthTestHarness.periodMs,
-      holdMs: MouthTestHarness.holdMs,
-      min: MouthTestHarness.min,
-      max: MouthTestHarness.max,
-      noise: MouthTestHarness.noise,
-      stateScale: MouthTestHarness.stateScale,
-      talkScale: MouthTestHarness.talkScale,
+      pattern: MOUTH_TEST_PATTERN,
+      seed: Number.isFinite(MOUTH_TEST_SEED) ? MOUTH_TEST_SEED : 123,
+      periodMs: Math.max(120, MOUTH_TEST_PERIOD_MS),
+      holdMs: Math.max(0, MOUTH_TEST_HOLD_MS),
+      min: mouthMin,
+      max: mouthMax,
+      noise: Math.max(0.0, MOUTH_TEST_NOISE),
+      stateScale: Math.max(0.0, MOUTH_TEST_STATE_SCALE),
+      talkScale: Math.max(0.0, MOUTH_TEST_TALK_SCALE),
     });
   }
   if (DEBUG_MOUTH_HUD_ENABLED) {
