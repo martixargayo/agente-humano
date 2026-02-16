@@ -18,6 +18,7 @@ const DEBUG_MOTION_HUD_ENABLED = URL_PARAMS.get('debugMotionHud') === '1';
 const DEBUG_CONTROLS_ENABLED = URL_PARAMS.get('debugControls') === '1';
 const DEBUG_MOUTH_POINTS_ENABLED = URL_PARAMS.get('debugMouthPoints') === '1';
 const DEBUG_MOUTH_FADE_ENABLED = URL_PARAMS.get('debugMouthFade') === '1';
+const DEBUG_DARK_POINTS_ENABLED = URL_PARAMS.get('debugDarkPoints') === '1';
 const MOUTH_POINTS_ONLY_ENABLED = URL_PARAMS.get('mouthPointsOnly') === '1';
 const DEBUG_MOUTH_DIAMOND_ENABLED = DEBUG_EDIT_ENABLED || URL_PARAMS.get('debugMouthDiamond') === '1';
 const FORCE_BLINK_ENABLED = URL_PARAMS.get('forceBlink') === '1';
@@ -1094,6 +1095,45 @@ let mouthPoints = null;
 let mouthPointsMaterial = null;
 let mouthOpenVisual = 0.0;
 let mouthPointsVisibleLatched = false;
+let mouthColorSampler = null;
+let mouthPointDebugStats = {
+  total: 0,
+  dark: 0,
+  ratio: 0,
+  threshold: 0,
+};
+let mouthDarkDebugLogAcc = 0.0;
+
+function createTextureUvSampler(texture) {
+  const image = texture?.image;
+  if (!image) return null;
+  const width = image.naturalWidth || image.videoWidth || image.width || 0;
+  const height = image.naturalHeight || image.videoHeight || image.height || 0;
+  if (!width || !height) return null;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return null;
+
+  try {
+    ctx.drawImage(image, 0, 0, width, height);
+    const pixelData = ctx.getImageData(0, 0, width, height).data;
+    return function sampleUvLuma(u, v) {
+      const x = Math.min(width - 1, Math.max(0, Math.floor(u * (width - 1))));
+      const y = Math.min(height - 1, Math.max(0, Math.floor((1.0 - v) * (height - 1))));
+      const idx = (y * width + x) * 4;
+      const r = pixelData[idx] / 255;
+      const g = pixelData[idx + 1] / 255;
+      const b = pixelData[idx + 2] / 255;
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+  } catch (err) {
+    console.warn('[mouth-points] no se pudo leer uColorMap para debugDarkPoints', err);
+    return null;
+  }
+}
 
 window.MouthRenderTuning = window.MouthRenderTuning || {
   rimA: 0.26,
@@ -1122,12 +1162,21 @@ window.MouthRenderTuning = window.MouthRenderTuning || {
   meshAlphaMin: 0.01,
   meshFadeGamma: 3.0,
   meshFadeGain: 2.2,
-  useDiamondFade: true,
+  // En runtime de producción queda apagado; solo se habilita explícitamente en debug.
+  useDiamondFade: DEBUG_MOUTH_DIAMOND_ENABLED,
   fadeDiamondCX: -0.045,
   fadeDiamondCY: 0.16,
   fadeDiamondRX: 0.11,
   fadeDiamondRY: 0.07,
   fadeDiamondRot: 0.0,
+  pointsDarkLumaThreshold: 0.16,
+  pointsDarkLumaFeather: 0.10,
+  pointsDarkLumaFloor: 0.24,
+  pointsDarkFixStrength: 0.92,
+  pointsDarkSampleOffsetX: 0.0025,
+  pointsDarkSampleOffsetY: 0.0065,
+  pointsDarkSkinBlend: 0.32,
+  pointsDebugDarkMix: 0.88,
 };
 
 
@@ -1353,6 +1402,31 @@ function buildMouthPointsGeometryFromAnimatedSurface(srcGeometry) {
   };
 }
 
+function updateMouthDarkPointStats(geometry, lumaThreshold) {
+  if (!DEBUG_DARK_POINTS_ENABLED) return;
+  if (!geometry || !mouthColorSampler) return;
+  const uvAttr = geometry.getAttribute('aUv') || geometry.getAttribute('uv');
+  const overlayAttr = geometry.getAttribute('aMouthOverlayMix');
+  if (!uvAttr) return;
+
+  let total = 0;
+  let dark = 0;
+  for (let i = 0; i < uvAttr.count; i++) {
+    const overlay = overlayAttr ? overlayAttr.getX(i) : 1.0;
+    if (overlay <= 0.01) continue;
+    const u = uvAttr.getX(i);
+    const v = uvAttr.getY(i);
+    const l = mouthColorSampler(u, v);
+    total += 1;
+    if (l < lumaThreshold) dark += 1;
+  }
+
+  mouthPointDebugStats.total = total;
+  mouthPointDebugStats.dark = dark;
+  mouthPointDebugStats.threshold = lumaThreshold;
+  mouthPointDebugStats.ratio = total > 0 ? dark / total : 0;
+}
+
 const mouthPointsVertexShader = /* glsl */ `
 precision highp float;
 uniform float uTime;
@@ -1413,8 +1487,20 @@ uniform float uUseMap;
 uniform float uMouthPointsAlpha;
 uniform float uMouthPointsAlphaClip;
 uniform float uMouthPointsColorMul;
+uniform vec2 uDarkSampleOffset;
+uniform float uDarkLumaThreshold;
+uniform float uDarkLumaFeather;
+uniform float uDarkLumaFloor;
+uniform float uDarkFixStrength;
+uniform float uDarkSkinBlend;
+uniform float uDebugDarkPoints;
+uniform float uDebugDarkMix;
 varying float vMouthOverlayMix;
 varying vec2 vUv;
+
+float luma(vec3 c) {
+  return dot(c, vec3(0.2126, 0.7152, 0.0722));
+}
 
 void main() {
   vec2 p = gl_PointCoord * 2.0 - 1.0;
@@ -1424,8 +1510,38 @@ void main() {
   float circle = 1.0 - smoothstep(0.68, 1.0, r);
   float alpha = circle * uMouthPointsAlpha * clamp(vMouthOverlayMix, 0.0, 1.0);
   if (alpha < uMouthPointsAlphaClip) discard;
-  vec3 texColor = texture2D(uColorMap, vUv).rgb;
+
+  vec3 texColorA = texture2D(uColorMap, vUv).rgb;
+  vec3 texColorB = texture2D(uColorMap, clamp(vUv + uDarkSampleOffset, 0.0, 1.0)).rgb;
+  vec3 texColorC = texture2D(uColorMap, clamp(vUv - uDarkSampleOffset, 0.0, 1.0)).rgb;
+
+  float lumaA = luma(texColorA);
+  float lumaB = luma(texColorB);
+  float lumaC = luma(texColorC);
+  vec3 neighborColor = texColorA;
+  float neighborLuma = lumaA;
+  if (lumaB > neighborLuma) {
+    neighborColor = texColorB;
+    neighborLuma = lumaB;
+  }
+  if (lumaC > neighborLuma) {
+    neighborColor = texColorC;
+    neighborLuma = lumaC;
+  }
+
+  float darkSpan = max(1e-4, uDarkLumaFeather);
+  float darkAmount = 1.0 - smoothstep(uDarkLumaThreshold, uDarkLumaThreshold + darkSpan, lumaA);
+  vec3 skinProxy = mix(texColorA, neighborColor, clamp(uDarkSkinBlend, 0.0, 1.0));
+  vec3 corrected = mix(texColorA, max(skinProxy, vec3(uDarkLumaFloor)), darkAmount * clamp(uDarkFixStrength, 0.0, 1.0));
+
+  vec3 texColor = mix(texColorA, corrected, uUseMap);
   vec3 baseColor = mix(vec3(0.8), texColor, uUseMap);
+
+  if (uDebugDarkPoints > 0.5) {
+    vec3 debugColor = mix(baseColor, vec3(1.0, 0.12, 0.12), darkAmount);
+    baseColor = mix(baseColor, debugColor, clamp(uDebugDarkMix, 0.0, 1.0));
+  }
+
   gl_FragColor = vec4(baseColor * uMouthPointsColorMul, alpha);
 }
 `;
@@ -1883,7 +1999,7 @@ loader.load(
     if (!colorMap) {
       console.warn('No se ha encontrado material.map (textura de color). Se usará densidad = 1 en todo.');
     }
-
+    mouthColorSampler = createTextureUvSampler(colorMap);
 
     const geoms = [];
     meshes.forEach((m) => {
@@ -2039,7 +2155,7 @@ loader.load(
           uMouthMeshFadeGamma: { value: window.MouthRenderTuning.meshFadeGamma },
           uMouthMeshFadeGain: { value: window.MouthRenderTuning.meshFadeGain },
           uDebugMouthFade: { value: DEBUG_MOUTH_FADE_ENABLED ? 1.0 : 0.0 },
-          uUseDiamondFade: { value: window.MouthRenderTuning.useDiamondFade ? 1.0 : 0.0 },
+          uUseDiamondFade: { value: (DEBUG_MOUTH_DIAMOND_ENABLED && window.MouthRenderTuning.useDiamondFade) ? 1.0 : 0.0 },
           uFadeDiamondCX: { value: window.MouthRenderTuning.fadeDiamondCX },
           uFadeDiamondCY: { value: window.MouthRenderTuning.fadeDiamondCY },
           uFadeDiamondRX: { value: window.MouthRenderTuning.fadeDiamondRX },
@@ -2063,6 +2179,7 @@ loader.load(
       mouthSideAttrRef = realisticSurfaceGeo.getAttribute('aMouthSide');
       logBrowsDiagnostics(realisticSurfaceGeo, particleMaterial);
       const mouthBuild = buildMouthPointsGeometryFromAnimatedSurface(realisticSurfaceGeo);
+      updateMouthDarkPointStats(mouthBuild.geometry, window.MouthRenderTuning.pointsDarkLumaThreshold);
       if (mouthBuild.geometry && mouthBuild.pointCount > 0) {
         mouthPointsMaterial = new THREE.ShaderMaterial({
           vertexShader: mouthPointsVertexShader,
@@ -2086,6 +2203,14 @@ loader.load(
             uColorMap: { value: colorMap },
             uUseMap: { value: colorMap ? 1.0 : 0.0 },
             uMouthPointsColorMul: { value: window.MouthRenderTuning.pointsColorMul },
+            uDarkSampleOffset: { value: new THREE.Vector2(window.MouthRenderTuning.pointsDarkSampleOffsetX, window.MouthRenderTuning.pointsDarkSampleOffsetY) },
+            uDarkLumaThreshold: { value: window.MouthRenderTuning.pointsDarkLumaThreshold },
+            uDarkLumaFeather: { value: window.MouthRenderTuning.pointsDarkLumaFeather },
+            uDarkLumaFloor: { value: window.MouthRenderTuning.pointsDarkLumaFloor },
+            uDarkFixStrength: { value: window.MouthRenderTuning.pointsDarkFixStrength },
+            uDarkSkinBlend: { value: window.MouthRenderTuning.pointsDarkSkinBlend },
+            uDebugDarkPoints: { value: DEBUG_DARK_POINTS_ENABLED ? 1.0 : 0.0 },
+            uDebugDarkMix: { value: window.MouthRenderTuning.pointsDebugDarkMix },
             uHeadRot: { value: new THREE.Vector3(0, 0, 0) },
             uBodyRot: { value: new THREE.Vector3(0, 0, 0) },
             uBodyOffset: { value: new THREE.Vector3(0, 0, 0) },
@@ -3288,7 +3413,7 @@ function animate() {
       if (mat.uniforms.uMouthMeshAlphaMin) mat.uniforms.uMouthMeshAlphaMin.value = window.MouthRenderTuning.meshAlphaMin;
       if (mat.uniforms.uMouthMeshFadeGamma) mat.uniforms.uMouthMeshFadeGamma.value = window.MouthRenderTuning.meshFadeGamma;
       if (mat.uniforms.uMouthMeshFadeGain) mat.uniforms.uMouthMeshFadeGain.value = window.MouthRenderTuning.meshFadeGain;
-      if (mat.uniforms.uUseDiamondFade) mat.uniforms.uUseDiamondFade.value = window.MouthRenderTuning.useDiamondFade ? 1.0 : 0.0;
+      if (mat.uniforms.uUseDiamondFade) mat.uniforms.uUseDiamondFade.value = (DEBUG_MOUTH_DIAMOND_ENABLED && window.MouthRenderTuning.useDiamondFade) ? 1.0 : 0.0;
       if (mat.uniforms.uFadeDiamondCX) mat.uniforms.uFadeDiamondCX.value = window.MouthRenderTuning.fadeDiamondCX;
       if (mat.uniforms.uFadeDiamondCY) mat.uniforms.uFadeDiamondCY.value = window.MouthRenderTuning.fadeDiamondCY;
       if (mat.uniforms.uFadeDiamondRX) mat.uniforms.uFadeDiamondRX.value = window.MouthRenderTuning.fadeDiamondRX;
@@ -3322,6 +3447,14 @@ function animate() {
     mouthPointsMaterial.uniforms.uPointSizeNear.value = window.MouthRenderTuning.pointsSizeNear;
     mouthPointsMaterial.uniforms.uPointSizeFar.value = window.MouthRenderTuning.pointsSizeFar;
     if (mouthPointsMaterial.uniforms.uMouthPointsColorMul) mouthPointsMaterial.uniforms.uMouthPointsColorMul.value = window.MouthRenderTuning.pointsColorMul;
+    if (mouthPointsMaterial.uniforms.uDarkSampleOffset) mouthPointsMaterial.uniforms.uDarkSampleOffset.value.set(window.MouthRenderTuning.pointsDarkSampleOffsetX, window.MouthRenderTuning.pointsDarkSampleOffsetY);
+    if (mouthPointsMaterial.uniforms.uDarkLumaThreshold) mouthPointsMaterial.uniforms.uDarkLumaThreshold.value = window.MouthRenderTuning.pointsDarkLumaThreshold;
+    if (mouthPointsMaterial.uniforms.uDarkLumaFeather) mouthPointsMaterial.uniforms.uDarkLumaFeather.value = window.MouthRenderTuning.pointsDarkLumaFeather;
+    if (mouthPointsMaterial.uniforms.uDarkLumaFloor) mouthPointsMaterial.uniforms.uDarkLumaFloor.value = window.MouthRenderTuning.pointsDarkLumaFloor;
+    if (mouthPointsMaterial.uniforms.uDarkFixStrength) mouthPointsMaterial.uniforms.uDarkFixStrength.value = window.MouthRenderTuning.pointsDarkFixStrength;
+    if (mouthPointsMaterial.uniforms.uDarkSkinBlend) mouthPointsMaterial.uniforms.uDarkSkinBlend.value = window.MouthRenderTuning.pointsDarkSkinBlend;
+    if (mouthPointsMaterial.uniforms.uDebugDarkPoints) mouthPointsMaterial.uniforms.uDebugDarkPoints.value = DEBUG_DARK_POINTS_ENABLED ? 1.0 : 0.0;
+    if (mouthPointsMaterial.uniforms.uDebugDarkMix) mouthPointsMaterial.uniforms.uDebugDarkMix.value = window.MouthRenderTuning.pointsDebugDarkMix;
     mouthPointsMaterial.uniforms.uHeadRot.value.copy(mouthHeadRot);
     mouthPointsMaterial.uniforms.uBodyRot.value.copy(mouthBodyRot);
     mouthPointsMaterial.uniforms.uBodyOffset.value.set(0.0, mouthOffY, 0.0);
@@ -3329,6 +3462,22 @@ function animate() {
       const t = window.NeckTuning;
       mouthPointsMaterial.uniforms.uNeckPivot.value.set(0.0, t.neckPivotY, 0.0);
       mouthPointsMaterial.uniforms.uBodyPivot.value.set(0.0, t.bodyPivotY, 0.0);
+    }
+
+    if (DEBUG_DARK_POINTS_ENABLED) {
+      updateMouthDarkPointStats(mouthPoints.geometry, window.MouthRenderTuning.pointsDarkLumaThreshold);
+      mouthDarkDebugLogAcc += dtMotion;
+      if (mouthDarkDebugLogAcc >= 1.0) {
+        mouthDarkDebugLogAcc = 0.0;
+        const stats = {
+          total: mouthPointDebugStats.total,
+          dark: mouthPointDebugStats.dark,
+          darkRatio: Number((mouthPointDebugStats.ratio * 100).toFixed(2)),
+          threshold: Number((mouthPointDebugStats.threshold || 0).toFixed(3)),
+        };
+        window.__MouthDarkPointsStats = stats;
+        console.info('[mouth-points] dark-point-stats', stats);
+      }
     }
   }
   if (particleSurfaceMesh) {
