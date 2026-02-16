@@ -436,15 +436,13 @@ window.MouthRealisticTuning = window.MouthRealisticTuning || {
 window.MouthSplitTuning = window.MouthSplitTuning || {
   corridorWidthScale: 1.08,
   lineHalfThicknessScale: 0.14,
-  closedLineHalfThicknessScale: 0.0,
-  closedThicknessMinAbs: 0.00045,
-  openLineHalfThicknessScale: 0.14,
-  edgeFeather: 0.004,
-  closedEdgeFeather: 0.00008,
+  splitLineHalfThicknessScale: 0.055,
+  splitThicknessMinAbs: 0.00055,
+  splitEdgeFeather: 0.0022,
   openTrigger: 0.085,
   closeTrigger: 0.055,
-  openDeltaEpsilon: 0.03,
-  minRebuildIntervalMs: 180,
+  closeSnapOpen: 0.02,
+  minRebuildIntervalMs: 160,
 };
 
 window.EyeBlinkTuning = window.EyeBlinkTuning || {
@@ -503,11 +501,8 @@ let _realisticRebuildPending = false;
 
 const RealisticMouthCutRuntime = {
   open: 0.0,
-  mode: 'closed',
-  lastAppliedOpen: 0.0,
+  mode: 'sealed',
   lastRebuildAtMs: 0,
-  effectiveThickness: 0.0,
-  effectiveFeather: 0.0,
   lastDebugLogAtMs: 0,
 };
 
@@ -1437,29 +1432,15 @@ function updateMouthInteriorRig(headRot, bodyRot, bodyOffsetY) {
 // - Concentrado en esta sección para activar/desactivar fácil.
 // - En realistic quitamos capas legacy (cutout/interior); solo topología cortada + movimiento de labios.
 // =========================
-function resolveRealisticCutParams(openValue, mode, splitTuning = window.MouthSplitTuning, mouthTuning = window.MouthTuning) {
+function resolveRealisticCutParams(splitTuning = window.MouthSplitTuning, mouthTuning = window.MouthTuning) {
   const hAbs = Math.max(1e-6, Math.abs(mouthTuning.height));
-  const closedScale = splitTuning.closedLineHalfThicknessScale ?? 0.0;
-  const talkScale = splitTuning.openLineHalfThicknessScale ?? splitTuning.lineHalfThicknessScale ?? 0.14;
-  const closedMinAbs = Math.max(1e-6, splitTuning.closedThicknessMinAbs ?? 0.00045);
-
-  const closedThickness = Math.max(closedMinAbs, hAbs * Math.max(0.0, closedScale));
-  const talkThickness = Math.max(closedThickness, hAbs * Math.max(0.0, talkScale));
-
-  const open = THREE.MathUtils.clamp(openValue, 0.0, 1.0);
-  const blend = mode === 'open' ? open : 0.0;
-  const effectiveThickness = THREE.MathUtils.lerp(closedThickness, talkThickness, blend);
-
-  const closedFeather = Math.max(1e-6, splitTuning.closedEdgeFeather ?? 0.00008);
-  const talkFeather = Math.max(closedFeather, splitTuning.edgeFeather ?? 0.004);
-  const effectiveFeather = THREE.MathUtils.lerp(closedFeather, talkFeather, blend);
-
+  const splitScale = splitTuning.splitLineHalfThicknessScale ?? splitTuning.lineHalfThicknessScale ?? 0.055;
+  const splitMinAbs = Math.max(1e-6, splitTuning.splitThicknessMinAbs ?? 0.00055);
+  const splitThickness = Math.max(splitMinAbs, hAbs * Math.max(0.0, splitScale));
+  const splitEdgeFeather = Math.max(1e-6, splitTuning.splitEdgeFeather ?? splitTuning.edgeFeather ?? 0.0022);
   return {
-    open,
-    effectiveThickness,
-    effectiveFeather,
-    closedThickness,
-    talkThickness,
+    splitThickness,
+    splitEdgeFeather,
   };
 }
 
@@ -1468,50 +1449,66 @@ function maybeUpdateRealisticMouthCutState(mouthOpen) {
 
   const split = window.MouthSplitTuning || {};
   const nowMs = performance.now();
-  const open = THREE.MathUtils.clamp(mouthOpen, 0.0, 1.0);
+  const closeSnapOpen = split.closeSnapOpen ?? 0.02;
+  const openRaw = THREE.MathUtils.clamp(mouthOpen, 0.0, 1.0);
+  const open = openRaw < closeSnapOpen ? 0.0 : openRaw;
   const openTrigger = split.openTrigger ?? 0.085;
   const closeTrigger = split.closeTrigger ?? 0.055;
-  const minRebuildIntervalMs = split.minRebuildIntervalMs ?? 180;
-  const openDeltaEpsilon = split.openDeltaEpsilon ?? 0.03;
+  const minRebuildIntervalMs = split.minRebuildIntervalMs ?? 160;
 
   let desiredMode = RealisticMouthCutRuntime.mode;
-  if (MOUTH_CUT_MODE_OVERRIDE === 'open') desiredMode = 'open';
-  else if (MOUTH_CUT_MODE_OVERRIDE === 'closed') desiredMode = 'closed';
-  else desiredMode = RealisticMouthCutRuntime.mode === 'open'
-    ? (open <= closeTrigger ? 'closed' : 'open')
-    : (open >= openTrigger ? 'open' : 'closed');
+  if (MOUTH_CUT_MODE_OVERRIDE === 'open') desiredMode = 'split';
+  else if (MOUTH_CUT_MODE_OVERRIDE === 'closed') desiredMode = 'sealed';
+  else desiredMode = RealisticMouthCutRuntime.mode === 'split'
+    ? (open <= closeTrigger ? 'sealed' : 'split')
+    : (open >= openTrigger ? 'split' : 'sealed');
 
-  const { effectiveThickness, effectiveFeather } = resolveRealisticCutParams(open, desiredMode, split, window.MouthTuning);
   RealisticMouthCutRuntime.open = open;
-  RealisticMouthCutRuntime.effectiveThickness = effectiveThickness;
-  RealisticMouthCutRuntime.effectiveFeather = effectiveFeather;
-
   const elapsedSinceRebuild = nowMs - RealisticMouthCutRuntime.lastRebuildAtMs;
   const canRebuild = elapsedSinceRebuild >= minRebuildIntervalMs;
   const modeChanged = desiredMode !== RealisticMouthCutRuntime.mode;
-  const openDelta = Math.abs(open - RealisticMouthCutRuntime.lastAppliedOpen);
 
-  if (modeChanged && canRebuild) {
+  // Cierre prioritario: si llegamos a snap-cero, forzamos retorno inmediato a sealed
+  // para evitar quedarse visualmente en split por throttle.
+  const forceSealedNow = desiredMode === 'sealed' && open <= closeSnapOpen;
+
+  if (modeChanged && (canRebuild || forceSealedNow)) {
     RealisticMouthCutRuntime.mode = desiredMode;
-    scheduleRebuildRealisticSurfaceGeometry(`mouthCutMode:${desiredMode}`);
-  } else if (desiredMode === 'open' && openDelta >= openDeltaEpsilon && canRebuild) {
-    RealisticMouthCutRuntime.mode = desiredMode;
-    scheduleRebuildRealisticSurfaceGeometry('mouthCutOpenDelta');
-  } else {
+    scheduleRebuildRealisticSurfaceGeometry(`mouthMode:${desiredMode}${forceSealedNow ? ':force' : ''}`);
+  } else if (!modeChanged) {
     RealisticMouthCutRuntime.mode = desiredMode;
   }
 
   if (DEBUG_MOUTH_ENABLED && nowMs - RealisticMouthCutRuntime.lastDebugLogAtMs >= 600) {
+    const cut = resolveRealisticCutParams(split, window.MouthTuning);
     RealisticMouthCutRuntime.lastDebugLogAtMs = nowMs;
     console.info('[mouth-topocut] state', {
-      mode: RealisticMouthCutRuntime.mode,
+      mouthMode: RealisticMouthCutRuntime.mode,
       open: Number(open.toFixed(3)),
-      effectiveThickness: Number(effectiveThickness.toFixed(5)),
-      effectiveFeather: Number(effectiveFeather.toFixed(5)),
+      splitThickness: Number(cut.splitThickness.toFixed(5)),
+      splitEdgeFeather: Number(cut.splitEdgeFeather.toFixed(5)),
+      forcedSealedRebuild: forceSealedNow,
       override: MOUTH_CUT_MODE_OVERRIDE,
     });
   }
 }
+
+// Sync explícito de MouthRealisticTuning -> uniforms (manual/diagnóstico).
+function applyRealisticMouthTuningToMaterials() {
+  if (!isRealisticTheme || !particleMaterials?.length) return;
+  const t = window.MouthRealisticTuning || {};
+  for (const mat of particleMaterials) {
+    if (!mat?.uniforms) continue;
+    if (mat.uniforms.uLipCenterX) mat.uniforms.uLipCenterX.value = t.centerX ?? mat.uniforms.uLipCenterX.value;
+    if (mat.uniforms.uLipCenterY) mat.uniforms.uLipCenterY.value = t.centerY ?? mat.uniforms.uLipCenterY.value;
+    if (mat.uniforms.uLipOpenMin) mat.uniforms.uLipOpenMin.value = t.openMin ?? mat.uniforms.uLipOpenMin.value;
+    if (mat.uniforms.uLipOpenFade) mat.uniforms.uLipOpenFade.value = t.openFade ?? mat.uniforms.uLipOpenFade.value;
+    if (mat.uniforms.uLipCenterPull) mat.uniforms.uLipCenterPull.value = t.centerPull ?? mat.uniforms.uLipCenterPull.value;
+    if (mat.uniforms.uLipBandHalfHeight) mat.uniforms.uLipBandHalfHeight.value = t.bandHalfHeight ?? mat.uniforms.uLipBandHalfHeight.value;
+    if (mat.uniforms.uLipBandPull) mat.uniforms.uLipBandPull.value = t.bandPull ?? mat.uniforms.uLipBandPull.value;
+  }
+}
+window.applyRealisticMouthTuning = applyRealisticMouthTuningToMaterials;
 
 function mouthLineSignedDistance(x, y, tuning = window.MouthTuning) {
   const wAbs = Math.max(1e-6, Math.abs(tuning.width));
@@ -1520,8 +1517,8 @@ function mouthLineSignedDistance(x, y, tuning = window.MouthTuning) {
   return y - curveY;
 }
 
-function carveMouthTopologyByMouthLine(srcGeometry) {
-  if (!MOUTH_TOPO_CUT_ENABLED) return srcGeometry.clone();
+function carveMouthTopologyByMouthLine(srcGeometry, mode = RealisticMouthCutRuntime.mode) {
+  if (!MOUTH_TOPO_CUT_ENABLED || mode !== 'split') return srcGeometry.clone();
 
   const nonIndexed = srcGeometry.index ? srcGeometry.toNonIndexed() : srcGeometry.clone();
   const posAttr = nonIndexed.getAttribute('position');
@@ -1531,9 +1528,9 @@ function carveMouthTopologyByMouthLine(srcGeometry) {
   const mt = window.MouthTuning;
   const split = window.MouthSplitTuning || {};
   const corridorHalfWidth = Math.max(1e-4, Math.abs(mt.width) * (split.corridorWidthScale ?? 1.08));
-  const cut = resolveRealisticCutParams(RealisticMouthCutRuntime.open, RealisticMouthCutRuntime.mode, split, mt);
-  const lineHalfThickness = cut.effectiveThickness;
-  const edgeFeather = cut.effectiveFeather;
+  const cut = resolveRealisticCutParams(split, mt);
+  const lineHalfThickness = cut.splitThickness;
+  const edgeFeather = cut.splitEdgeFeather;
 
   const keptPos = [];
   const keptUv = [];
@@ -1603,7 +1600,7 @@ function carveMouthTopologyByMouthLine(srcGeometry) {
   if (DEBUG_MOUTH_ENABLED) {
     console.info('[mouth-topocut] carve result', {
       enabled: MOUTH_TOPO_CUT_ENABLED,
-      mode: RealisticMouthCutRuntime.mode,
+      mouthMode: mode,
       open: Number(RealisticMouthCutRuntime.open.toFixed(3)),
       trianglesIn: triCount,
       trianglesOut: Math.floor(keptPos.length / 9),
@@ -1619,7 +1616,7 @@ function carveMouthTopologyByMouthLine(srcGeometry) {
 
 function rebuildRealisticSurfaceGeometryNow(reason = 'manual') {
   if (!isRealisticTheme || !particleSurfaceMesh || !realisticSourceGeometryRef) return;
-  const nextGeo = generateAnimatedSurfaceGeometry(realisticSourceGeometryRef);
+  const nextGeo = generateAnimatedSurfaceGeometry(realisticSourceGeometryRef, { mouthMode: RealisticMouthCutRuntime.mode });
   const prevGeo = particleSurfaceMesh.geometry;
   particleSurfaceMesh.geometry = nextGeo;
 
@@ -1631,15 +1628,14 @@ function rebuildRealisticSurfaceGeometryNow(reason = 'manual') {
 
   if (prevGeo) prevGeo.dispose();
 
-  RealisticMouthCutRuntime.lastAppliedOpen = RealisticMouthCutRuntime.open;
   RealisticMouthCutRuntime.lastRebuildAtMs = performance.now();
 
   if (DEBUG_MOUTH_ENABLED) {
     console.info('[mouth-topocut] realistic geometry rebuilt', {
       reason,
-      mode: RealisticMouthCutRuntime.mode,
+      mouthMode: RealisticMouthCutRuntime.mode,
       open: Number(RealisticMouthCutRuntime.open.toFixed(3)),
-      effectiveThickness: Number(RealisticMouthCutRuntime.effectiveThickness.toFixed(5)),
+      trianglesRemoved: RealisticMouthCutRuntime.mode === 'split' ? 'see carve log' : 0,
       vertexCount: nextGeo.getAttribute('position')?.count ?? 0,
     });
   }
@@ -1654,8 +1650,10 @@ function scheduleRebuildRealisticSurfaceGeometry(reason = 'change') {
   });
 }
 
-function generateAnimatedSurfaceGeometry(srcGeometry) {
-  const carvedSource = carveMouthTopologyByMouthLine(srcGeometry);
+function generateAnimatedSurfaceGeometry(srcGeometry, { mouthMode = RealisticMouthCutRuntime.mode } = {}) {
+  const carvedSource = mouthMode === 'split'
+    ? carveMouthTopologyByMouthLine(srcGeometry, mouthMode)
+    : srcGeometry.clone();
   // Random estable por posición para evitar grietas visuales en costuras UV.
   // Si dos vértices comparten posición espacial, recibirán el mismo offset.
   const stableHash = (n) => {
@@ -2100,7 +2098,7 @@ loader.load(
 
     const particlesGeo = generateFaceParticlesFromVertices(mergedGeom);
     realisticSourceGeometryRef = mergedGeom.clone();
-    const realisticSurfaceGeo = generateAnimatedSurfaceGeometry(realisticSourceGeometryRef);
+    const realisticSurfaceGeo = generateAnimatedSurfaceGeometry(realisticSourceGeometryRef, { mouthMode: RealisticMouthCutRuntime.mode });
 
     // refs para edición / recompute
     const t = window.NeckTuning;
@@ -2206,7 +2204,7 @@ loader.load(
           uTalkAmpBot: { value: 0.075 },
           uTalkFreq: { value: 24.0 },
           uLipDepthAmp: { value: 0.1 },
-          uRestOpen: { value: 0.30 },
+          uRestOpen: { value: 0.0 },
           uBreathAmp: { value: 1.0 },
           uBreathFreq: { value: 0.6 },
           uLipCenterX: { value: window.MouthRealisticTuning.centerX },
@@ -2243,6 +2241,7 @@ loader.load(
         },
       });
       particleMaterials = [particleMaterial];
+      applyRealisticMouthTuningToMaterials();
       particleSurfaceMesh = new THREE.Mesh(realisticSurfaceGeo, particleMaterial);
       particleSurfaceMesh.frustumCulled = false;
       particleSurfaceMesh.renderOrder = 2;
@@ -3391,7 +3390,9 @@ function animate() {
     const mouthOpen = forcedTalkLevel == null
       ? clamp01(AvatarState.talkLevel)
       : clamp01(forcedTalkLevel);
-    if (isRealisticTheme) maybeUpdateRealisticMouthCutState(mouthOpen);
+    if (isRealisticTheme) {
+      maybeUpdateRealisticMouthCutState(mouthOpen);
+    }
     const headRotMag = headRot.length();
     reportMotionFrameDebug({
       elapsed,
@@ -3415,7 +3416,7 @@ function animate() {
     for (const mat of particleMaterials) {
       mat.uniforms.uTime.value = elapsed;
       mat.uniforms.uTalk.value = AvatarState.talkLevel;
-      mat.uniforms.uRestOpen.value = 0.03;
+      mat.uniforms.uRestOpen.value = isRealisticTheme ? 0.0 : 0.03;
       applyEyeBlinkUniforms(mat);
       mat.uniforms.uDebugHeadWeight.value = DebugView.headWeight ? 1.0 : 0.0;
 
