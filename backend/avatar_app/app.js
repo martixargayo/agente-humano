@@ -16,6 +16,9 @@ const DEBUG_MOTION_ENABLED = DEBUG_MOTION_LEVEL >= 1;
 const DEBUG_MOTION_VERBOSE = DEBUG_MOTION_LEVEL >= 2;
 const DEBUG_MOTION_HUD_ENABLED = URL_PARAMS.get('debugMotionHud') === '1';
 const DEBUG_CONTROLS_ENABLED = URL_PARAMS.get('debugControls') === '1';
+const DEBUG_MOUTH_POINTS_ENABLED = URL_PARAMS.get('debugMouthPoints') === '1';
+const DEBUG_MOUTH_FADE_ENABLED = URL_PARAMS.get('debugMouthFade') === '1';
+const MOUTH_POINTS_ONLY_ENABLED = URL_PARAMS.get('mouthPointsOnly') === '1';
 const FORCE_BLINK_ENABLED = URL_PARAMS.get('forceBlink') === '1';
 const FORCE_BLINK_DURATION_SEC = 2.0;
 const FREEZE_IN_EDIT = DEBUG_EDIT_ENABLED; // En ?debugEdit=1 congelamos motion/UI conversacional para ajustar handles con precisión.
@@ -1083,6 +1086,191 @@ let particlePoints = null;
 let particlePointsDetail = null;
 let particleSurfaceMesh = null;
 let headCutCapMesh = null;
+let mouthPoints = null;
+let mouthPointsMaterial = null;
+let mouthOpenVisual = 0.0;
+let mouthPointsVisibleLatched = false;
+
+window.MouthRenderTuning = window.MouthRenderTuning || {
+  rimA: 0.26,
+  rimB: 0.46,
+  rimC: 0.68,
+  rimD: 0.84,
+  innerA: 0.70,
+  innerB: 0.82,
+  innerGain: 0.22,
+  maskMin: 0.08,
+  upsampleMinPoints: 260,
+  upsampleAmpMin: 0.0007,
+  upsampleAmpMax: 0.0015,
+  pointsOn: 0.050,
+  pointsOff: 0.032,
+  mouthAttack: 26.0,
+  mouthRelease: 12.0,
+  pointsAlpha: 0.50,
+  pointsAlphaClip: 0.012,
+  pointsSizeNear: 3.0 * window.devicePixelRatio,
+  pointsSizeFar: 2.3 * window.devicePixelRatio,
+  meshFade: 0.42,
+  meshFeather: 0.12,
+};
+
+function mouthRimMaskFromWeight(w, tuning = window.MouthRenderTuning) {
+  const rimMask = smoothstepJS(tuning.rimA, tuning.rimB, w) * (1.0 - smoothstepJS(tuning.rimC, tuning.rimD, w));
+  const innerTiny = smoothstepJS(tuning.innerA, tuning.innerB, w) * tuning.innerGain;
+  return THREE.MathUtils.clamp(rimMask + innerTiny, 0.0, 1.0);
+}
+
+function stableHash3(x, y, z, salt = 0.0) {
+  const seed = x * 127.1 + y * 311.7 + z * 74.7 + salt * 19.19;
+  const v = Math.sin(seed) * 43758.5453123;
+  return v - Math.floor(v);
+}
+
+function buildMouthPointsGeometryFromAnimatedSurface(srcGeometry) {
+  const basePosAttr = srcGeometry.getAttribute('aBasePosition') || srcGeometry.getAttribute('position');
+  const mouthWeightAttr = srcGeometry.getAttribute('aMouthWeight');
+  const mouthSideAttr = srcGeometry.getAttribute('aMouthSide');
+  const headWeightAttr = srcGeometry.getAttribute('aHeadWeight');
+  if (!basePosAttr || !mouthWeightAttr || !mouthSideAttr || !headWeightAttr) {
+    console.warn('[mouth-points] Faltan atributos requeridos para construir la geometría de boca.');
+    return { geometry: null, pointCount: 0, upsampled: false, sourceCount: 0 };
+  }
+
+  const tuning = window.MouthRenderTuning;
+  const p = [];
+  const b = [];
+  const mw = [];
+  const ms = [];
+  const hw = [];
+  const ov = [];
+  const addPoint = (x, y, z, mouthWeight, mouthSide, headWeight, overlay) => {
+    p.push(x, y, z);
+    b.push(x, y, z);
+    mw.push(mouthWeight);
+    ms.push(mouthSide);
+    hw.push(headWeight);
+    ov.push(overlay);
+  };
+
+  for (let i = 0; i < basePosAttr.count; i++) {
+    const w = mouthWeightAttr.getX(i);
+    const overlay = mouthRimMaskFromWeight(w, tuning);
+    if (overlay <= tuning.maskMin) continue;
+
+    const x = basePosAttr.getX(i);
+    const y = basePosAttr.getY(i);
+    const z = basePosAttr.getZ(i);
+    addPoint(x, y, z, w, mouthSideAttr.getX(i), headWeightAttr.getX(i), overlay);
+  }
+
+  const sourceCount = p.length / 3;
+  let upsampled = false;
+  if (sourceCount > 0 && sourceCount < tuning.upsampleMinPoints) {
+    upsampled = true;
+    for (let i = 0; i < sourceCount; i++) {
+      const idx = i * 3;
+      const x = p[idx + 0];
+      const y = p[idx + 1];
+      const z = p[idx + 2];
+      const h1 = stableHash3(x, y, z, 1.0);
+      const h2 = stableHash3(x, y, z, 2.0);
+      const angle = h1 * Math.PI * 2.0;
+      const amp = tuning.upsampleAmpMin + (tuning.upsampleAmpMax - tuning.upsampleAmpMin) * h2;
+      const dx = Math.cos(angle) * amp;
+      const dy = Math.sin(angle) * amp;
+      const w = mw[i];
+      const s = ms[i];
+      const headW = hw[i];
+      const overlay = ov[i];
+      addPoint(x + dx, y + dy, z, w, s, headW, overlay);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(p), 3));
+  geo.setAttribute('aBasePosition', new THREE.BufferAttribute(new Float32Array(b), 3));
+  geo.setAttribute('aMouthWeight', new THREE.BufferAttribute(new Float32Array(mw), 1));
+  geo.setAttribute('aMouthSide', new THREE.BufferAttribute(new Float32Array(ms), 1));
+  geo.setAttribute('aHeadWeight', new THREE.BufferAttribute(new Float32Array(hw), 1));
+  geo.setAttribute('aMouthOverlayMix', new THREE.BufferAttribute(new Float32Array(ov), 1));
+
+  return {
+    geometry: geo,
+    pointCount: p.length / 3,
+    upsampled,
+    sourceCount,
+  };
+}
+
+const mouthPointsVertexShader = /* glsl */ `
+precision highp float;
+uniform float uTime;
+uniform float uTalk;
+uniform float uTalkAmpTop;
+uniform float uTalkAmpBot;
+uniform float uTalkFreq;
+uniform float uLipDepthAmp;
+uniform float uRestOpen;
+uniform float uPointSizeNear;
+uniform float uPointSizeFar;
+uniform vec3 uHeadRot;
+uniform vec3 uBodyRot;
+uniform vec3 uBodyOffset;
+uniform vec3 uNeckPivot;
+uniform vec3 uBodyPivot;
+attribute vec3 aBasePosition;
+attribute float aMouthWeight;
+attribute float aMouthSide;
+attribute float aHeadWeight;
+attribute float aMouthOverlayMix;
+varying float vMouthOverlayMix;
+
+mat3 rotX(float a){ float s=sin(a), c=cos(a); return mat3(1.,0.,0.,0.,c,-s,0.,s,c); }
+mat3 rotY(float a){ float s=sin(a), c=cos(a); return mat3(c,0.,s,0.,1.,0.,-s,0.,c); }
+mat3 rotZ(float a){ float s=sin(a), c=cos(a); return mat3(c,-s,0.,s,c,0.,0.,0.,1.); }
+vec3 rotateAroundPivot(vec3 p, vec3 pivot, vec3 r){ vec3 q = p - pivot; q = rotY(r.y) * rotX(r.x) * rotZ(r.z) * q; return q + pivot; }
+
+void main() {
+  vMouthOverlayMix = aMouthOverlayMix;
+
+  float talkOpen = max(sin(uTime * uTalkFreq), 0.0) * uTalk;
+  float totalOpen = clamp(uRestOpen + talkOpen, 0.0, 1.0);
+  float mouthFactor = aMouthWeight * totalOpen;
+  float lipAmp = mix(uTalkAmpBot, uTalkAmpTop, step(0.0, aMouthSide));
+  float verticalOffset = aMouthSide * lipAmp * mouthFactor;
+  float depthOffset = -uLipDepthAmp * mouthFactor;
+
+  vec3 displaced = aBasePosition + vec3(0.0, verticalOffset, depthOffset);
+  vec3 bodyPos = rotateAroundPivot(displaced, uBodyPivot, uBodyRot) + uBodyOffset;
+  vec3 headPos = rotateAroundPivot(bodyPos, uNeckPivot, uHeadRot);
+  vec3 finalPos = mix(bodyPos, headPos, aHeadWeight);
+  vec4 mvPosition = modelViewMatrix * vec4(finalPos, 1.0);
+  float dist = max(0.0, -mvPosition.z);
+  float distNorm = clamp((dist - 1.0) / 1.7, 0.0, 1.0);
+  gl_PointSize = mix(uPointSizeNear, uPointSizeFar, distNorm);
+  gl_Position = projectionMatrix * mvPosition;
+}
+`;
+
+const mouthPointsFragmentShader = /* glsl */ `
+precision highp float;
+uniform vec3 uColor;
+uniform float uMouthPointsAlpha;
+uniform float uMouthPointsAlphaClip;
+varying float vMouthOverlayMix;
+
+void main() {
+  vec2 p = gl_PointCoord * 2.0 - 1.0;
+  float r2 = dot(p, p);
+  if (r2 > 1.0) discard;
+  float r = sqrt(r2);
+  float circle = 1.0 - smoothstep(0.68, 1.0, r);
+  float alpha = circle * uMouthPointsAlpha * clamp(vMouthOverlayMix, 0.0, 1.0);
+  if (alpha < uMouthPointsAlphaClip) discard;
+  gl_FragColor = vec4(uColor, alpha);
+}
+`;
 
 // =========================
 // Bloque temático "realistic"
@@ -1219,6 +1407,7 @@ uniform vec3 uBodyPivot;
 uniform float uDissolveStart;
 uniform float uDissolveEnd;
 uniform float uDissolveMotionAmp;
+uniform float uMouthOpenVisual;
 attribute vec3 aBasePosition;
 attribute vec3 aRandom;
 attribute float aClusterId;
@@ -1231,6 +1420,7 @@ varying vec2 vUv;
 varying float vHeadWeight;
 varying float vBaseZ;
 varying vec2 vBaseXY;
+varying float vMouthWeight;
 
 float hash11(float p){ return fract(sin(p * 127.1) * 43758.5453123); }
 float hash21(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453123); }
@@ -1245,6 +1435,7 @@ void main() {
   vHeadWeight = aHeadWeight;
   vBaseZ = aBasePosition.z;
   vBaseXY = aBasePosition.xy;
+  vMouthWeight = aMouthWeight;
 
   vec3 pos = aBasePosition;
   float t = uTime;
@@ -1294,10 +1485,15 @@ uniform float uEyeMarkerAspect;
 uniform float uEyeMarkerScale;
 uniform float uEyeMarkerFeather;
 uniform float uDebugBlinkCover;
+uniform float uMouthOpenVisual;
+uniform float uMouthMeshFade;
+uniform float uMouthFeather;
+uniform float uDebugMouthFade;
 varying vec2 vUv;
 varying float vHeadWeight;
 varying float vBaseZ;
 varying vec2 vBaseXY;
+varying float vMouthWeight;
 
 mat2 invRot(float a) {
   float s = sin(a);
@@ -1341,6 +1537,10 @@ void main() {
   vec3 lidColor = texture2D(uColorMap, clamp(vUv + vec2(0.0, 0.03), 0.0, 1.0)).rgb;
   finalColor = mix(finalColor, lidColor, cover);
 
+  float innerFadeMask = smoothstep(0.62 - uMouthFeather, 0.88 + uMouthFeather, vMouthWeight);
+  float mouthFade = clamp(uMouthOpenVisual * uMouthMeshFade * innerFadeMask, 0.0, 0.98);
+  finalColor = mix(finalColor, finalColor * 0.9, mouthFade * 0.25);
+
   if (uDebugBrows > 0.5) {
     vec2 leftLocal = invRot(uEyeLeftMain.w) * (vBaseXY - uEyeLeftMain.xy);
     vec2 rightLocal = invRot(uEyeRightMain.w) * (vBaseXY - uEyeRightMain.xy);
@@ -1379,7 +1579,13 @@ void main() {
     finalColor = mix(finalColor, overlay, overlayMask);
   }
 
-  gl_FragColor = vec4(finalColor, 1.0);
+  if (uDebugMouthFade > 0.5) {
+    vec3 dbg = mix(finalColor, vec3(1.0, 0.1, 0.1), clamp(mouthFade, 0.0, 0.8));
+    gl_FragColor = vec4(dbg, 1.0 - mouthFade * 0.75);
+    return;
+  }
+
+  gl_FragColor = vec4(finalColor, 1.0 - mouthFade * 0.75);
 }
 `;
 
@@ -1600,6 +1806,7 @@ loader.load(
         vertexShader: realisticSurfaceVertexShader,
         fragmentShader: realisticSurfaceFragmentShader,
         side: THREE.DoubleSide,
+        transparent: true,
         uniforms: {
           uColor: { value: new THREE.Color(0xffffff) },
           uColorMap: { value: colorMap },
@@ -1640,6 +1847,10 @@ loader.load(
           uEyeMarkerFeather: { value: window.BrowsDebugTuning.eyeMarkerFeather },
           uDebugBlinkCover: { value: DEBUG_BLINK_COVER_ENABLED ? 1.0 : 0.0 },
           uDebugHeadWeight: { value: DebugView.headWeight ? 1.0 : 0.0 },
+          uMouthOpenVisual: { value: 0.0 },
+          uMouthMeshFade: { value: window.MouthRenderTuning.meshFade },
+          uMouthFeather: { value: window.MouthRenderTuning.meshFeather },
+          uDebugMouthFade: { value: DEBUG_MOUTH_FADE_ENABLED ? 1.0 : 0.0 },
         },
       });
       particleMaterials = [particleMaterial];
@@ -1655,6 +1866,47 @@ loader.load(
       mouthWeightAttrRef = realisticSurfaceGeo.getAttribute('aMouthWeight');
       mouthSideAttrRef = realisticSurfaceGeo.getAttribute('aMouthSide');
       logBrowsDiagnostics(realisticSurfaceGeo, particleMaterial);
+      const mouthBuild = buildMouthPointsGeometryFromAnimatedSurface(realisticSurfaceGeo);
+      if (mouthBuild.geometry && mouthBuild.pointCount > 0) {
+        mouthPointsMaterial = new THREE.ShaderMaterial({
+          vertexShader: mouthPointsVertexShader,
+          fragmentShader: mouthPointsFragmentShader,
+          transparent: true,
+          depthTest: true,
+          depthWrite: false,
+          blending: THREE.NormalBlending,
+          uniforms: {
+            uTime: { value: 0.0 },
+            uTalk: { value: 0.0 },
+            uTalkAmpTop: { value: 0.024 },
+            uTalkAmpBot: { value: 0.075 },
+            uTalkFreq: { value: 24.0 },
+            uLipDepthAmp: { value: 0.1 },
+            uRestOpen: { value: 0.03 },
+            uPointSizeNear: { value: window.MouthRenderTuning ? window.MouthRenderTuning.pointsSizeNear ?? (3.0 * window.devicePixelRatio) : (3.0 * window.devicePixelRatio) },
+            uPointSizeFar: { value: window.MouthRenderTuning ? window.MouthRenderTuning.pointsSizeFar ?? (2.3 * window.devicePixelRatio) : (2.3 * window.devicePixelRatio) },
+            uMouthPointsAlpha: { value: window.MouthRenderTuning.pointsAlpha },
+            uMouthPointsAlphaClip: { value: window.MouthRenderTuning.pointsAlphaClip },
+            uColor: { value: new THREE.Color(0x0a0a0a) },
+            uHeadRot: { value: new THREE.Vector3(0, 0, 0) },
+            uBodyRot: { value: new THREE.Vector3(0, 0, 0) },
+            uBodyOffset: { value: new THREE.Vector3(0, 0, 0) },
+            uNeckPivot: { value: new THREE.Vector3(0.0, t.neckPivotY, 0.0) },
+            uBodyPivot: { value: new THREE.Vector3(0.0, t.bodyPivotY, 0.0) },
+          },
+        });
+        mouthPoints = new THREE.Points(mouthBuild.geometry, mouthPointsMaterial);
+        mouthPoints.frustumCulled = false;
+        mouthPoints.renderOrder = 3;
+        mouthPoints.visible = false;
+        if (DEBUG_MOUTH_POINTS_ENABLED) {
+          console.info('[mouth-points] built', {
+            sourceCount: mouthBuild.sourceCount,
+            pointCount: mouthBuild.pointCount,
+            upsampled: mouthBuild.upsampled,
+          });
+        }
+      }
     } else {
       particleMaterial = createParticleMaterial();
       particleMaterials = [particleMaterial];
@@ -1688,6 +1940,7 @@ loader.load(
     if (particlePoints) scene.add(particlePoints);
     if (particlePointsDetail) scene.add(particlePointsDetail);
     if (particleSurfaceMesh) scene.add(particleSurfaceMesh);
+    if (mouthPoints) scene.add(mouthPoints);
 
     controls.target.set(0, 0.15, 0);
     controls.update();
@@ -2732,12 +2985,29 @@ function animate() {
   motionTime += dtMotion;
   updateEyelidBlink(elapsed, dtBlink);
 
+  const mouthHeadRot = HEAD_ROT_TMP.set(0, 0, 0);
+  const mouthBodyRot = BODY_ROT_TMP.set(0, 0, 0);
+  let mouthOffY = 0.0;
+
   if (particleMaterials.length) {
     let targetTalk = 0.0;
     if (lipHoldActive) targetTalk = 1.0;
     else targetTalk = getTalkLevelFromAudio();
 
     AvatarState.talkLevel = targetTalk;
+
+    const mouthTuning = window.MouthRenderTuning;
+    const mouthSpeed = targetTalk > mouthOpenVisual ? mouthTuning.mouthAttack : mouthTuning.mouthRelease;
+    const mouthSmoothing = 1.0 - Math.exp(-Math.max(0.0, dtMotion) * mouthSpeed);
+    mouthOpenVisual += (targetTalk - mouthOpenVisual) * mouthSmoothing;
+
+    if (!mouthPointsVisibleLatched && mouthOpenVisual > mouthTuning.pointsOn) {
+      mouthPointsVisibleLatched = true;
+      if (DEBUG_MOUTH_POINTS_ENABLED) console.info('[mouth-points] latch ON', { mouthOpenVisual: Number(mouthOpenVisual.toFixed(3)) });
+    } else if (mouthPointsVisibleLatched && mouthOpenVisual < mouthTuning.pointsOff) {
+      mouthPointsVisibleLatched = false;
+      if (DEBUG_MOUTH_POINTS_ENABLED) console.info('[mouth-points] latch OFF', { mouthOpenVisual: Number(mouthOpenVisual.toFixed(3)) });
+    }
 
     let microYaw = 0.0;
     let microPitch = 0.0;
@@ -2784,6 +3054,9 @@ function animate() {
       body.y + microYaw * 0.25,
       body.z + microRoll * 0.25,
     );
+    mouthHeadRot.copy(headRot);
+    mouthBodyRot.copy(bodyRot);
+    mouthOffY = offY;
     const headRotMag = headRot.length();
     reportMotionFrameDebug({
       elapsed,
@@ -2810,6 +3083,10 @@ function animate() {
       mat.uniforms.uRestOpen.value = 0.03;
       applyEyeBlinkUniforms(mat);
       mat.uniforms.uDebugHeadWeight.value = DebugView.headWeight ? 1.0 : 0.0;
+      if (mat.uniforms.uMouthOpenVisual) mat.uniforms.uMouthOpenVisual.value = mouthOpenVisual;
+      if (mat.uniforms.uMouthMeshFade) mat.uniforms.uMouthMeshFade.value = window.MouthRenderTuning.meshFade;
+      if (mat.uniforms.uMouthFeather) mat.uniforms.uMouthFeather.value = window.MouthRenderTuning.meshFeather;
+      if (mat.uniforms.uDebugMouthFade) mat.uniforms.uDebugMouthFade.value = DEBUG_MOUTH_FADE_ENABLED ? 1.0 : 0.0;
 
       mat.uniforms.uHeadRot.value.copy(headRot);
 
@@ -2825,6 +3102,28 @@ function animate() {
     }
   }
 
+  if (mouthPoints && mouthPointsMaterial) {
+    mouthPoints.visible = MOUTH_POINTS_ONLY_ENABLED ? true : mouthPointsVisibleLatched;
+    mouthPointsMaterial.uniforms.uTime.value = elapsed;
+    mouthPointsMaterial.uniforms.uTalk.value = AvatarState.talkLevel;
+    mouthPointsMaterial.uniforms.uRestOpen.value = 0.03;
+    mouthPointsMaterial.uniforms.uMouthPointsAlpha.value = window.MouthRenderTuning.pointsAlpha;
+    mouthPointsMaterial.uniforms.uMouthPointsAlphaClip.value = window.MouthRenderTuning.pointsAlphaClip;
+    mouthPointsMaterial.uniforms.uPointSizeNear.value = window.MouthRenderTuning.pointsSizeNear;
+    mouthPointsMaterial.uniforms.uPointSizeFar.value = window.MouthRenderTuning.pointsSizeFar;
+    mouthPointsMaterial.uniforms.uHeadRot.value.copy(mouthHeadRot);
+    mouthPointsMaterial.uniforms.uBodyRot.value.copy(mouthBodyRot);
+    mouthPointsMaterial.uniforms.uBodyOffset.value.set(0.0, mouthOffY, 0.0);
+    if (DEBUG_EDIT_ENABLED) {
+      const t = window.NeckTuning;
+      mouthPointsMaterial.uniforms.uNeckPivot.value.set(0.0, t.neckPivotY, 0.0);
+      mouthPointsMaterial.uniforms.uBodyPivot.value.set(0.0, t.bodyPivotY, 0.0);
+    }
+  }
+  if (particleSurfaceMesh) {
+    particleSurfaceMesh.visible = !MOUTH_POINTS_ONLY_ENABLED;
+  }
+
   if (particlePoints) {
     particlePoints.rotation.set(0, 0, 0);
     particlePoints.position.set(0, 0, 0);
@@ -2836,6 +3135,10 @@ function animate() {
   if (particleSurfaceMesh) {
     particleSurfaceMesh.rotation.set(0, 0, 0);
     particleSurfaceMesh.position.set(0, 0, 0);
+  }
+  if (mouthPoints) {
+    mouthPoints.rotation.set(0, 0, 0);
+    mouthPoints.position.set(0, 0, 0);
   }
 
   controls.update();
