@@ -16,6 +16,8 @@ const DEBUG_MOTION_ENABLED = DEBUG_MOTION_LEVEL >= 1;
 const DEBUG_MOTION_VERBOSE = DEBUG_MOTION_LEVEL >= 2;
 const DEBUG_MOTION_HUD_ENABLED = URL_PARAMS.get('debugMotionHud') === '1';
 const DEBUG_CONTROLS_ENABLED = URL_PARAMS.get('debugControls') === '1';
+const DEBUG_MOUTH_ENABLED = URL_PARAMS.get('debugMouth') === '1';
+const MOUTH_SOFT_EDGE_ENABLED = URL_PARAMS.get('mouthSoft') === '1';
 const FORCE_BLINK_ENABLED = URL_PARAMS.get('forceBlink') === '1';
 const FORCE_BLINK_DURATION_SEC = 2.0;
 const FREEZE_IN_EDIT = DEBUG_EDIT_ENABLED; // En ?debugEdit=1 congelamos motion/UI conversacional para ajustar handles con precisión.
@@ -103,25 +105,7 @@ const THEME_PRESETS = {
     saturation: 1.0,
     removeHeadCutCap: true,
     disableBackgroundArt: true,
-  },
-  realistic: {
-    // Tema realista: fondo blanco puro, sin arte de fondo ni capa de puntos.
-    background: 0xffffff,
-    particleColor: 0xffffff,
-    densityInMin: 0.0,
-    densityInMax: 1.0,
-    densityGamma: 1.0,
-    densityOutMin: 0.0,
-    densityOutMax: 1.0,
-    alphaGain: 1.0,
-    alphaClip: 0.0,
-    shadeMin: 1.0,
-    shadeMax: 1.0,
-    useTextureColor: true,
-    useLumaDensity: false,
-    saturation: 1.0,
-    removeHeadCutCap: true,
-    disableBackgroundArt: true,
+    useMouthInterior: true,
   },
 };
 
@@ -1085,6 +1069,212 @@ let particleSurfaceMesh = null;
 let headCutCapMesh = null;
 
 // =========================
+// MOUTH_INTERIOR
+// =========================
+const MOUTH_INTERIOR = {
+  WIDTH: 0.2,
+  HEIGHT: 0.14,
+  DEPTH_OFFSET: 0.016,
+  EXTRA_DEPTH: 0.01,
+  OPEN_MIN: 0.05,
+  OPEN_FADE: 0.15,
+  ALPHA_CLIP_STABLE: 0.3,
+  DARKEN_MIN: 0.6,
+  LOG_INTERVAL_MS: 500,
+};
+
+let mouthInteriorMesh = null;
+let mouthInteriorMaterial = null;
+let mouthInteriorDebugEl = null;
+let mouthInteriorLastLogAtMs = 0;
+let mouthInteriorLastHudAtMs = 0;
+
+const MOUTH_CENTER_TMP = new THREE.Vector3();
+const MOUTH_RIG_POS_TMP = new THREE.Vector3();
+const MOUTH_ROTATE_TMP = new THREE.Vector3();
+const MOUTH_RIG_EULER_TMP = new THREE.Euler(0, 0, 0, 'YXZ');
+const MOUTH_RIG_QUAT_TMP = new THREE.Quaternion();
+const MOUTH_BODY_PIVOT_TMP = new THREE.Vector3(0, 0, 0);
+const MOUTH_NECK_PIVOT_TMP = new THREE.Vector3(0, 0, 0);
+
+function createMouthInteriorTexture(size = 128) {
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+
+  const baseGrad = ctx.createRadialGradient(size * 0.5, size * 0.6, size * 0.05, size * 0.5, size * 0.6, size * 0.5);
+  baseGrad.addColorStop(0.0, '#120608');
+  baseGrad.addColorStop(0.42, '#1d070b');
+  baseGrad.addColorStop(1.0, '#351016');
+  ctx.fillStyle = baseGrad;
+  ctx.fillRect(0, 0, size, size);
+
+  const palateGrad = ctx.createLinearGradient(0, 0, 0, size);
+  palateGrad.addColorStop(0.0, 'rgba(145,40,55,0.34)');
+  palateGrad.addColorStop(0.55, 'rgba(90,20,31,0.0)');
+  ctx.fillStyle = palateGrad;
+  ctx.fillRect(0, 0, size, size);
+
+  const gloss = ctx.createRadialGradient(size * 0.5, size * 0.28, size * 0.01, size * 0.5, size * 0.28, size * 0.25);
+  gloss.addColorStop(0.0, 'rgba(255,175,188,0.16)');
+  gloss.addColorStop(1.0, 'rgba(255,175,188,0.0)');
+  ctx.fillStyle = gloss;
+  ctx.fillRect(0, 0, size, size);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.minFilter = THREE.LinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.generateMipmaps = false;
+  return tex;
+}
+
+function computeMouthCenterFromGeometry(geometry) {
+  const basePos = geometry?.getAttribute('aBasePosition');
+  const mouthWeight = geometry?.getAttribute('aMouthWeight');
+  if (!basePos || !mouthWeight) return null;
+
+  let sumW = 0;
+  let sx = 0;
+  let sy = 0;
+  let sz = 0;
+  for (let i = 0; i < mouthWeight.count; i++) {
+    const w = mouthWeight.array[i];
+    if (w < 0.3) continue;
+    const k = w * w;
+    const j = i * 3;
+    sx += basePos.array[j + 0] * k;
+    sy += basePos.array[j + 1] * k;
+    sz += basePos.array[j + 2] * k;
+    sumW += k;
+  }
+
+  if (sumW <= 1e-6) return null;
+  MOUTH_CENTER_TMP.set(sx / sumW, sy / sumW, sz / sumW);
+  return MOUTH_CENTER_TMP;
+}
+
+function createMouthInteriorMesh(geometry, renderOrder = 1) {
+  const center = computeMouthCenterFromGeometry(geometry);
+  if (!center) {
+    console.warn('[mouth-interior] No se pudo inferir mouth center.');
+    return null;
+  }
+
+  const mapTex = createMouthInteriorTexture();
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      uMap: { value: mapTex },
+      uOpen: { value: 0.0 },
+      uOpenMin: { value: MOUTH_INTERIOR.OPEN_MIN },
+      uOpenFade: { value: MOUTH_INTERIOR.OPEN_FADE },
+      uDarkenMin: { value: MOUTH_INTERIOR.DARKEN_MIN },
+      uFeather: { value: 0.06 },
+    },
+    vertexShader: /* glsl */ `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      precision highp float;
+      uniform sampler2D uMap;
+      uniform float uOpen;
+      uniform float uOpenMin;
+      uniform float uOpenFade;
+      uniform float uDarkenMin;
+      uniform float uFeather;
+      varying vec2 vUv;
+
+      void main() {
+        vec2 p = vUv * 2.0 - 1.0;
+        float open = clamp(uOpen, 0.0, 1.0);
+        float yScale = mix(0.28, 1.0, open);
+        vec2 e = vec2(p.x / 0.92, p.y / yScale);
+        float sdf = length(e) - 1.0;
+        float alphaShape = 1.0 - smoothstep(0.0, uFeather, sdf);
+        float alphaOpen = smoothstep(uOpenMin, uOpenFade, open);
+        float alpha = alphaShape * alphaOpen;
+        if (alpha <= 0.001) discard;
+        vec3 cavity = texture2D(uMap, vUv).rgb;
+        cavity *= mix(1.0, uDarkenMin, open);
+        gl_FragColor = vec4(cavity, alpha);
+      }
+    `,
+    side: THREE.DoubleSide,
+    transparent: MOUTH_SOFT_EDGE_ENABLED,
+    depthTest: true,
+    depthWrite: !MOUTH_SOFT_EDGE_ENABLED,
+  });
+  mat.alphaTest = MOUTH_SOFT_EDGE_ENABLED ? 0.0 : MOUTH_INTERIOR.ALPHA_CLIP_STABLE;
+  mat.polygonOffset = true;
+  mat.polygonOffsetFactor = 1;
+  mat.polygonOffsetUnits = 1;
+
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(MOUTH_INTERIOR.WIDTH, MOUTH_INTERIOR.HEIGHT, 1, 1), mat);
+  mesh.position.set(center.x, center.y, center.z - MOUTH_INTERIOR.DEPTH_OFFSET);
+  mesh.renderOrder = renderOrder;
+  mesh.visible = DEBUG_MOUTH_ENABLED;
+  if (DEBUG_MOUTH_ENABLED) {
+    mat.wireframe = true;
+  }
+
+  mesh.userData.basePosition = new THREE.Vector3(center.x, center.y, center.z);
+  mouthInteriorMaterial = mat;
+  return mesh;
+}
+
+function ensureMouthDebugOverlay() {
+  if (!DEBUG_MOUTH_ENABLED || mouthInteriorDebugEl) return;
+  const el = document.createElement('div');
+  el.style.position = 'fixed';
+  el.style.left = '12px';
+  el.style.bottom = '12px';
+  el.style.padding = '4px 8px';
+  el.style.background = 'rgba(0,0,0,0.72)';
+  el.style.color = '#a7f3d0';
+  el.style.fontFamily = 'monospace';
+  el.style.fontSize = '12px';
+  el.style.zIndex = '9';
+  el.textContent = 'mouthOpen: 0.00';
+  document.body.appendChild(el);
+  mouthInteriorDebugEl = el;
+}
+
+function updateMouthInteriorRig(headRot, bodyRot, bodyOffsetY) {
+  if (!mouthInteriorMesh) return;
+  const base = mouthInteriorMesh.userData.basePosition;
+  if (!base) return;
+  const t = window.NeckTuning || { neckPivotY: -0.53, bodyPivotY: -0.65 };
+  const open = mouthInteriorMaterial ? mouthInteriorMaterial.uniforms.uOpen.value : 0.0;
+  const depth = MOUTH_INTERIOR.DEPTH_OFFSET + open * MOUTH_INTERIOR.EXTRA_DEPTH;
+
+  MOUTH_RIG_POS_TMP.copy(base);
+  MOUTH_RIG_POS_TMP.z = base.z - depth;
+  MOUTH_RIG_POS_TMP.y += bodyOffsetY;
+
+  MOUTH_BODY_PIVOT_TMP.set(0.0, t.bodyPivotY, 0.0);
+  MOUTH_NECK_PIVOT_TMP.set(0.0, t.neckPivotY, 0.0);
+
+  MOUTH_ROTATE_TMP.copy(MOUTH_RIG_POS_TMP).sub(MOUTH_BODY_PIVOT_TMP);
+  MOUTH_RIG_EULER_TMP.set(bodyRot.x, bodyRot.y, bodyRot.z);
+  MOUTH_RIG_QUAT_TMP.setFromEuler(MOUTH_RIG_EULER_TMP);
+  MOUTH_ROTATE_TMP.applyQuaternion(MOUTH_RIG_QUAT_TMP).add(MOUTH_BODY_PIVOT_TMP);
+
+  MOUTH_ROTATE_TMP.sub(MOUTH_NECK_PIVOT_TMP);
+  MOUTH_RIG_EULER_TMP.set(headRot.x, headRot.y, headRot.z);
+  MOUTH_RIG_QUAT_TMP.setFromEuler(MOUTH_RIG_EULER_TMP);
+  MOUTH_ROTATE_TMP.applyQuaternion(MOUTH_RIG_QUAT_TMP).add(MOUTH_NECK_PIVOT_TMP);
+
+  mouthInteriorMesh.position.copy(MOUTH_ROTATE_TMP);
+  mouthInteriorMesh.rotation.set(headRot.x + bodyRot.x, headRot.y + bodyRot.y, headRot.z + bodyRot.z);
+}
+
+// =========================
 // Bloque temático "realistic"
 // - Concentrado en esta sección para activar/desactivar fácil.
 // =========================
@@ -1688,6 +1878,15 @@ loader.load(
     if (particlePoints) scene.add(particlePoints);
     if (particlePointsDetail) scene.add(particlePointsDetail);
     if (particleSurfaceMesh) scene.add(particleSurfaceMesh);
+
+    if (isRealisticTheme && activeTheme.useMouthInterior) {
+      const renderBase = (particleSurfaceMesh || particlePoints || particlePointsDetail)?.renderOrder ?? 2;
+      mouthInteriorMesh = createMouthInteriorMesh(particlesGeometryRef, renderBase - 1);
+      if (mouthInteriorMesh) {
+        scene.add(mouthInteriorMesh);
+        ensureMouthDebugOverlay();
+      }
+    }
 
     controls.target.set(0, 0.15, 0);
     controls.update();
@@ -2784,6 +2983,7 @@ function animate() {
       body.y + microYaw * 0.25,
       body.z + microRoll * 0.25,
     );
+    const mouthOpen = clamp01(AvatarState.talkLevel);
     const headRotMag = headRot.length();
     reportMotionFrameDebug({
       elapsed,
@@ -2821,6 +3021,32 @@ function animate() {
         const t = window.NeckTuning;
         mat.uniforms.uNeckPivot.value.set(0.0, t.neckPivotY, 0.0);
         mat.uniforms.uBodyPivot.value.set(0.0, t.bodyPivotY, 0.0);
+      }
+    }
+
+    if (mouthInteriorMaterial && mouthInteriorMesh) {
+      mouthInteriorMaterial.uniforms.uOpen.value = mouthOpen;
+      mouthInteriorMesh.visible = DEBUG_MOUTH_ENABLED || mouthOpen > MOUTH_INTERIOR.OPEN_MIN;
+      updateMouthInteriorRig(headRot, bodyRot, offY);
+
+      if (DEBUG_MOUTH_ENABLED) {
+        const nowMs = performance.now();
+        if (mouthInteriorDebugEl && nowMs - mouthInteriorLastHudAtMs >= MOUTH_INTERIOR.LOG_INTERVAL_MS) {
+          mouthInteriorLastHudAtMs = nowMs;
+          mouthInteriorDebugEl.textContent = `mouthOpen: ${mouthOpen.toFixed(2)}`;
+        }
+        if (nowMs - mouthInteriorLastLogAtMs >= MOUTH_INTERIOR.LOG_INTERVAL_MS) {
+          mouthInteriorLastLogAtMs = nowMs;
+          console.info('[mouth-interior] debug', {
+            mouthOpen: Number(mouthOpen.toFixed(3)),
+            visible: mouthInteriorMesh.visible,
+            pos: {
+              x: Number(mouthInteriorMesh.position.x.toFixed(3)),
+              y: Number(mouthInteriorMesh.position.y.toFixed(3)),
+              z: Number(mouthInteriorMesh.position.z.toFixed(3)),
+            },
+          });
+        }
       }
     }
   }
