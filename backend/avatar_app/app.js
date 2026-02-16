@@ -21,6 +21,7 @@ const DEBUG_MOUTH_CUT_ENABLED = URL_PARAMS.get('debugMouthCut') === '1';
 const MOUTH_SOFT_EDGE_ENABLED = URL_PARAMS.get('mouthSoft') === '1';
 const FORCE_TALK_LEVEL_RAW = URL_PARAMS.get('forceTalk');
 const FORCE_TALK_LEVEL = FORCE_TALK_LEVEL_RAW != null ? Number.parseFloat(FORCE_TALK_LEVEL_RAW) : null;
+const DEBUG_EDIT_FORCE_TALK = resolveNumberParam('debugEditForceTalk', 0.85);
 const FORCE_BLINK_ENABLED = URL_PARAMS.get('forceBlink') === '1';
 const NEW_BOX_ENABLED = URL_PARAMS.get('newbox') === '1';
 const FORCE_BLINK_DURATION_SEC = 2.0;
@@ -404,6 +405,18 @@ window.MouthTuning = window.MouthTuning || {
   width: 0.18,     // ancho de la región de boca
   height: 0.14,    // alto máximo (labios + hueco)
   curve: 0.0,      // curvatura en U (0 = recto)
+};
+
+window.MouthCutTuning = window.MouthCutTuning || {
+  centerX: -0.045,
+  centerY: 0.14,
+  width: 0.07,
+  height: 0.032,
+  openMin: 0.05,
+  openFade: 0.15,
+  innerScaleX: 0.95,
+  innerScaleYMin: 0.30,
+  innerScaleYMax: 1.10,
 };
 
 window.EyeBlinkTuning = window.EyeBlinkTuning || {
@@ -1120,29 +1133,61 @@ const MOUTH_INTERIOR = {
 const MOUTH_CUTOUT = {
   OPEN_MIN: 0.05,
   OPEN_FADE: 0.15,
-  HOLE_INNER_SCALE_X: 0.78,
-  HOLE_INNER_SCALE_Y_MIN: 0.20,
-  HOLE_INNER_SCALE_Y_MAX: 0.95,
+  HOLE_INNER_SCALE_X: 0.95,
+  HOLE_INNER_SCALE_Y_MIN: 0.30,
+  HOLE_INNER_SCALE_Y_MAX: 1.10,
 };
+
+let _mouthCutLogPending = false;
+
+function logMouthCutTuning(reason = 'update') {
+  const t = window.MouthCutTuning;
+  console.info(`[mouth-cut] ${reason}`, {
+    centerX: t.centerX,
+    centerY: t.centerY,
+    width: t.width,
+    height: t.height,
+    openMin: t.openMin,
+    openFade: t.openFade,
+    innerScaleX: t.innerScaleX,
+    innerScaleYMin: t.innerScaleYMin,
+    innerScaleYMax: t.innerScaleYMax,
+  });
+  console.log('[mouth-cut] Pega esto en app.js:\nwindow.MouthCutTuning = ' + JSON.stringify(t, null, 2) + ';');
+}
+
+function scheduleLogMouthCutTuning(reason = 'update') {
+  if (_mouthCutLogPending) return;
+  _mouthCutLogPending = true;
+  requestAnimationFrame(() => {
+    _mouthCutLogPending = false;
+    logMouthCutTuning(reason);
+  });
+}
 
 function applyMouthCutoutUniforms(mat, mouthOpen) {
   if (!mat?.uniforms?.uMouthOpen) return;
-  const mouthTuning = window.MouthTuning || {
+  const mouthCutTuning = window.MouthCutTuning || {
     centerX: -0.045,
-    centerY: 0.16,
-    width: 0.18,
-    height: 0.14,
+    centerY: 0.14,
+    width: 0.07,
+    height: 0.032,
+    openMin: 0.05,
+    openFade: 0.15,
+    innerScaleX: 0.95,
+    innerScaleYMin: 0.30,
+    innerScaleYMax: 1.10,
   };
 
   mat.uniforms.uMouthCutEnabled.value = (isRealisticTheme && activeTheme.useMouthInterior) ? 1.0 : 0.0;
   mat.uniforms.uMouthOpen.value = mouthOpen;
-  mat.uniforms.uMouthCenter.value.set(mouthTuning.centerX, mouthTuning.centerY);
-  mat.uniforms.uMouthSize.value.set(Math.max(1e-4, Math.abs(mouthTuning.width)), Math.max(1e-4, Math.abs(mouthTuning.height)));
-  mat.uniforms.uMouthOpenMin.value = MOUTH_CUTOUT.OPEN_MIN;
-  mat.uniforms.uMouthOpenFade.value = MOUTH_CUTOUT.OPEN_FADE;
-  mat.uniforms.uMouthHoleInnerX.value = MOUTH_CUTOUT.HOLE_INNER_SCALE_X;
-  mat.uniforms.uMouthHoleInnerYMin.value = MOUTH_CUTOUT.HOLE_INNER_SCALE_Y_MIN;
-  mat.uniforms.uMouthHoleInnerYMax.value = MOUTH_CUTOUT.HOLE_INNER_SCALE_Y_MAX;
+  mat.uniforms.uMouthCenter.value.set(mouthCutTuning.centerX, mouthCutTuning.centerY);
+  mat.uniforms.uMouthSize.value.set(Math.max(1e-4, Math.abs(mouthCutTuning.width)), Math.max(1e-4, Math.abs(mouthCutTuning.height)));
+  mat.uniforms.uMouthOpenMin.value = mouthCutTuning.openMin ?? MOUTH_CUTOUT.OPEN_MIN;
+  mat.uniforms.uMouthOpenFade.value = mouthCutTuning.openFade ?? MOUTH_CUTOUT.OPEN_FADE;
+  mat.uniforms.uMouthHoleInnerX.value = mouthCutTuning.innerScaleX ?? MOUTH_CUTOUT.HOLE_INNER_SCALE_X;
+  mat.uniforms.uMouthHoleInnerYMin.value = mouthCutTuning.innerScaleYMin ?? MOUTH_CUTOUT.HOLE_INNER_SCALE_Y_MIN;
+  mat.uniforms.uMouthHoleInnerYMax.value = mouthCutTuning.innerScaleYMax ?? MOUTH_CUTOUT.HOLE_INNER_SCALE_Y_MAX;
   mat.uniforms.uDebugMouthCut.value = DEBUG_MOUTH_CUT_ENABLED ? 1.0 : 0.0;
 }
 
@@ -1844,13 +1889,13 @@ loader.load(
         uDissolveMotionAmp: { value: 1.0 },
         uMouthCutEnabled: { value: 0.0 },
         uMouthOpen: { value: 0.0 },
-        uMouthCenter: { value: new THREE.Vector2(window.MouthTuning.centerX, window.MouthTuning.centerY) },
-        uMouthSize: { value: new THREE.Vector2(window.MouthTuning.width, window.MouthTuning.height) },
-        uMouthOpenMin: { value: MOUTH_CUTOUT.OPEN_MIN },
-        uMouthOpenFade: { value: MOUTH_CUTOUT.OPEN_FADE },
-        uMouthHoleInnerX: { value: MOUTH_CUTOUT.HOLE_INNER_SCALE_X },
-        uMouthHoleInnerYMin: { value: MOUTH_CUTOUT.HOLE_INNER_SCALE_Y_MIN },
-        uMouthHoleInnerYMax: { value: MOUTH_CUTOUT.HOLE_INNER_SCALE_Y_MAX },
+        uMouthCenter: { value: new THREE.Vector2(window.MouthCutTuning.centerX, window.MouthCutTuning.centerY) },
+        uMouthSize: { value: new THREE.Vector2(window.MouthCutTuning.width, window.MouthCutTuning.height) },
+        uMouthOpenMin: { value: window.MouthCutTuning.openMin ?? MOUTH_CUTOUT.OPEN_MIN },
+        uMouthOpenFade: { value: window.MouthCutTuning.openFade ?? MOUTH_CUTOUT.OPEN_FADE },
+        uMouthHoleInnerX: { value: window.MouthCutTuning.innerScaleX ?? MOUTH_CUTOUT.HOLE_INNER_SCALE_X },
+        uMouthHoleInnerYMin: { value: window.MouthCutTuning.innerScaleYMin ?? MOUTH_CUTOUT.HOLE_INNER_SCALE_Y_MIN },
+        uMouthHoleInnerYMax: { value: window.MouthCutTuning.innerScaleYMax ?? MOUTH_CUTOUT.HOLE_INNER_SCALE_Y_MAX },
         uDebugMouthCut: { value: DEBUG_MOUTH_CUT_ENABLED ? 1.0 : 0.0 },
 
         uTime: { value: 0.0 },
@@ -1929,13 +1974,13 @@ loader.load(
           uDebugHeadWeight: { value: DebugView.headWeight ? 1.0 : 0.0 },
           uMouthCutEnabled: { value: 0.0 },
           uMouthOpen: { value: 0.0 },
-          uMouthCenter: { value: new THREE.Vector2(window.MouthTuning.centerX, window.MouthTuning.centerY) },
-          uMouthSize: { value: new THREE.Vector2(window.MouthTuning.width, window.MouthTuning.height) },
-          uMouthOpenMin: { value: MOUTH_CUTOUT.OPEN_MIN },
-          uMouthOpenFade: { value: MOUTH_CUTOUT.OPEN_FADE },
-          uMouthHoleInnerX: { value: MOUTH_CUTOUT.HOLE_INNER_SCALE_X },
-          uMouthHoleInnerYMin: { value: MOUTH_CUTOUT.HOLE_INNER_SCALE_Y_MIN },
-          uMouthHoleInnerYMax: { value: MOUTH_CUTOUT.HOLE_INNER_SCALE_Y_MAX },
+          uMouthCenter: { value: new THREE.Vector2(window.MouthCutTuning.centerX, window.MouthCutTuning.centerY) },
+          uMouthSize: { value: new THREE.Vector2(window.MouthCutTuning.width, window.MouthCutTuning.height) },
+          uMouthOpenMin: { value: window.MouthCutTuning.openMin ?? MOUTH_CUTOUT.OPEN_MIN },
+          uMouthOpenFade: { value: window.MouthCutTuning.openFade ?? MOUTH_CUTOUT.OPEN_FADE },
+          uMouthHoleInnerX: { value: window.MouthCutTuning.innerScaleX ?? MOUTH_CUTOUT.HOLE_INNER_SCALE_X },
+          uMouthHoleInnerYMin: { value: window.MouthCutTuning.innerScaleYMin ?? MOUTH_CUTOUT.HOLE_INNER_SCALE_Y_MIN },
+          uMouthHoleInnerYMax: { value: window.MouthCutTuning.innerScaleYMax ?? MOUTH_CUTOUT.HOLE_INNER_SCALE_Y_MAX },
           uDebugMouthCut: { value: DEBUG_MOUTH_CUT_ENABLED ? 1.0 : 0.0 },
         },
       });
@@ -3090,9 +3135,12 @@ function animate() {
       body.y + microYaw * 0.25,
       body.z + microRoll * 0.25,
     );
-    const mouthOpen = FORCE_TALK_LEVEL == null || Number.isNaN(FORCE_TALK_LEVEL)
+    const forcedTalkLevel = (FORCE_TALK_LEVEL == null || Number.isNaN(FORCE_TALK_LEVEL))
+      ? (DEBUG_EDIT_ENABLED ? DEBUG_EDIT_FORCE_TALK : null)
+      : FORCE_TALK_LEVEL;
+    const mouthOpen = forcedTalkLevel == null
       ? clamp01(AvatarState.talkLevel)
-      : clamp01(FORCE_TALK_LEVEL);
+      : clamp01(forcedTalkLevel);
     const headRotMag = headRot.length();
     reportMotionFrameDebug({
       elapsed,
@@ -3763,9 +3811,10 @@ function initNeckEditorOverlay() {
     <div style="margin-top:6px; opacity:.9">
       <div><span style="color:#ff6b6b">■</span> Neck: <b>center</b>, <b>top</b>, <b>bottom</b>, <b>left</b>, <b>right</b>, <b>curve</b>, <b>neckPivot</b>, <b>bodyPivot</b></div>
       <div style="margin-top:4px;"><span style="color:#67e8f9">■</span> Mouth: <b>mouth_center</b>, <b>mouth_left</b>, <b>mouth_right</b>, <b>mouth_top</b>, <b>mouth_bottom</b>, <b>mouth_curve</b></div>
+      <div style="margin-top:4px;"><span style="color:#f0abfc">■</span> MouthCut: <b>mouthcut_center</b>, <b>mouthcut_left</b>, <b>mouthcut_right</b>, <b>mouthcut_top</b>, <b>mouthcut_bottom</b></div>
       <div style="margin-top:4px;"><span style="color:#fde047">■</span> Blink: <b>eye_*_center</b> + <b>eye_*_upper/lower_(left|center|right)</b> + <b>eye_*_rotate</b></div>
     </div>
-    <div style="margin-top:8px; opacity:.85">Cada cambio imprime JSON en consola (neck, mouth y blink).</div>
+    <div style="margin-top:8px; opacity:.85">Cada cambio imprime JSON en consola (neck, mouth, mouth-cut y blink).</div>
   `;
   document.body.appendChild(info);
   NeckEditor.infoEl = info;
@@ -3830,6 +3879,10 @@ function getHandlesModel() {
   const mCurveX = m.centerX + mwAbs;
   const mCurveY = m.centerY - m.curve;
 
+  const mc = window.MouthCutTuning;
+  const mcwAbs = Math.max(1e-6, Math.abs(mc.width));
+  const mchAbs = Math.max(1e-6, Math.abs(mc.height));
+
   return {
     center: { x: t.centerX, y: midY },
     top: { x: t.centerX, y: t.topY },
@@ -3846,6 +3899,12 @@ function getHandlesModel() {
     mouth_top: { x: m.centerX, y: m.centerY + mhAbs },
     mouth_bottom: { x: m.centerX, y: m.centerY - mhAbs },
     mouth_curve: { x: mCurveX, y: mCurveY },
+
+    mouthcut_center: { x: mc.centerX, y: mc.centerY },
+    mouthcut_left: { x: mc.centerX - mcwAbs, y: mc.centerY },
+    mouthcut_right: { x: mc.centerX + mcwAbs, y: mc.centerY },
+    mouthcut_top: { x: mc.centerX, y: mc.centerY + mchAbs },
+    mouthcut_bottom: { x: mc.centerX, y: mc.centerY - mchAbs },
 
     eye_left_center: { x: window.EyeBlinkTuning.left.centerX, y: window.EyeBlinkTuning.left.centerY },
     eye_left_upper_left: getEyeHandlePoint('left', 'upper', 'left'),
@@ -3917,6 +3976,48 @@ function pickHandle(clientX, clientY) {
 
 function applyDrag(key, worldPoint, startPoint, startNeckTuning, startMouthTuning, startEyeBlinkTuning) {
   const minBand = 1e-4;
+
+  if (key.startsWith('mouthcut_')) {
+    const mc = window.MouthCutTuning;
+    const startMc = startMouthTuning.__mouthCut || window.MouthCutTuning;
+
+    if (key === 'mouthcut_center') {
+      const dx = worldPoint.x - startPoint.x;
+      const dy = worldPoint.y - startPoint.y;
+      mc.centerX = startMc.centerX + dx;
+      mc.centerY = startMc.centerY + dy;
+      scheduleLogMouthCutTuning(`drag:${key}`);
+      return;
+    }
+
+    if (key === 'mouthcut_left') {
+      const w = startMc.centerX - worldPoint.x;
+      mc.width = Math.max(1e-6, Math.abs(w));
+      scheduleLogMouthCutTuning(`drag:${key}`);
+      return;
+    }
+
+    if (key === 'mouthcut_right') {
+      const w = worldPoint.x - startMc.centerX;
+      mc.width = Math.max(1e-6, Math.abs(w));
+      scheduleLogMouthCutTuning(`drag:${key}`);
+      return;
+    }
+
+    if (key === 'mouthcut_top') {
+      const h = worldPoint.y - startMc.centerY;
+      mc.height = Math.max(1e-6, Math.abs(h));
+      scheduleLogMouthCutTuning(`drag:${key}`);
+      return;
+    }
+
+    if (key === 'mouthcut_bottom') {
+      const h = startMc.centerY - worldPoint.y;
+      mc.height = Math.max(1e-6, Math.abs(h));
+      scheduleLogMouthCutTuning(`drag:${key}`);
+      return;
+    }
+  }
 
   if (key.startsWith('brow_') || key.startsWith('eye_marker_')) {
     const t = getBrowsDebugTuning();
@@ -4089,7 +4190,7 @@ function onNeckEditorDown(e) {
     key,
     startPoint: p,
     startNeckTuning: { ...window.NeckTuning },
-    startMouthTuning: { ...window.MouthTuning },
+    startMouthTuning: { ...window.MouthTuning, __mouthCut: { ...window.MouthCutTuning } },
     startEyeBlinkTuning: JSON.parse(JSON.stringify(window.EyeBlinkTuning)),
   };
 
@@ -4119,6 +4220,7 @@ function onNeckEditorUp() {
   NeckEditor.dragging = null;
   controls.enabled = true;
   if (draggedKey.startsWith('eye_')) logEyeBlinkTuning(`drag:${draggedKey}`);
+  if (draggedKey.startsWith('mouthcut_')) logMouthCutTuning(`drag:${draggedKey}`);
   if (draggedKey.startsWith('brow_') || draggedKey.startsWith('eye_marker_')) {
     console.info('[brows-debug-editor] update', window.BrowsDebugTuning);
     console.log('[brows-debug-editor] Pega esto en app.js\nwindow.BrowsDebugTuning = ' + JSON.stringify(window.BrowsDebugTuning, null, 2) + ';');
@@ -4305,6 +4407,44 @@ function drawNeckEditorOverlay() {
   }
 
   // =========================
+  // MOUTH CUTOUT REGION (magenta)
+  // =========================
+  {
+    const mc = window.MouthCutTuning;
+    const wAbs = Math.max(1e-6, Math.abs(mc.width));
+    const hAbs = Math.max(1e-6, Math.abs(mc.height));
+
+    const c = screenProject(mc.centerX, mc.centerY, 0);
+    const l = screenProject(mc.centerX - wAbs, mc.centerY, 0);
+    const r = screenProject(mc.centerX + wAbs, mc.centerY, 0);
+    const t = screenProject(mc.centerX, mc.centerY + hAbs, 0);
+    const b = screenProject(mc.centerX, mc.centerY - hAbs, 0);
+
+    const rx = Math.max(2.0, Math.abs(r.x - c.x));
+    const ry = Math.max(2.0, Math.abs(t.y - c.y));
+
+    ctx.save();
+    ctx.strokeStyle = 'rgba(240,171,252,0.95)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    if (ctx.ellipse) {
+      ctx.ellipse(c.x, c.y, rx, ry, 0, 0, Math.PI * 2);
+    } else {
+      ctx.arc(c.x, c.y, Math.max(rx, ry), 0, Math.PI * 2);
+    }
+    ctx.stroke();
+
+    ctx.setLineDash([5, 4]);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(l.x, l.y); ctx.lineTo(r.x, r.y);
+    ctx.moveTo(t.x, t.y); ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  // =========================
   // EYES (amarillo / verde)
   // =========================
   {
@@ -4369,6 +4509,7 @@ function drawNeckEditorOverlay() {
     const s = screenProject(handles[key].x, handles[key].y, 0);
 
     const isMouth = key.startsWith('mouth_');
+    const isMouthCut = key.startsWith('mouthcut_');
     const isEye = key.startsWith('eye_');
     const isBrow = key.startsWith('brow_');
     const isEyeMarker = key.startsWith('eye_marker_');
@@ -4377,6 +4518,7 @@ function drawNeckEditorOverlay() {
 
     let color = 'rgba(255,0,0,0.95)';
     if (isMouth) color = 'rgba(103,232,249,0.95)';
+    else if (isMouthCut) color = 'rgba(240,171,252,0.95)';
     else if (isEye && key.startsWith('eye_left')) color = 'rgba(253,224,71,0.95)';
     else if (isEye && key.startsWith('eye_right')) color = 'rgba(34,197,94,0.95)';
     else if (isBrow) color = 'rgba(34,197,94,0.95)';
