@@ -20,6 +20,7 @@ const DEBUG_MOUTH_ENABLED = URL_PARAMS.get('debugMouth') === '1';
 const DEBUG_MOUTH_CUT_ENABLED = URL_PARAMS.get('debugMouthCut') === '1';
 const MOUTH_SOFT_EDGE_ENABLED = URL_PARAMS.get('mouthSoft') === '1';
 const MOUTH_TOPO_CUT_ENABLED = URL_PARAMS.get('mouthTopoCut') !== '0';
+const MOUTH_CUT_MODE_OVERRIDE = (URL_PARAMS.get('mouthCutMode') || 'auto').trim().toLowerCase();
 const FORCE_TALK_LEVEL_RAW = URL_PARAMS.get('forceTalk');
 const FORCE_TALK_LEVEL = FORCE_TALK_LEVEL_RAW != null ? Number.parseFloat(FORCE_TALK_LEVEL_RAW) : null;
 const DEBUG_EDIT_FORCE_TALK = resolveNumberParam('debugEditForceTalk', 0.85);
@@ -435,7 +436,15 @@ window.MouthRealisticTuning = window.MouthRealisticTuning || {
 window.MouthSplitTuning = window.MouthSplitTuning || {
   corridorWidthScale: 1.08,
   lineHalfThicknessScale: 0.14,
+  closedLineHalfThicknessScale: 0.0,
+  closedThicknessMinAbs: 0.00045,
+  openLineHalfThicknessScale: 0.14,
   edgeFeather: 0.004,
+  closedEdgeFeather: 0.00008,
+  openTrigger: 0.085,
+  closeTrigger: 0.055,
+  openDeltaEpsilon: 0.03,
+  minRebuildIntervalMs: 180,
 };
 
 window.EyeBlinkTuning = window.EyeBlinkTuning || {
@@ -491,6 +500,16 @@ let mouthSideAttrRef = null;
 
 let realisticSourceGeometryRef = null;
 let _realisticRebuildPending = false;
+
+const RealisticMouthCutRuntime = {
+  open: 0.0,
+  mode: 'closed',
+  lastAppliedOpen: 0.0,
+  lastRebuildAtMs: 0,
+  effectiveThickness: 0.0,
+  effectiveFeather: 0.0,
+  lastDebugLogAtMs: 0,
+};
 
 // =========================
 // JS smoothstep (una sola vez)
@@ -1418,6 +1437,82 @@ function updateMouthInteriorRig(headRot, bodyRot, bodyOffsetY) {
 // - Concentrado en esta sección para activar/desactivar fácil.
 // - En realistic quitamos capas legacy (cutout/interior); solo topología cortada + movimiento de labios.
 // =========================
+function resolveRealisticCutParams(openValue, mode, splitTuning = window.MouthSplitTuning, mouthTuning = window.MouthTuning) {
+  const hAbs = Math.max(1e-6, Math.abs(mouthTuning.height));
+  const closedScale = splitTuning.closedLineHalfThicknessScale ?? 0.0;
+  const talkScale = splitTuning.openLineHalfThicknessScale ?? splitTuning.lineHalfThicknessScale ?? 0.14;
+  const closedMinAbs = Math.max(1e-6, splitTuning.closedThicknessMinAbs ?? 0.00045);
+
+  const closedThickness = Math.max(closedMinAbs, hAbs * Math.max(0.0, closedScale));
+  const talkThickness = Math.max(closedThickness, hAbs * Math.max(0.0, talkScale));
+
+  const open = THREE.MathUtils.clamp(openValue, 0.0, 1.0);
+  const blend = mode === 'open' ? open : 0.0;
+  const effectiveThickness = THREE.MathUtils.lerp(closedThickness, talkThickness, blend);
+
+  const closedFeather = Math.max(1e-6, splitTuning.closedEdgeFeather ?? 0.00008);
+  const talkFeather = Math.max(closedFeather, splitTuning.edgeFeather ?? 0.004);
+  const effectiveFeather = THREE.MathUtils.lerp(closedFeather, talkFeather, blend);
+
+  return {
+    open,
+    effectiveThickness,
+    effectiveFeather,
+    closedThickness,
+    talkThickness,
+  };
+}
+
+function maybeUpdateRealisticMouthCutState(mouthOpen) {
+  if (!isRealisticTheme || !MOUTH_TOPO_CUT_ENABLED) return;
+
+  const split = window.MouthSplitTuning || {};
+  const nowMs = performance.now();
+  const open = THREE.MathUtils.clamp(mouthOpen, 0.0, 1.0);
+  const openTrigger = split.openTrigger ?? 0.085;
+  const closeTrigger = split.closeTrigger ?? 0.055;
+  const minRebuildIntervalMs = split.minRebuildIntervalMs ?? 180;
+  const openDeltaEpsilon = split.openDeltaEpsilon ?? 0.03;
+
+  let desiredMode = RealisticMouthCutRuntime.mode;
+  if (MOUTH_CUT_MODE_OVERRIDE === 'open') desiredMode = 'open';
+  else if (MOUTH_CUT_MODE_OVERRIDE === 'closed') desiredMode = 'closed';
+  else desiredMode = RealisticMouthCutRuntime.mode === 'open'
+    ? (open <= closeTrigger ? 'closed' : 'open')
+    : (open >= openTrigger ? 'open' : 'closed');
+
+  const { effectiveThickness, effectiveFeather } = resolveRealisticCutParams(open, desiredMode, split, window.MouthTuning);
+  RealisticMouthCutRuntime.open = open;
+  RealisticMouthCutRuntime.effectiveThickness = effectiveThickness;
+  RealisticMouthCutRuntime.effectiveFeather = effectiveFeather;
+
+  const elapsedSinceRebuild = nowMs - RealisticMouthCutRuntime.lastRebuildAtMs;
+  const canRebuild = elapsedSinceRebuild >= minRebuildIntervalMs;
+  const modeChanged = desiredMode !== RealisticMouthCutRuntime.mode;
+  const openDelta = Math.abs(open - RealisticMouthCutRuntime.lastAppliedOpen);
+
+  if (modeChanged && canRebuild) {
+    RealisticMouthCutRuntime.mode = desiredMode;
+    scheduleRebuildRealisticSurfaceGeometry(`mouthCutMode:${desiredMode}`);
+  } else if (desiredMode === 'open' && openDelta >= openDeltaEpsilon && canRebuild) {
+    RealisticMouthCutRuntime.mode = desiredMode;
+    scheduleRebuildRealisticSurfaceGeometry('mouthCutOpenDelta');
+  } else {
+    RealisticMouthCutRuntime.mode = desiredMode;
+  }
+
+  if (DEBUG_MOUTH_ENABLED && nowMs - RealisticMouthCutRuntime.lastDebugLogAtMs >= 600) {
+    RealisticMouthCutRuntime.lastDebugLogAtMs = nowMs;
+    console.info('[mouth-topocut] state', {
+      mode: RealisticMouthCutRuntime.mode,
+      open: Number(open.toFixed(3)),
+      effectiveThickness: Number(effectiveThickness.toFixed(5)),
+      effectiveFeather: Number(effectiveFeather.toFixed(5)),
+      override: MOUTH_CUT_MODE_OVERRIDE,
+    });
+  }
+}
+
 function mouthLineSignedDistance(x, y, tuning = window.MouthTuning) {
   const wAbs = Math.max(1e-6, Math.abs(tuning.width));
   const nx = THREE.MathUtils.clamp((x - tuning.centerX) / wAbs, -1.0, 1.0);
@@ -1436,8 +1531,9 @@ function carveMouthTopologyByMouthLine(srcGeometry) {
   const mt = window.MouthTuning;
   const split = window.MouthSplitTuning || {};
   const corridorHalfWidth = Math.max(1e-4, Math.abs(mt.width) * (split.corridorWidthScale ?? 1.08));
-  const lineHalfThickness = Math.max(1e-4, Math.abs(mt.height) * (split.lineHalfThicknessScale ?? 0.14));
-  const edgeFeather = Math.max(0.0, split.edgeFeather ?? 0.004);
+  const cut = resolveRealisticCutParams(RealisticMouthCutRuntime.open, RealisticMouthCutRuntime.mode, split, mt);
+  const lineHalfThickness = cut.effectiveThickness;
+  const edgeFeather = cut.effectiveFeather;
 
   const keptPos = [];
   const keptUv = [];
@@ -1463,13 +1559,24 @@ function carveMouthTopologyByMouthLine(srcGeometry) {
       const d0 = mouthLineSignedDistance(x0, y0, mt);
       const d1 = mouthLineSignedDistance(x1, y1, mt);
       const d2 = mouthLineSignedDistance(x2, y2, mt);
+      const d01 = mouthLineSignedDistance((x0 + x1) * 0.5, (y0 + y1) * 0.5, mt);
+      const d12 = mouthLineSignedDistance((x1 + x2) * 0.5, (y1 + y2) * 0.5, mt);
+      const d20 = mouthLineSignedDistance((x2 + x0) * 0.5, (y2 + y0) * 0.5, mt);
+      const dC = mouthLineSignedDistance((x0 + x1 + x2) / 3.0, (y0 + y1 + y2) / 3.0, mt);
+      const samples = [d0, d1, d2, d01, d12, d20, dC];
 
-      const hasUpper = (d0 > edgeFeather) || (d1 > edgeFeather) || (d2 > edgeFeather);
-      const hasLower = (d0 < -edgeFeather) || (d1 < -edgeFeather) || (d2 < -edgeFeather);
+      let hasUpper = false;
+      let hasLower = false;
+      let minAbsDist = Number.POSITIVE_INFINITY;
+      for (const d of samples) {
+        if (d > edgeFeather) hasUpper = true;
+        if (d < -edgeFeather) hasLower = true;
+        const ad = Math.abs(d);
+        if (ad < minAbsDist) minAbsDist = ad;
+      }
+
       const crossesLine = hasUpper && hasLower;
-      const minAbsDist = Math.min(Math.abs(d0), Math.abs(d1), Math.abs(d2));
       const touchesCutBand = minAbsDist <= lineHalfThickness;
-
       dropTriangle = crossesLine || touchesCutBand;
     }
 
@@ -1493,14 +1600,19 @@ function carveMouthTopologyByMouthLine(srcGeometry) {
   if (uvAttr && keptUv.length > 0) carved.setAttribute('uv', new THREE.Float32BufferAttribute(keptUv, 2));
   carved.computeVertexNormals();
 
-  console.info('[mouth-topocut] carve result', {
-    enabled: MOUTH_TOPO_CUT_ENABLED,
-    trianglesIn: triCount,
-    trianglesOut: Math.floor(keptPos.length / 9),
-    trianglesRemoved: removedTriangles,
-    corridorHalfWidth: Number(corridorHalfWidth.toFixed(4)),
-    lineHalfThickness: Number(lineHalfThickness.toFixed(4)),
-  });
+  if (DEBUG_MOUTH_ENABLED) {
+    console.info('[mouth-topocut] carve result', {
+      enabled: MOUTH_TOPO_CUT_ENABLED,
+      mode: RealisticMouthCutRuntime.mode,
+      open: Number(RealisticMouthCutRuntime.open.toFixed(3)),
+      trianglesIn: triCount,
+      trianglesOut: Math.floor(keptPos.length / 9),
+      trianglesRemoved: removedTriangles,
+      corridorHalfWidth: Number(corridorHalfWidth.toFixed(4)),
+      lineHalfThickness: Number(lineHalfThickness.toFixed(5)),
+      edgeFeather: Number(edgeFeather.toFixed(5)),
+    });
+  }
 
   return carved;
 }
@@ -1519,7 +1631,18 @@ function rebuildRealisticSurfaceGeometryNow(reason = 'manual') {
 
   if (prevGeo) prevGeo.dispose();
 
-  console.info('[mouth-topocut] realistic geometry rebuilt', { reason, vertexCount: nextGeo.getAttribute('position')?.count ?? 0 });
+  RealisticMouthCutRuntime.lastAppliedOpen = RealisticMouthCutRuntime.open;
+  RealisticMouthCutRuntime.lastRebuildAtMs = performance.now();
+
+  if (DEBUG_MOUTH_ENABLED) {
+    console.info('[mouth-topocut] realistic geometry rebuilt', {
+      reason,
+      mode: RealisticMouthCutRuntime.mode,
+      open: Number(RealisticMouthCutRuntime.open.toFixed(3)),
+      effectiveThickness: Number(RealisticMouthCutRuntime.effectiveThickness.toFixed(5)),
+      vertexCount: nextGeo.getAttribute('position')?.count ?? 0,
+    });
+  }
 }
 
 function scheduleRebuildRealisticSurfaceGeometry(reason = 'change') {
@@ -3268,6 +3391,7 @@ function animate() {
     const mouthOpen = forcedTalkLevel == null
       ? clamp01(AvatarState.talkLevel)
       : clamp01(forcedTalkLevel);
+    if (isRealisticTheme) maybeUpdateRealisticMouthCutState(mouthOpen);
     const headRotMag = headRot.length();
     reportMotionFrameDebug({
       elapsed,
