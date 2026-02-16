@@ -1094,6 +1094,9 @@ let mouthPoints = null;
 let mouthPointsMaterial = null;
 let mouthOpenVisual = 0.0;
 let mouthPointsVisibleLatched = false;
+let realisticSurfaceDebugOriginal = null;
+let realisticSurfaceDebugSetupDone = false;
+
 
 window.MouthRenderTuning = window.MouthRenderTuning || {
   rimA: 0.26,
@@ -1885,6 +1888,105 @@ function logBrowsDiagnostics(geo, material) {
 }
 
 
+
+function materialSideToLabel(side) {
+  if (side === THREE.FrontSide) return 'FrontSide';
+  if (side === THREE.BackSide) return 'BackSide';
+  if (side === THREE.DoubleSide) return 'DoubleSide';
+  return `Unknown(${String(side)})`;
+}
+
+function setupRealisticSurfaceDebugTools() {
+  if (realisticSurfaceDebugSetupDone) return;
+  realisticSurfaceDebugSetupDone = true;
+
+  const debugApi = {
+    listVisibleMeshes() {
+      const rows = [];
+      scene.traverse((obj) => {
+        if (!obj?.isMesh || !obj.visible) return;
+        const mat = obj.material;
+        if (!mat) return;
+        rows.push({
+          name: obj.name || '(unnamed)',
+          materialType: mat.type,
+          side: materialSideToLabel(mat.side),
+          transparent: !!mat.transparent,
+          depthTest: !!mat.depthTest,
+          depthWrite: !!mat.depthWrite,
+          renderOrder: obj.renderOrder ?? 0,
+        });
+      });
+      console.table(rows);
+      return rows;
+    },
+    setSurfaceSide(mode = 'front') {
+      if (!particleSurfaceMesh?.material) return false;
+      const mat = particleSurfaceMesh.material;
+      if (mode === 'front') mat.side = THREE.FrontSide;
+      else if (mode === 'double') mat.side = THREE.DoubleSide;
+      else if (mode === 'back') mat.side = THREE.BackSide;
+      else {
+        console.warn('[mouth-artifact-debug] side inválido. Use front|double|back');
+        return false;
+      }
+      mat.needsUpdate = true;
+      console.info('[mouth-artifact-debug] surface.side', materialSideToLabel(mat.side));
+      return true;
+    },
+    setSurfaceDepthWrite(enabled = false) {
+      if (!particleSurfaceMesh?.material) return false;
+      particleSurfaceMesh.material.depthWrite = !!enabled;
+      particleSurfaceMesh.material.needsUpdate = true;
+      console.info('[mouth-artifact-debug] surface.depthWrite', !!enabled);
+      return true;
+    },
+    setSurfaceTransparent(enabled = true) {
+      if (!particleSurfaceMesh?.material) return false;
+      particleSurfaceMesh.material.transparent = !!enabled;
+      particleSurfaceMesh.material.needsUpdate = true;
+      console.info('[mouth-artifact-debug] surface.transparent', !!enabled);
+      return true;
+    },
+    setSurfaceVisible(enabled = true) {
+      if (!particleSurfaceMesh) return false;
+      particleSurfaceMesh.visible = !!enabled;
+      console.info('[mouth-artifact-debug] surface.visible', !!enabled);
+      return true;
+    },
+    resetSurfaceMaterial() {
+      if (!particleSurfaceMesh?.material || !realisticSurfaceDebugOriginal) return false;
+      const mat = particleSurfaceMesh.material;
+      mat.side = realisticSurfaceDebugOriginal.side;
+      mat.depthWrite = realisticSurfaceDebugOriginal.depthWrite;
+      mat.transparent = realisticSurfaceDebugOriginal.transparent;
+      mat.needsUpdate = true;
+      console.info('[mouth-artifact-debug] surface material reset', {
+        side: materialSideToLabel(mat.side),
+        depthWrite: mat.depthWrite,
+        transparent: mat.transparent,
+      });
+      return true;
+    },
+    help() {
+      console.log('[mouth-artifact-debug] comandos:', {
+        listVisibleMeshes: 'window.RealisticMouthArtifactDebug.listVisibleMeshes()',
+        sideFront: "window.RealisticMouthArtifactDebug.setSurfaceSide('front')",
+        sideDouble: "window.RealisticMouthArtifactDebug.setSurfaceSide('double')",
+        depthWriteOff: 'window.RealisticMouthArtifactDebug.setSurfaceDepthWrite(false)',
+        depthWriteOn: 'window.RealisticMouthArtifactDebug.setSurfaceDepthWrite(true)',
+        transparentOff: 'window.RealisticMouthArtifactDebug.setSurfaceTransparent(false)',
+        transparentOn: 'window.RealisticMouthArtifactDebug.setSurfaceTransparent(true)',
+        hideSurface: 'window.RealisticMouthArtifactDebug.setSurfaceVisible(false)',
+        showSurface: 'window.RealisticMouthArtifactDebug.setSurfaceVisible(true)',
+        reset: 'window.RealisticMouthArtifactDebug.resetSurfaceMaterial()',
+      });
+    },
+  };
+
+  window.RealisticMouthArtifactDebug = debugApi;
+}
+
 loader.load(
   './FaceVolumen.glb',
   (gltf) => {
@@ -2015,8 +2117,9 @@ loader.load(
       particleMaterial = new THREE.ShaderMaterial({
         vertexShader: realisticSurfaceVertexShader,
         fragmentShader: realisticSurfaceFragmentShader,
-        side: THREE.DoubleSide,
+        side: THREE.FrontSide,
         transparent: true,
+        depthWrite: false,
         uniforms: {
           uColor: { value: new THREE.Color(0xffffff) },
           uColorMap: { value: colorMap },
@@ -2076,8 +2179,15 @@ loader.load(
       });
       particleMaterials = [particleMaterial];
       particleSurfaceMesh = new THREE.Mesh(realisticSurfaceGeo, particleMaterial);
+      particleSurfaceMesh.name = 'realisticSurfaceMesh';
       particleSurfaceMesh.frustumCulled = false;
       particleSurfaceMesh.renderOrder = 2;
+      realisticSurfaceDebugOriginal = {
+        side: particleMaterial.side,
+        depthWrite: particleMaterial.depthWrite,
+        transparent: particleMaterial.transparent,
+      };
+      setupRealisticSurfaceDebugTools();
       particlePoints = null;
       particlePointsDetail = null;
 
@@ -2123,6 +2233,7 @@ loader.load(
           },
         });
         mouthPoints = new THREE.Points(mouthBuild.geometry, mouthPointsMaterial);
+        mouthPoints.name = 'mouthPoints';
         mouthPoints.frustumCulled = false;
         mouthPoints.renderOrder = 3;
         mouthPoints.visible = false;
@@ -2139,6 +2250,16 @@ loader.load(
             pointsLumaPreserveHue: window.MouthRenderTuning.pointsLumaPreserveHue,
             pointsLumaDebug: !!window.MouthRenderTuning.pointsLumaDebug,
           });
+          if (window.RealisticMouthArtifactDebug) {
+            console.info('[mouth-artifact-debug] realistic defaults', {
+              surface: 'realisticSurfaceMesh',
+              side: materialSideToLabel(particleMaterial.side),
+              depthWrite: particleMaterial.depthWrite,
+              transparent: particleMaterial.transparent,
+              renderOrder: particleSurfaceMesh.renderOrder,
+            });
+            window.RealisticMouthArtifactDebug.help();
+          }
         }
       }
     } else {
