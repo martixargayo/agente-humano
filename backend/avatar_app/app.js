@@ -1103,6 +1103,7 @@ window.MouthRenderTuning = window.MouthRenderTuning || {
   upsampleMinPoints: 260,
   upsampleAmpMin: 0.0007,
   upsampleAmpMax: 0.0015,
+  rimResampleFactor: 50,
   pointsOn: 0.050,
   pointsOff: 0.032,
   mouthAttack: 26.0,
@@ -1111,8 +1112,12 @@ window.MouthRenderTuning = window.MouthRenderTuning || {
   pointsAlphaClip: 0.012,
   pointsSizeNear: 3.0 * window.devicePixelRatio,
   pointsSizeFar: 2.3 * window.devicePixelRatio,
+  pointsColorMul: 0.95,
   meshFade: 0.42,
   meshFeather: 0.12,
+  meshAlphaMin: 0.01,
+  meshFadeGamma: 3.0,
+  meshFadeGain: 2.2,
 };
 
 function mouthRimMaskFromWeight(w, tuning = window.MouthRenderTuning) {
@@ -1129,67 +1134,143 @@ function stableHash3(x, y, z, salt = 0.0) {
 
 function buildMouthPointsGeometryFromAnimatedSurface(srcGeometry) {
   const basePosAttr = srcGeometry.getAttribute('aBasePosition') || srcGeometry.getAttribute('position');
+  const posAttr = srcGeometry.getAttribute('position') || basePosAttr;
+  const uvAttr = srcGeometry.getAttribute('aUv') || srcGeometry.getAttribute('uv');
   const mouthWeightAttr = srcGeometry.getAttribute('aMouthWeight');
   const mouthSideAttr = srcGeometry.getAttribute('aMouthSide');
   const headWeightAttr = srcGeometry.getAttribute('aHeadWeight');
-  if (!basePosAttr || !mouthWeightAttr || !mouthSideAttr || !headWeightAttr) {
+  if (!basePosAttr || !posAttr || !uvAttr || !mouthWeightAttr || !mouthSideAttr || !headWeightAttr) {
     console.warn('[mouth-points] Faltan atributos requeridos para construir la geometría de boca.');
-    return { geometry: null, pointCount: 0, upsampled: false, sourceCount: 0 };
+    return { geometry: null, pointCount: 0, sourceCount: 0, resampledCount: 0, rimResampleFactor: 0 };
   }
 
   const tuning = window.MouthRenderTuning;
   const p = [];
   const b = [];
+  const uv = [];
   const mw = [];
   const ms = [];
   const hw = [];
   const ov = [];
-  const addPoint = (x, y, z, mouthWeight, mouthSide, headWeight, overlay) => {
+  const addPoint = (x, y, z, bx, by, bz, u, v, mouthWeight, mouthSide, headWeight, overlay) => {
     p.push(x, y, z);
-    b.push(x, y, z);
+    b.push(bx, by, bz);
+    uv.push(u, v);
     mw.push(mouthWeight);
     ms.push(mouthSide);
     hw.push(headWeight);
     ov.push(overlay);
   };
 
+  const overlayByVertex = new Float32Array(basePosAttr.count);
   for (let i = 0; i < basePosAttr.count; i++) {
     const w = mouthWeightAttr.getX(i);
     const overlay = mouthRimMaskFromWeight(w, tuning);
+    overlayByVertex[i] = overlay;
     if (overlay <= tuning.maskMin) continue;
+    const x = posAttr.getX(i);
+    const y = posAttr.getY(i);
+    const z = posAttr.getZ(i);
+    const bx = basePosAttr.getX(i);
+    const by = basePosAttr.getY(i);
+    const bz = basePosAttr.getZ(i);
+    addPoint(x, y, z, bx, by, bz, uvAttr.getX(i), uvAttr.getY(i), w, mouthSideAttr.getX(i), headWeightAttr.getX(i), overlay);
+  }
+  const sourceCount = p.length / 3;
 
-    const x = basePosAttr.getX(i);
-    const y = basePosAttr.getY(i);
-    const z = basePosAttr.getZ(i);
-    addPoint(x, y, z, w, mouthSideAttr.getX(i), headWeightAttr.getX(i), overlay);
+  const indexAttr = srcGeometry.getIndex();
+  const triWeights = [];
+  const triIndices = [];
+  const getIndex = (i) => (indexAttr ? indexAttr.getX(i) : i);
+  const triCount = indexAttr ? Math.floor(indexAttr.count / 3) : Math.floor(posAttr.count / 3);
+
+  for (let tIdx = 0; tIdx < triCount; tIdx++) {
+    const ia = getIndex(tIdx * 3 + 0);
+    const ib = getIndex(tIdx * 3 + 1);
+    const ic = getIndex(tIdx * 3 + 2);
+    const wa = overlayByVertex[ia];
+    const wb = overlayByVertex[ib];
+    const wc = overlayByVertex[ic];
+    const avgMask = (wa + wb + wc) / 3.0;
+    if (avgMask <= tuning.maskMin) continue;
+
+    const ax = basePosAttr.getX(ia), ay = basePosAttr.getY(ia), az = basePosAttr.getZ(ia);
+    const bx = basePosAttr.getX(ib), by = basePosAttr.getY(ib), bz = basePosAttr.getZ(ib);
+    const cx = basePosAttr.getX(ic), cy = basePosAttr.getY(ic), cz = basePosAttr.getZ(ic);
+    const abx = bx - ax, aby = by - ay, abz = bz - az;
+    const acx = cx - ax, acy = cy - ay, acz = cz - az;
+    const crx = aby * acz - abz * acy;
+    const cry = abz * acx - abx * acz;
+    const crz = abx * acy - aby * acx;
+    const area = 0.5 * Math.sqrt(crx * crx + cry * cry + crz * crz);
+    const weight = area * avgMask;
+    if (weight <= 0.0) continue;
+    triWeights.push(weight);
+    triIndices.push([ia, ib, ic, avgMask]);
   }
 
-  const sourceCount = p.length / 3;
-  let upsampled = false;
-  if (sourceCount > 0 && sourceCount < tuning.upsampleMinPoints) {
-    upsampled = true;
-    for (let i = 0; i < sourceCount; i++) {
-      const idx = i * 3;
-      const x = p[idx + 0];
-      const y = p[idx + 1];
-      const z = p[idx + 2];
-      const h1 = stableHash3(x, y, z, 1.0);
-      const h2 = stableHash3(x, y, z, 2.0);
-      const angle = h1 * Math.PI * 2.0;
-      const amp = tuning.upsampleAmpMin + (tuning.upsampleAmpMax - tuning.upsampleAmpMin) * h2;
-      const dx = Math.cos(angle) * amp;
-      const dy = Math.sin(angle) * amp;
-      const w = mw[i];
-      const s = ms[i];
-      const headW = hw[i];
-      const overlay = ov[i];
-      addPoint(x + dx, y + dy, z, w, s, headW, overlay);
+  let resampledCount = 0;
+  if (triIndices.length && tuning.rimResampleFactor > 0) {
+    const targetResampled = Math.max(0, Math.round(sourceCount * tuning.rimResampleFactor));
+    const totalWeight = triWeights.reduce((a, b) => a + b, 0.0) || 1.0;
+
+    for (let ti = 0; ti < triIndices.length; ti++) {
+      const [ia, ib, ic, triMask] = triIndices[ti];
+      const weightNorm = triWeights[ti] / totalWeight;
+      const n = Math.max(0, Math.round(targetResampled * weightNorm));
+      if (n <= 0) continue;
+
+      const ax = basePosAttr.getX(ia), ay = basePosAttr.getY(ia), az = basePosAttr.getZ(ia);
+      const bx = basePosAttr.getX(ib), by = basePosAttr.getY(ib), bz = basePosAttr.getZ(ib);
+      const cx = basePosAttr.getX(ic), cy = basePosAttr.getY(ic), cz = basePosAttr.getZ(ic);
+
+      const apx = posAttr.getX(ia), apy = posAttr.getY(ia), apz = posAttr.getZ(ia);
+      const bpx = posAttr.getX(ib), bpy = posAttr.getY(ib), bpz = posAttr.getZ(ib);
+      const cpx = posAttr.getX(ic), cpy = posAttr.getY(ic), cpz = posAttr.getZ(ic);
+
+      const au = uvAttr.getX(ia), av = uvAttr.getY(ia);
+      const bu = uvAttr.getX(ib), bv = uvAttr.getY(ib);
+      const cu = uvAttr.getX(ic), cv = uvAttr.getY(ic);
+
+      const aw = mouthWeightAttr.getX(ia), bw = mouthWeightAttr.getX(ib), cw = mouthWeightAttr.getX(ic);
+      const asd = mouthSideAttr.getX(ia), bsd = mouthSideAttr.getX(ib), csd = mouthSideAttr.getX(ic);
+      const ah = headWeightAttr.getX(ia), bh = headWeightAttr.getX(ib), ch = headWeightAttr.getX(ic);
+      const ao = overlayByVertex[ia], bo = overlayByVertex[ib], co = overlayByVertex[ic];
+
+      for (let k = 0; k < n; k++) {
+        const h1 = stableHash3(ax, by, cz, 1000.0 + ti * 0.73 + k * 0.17);
+        const h2 = stableHash3(bx, cy, az, 2000.0 + ti * 0.31 + k * 0.29);
+        const su = Math.sqrt(h1);
+        const b0 = 1.0 - su;
+        const b1 = h2 * su;
+        const b2 = 1.0 - b0 - b1;
+
+        const pbx = ax * b0 + bx * b1 + cx * b2;
+        const pby = ay * b0 + by * b1 + cy * b2;
+        const pbz = az * b0 + bz * b1 + cz * b2;
+
+        const ppx = apx * b0 + bpx * b1 + cpx * b2;
+        const ppy = apy * b0 + bpy * b1 + cpy * b2;
+        const ppz = apz * b0 + bpz * b1 + cpz * b2;
+
+        const pu = au * b0 + bu * b1 + cu * b2;
+        const pv = av * b0 + bv * b1 + cv * b2;
+
+        const pW = aw * b0 + bw * b1 + cw * b2;
+        const pS = asd * b0 + bsd * b1 + csd * b2;
+        const pH = ah * b0 + bh * b1 + ch * b2;
+        const pO = THREE.MathUtils.clamp((ao * b0 + bo * b1 + co * b2) * (0.75 + triMask * 0.25), 0.0, 1.0);
+
+        addPoint(ppx, ppy, ppz, pbx, pby, pbz, pu, pv, pW, pS, pH, pO);
+        resampledCount += 1;
+      }
     }
   }
 
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(p), 3));
   geo.setAttribute('aBasePosition', new THREE.BufferAttribute(new Float32Array(b), 3));
+  geo.setAttribute('aUv', new THREE.BufferAttribute(new Float32Array(uv), 2));
   geo.setAttribute('aMouthWeight', new THREE.BufferAttribute(new Float32Array(mw), 1));
   geo.setAttribute('aMouthSide', new THREE.BufferAttribute(new Float32Array(ms), 1));
   geo.setAttribute('aHeadWeight', new THREE.BufferAttribute(new Float32Array(hw), 1));
@@ -1198,8 +1279,9 @@ function buildMouthPointsGeometryFromAnimatedSurface(srcGeometry) {
   return {
     geometry: geo,
     pointCount: p.length / 3,
-    upsampled,
     sourceCount,
+    resampledCount,
+    rimResampleFactor: tuning.rimResampleFactor,
   };
 }
 
@@ -1224,7 +1306,9 @@ attribute float aMouthWeight;
 attribute float aMouthSide;
 attribute float aHeadWeight;
 attribute float aMouthOverlayMix;
+attribute vec2 aUv;
 varying float vMouthOverlayMix;
+varying vec2 vUv;
 
 mat3 rotX(float a){ float s=sin(a), c=cos(a); return mat3(1.,0.,0.,0.,c,-s,0.,s,c); }
 mat3 rotY(float a){ float s=sin(a), c=cos(a); return mat3(c,0.,s,0.,1.,0.,-s,0.,c); }
@@ -1233,6 +1317,7 @@ vec3 rotateAroundPivot(vec3 p, vec3 pivot, vec3 r){ vec3 q = p - pivot; q = rotY
 
 void main() {
   vMouthOverlayMix = aMouthOverlayMix;
+  vUv = aUv;
 
   float talkOpen = max(sin(uTime * uTalkFreq), 0.0) * uTalk;
   float totalOpen = clamp(uRestOpen + talkOpen, 0.0, 1.0);
@@ -1255,10 +1340,13 @@ void main() {
 
 const mouthPointsFragmentShader = /* glsl */ `
 precision highp float;
-uniform vec3 uColor;
+uniform sampler2D uColorMap;
+uniform float uUseMap;
 uniform float uMouthPointsAlpha;
 uniform float uMouthPointsAlphaClip;
+uniform float uMouthPointsColorMul;
 varying float vMouthOverlayMix;
+varying vec2 vUv;
 
 void main() {
   vec2 p = gl_PointCoord * 2.0 - 1.0;
@@ -1268,7 +1356,9 @@ void main() {
   float circle = 1.0 - smoothstep(0.68, 1.0, r);
   float alpha = circle * uMouthPointsAlpha * clamp(vMouthOverlayMix, 0.0, 1.0);
   if (alpha < uMouthPointsAlphaClip) discard;
-  gl_FragColor = vec4(uColor, alpha);
+  vec3 texColor = texture2D(uColorMap, vUv).rgb;
+  vec3 baseColor = mix(vec3(0.8), texColor, uUseMap);
+  gl_FragColor = vec4(baseColor * uMouthPointsColorMul, alpha);
 }
 `;
 
@@ -1488,6 +1578,9 @@ uniform float uDebugBlinkCover;
 uniform float uMouthOpenVisual;
 uniform float uMouthMeshFade;
 uniform float uMouthFeather;
+uniform float uMouthMeshAlphaMin;
+uniform float uMouthMeshFadeGamma;
+uniform float uMouthMeshFadeGain;
 uniform float uDebugMouthFade;
 varying vec2 vUv;
 varying float vHeadWeight;
@@ -1538,8 +1631,10 @@ void main() {
   finalColor = mix(finalColor, lidColor, cover);
 
   float innerFadeMask = smoothstep(0.62 - uMouthFeather, 0.88 + uMouthFeather, vMouthWeight);
-  float mouthFade = clamp(uMouthOpenVisual * uMouthMeshFade * innerFadeMask, 0.0, 0.98);
-  finalColor = mix(finalColor, finalColor * 0.9, mouthFade * 0.25);
+  float mouthFadeRaw = clamp(uMouthOpenVisual * uMouthMeshFadeGain * innerFadeMask, 0.0, 1.0);
+  float mouthFade = pow(mouthFadeRaw, max(0.01, uMouthMeshFadeGamma));
+  mouthFade = clamp(mouthFade * uMouthMeshFade, 0.0, 1.0);
+  finalColor = mix(finalColor, finalColor * 0.88, mouthFade * 0.35);
 
   if (uDebugBrows > 0.5) {
     vec2 leftLocal = invRot(uEyeLeftMain.w) * (vBaseXY - uEyeLeftMain.xy);
@@ -1581,11 +1676,13 @@ void main() {
 
   if (uDebugMouthFade > 0.5) {
     vec3 dbg = mix(finalColor, vec3(1.0, 0.1, 0.1), clamp(mouthFade, 0.0, 0.8));
-    gl_FragColor = vec4(dbg, 1.0 - mouthFade * 0.75);
+    float dbgAlpha = mix(1.0, clamp(uMouthMeshAlphaMin, 0.0, 1.0), mouthFade);
+    gl_FragColor = vec4(dbg, dbgAlpha);
     return;
   }
 
-  gl_FragColor = vec4(finalColor, 1.0 - mouthFade * 0.75);
+  float outAlpha = mix(1.0, clamp(uMouthMeshAlphaMin, 0.0, 1.0), mouthFade);
+  gl_FragColor = vec4(finalColor, outAlpha);
 }
 `;
 
@@ -1850,6 +1947,9 @@ loader.load(
           uMouthOpenVisual: { value: 0.0 },
           uMouthMeshFade: { value: window.MouthRenderTuning.meshFade },
           uMouthFeather: { value: window.MouthRenderTuning.meshFeather },
+          uMouthMeshAlphaMin: { value: window.MouthRenderTuning.meshAlphaMin },
+          uMouthMeshFadeGamma: { value: window.MouthRenderTuning.meshFadeGamma },
+          uMouthMeshFadeGain: { value: window.MouthRenderTuning.meshFadeGain },
           uDebugMouthFade: { value: DEBUG_MOUTH_FADE_ENABLED ? 1.0 : 0.0 },
         },
       });
@@ -1887,7 +1987,9 @@ loader.load(
             uPointSizeFar: { value: window.MouthRenderTuning ? window.MouthRenderTuning.pointsSizeFar ?? (2.3 * window.devicePixelRatio) : (2.3 * window.devicePixelRatio) },
             uMouthPointsAlpha: { value: window.MouthRenderTuning.pointsAlpha },
             uMouthPointsAlphaClip: { value: window.MouthRenderTuning.pointsAlphaClip },
-            uColor: { value: new THREE.Color(0x0a0a0a) },
+            uColorMap: { value: colorMap },
+            uUseMap: { value: colorMap ? 1.0 : 0.0 },
+            uMouthPointsColorMul: { value: window.MouthRenderTuning.pointsColorMul },
             uHeadRot: { value: new THREE.Vector3(0, 0, 0) },
             uBodyRot: { value: new THREE.Vector3(0, 0, 0) },
             uBodyOffset: { value: new THREE.Vector3(0, 0, 0) },
@@ -1902,8 +2004,9 @@ loader.load(
         if (DEBUG_MOUTH_POINTS_ENABLED) {
           console.info('[mouth-points] built', {
             sourceCount: mouthBuild.sourceCount,
+            resampleFactor: mouthBuild.rimResampleFactor,
+            resampledCount: mouthBuild.resampledCount,
             pointCount: mouthBuild.pointCount,
-            upsampled: mouthBuild.upsampled,
           });
         }
       }
@@ -3086,6 +3189,9 @@ function animate() {
       if (mat.uniforms.uMouthOpenVisual) mat.uniforms.uMouthOpenVisual.value = mouthOpenVisual;
       if (mat.uniforms.uMouthMeshFade) mat.uniforms.uMouthMeshFade.value = window.MouthRenderTuning.meshFade;
       if (mat.uniforms.uMouthFeather) mat.uniforms.uMouthFeather.value = window.MouthRenderTuning.meshFeather;
+      if (mat.uniforms.uMouthMeshAlphaMin) mat.uniforms.uMouthMeshAlphaMin.value = window.MouthRenderTuning.meshAlphaMin;
+      if (mat.uniforms.uMouthMeshFadeGamma) mat.uniforms.uMouthMeshFadeGamma.value = window.MouthRenderTuning.meshFadeGamma;
+      if (mat.uniforms.uMouthMeshFadeGain) mat.uniforms.uMouthMeshFadeGain.value = window.MouthRenderTuning.meshFadeGain;
       if (mat.uniforms.uDebugMouthFade) mat.uniforms.uDebugMouthFade.value = DEBUG_MOUTH_FADE_ENABLED ? 1.0 : 0.0;
 
       mat.uniforms.uHeadRot.value.copy(headRot);
@@ -3111,6 +3217,7 @@ function animate() {
     mouthPointsMaterial.uniforms.uMouthPointsAlphaClip.value = window.MouthRenderTuning.pointsAlphaClip;
     mouthPointsMaterial.uniforms.uPointSizeNear.value = window.MouthRenderTuning.pointsSizeNear;
     mouthPointsMaterial.uniforms.uPointSizeFar.value = window.MouthRenderTuning.pointsSizeFar;
+    if (mouthPointsMaterial.uniforms.uMouthPointsColorMul) mouthPointsMaterial.uniforms.uMouthPointsColorMul.value = window.MouthRenderTuning.pointsColorMul;
     mouthPointsMaterial.uniforms.uHeadRot.value.copy(mouthHeadRot);
     mouthPointsMaterial.uniforms.uBodyRot.value.copy(mouthBodyRot);
     mouthPointsMaterial.uniforms.uBodyOffset.value.set(0.0, mouthOffY, 0.0);
