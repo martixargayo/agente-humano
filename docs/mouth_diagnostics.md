@@ -1,14 +1,53 @@
 # Mouth diagnostics (theme=realistic)
 
-## Base URL
+## Causa raíz confirmada (con telemetría)
 
-- `http://localhost:8000/avatar/?theme=realistic&mouthTest=1&debugMouth=1&debugMouthHud=1`
+Con los logs previos se confirmó que el stutter principal venía de **rebuild topológico en caliente** al cambiar `sealed ↔ split`, con picos de cientos de ms y explosión de vértices en split.
 
-> También sirve con el static server (`python -m http.server`) apuntando a `backend/avatar_app`.
+## Cambios aplicados para mitigarlo
 
-## Parámetros del Mouth Test Harness
+1. **Cache dual de geometría** (`sealed` + `split`) precomputada y reutilizada en runtime.
+2. **Swap de geometría por modo** en lugar de reconstrucción completa por transición.
+3. **Carve indexado** (evita `toNonIndexed()` en la ruta principal).
+4. **Filtro temporal para `mouthOpenForState`** (ataque rápido / release más lento) para evitar thrash por jitter.
+5. **Mouth cavity en realistic** visible en split para evitar hueco blanco.
+6. Ajuste de pesos/desplazamientos de labios para reducir banda rectangular superior.
 
-- `mouthTest=1`: activa driver determinista (sin micro/audio).
+## URLs de reproducción recomendadas
+
+### 1) Step (abre/cierra estable)
+
+`?theme=realistic&mouthTest=1&mouthPattern=step&mouthPeriodMs=1400&mouthHoldMs=260&debugMouth=1&debugMouthHud=1`
+
+Qué validar:
+- transición suave de modo,
+- sin spikes grandes,
+- en split el interior no debe verse blanco.
+
+### 2) Pulses (stress)
+
+`?theme=realistic&mouthTest=1&mouthPattern=pulses&mouthPeriodMs=700&mouthNoise=0.04&debugMouth=1&debugMouthHud=1`
+
+Qué validar:
+- fps estable,
+- `lastRebuild/max` sin picos masivos,
+- ausencia de stutter severo.
+
+### 3) Artefacto rectangular
+
+- `?theme=realistic&mouthTest=1&mouthPattern=sine&mouthNoise=0.08&debugMouthHud=1&debugMouthView=weights`
+- `?theme=realistic&mouthTest=1&mouthPattern=sine&mouthNoise=0.08&debugMouthHud=1&debugMouthView=bandMask`
+- `?theme=realistic&mouthTest=1&mouthPattern=sine&mouthNoise=0.08&debugMouthHud=1&debugMouthView=side`
+- `?theme=realistic&mouthTest=1&mouthPattern=sine&mouthNoise=0.08&debugMouthHud=1&debugMouthView=carveCorridor`
+
+Qué validar:
+- área de `aMouthWeight` concentrada en labios,
+- `bandMask` sin franja rectangular alta,
+- corredor/corte alineado con la línea de boca.
+
+## Parámetros útiles
+
+- `mouthTest=1`
 - `mouthPattern=step|sine|ramp|pulses|random|phonemeLike`
 - `mouthSeed=123`
 - `mouthPeriodMs=1400`
@@ -16,89 +55,14 @@
 - `mouthMax=1`
 - `mouthMin=0`
 - `mouthNoise=0.08`
-- `mouthStateScale=1` (controla `mouthOpenForState` para sealed/split)
-- `mouthTalkScale=1` (controla `uTalk` del shader)
-- `mouthSpikeMs=6` umbral de spike en rebuild
+- `mouthStateScale=1`
+- `mouthTalkScale=1`
+- `mouthSpikeMs=6`
+- `debugMouth=1`
+- `debugMouthHud=1`
+- `debugMouthView=weights|side|bandMask|carveCorridor`
 
-## Debug/HUD y vistas
+## Notas
 
-- `debugMouth=1`: logs detallados de estado/rebuild/uniforms.
-- `debugMouthHud=1`: HUD con frame time/fps/p95/rebuild stats.
-- `debugMouthView=weights`: colorea `aMouthWeight`.
-- `debugMouthView=side`: colorea `aMouthSide` (arriba/abajo).
-- `debugMouthView=bandMask`: colorea `mouthFactor = aMouthWeight * lipOpenMask`.
-- `debugMouthView=carveCorridor`: overlay 2D con corredor + mouthLine + split band.
-
-## Casos reproducibles
-
-### Caso 1: step (abre/cierra)
-
-URL:
-
-- `?theme=realistic&mouthTest=1&mouthPattern=step&mouthPeriodMs=1400&mouthHoldMs=260&debugMouth=1&debugMouthHud=1`
-
-Validar:
-
-- En reposo: `actualMode=sealed` y sin costura visible.
-- Apertura: transición a `desiredMode=split` + rebuild reason `mouthMode:split`.
-- Cierre: `forceSealedNow=true` + rebuild reason `mouthMode:sealed:force`.
-
-### Caso 2: pulses (rápido)
-
-URL:
-
-- `?theme=realistic&mouthTest=1&mouthPattern=pulses&mouthPeriodMs=900&debugMouth=1&debugMouthHud=1`
-
-Validar:
-
-- HUD `rebuild/min` y logs `schedule rebuild`.
-- Spikes si `rebuildMs > mouthSpikeMs` (warning en consola).
-
-### Caso 3: jitter controlado
-
-URL:
-
-- `?theme=realistic&mouthTest=1&mouthPattern=sine&mouthNoise=0.08&mouthPeriodMs=1200&debugMouth=1&debugMouthHud=1`
-
-Validar:
-
-- No alternancia caótica sealed/split (mirar `modeChanged`, `canRebuild`, `forceSealedNow`).
-- Comparar `mouthOpenForState` (logs) vs `uTalk`/`approxTotalOpen`.
-
-### Caso 4: stress 20s
-
-URL:
-
-- `?theme=realistic&mouthTest=1&mouthPattern=pulses&mouthNoise=0.04&mouthPeriodMs=700&debugMouth=1&debugMouthHud=1&mouthSpikeMs=6`
-
-Pasos:
-
-1. Dejar correr 20s.
-2. Recoger en HUD/logs:
-   - `rebuild/min`
-   - `lastRebuild`/`max`
-   - p95 frame time
-3. En consola, estimar p95 rebuild con los eventos `[mouth-topocut] realistic geometry rebuilt`.
-
-## Qué mirar para causa raíz
-
-1. **Lag por rebuild**
-   - Logs con `rebuild spike` + `rebuildMs`, `trianglesRemoved`, `vertexCount`.
-   - `generateAnimatedSurfaceGeometry` y `carve result` muestran tiempos de `clone`/`toNonIndexed`.
-
-2. **Incoherencia split vs deformación shader**
-   - `mouthOpenRaw/mouthOpenClamped` + `desiredMode/actualMode`.
-   - `uTalk` y cálculos JS: `approxTotalOpen`, `approxLipOpenMask`.
-   - Si `actualMode=sealed` y `approxLipOpenMask` alto, hay deformación con boca sellada.
-
-3. **Rectángulo ancho arriba**
-   - `debugMouthView=weights`/`bandMask` para ver si `aMouthWeight` invade zona superior.
-   - `debugMouthView=carveCorridor` para verificar `corridorHalfWidth`/`lineHalfThickness`/`edgeFeather`.
-
-## Conclusiones esperadas con este sistema
-
-Con esta instrumentación ya se puede confirmar con datos:
-
-- frecuencia real de rebuild y su impacto en frame time,
-- si state machine y shader quedan desalineados,
-- si el artefacto viene de pesos (`aMouthWeight`/`mouthFactor`) o del carve corridor.
+- El driver principal sigue siendo audio real (`getTalkLevelFromAudio()`) cuando `mouthTest=0`.
+- El harness solo se usa para reproducibilidad y diagnóstico.
