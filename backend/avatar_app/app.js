@@ -548,6 +548,7 @@ const RealisticMouthGeometryCache = {
   sealed: null,
   split: null,
   lastBuildReason: 'init',
+  warmingScheduled: false,
 };
 
 const MouthStateFilterRuntime = {
@@ -2065,11 +2066,6 @@ function carveMouthTopologyByMouthLine(srcGeometry, mode = RealisticMouthCutRunt
   MouthPerfRuntime.trianglesRemoved = removedTriangles;
   const carveMs = performance.now() - t0;
 
-  const trianglesOut = Math.floor(keptPos.length / 9);
-  const carveMs = performance.now() - t0;
-  MouthPerfRuntime.triCount = trianglesOut;
-  MouthPerfRuntime.trianglesRemoved = removedTriangles;
-
   if (DEBUG_MOUTH_ENABLED) {
     console.info('[mouth-topocut] carve result', {
       enabled: MOUTH_TOPO_CUT_ENABLED,
@@ -2202,6 +2198,22 @@ function scheduleRebuildRealisticSurfaceGeometry(reason = 'change') {
     }
     rebuildRealisticSurfaceGeometryNow(reason);
   });
+}
+
+function scheduleWarmRealisticSplitCache() {
+  if (!isRealisticTheme || !MOUTH_TOPO_CUT_ENABLED) return;
+  if (RealisticMouthGeometryCache.split || RealisticMouthGeometryCache.warmingScheduled) return;
+  RealisticMouthGeometryCache.warmingScheduled = true;
+  const warm = () => {
+    RealisticMouthGeometryCache.warmingScheduled = false;
+    if (RealisticMouthGeometryCache.split) return;
+    scheduleRebuildRealisticSurfaceGeometry('warmSplitCache');
+  };
+  if (typeof window.requestIdleCallback === 'function') {
+    window.requestIdleCallback(() => warm(), { timeout: 1200 });
+  } else {
+    setTimeout(warm, 120);
+  }
 }
 
 function generateAnimatedSurfaceGeometry(srcGeometry, { mouthMode = RealisticMouthCutRuntime.mode } = {}) {
@@ -2697,8 +2709,8 @@ loader.load(
     const particlesGeo = generateFaceParticlesFromVertices(mergedGeom);
     realisticSourceGeometryRef = mergedGeom.clone();
     RealisticMouthGeometryCache.sealed = generateAnimatedSurfaceGeometry(realisticSourceGeometryRef, { mouthMode: 'sealed' });
-    RealisticMouthGeometryCache.split = generateAnimatedSurfaceGeometry(realisticSourceGeometryRef, { mouthMode: 'split' });
-    const realisticSurfaceGeo = RealisticMouthCutRuntime.mode === 'split' ? RealisticMouthGeometryCache.split : RealisticMouthGeometryCache.sealed;
+    RealisticMouthGeometryCache.split = null;
+    const realisticSurfaceGeo = RealisticMouthGeometryCache.sealed;
 
     // refs para edición / recompute
     const t = window.NeckTuning;
@@ -2892,6 +2904,8 @@ loader.load(
     if (particlePointsDetail) scene.add(particlePointsDetail);
     if (realisticMouthCavityMesh) scene.add(realisticMouthCavityMesh);
     if (particleSurfaceMesh) scene.add(particleSurfaceMesh);
+
+    scheduleWarmRealisticSplitCache();
 
     controls.target.set(0, 0.15, 0);
     controls.update();
