@@ -18,6 +18,19 @@ const DEBUG_MOTION_HUD_ENABLED = URL_PARAMS.get('debugMotionHud') === '1';
 const DEBUG_CONTROLS_ENABLED = URL_PARAMS.get('debugControls') === '1';
 const DEBUG_MOUTH_ENABLED = URL_PARAMS.get('debugMouth') === '1';
 const DEBUG_MOUTH_CUT_ENABLED = URL_PARAMS.get('debugMouthCut') === '1';
+const DEBUG_MOUTH_HUD_ENABLED = URL_PARAMS.get('debugMouthHud') === '1';
+const DEBUG_MOUTH_VIEW = (URL_PARAMS.get('debugMouthView') || '').trim().toLowerCase();
+const MOUTH_TEST_ENABLED = URL_PARAMS.get('mouthTest') === '1';
+const MOUTH_TEST_PATTERN = (URL_PARAMS.get('mouthPattern') || 'step').trim().toLowerCase();
+const MOUTH_TEST_SEED = Number.parseInt(URL_PARAMS.get('mouthSeed') || '123', 10);
+const MOUTH_TEST_PERIOD_MS = resolveNumberParam('mouthPeriodMs', 1400);
+const MOUTH_TEST_HOLD_MS = resolveNumberParam('mouthHoldMs', 180);
+const MOUTH_TEST_MAX = resolveNumberParam('mouthMax', 1.0);
+const MOUTH_TEST_MIN = resolveNumberParam('mouthMin', 0.0);
+const MOUTH_TEST_NOISE = resolveNumberParam('mouthNoise', 0.0);
+const MOUTH_TEST_STATE_SCALE = resolveNumberParam('mouthStateScale', 1.0);
+const MOUTH_TEST_TALK_SCALE = resolveNumberParam('mouthTalkScale', 1.0);
+const MOUTH_SPIKE_THRESHOLD_MS = resolveNumberParam('mouthSpikeMs', 6.0);
 const MOUTH_SOFT_EDGE_ENABLED = URL_PARAMS.get('mouthSoft') === '1';
 const MOUTH_TOPO_CUT_ENABLED = URL_PARAMS.get('mouthTopoCut') !== '0';
 const MOUTH_CUT_MODE_OVERRIDE = (URL_PARAMS.get('mouthCutMode') || 'auto').trim().toLowerCase();
@@ -254,6 +267,25 @@ const MotionDebugState = {
     console.info('[neck-editor] Modo editor ACTIVADO (?debugEdit=1). Tecla E para ocultar/mostrar.');
   }
 
+  if (MOUTH_TEST_ENABLED) {
+    const mouthMin = THREE.MathUtils.clamp(Math.min(MOUTH_TEST_MIN, MOUTH_TEST_MAX), 0.0, 1.0);
+    const mouthMax = THREE.MathUtils.clamp(Math.max(MOUTH_TEST_MIN, MOUTH_TEST_MAX), 0.0, 1.0);
+    console.info('[mouth-test] enabled', {
+      pattern: MOUTH_TEST_PATTERN,
+      seed: Number.isFinite(MOUTH_TEST_SEED) ? MOUTH_TEST_SEED : 123,
+      periodMs: Math.max(120, MOUTH_TEST_PERIOD_MS),
+      holdMs: Math.max(0, MOUTH_TEST_HOLD_MS),
+      min: mouthMin,
+      max: mouthMax,
+      noise: Math.max(0.0, MOUTH_TEST_NOISE),
+      stateScale: Math.max(0.0, MOUTH_TEST_STATE_SCALE),
+      talkScale: Math.max(0.0, MOUTH_TEST_TALK_SCALE),
+    });
+  }
+  if (DEBUG_MOUTH_HUD_ENABLED) {
+    console.info('[mouth-debug] HUD enabled', { spikeThresholdMs: MOUTH_SPIKE_THRESHOLD_MS, debugView: DEBUG_MOUTH_VIEW || 'none' });
+  }
+
   if (AudioDebug.enabled) {
     console.info('[audio-debug] Activado', {
       minRms: AudioDebug.minRms,
@@ -445,6 +477,11 @@ window.MouthSplitTuning = window.MouthSplitTuning || {
   minRebuildIntervalMs: 160,
 };
 
+window.MouthStateFilterTuning = window.MouthStateFilterTuning || {
+  attackMs: 55,
+  releaseMs: 170,
+};
+
 window.EyeBlinkTuning = window.EyeBlinkTuning || {
   "left": {
     "centerX": -0.21262084897756595,
@@ -504,6 +541,68 @@ const RealisticMouthCutRuntime = {
   mode: 'sealed',
   lastRebuildAtMs: 0,
   lastDebugLogAtMs: 0,
+  lastReason: 'init',
+};
+
+const RealisticMouthGeometryCache = {
+  sealed: null,
+  split: null,
+  lastBuildReason: 'init',
+};
+
+const MouthStateFilterRuntime = {
+  value: 0.0,
+  lastAtMs: 0.0,
+};
+
+const MouthPerfRuntime = {
+  hudEl: null,
+  frameTimesMs: [],
+  rebuildTimesMs: [],
+  lastHudAtMs: 0,
+  lastFrameAtMs: 0,
+  frameCount: 0,
+  rebuildCount: 0,
+  rebuildsInWindow: 0,
+  rebuildWindowStartMs: 0,
+  rebuildsPerMinute: 0,
+  lastRebuildMs: 0,
+  maxRebuildMs: 0,
+  spikes: [],
+  lastSpikeLogAtMs: 0,
+  triCount: 0,
+  trianglesRemoved: 0,
+  vertexCount: 0,
+  modeSwitches: 0,
+  pendingReason: null,
+  scheduleRequestedAtMs: 0,
+};
+
+const MouthRuntimeState = {
+  timeMs: 0,
+  talkDriverRaw: 0,
+  stateDriverRaw: 0,
+  talkDriver: 0,
+  stateDriver: 0,
+  noise: 0,
+  approxTotalOpen: 0,
+  approxLipOpenMask: 0,
+  uniformSnapshot: null,
+  debugView: DEBUG_MOUTH_VIEW,
+  lastStateDebugAtMs: 0,
+};
+
+const MouthTestHarness = {
+  enabled: MOUTH_TEST_ENABLED,
+  pattern: MOUTH_TEST_PATTERN,
+  seed: Number.isFinite(MOUTH_TEST_SEED) ? MOUTH_TEST_SEED : 123,
+  periodMs: Math.max(120, MOUTH_TEST_PERIOD_MS),
+  holdMs: Math.max(0, MOUTH_TEST_HOLD_MS),
+  min: THREE.MathUtils.clamp(Math.min(MOUTH_TEST_MIN, MOUTH_TEST_MAX), 0.0, 1.0),
+  max: THREE.MathUtils.clamp(Math.max(MOUTH_TEST_MIN, MOUTH_TEST_MAX), 0.0, 1.0),
+  noise: Math.max(0.0, MOUTH_TEST_NOISE),
+  talkScale: Math.max(0.0, MOUTH_TEST_TALK_SCALE),
+  stateScale: Math.max(0.0, MOUTH_TEST_STATE_SCALE),
 };
 
 // =========================
@@ -514,6 +613,214 @@ function smoothstepJS(edge0, edge1, x) {
   if (Math.abs(d) < 1e-8) return x < edge0 ? 0 : 1;
   const t = Math.max(0, Math.min(1, (x - edge0) / d));
   return t * t * (3 - 2 * t);
+}
+
+function percentile(sorted, p) {
+  if (!sorted.length) return 0;
+  const idx = Math.min(sorted.length - 1, Math.max(0, Math.floor((sorted.length - 1) * p)));
+  return sorted[idx];
+}
+
+function seededNoise01(seed) {
+  const x = Math.sin(seed * 127.1 + 311.7) * 43758.5453123;
+  return x - Math.floor(x);
+}
+
+function evaluateMouthPattern(pattern, elapsedMs, cfg) {
+  const range = Math.max(1e-6, cfg.max - cfg.min);
+  const period = Math.max(120, cfg.periodMs);
+  const hold = Math.min(period * 0.45, Math.max(0, cfg.holdMs));
+  const cycle = ((elapsedMs % period) + period) % period;
+  const t01 = cycle / period;
+
+  switch (pattern) {
+    case 'sine': {
+      const w = 0.5 + 0.5 * Math.sin(t01 * Math.PI * 2.0 - Math.PI * 0.5);
+      return cfg.min + range * w;
+    }
+    case 'ramp': {
+      const tri = t01 < 0.5 ? (t01 * 2.0) : (2.0 - t01 * 2.0);
+      return cfg.min + range * THREE.MathUtils.clamp(tri, 0.0, 1.0);
+    }
+    case 'pulses': {
+      const pulseCount = 5;
+      const pulsePhase = (t01 * pulseCount) % 1;
+      const env = smoothstepJS(0.0, 0.08, t01) * (1.0 - smoothstepJS(0.85, 1.0, t01));
+      const pulse = Math.max(0.0, 1.0 - pulsePhase / 0.24);
+      return cfg.min + range * THREE.MathUtils.clamp(pulse * env, 0.0, 1.0);
+    }
+    case 'random': {
+      const bucket = Math.floor(elapsedMs / Math.max(40, hold || 120));
+      const r = seededNoise01(cfg.seed + bucket * 17.0);
+      return cfg.min + range * r;
+    }
+    case 'phonemelike': {
+      const seg = ((elapsedMs % (period * 5)) + period * 5) % (period * 5);
+      const idx = Math.floor(seg / period);
+      const local = (seg % period) / period;
+      const phonemeLevels = [1.0, 0.55, 0.35, 0.72, 0.6]; // A,E,I,O,U
+      const env = smoothstepJS(0.0, 0.18, local) * (1.0 - smoothstepJS(0.72, 1.0, local));
+      return cfg.min + range * phonemeLevels[idx] * env;
+    }
+    case 'step':
+    default: {
+      const low = cycle < hold || cycle > (period - hold);
+      return low ? cfg.min : cfg.max;
+    }
+  }
+}
+
+function getMouthTestDrive(elapsedMs) {
+  if (!MouthTestHarness.enabled) return null;
+  const base = evaluateMouthPattern(MouthTestHarness.pattern, elapsedMs, MouthTestHarness);
+  const noiseSeed = MouthTestHarness.seed + elapsedMs * 0.021;
+  const noise = (seededNoise01(noiseSeed) * 2.0 - 1.0) * MouthTestHarness.noise;
+  const noisy = THREE.MathUtils.clamp(base + noise, 0.0, 1.0);
+  const state = THREE.MathUtils.clamp(noisy * MouthTestHarness.stateScale, 0.0, 1.0);
+  const talk = THREE.MathUtils.clamp(noisy * MouthTestHarness.talkScale, 0.0, 1.0);
+  return { base, noise, state, talk, pattern: MouthTestHarness.pattern };
+}
+
+function ensureMouthDebugHud() {
+  if (!DEBUG_MOUTH_HUD_ENABLED || MouthPerfRuntime.hudEl) return;
+  const el = document.createElement('div');
+  el.style.position = 'fixed';
+  el.style.right = '12px';
+  el.style.top = '12px';
+  el.style.padding = '8px 10px';
+  el.style.background = 'rgba(0,0,0,0.76)';
+  el.style.color = '#fef08a';
+  el.style.fontFamily = 'monospace';
+  el.style.fontSize = '11px';
+  el.style.whiteSpace = 'pre';
+  el.style.zIndex = '11';
+  el.textContent = '[mouth] HUD init';
+  document.body.appendChild(el);
+  MouthPerfRuntime.hudEl = el;
+}
+
+function markMouthPerfFrame(nowMs) {
+  if (!DEBUG_MOUTH_HUD_ENABLED) return;
+  if (MouthPerfRuntime.lastFrameAtMs > 0) {
+    const ft = nowMs - MouthPerfRuntime.lastFrameAtMs;
+    MouthPerfRuntime.frameTimesMs.push(ft);
+    if (MouthPerfRuntime.frameTimesMs.length > 240) MouthPerfRuntime.frameTimesMs.shift();
+  }
+  MouthPerfRuntime.lastFrameAtMs = nowMs;
+  MouthPerfRuntime.frameCount += 1;
+}
+
+function updateMouthDebugHud(nowMs) {
+  if (!DEBUG_MOUTH_HUD_ENABLED) return;
+  ensureMouthDebugHud();
+  if (!MouthPerfRuntime.hudEl) return;
+  if (nowMs - MouthPerfRuntime.lastHudAtMs < 120) return;
+  MouthPerfRuntime.lastHudAtMs = nowMs;
+
+  const frameTimes = [...MouthPerfRuntime.frameTimesMs].sort((a, b) => a - b);
+  const ftAvg = frameTimes.length ? frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length : 0;
+  const ftP95 = percentile(frameTimes, 0.95);
+  const fps = ftAvg > 0 ? 1000 / ftAvg : 0;
+
+  MouthPerfRuntime.hudEl.textContent = [
+    `fps:${fps.toFixed(1)} frame:${ftAvg.toFixed(2)}ms p95:${ftP95.toFixed(2)}ms`,
+    `mode:${RealisticMouthCutRuntime.mode} open:${RealisticMouthCutRuntime.open.toFixed(3)} rebuild/min:${MouthPerfRuntime.rebuildsPerMinute.toFixed(1)}`,
+    `lastRebuild:${MouthPerfRuntime.lastRebuildMs.toFixed(3)}ms max:${MouthPerfRuntime.maxRebuildMs.toFixed(3)}ms spikes:${MouthPerfRuntime.spikes.length}`,
+    `tris:${MouthPerfRuntime.triCount} removed:${MouthPerfRuntime.trianglesRemoved} vtx:${MouthPerfRuntime.vertexCount}`,
+    `driver state:${MouthRuntimeState.stateDriver.toFixed(3)} talk:${MouthRuntimeState.talkDriver.toFixed(3)} shaderOpen:${MouthRuntimeState.approxTotalOpen.toFixed(3)} mask:${MouthRuntimeState.approxLipOpenMask.toFixed(3)}`,
+  ].join('\n');
+}
+
+const MouthCorridorOverlay = {
+  canvas: null,
+  ctx: null,
+};
+
+function ensureMouthCorridorOverlay() {
+  if (MouthCorridorOverlay.canvas) return;
+  const c = document.createElement('canvas');
+  c.style.position = 'fixed';
+  c.style.left = '12px';
+  c.style.top = '12px';
+  c.style.width = '280px';
+  c.style.height = '160px';
+  c.style.zIndex = '12';
+  c.style.pointerEvents = 'none';
+  c.width = 560;
+  c.height = 320;
+  document.body.appendChild(c);
+  MouthCorridorOverlay.canvas = c;
+  MouthCorridorOverlay.ctx = c.getContext('2d');
+}
+
+function drawMouthCorridorOverlay() {
+  if (MouthRuntimeState.debugView !== 'carvecorridor') {
+    if (MouthCorridorOverlay.canvas) MouthCorridorOverlay.canvas.style.display = 'none';
+    return;
+  }
+  ensureMouthCorridorOverlay();
+  if (!MouthCorridorOverlay.canvas || !MouthCorridorOverlay.ctx) return;
+  MouthCorridorOverlay.canvas.style.display = 'block';
+
+  const { canvas, ctx } = MouthCorridorOverlay;
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = 'rgba(10,10,12,0.65)';
+  ctx.fillRect(0, 0, w, h);
+
+  const mt = window.MouthTuning;
+  const split = window.MouthSplitTuning || {};
+  const corridorHalfWidth = Math.max(1e-4, Math.abs(mt.width) * (split.corridorWidthScale ?? 1.08));
+  const cut = resolveRealisticCutParams(split, mt);
+
+  const sx = (x) => ((x + 0.45) / 0.9) * w;
+  const sy = (y) => (1.0 - (y + 0.05) / 0.5) * h;
+
+  const xL = mt.centerX - corridorHalfWidth;
+  const xR = mt.centerX + corridorHalfWidth;
+  ctx.fillStyle = 'rgba(239,68,68,0.22)';
+  ctx.fillRect(sx(xL), 0, sx(xR) - sx(xL), h);
+
+  const drawLine = (offset, color) => {
+    ctx.beginPath();
+    for (let i = 0; i <= 80; i++) {
+      const t = i / 80;
+      const x = mt.centerX - corridorHalfWidth + t * corridorHalfWidth * 2;
+      const nx = THREE.MathUtils.clamp((x - mt.centerX) / Math.max(1e-6, Math.abs(mt.width)), -1.0, 1.0);
+      const y = mt.centerY - mt.curve * nx * nx + offset;
+      if (i === 0) ctx.moveTo(sx(x), sy(y));
+      else ctx.lineTo(sx(x), sy(y));
+    }
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  };
+
+  drawLine(0, '#22d3ee');
+  drawLine(cut.splitThickness, 'rgba(250,204,21,0.9)');
+  drawLine(-cut.splitThickness, 'rgba(250,204,21,0.9)');
+
+  ctx.fillStyle = '#e5e7eb';
+  ctx.font = '18px monospace';
+  ctx.fillText(`corrHalfWidth=${corridorHalfWidth.toFixed(4)}`, 10, 24);
+  ctx.fillText(`lineHalfThickness=${cut.splitThickness.toFixed(5)}`, 10, 48);
+  ctx.fillText(`edgeFeather=${cut.splitEdgeFeather.toFixed(5)}`, 10, 72);
+}
+
+function smoothMouthOpenForState(targetOpen, nowMs) {
+  const cfg = window.MouthStateFilterTuning || {};
+  const attackMs = Math.max(1, cfg.attackMs ?? 55);
+  const releaseMs = Math.max(1, cfg.releaseMs ?? 170);
+  const prev = MouthStateFilterRuntime.value;
+  const dtMs = Math.max(0.0, MouthStateFilterRuntime.lastAtMs > 0 ? (nowMs - MouthStateFilterRuntime.lastAtMs) : 0.0);
+  MouthStateFilterRuntime.lastAtMs = nowMs;
+
+  const tauMs = targetOpen >= prev ? attackMs : releaseMs;
+  const alpha = 1.0 - Math.exp(-dtMs / tauMs);
+  const next = prev + (targetOpen - prev) * THREE.MathUtils.clamp(alpha, 0.0, 1.0);
+  MouthStateFilterRuntime.value = THREE.MathUtils.clamp(next, 0.0, 1.0);
+  return MouthStateFilterRuntime.value;
 }
 
 // =========================
@@ -735,6 +1042,12 @@ varying float vHeadWeight;
 varying float vHeightFromTop;
 varying float vDissolveSeed;
 varying vec2 vBaseXY;
+varying float vMouthWeight;
+varying float vMouthSide;
+varying float vMouthFactor;
+varying float vMouthWeight;
+varying float vMouthSide;
+varying float vMouthFactor;
 
 float hash11(float p) {
   return fract(sin(p * 127.1) * 43758.5453123);
@@ -789,6 +1102,8 @@ void main() {
   vHeightFromTop = aHeightFromTop;
   vDissolveSeed = aRandom.x;
   vBaseXY = aBasePosition.xy;
+  vMouthWeight = aMouthWeight;
+  vMouthSide = aMouthSide;
 
   vec3 pos = aBasePosition;
   float t = uTime;
@@ -914,6 +1229,9 @@ varying float vHeadWeight;
 varying float vHeightFromTop;
 varying float vDissolveSeed;
 varying vec2 vBaseXY;
+varying float vMouthWeight;
+varying float vMouthSide;
+varying float vMouthFactor;
 
 float hash21(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
@@ -1072,12 +1390,9 @@ function generateFaceParticlesFromVertices(srcGeometry) {
       let ay = Math.abs(dy);
 
       if (ay <= mhAbs) {
-        let wx = 1.0 - ax / mwAbs;
-        let wy = 1.0 - ay / mhAbs;
-        weight = wx * wy;
-
-        if (weight < 0.0) weight = 0.0;
-        if (weight > 1.0) weight = 1.0;
+        const xMask = Math.pow(Math.max(0.0, 1.0 - ax / mwAbs), 1.8);
+        const lineMask = Math.pow(Math.max(0.0, 1.0 - ay / mhAbs), 2.2);
+        weight = THREE.MathUtils.clamp(xMask * lineMask, 0.0, 1.0);
 
         if (dy > 0.0) side = 1.0;
         else if (dy < 0.0) side = -1.0;
@@ -1150,6 +1465,7 @@ let particleMaterials = [];
 let particlePoints = null;
 let particlePointsDetail = null;
 let particleSurfaceMesh = null;
+let realisticMouthCavityMesh = null;
 let headCutCapMesh = null;
 
 // =========================
@@ -1165,6 +1481,13 @@ const MOUTH_INTERIOR = {
   ALPHA_CLIP_STABLE: 0.3,
   DARKEN_MIN: 0.6,
   LOG_INTERVAL_MS: 500,
+};
+
+const REALISTIC_MOUTH_CAVITY = {
+  WIDTH: 0.17,
+  HEIGHT: 0.08,
+  DEPTH_OFFSET: 0.02,
+  OPEN_VISIBLE_MIN: 0.03,
 };
 
 // =========================
@@ -1427,6 +1750,85 @@ function updateMouthInteriorRig(headRot, bodyRot, bodyOffsetY) {
   mouthInteriorMesh.rotation.set(headRot.x + bodyRot.x, headRot.y + bodyRot.y, headRot.z + bodyRot.z);
 }
 
+
+function createRealisticMouthCavityMesh(center, renderOrder = 1.95) {
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      uOpen: { value: 0.0 },
+      uOpenMin: { value: 0.03 },
+      uOpenFade: { value: 0.18 },
+      uColor: { value: new THREE.Color(0x12070a) },
+    },
+    vertexShader: /* glsl */ `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      precision highp float;
+      uniform float uOpen;
+      uniform float uOpenMin;
+      uniform float uOpenFade;
+      uniform vec3 uColor;
+      varying vec2 vUv;
+      void main() {
+        vec2 p = vUv * 2.0 - 1.0;
+        float open = clamp(uOpen, 0.0, 1.0);
+        float yScale = mix(0.18, 0.9, open);
+        vec2 e = vec2(p.x / 0.96, p.y / max(0.08, yScale));
+        float sdf = length(e) - 1.0;
+        float alphaShape = 1.0 - smoothstep(0.0, 0.18, sdf);
+        float alphaOpen = smoothstep(uOpenMin, uOpenFade, open);
+        float alpha = alphaShape * alphaOpen;
+        if (alpha <= 0.001) discard;
+        gl_FragColor = vec4(uColor, alpha);
+      }
+    `,
+    transparent: true,
+    depthTest: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(REALISTIC_MOUTH_CAVITY.WIDTH, REALISTIC_MOUTH_CAVITY.HEIGHT, 1, 1), mat);
+  mesh.position.set(center.x, center.y, center.z - REALISTIC_MOUTH_CAVITY.DEPTH_OFFSET);
+  mesh.renderOrder = renderOrder;
+  mesh.visible = false;
+  mesh.userData.basePosition = new THREE.Vector3(center.x, center.y, center.z);
+  return mesh;
+}
+
+function updateRealisticMouthCavityRig(headRot, bodyRot, bodyOffsetY, open) {
+  if (!realisticMouthCavityMesh) return;
+  const base = realisticMouthCavityMesh.userData.basePosition;
+  if (!base) return;
+  const t = window.NeckTuning || { neckPivotY: -0.53, bodyPivotY: -0.65 };
+  const depth = REALISTIC_MOUTH_CAVITY.DEPTH_OFFSET + open * 0.007;
+
+  MOUTH_RIG_POS_TMP.copy(base);
+  MOUTH_RIG_POS_TMP.z = base.z - depth;
+  MOUTH_RIG_POS_TMP.y += bodyOffsetY;
+
+  MOUTH_BODY_PIVOT_TMP.set(0.0, t.bodyPivotY, 0.0);
+  MOUTH_NECK_PIVOT_TMP.set(0.0, t.neckPivotY, 0.0);
+
+  MOUTH_ROTATE_TMP.copy(MOUTH_RIG_POS_TMP).sub(MOUTH_BODY_PIVOT_TMP);
+  MOUTH_RIG_EULER_TMP.set(bodyRot.x, bodyRot.y, bodyRot.z);
+  MOUTH_RIG_QUAT_TMP.setFromEuler(MOUTH_RIG_EULER_TMP);
+  MOUTH_ROTATE_TMP.applyQuaternion(MOUTH_RIG_QUAT_TMP).add(MOUTH_BODY_PIVOT_TMP);
+
+  MOUTH_ROTATE_TMP.sub(MOUTH_NECK_PIVOT_TMP);
+  MOUTH_RIG_EULER_TMP.set(headRot.x, headRot.y, headRot.z);
+  MOUTH_RIG_QUAT_TMP.setFromEuler(MOUTH_RIG_EULER_TMP);
+  MOUTH_ROTATE_TMP.applyQuaternion(MOUTH_RIG_QUAT_TMP).add(MOUTH_NECK_PIVOT_TMP);
+
+  realisticMouthCavityMesh.position.copy(MOUTH_ROTATE_TMP);
+  realisticMouthCavityMesh.rotation.set(headRot.x + bodyRot.x, headRot.y + bodyRot.y, headRot.z + bodyRot.z);
+  realisticMouthCavityMesh.material.uniforms.uOpen.value = open;
+}
+
 // =========================
 // Bloque temático "realistic"
 // - Concentrado en esta sección para activar/desactivar fácil.
@@ -1445,6 +1847,7 @@ function resolveRealisticCutParams(splitTuning = window.MouthSplitTuning, mouthT
 }
 
 function maybeUpdateRealisticMouthCutState(mouthOpen) {
+  const t0 = performance.now();
   if (!isRealisticTheme || !MOUTH_TOPO_CUT_ENABLED) return;
 
   const split = window.MouthSplitTuning || {};
@@ -1471,24 +1874,55 @@ function maybeUpdateRealisticMouthCutState(mouthOpen) {
   // Cierre prioritario: si llegamos a snap-cero, forzamos retorno inmediato a sealed
   // para evitar quedarse visualmente en split por throttle.
   const forceSealedNow = desiredMode === 'sealed' && open <= closeSnapOpen;
+  let scheduleReason = null;
 
   if (modeChanged && (canRebuild || forceSealedNow)) {
     RealisticMouthCutRuntime.mode = desiredMode;
-    scheduleRebuildRealisticSurfaceGeometry(`mouthMode:${desiredMode}${forceSealedNow ? ':force' : ''}`);
+    scheduleReason = `mouthMode:${desiredMode}${forceSealedNow ? ':force' : ''}`;
+    const didSwap = swapRealisticGeometryByMode(scheduleReason);
+    if (!didSwap) scheduleRebuildRealisticSurfaceGeometry(scheduleReason);
+    MouthPerfRuntime.modeSwitches += 1;
   } else if (!modeChanged) {
     RealisticMouthCutRuntime.mode = desiredMode;
   }
 
-  if (DEBUG_MOUTH_ENABLED && nowMs - RealisticMouthCutRuntime.lastDebugLogAtMs >= 600) {
+  const stateDurationMs = performance.now() - t0;
+  if (DEBUG_MOUTH_ENABLED && nowMs - RealisticMouthCutRuntime.lastDebugLogAtMs >= 400) {
     const cut = resolveRealisticCutParams(split, window.MouthTuning);
     RealisticMouthCutRuntime.lastDebugLogAtMs = nowMs;
+    const uniforms = MouthRuntimeState.uniformSnapshot || {};
+    const approxTotalOpen = THREE.MathUtils.clamp((uniforms.uRestOpen ?? 0.0) + Math.max(Math.sin((uniforms.uTime ?? 0.0) * (uniforms.uTalkFreq ?? 24.0)), 0.0) * (uniforms.uTalk ?? 0.0), 0.0, 1.0);
+    const approxLipOpenMask = smoothstepJS(uniforms.uLipOpenMin ?? 0.05, uniforms.uLipOpenFade ?? 0.22, approxTotalOpen);
+    MouthRuntimeState.approxTotalOpen = approxTotalOpen;
+    MouthRuntimeState.approxLipOpenMask = approxLipOpenMask;
     console.info('[mouth-topocut] state', {
-      mouthMode: RealisticMouthCutRuntime.mode,
-      open: Number(open.toFixed(3)),
+      mouthOpenRaw: Number(openRaw.toFixed(4)),
+      mouthOpenClamped: Number(open.toFixed(4)),
+      closeSnapOpen: Number(closeSnapOpen.toFixed(4)),
+      openTrigger: Number(openTrigger.toFixed(4)),
+      closeTrigger: Number(closeTrigger.toFixed(4)),
+      desiredMode,
+      actualMode: RealisticMouthCutRuntime.mode,
+      modeChanged,
+      canRebuild,
+      forceSealedNow,
+      reason: scheduleReason || 'none',
       splitThickness: Number(cut.splitThickness.toFixed(5)),
       splitEdgeFeather: Number(cut.splitEdgeFeather.toFixed(5)),
-      forcedSealedRebuild: forceSealedNow,
       override: MOUTH_CUT_MODE_OVERRIDE,
+      elapsedSinceRebuild: Number(elapsedSinceRebuild.toFixed(3)),
+      maybeUpdateMs: Number(stateDurationMs.toFixed(3)),
+      uTalk: Number((uniforms.uTalk ?? 0).toFixed(4)),
+      uTalkFreq: Number((uniforms.uTalkFreq ?? 0).toFixed(4)),
+      uTalkAmpTop: Number((uniforms.uTalkAmpTop ?? 0).toFixed(4)),
+      uTalkAmpBot: Number((uniforms.uTalkAmpBot ?? 0).toFixed(4)),
+      uLipBandHalfHeight: Number((uniforms.uLipBandHalfHeight ?? 0).toFixed(4)),
+      uLipBandPull: Number((uniforms.uLipBandPull ?? 0).toFixed(4)),
+      uLipOpenMin: Number((uniforms.uLipOpenMin ?? 0).toFixed(4)),
+      uLipOpenFade: Number((uniforms.uLipOpenFade ?? 0).toFixed(4)),
+      uRestOpen: Number((uniforms.uRestOpen ?? 0).toFixed(4)),
+      approxTotalOpen: Number(approxTotalOpen.toFixed(4)),
+      approxLipOpenMask: Number(approxLipOpenMask.toFixed(4)),
     });
   }
 }
@@ -1518,12 +1952,13 @@ function mouthLineSignedDistance(x, y, tuning = window.MouthTuning) {
 }
 
 function carveMouthTopologyByMouthLine(srcGeometry, mode = RealisticMouthCutRuntime.mode) {
+  const t0 = performance.now();
   if (!MOUTH_TOPO_CUT_ENABLED || mode !== 'split') return srcGeometry.clone();
 
-  const nonIndexed = srcGeometry.index ? srcGeometry.toNonIndexed() : srcGeometry.clone();
-  const posAttr = nonIndexed.getAttribute('position');
-  const uvAttr = nonIndexed.getAttribute('uv');
-  if (!posAttr || posAttr.count < 3) return nonIndexed;
+  const src = srcGeometry.clone();
+  const posAttr = src.getAttribute('position');
+  const uvAttr = src.getAttribute('uv');
+  if (!posAttr || posAttr.count < 3) return src;
 
   const mt = window.MouthTuning;
   const split = window.MouthSplitTuning || {};
@@ -1532,128 +1967,246 @@ function carveMouthTopologyByMouthLine(srcGeometry, mode = RealisticMouthCutRunt
   const lineHalfThickness = cut.splitThickness;
   const edgeFeather = cut.splitEdgeFeather;
 
-  const keptPos = [];
-  const keptUv = [];
+  const keptIndices = [];
   let removedTriangles = 0;
+  const indexAttr = src.getIndex();
 
-  const triCount = Math.floor(posAttr.count / 3);
-  for (let t = 0; t < triCount; t++) {
-    const i0 = t * 3 + 0;
-    const i1 = t * 3 + 1;
-    const i2 = t * 3 + 2;
+  if (indexAttr && indexAttr.count >= 3) {
+    const triCount = Math.floor(indexAttr.count / 3);
+    for (let t = 0; t < triCount; t++) {
+      const i0 = indexAttr.getX(t * 3 + 0);
+      const i1 = indexAttr.getX(t * 3 + 1);
+      const i2 = indexAttr.getX(t * 3 + 2);
 
-    const x0 = posAttr.getX(i0), y0 = posAttr.getY(i0), z0 = posAttr.getZ(i0);
-    const x1 = posAttr.getX(i1), y1 = posAttr.getY(i1), z1 = posAttr.getZ(i1);
-    const x2 = posAttr.getX(i2), y2 = posAttr.getY(i2), z2 = posAttr.getZ(i2);
+      const x0 = posAttr.getX(i0), y0 = posAttr.getY(i0);
+      const x1 = posAttr.getX(i1), y1 = posAttr.getY(i1);
+      const x2 = posAttr.getX(i2), y2 = posAttr.getY(i2);
 
-    const inCorridor =
-      Math.abs(x0 - mt.centerX) <= corridorHalfWidth ||
-      Math.abs(x1 - mt.centerX) <= corridorHalfWidth ||
-      Math.abs(x2 - mt.centerX) <= corridorHalfWidth;
+      const inCorridor =
+        Math.abs(x0 - mt.centerX) <= corridorHalfWidth ||
+        Math.abs(x1 - mt.centerX) <= corridorHalfWidth ||
+        Math.abs(x2 - mt.centerX) <= corridorHalfWidth;
 
-    let dropTriangle = false;
-    if (inCorridor) {
-      const d0 = mouthLineSignedDistance(x0, y0, mt);
-      const d1 = mouthLineSignedDistance(x1, y1, mt);
-      const d2 = mouthLineSignedDistance(x2, y2, mt);
-      const d01 = mouthLineSignedDistance((x0 + x1) * 0.5, (y0 + y1) * 0.5, mt);
-      const d12 = mouthLineSignedDistance((x1 + x2) * 0.5, (y1 + y2) * 0.5, mt);
-      const d20 = mouthLineSignedDistance((x2 + x0) * 0.5, (y2 + y0) * 0.5, mt);
-      const dC = mouthLineSignedDistance((x0 + x1 + x2) / 3.0, (y0 + y1 + y2) / 3.0, mt);
-      const samples = [d0, d1, d2, d01, d12, d20, dC];
+      let dropTriangle = false;
+      if (inCorridor) {
+        const d0 = mouthLineSignedDistance(x0, y0, mt);
+        const d1 = mouthLineSignedDistance(x1, y1, mt);
+        const d2 = mouthLineSignedDistance(x2, y2, mt);
+        const d01 = mouthLineSignedDistance((x0 + x1) * 0.5, (y0 + y1) * 0.5, mt);
+        const d12 = mouthLineSignedDistance((x1 + x2) * 0.5, (y1 + y2) * 0.5, mt);
+        const d20 = mouthLineSignedDistance((x2 + x0) * 0.5, (y2 + y0) * 0.5, mt);
+        const dC = mouthLineSignedDistance((x0 + x1 + x2) / 3.0, (y0 + y1 + y2) / 3.0, mt);
+        const samples = [d0, d1, d2, d01, d12, d20, dC];
 
-      let hasUpper = false;
-      let hasLower = false;
-      let minAbsDist = Number.POSITIVE_INFINITY;
-      for (const d of samples) {
-        if (d > edgeFeather) hasUpper = true;
-        if (d < -edgeFeather) hasLower = true;
-        const ad = Math.abs(d);
-        if (ad < minAbsDist) minAbsDist = ad;
+        let hasUpper = false;
+        let hasLower = false;
+        let minAbsDist = Number.POSITIVE_INFINITY;
+        for (const d of samples) {
+          if (d > edgeFeather) hasUpper = true;
+          if (d < -edgeFeather) hasLower = true;
+          const ad = Math.abs(d);
+          if (ad < minAbsDist) minAbsDist = ad;
+        }
+
+        dropTriangle = (hasUpper && hasLower) || (minAbsDist <= lineHalfThickness);
       }
 
-      const crossesLine = hasUpper && hasLower;
-      const touchesCutBand = minAbsDist <= lineHalfThickness;
-      dropTriangle = crossesLine || touchesCutBand;
+      if (dropTriangle) {
+        removedTriangles += 1;
+      } else {
+        keptIndices.push(i0, i1, i2);
+      }
     }
 
-    if (dropTriangle) {
-      removedTriangles += 1;
-      continue;
+    src.setIndex(keptIndices);
+    src.computeVertexNormals();
+    MouthPerfRuntime.triCount = Math.floor(keptIndices.length / 3);
+  } else {
+    const toNonIndexedStart = performance.now();
+    const nonIndexed = src.toNonIndexed();
+    const toNonIndexedMs = performance.now() - toNonIndexedStart;
+    const nonIdxPos = nonIndexed.getAttribute('position');
+    const nonIdxUv = nonIndexed.getAttribute('uv');
+    const keptPos = [];
+    const keptUv = [];
+    const triCount = Math.floor(nonIdxPos.count / 3);
+    for (let t = 0; t < triCount; t++) {
+      const i0 = t * 3 + 0;
+      const i1 = t * 3 + 1;
+      const i2 = t * 3 + 2;
+      const x0 = nonIdxPos.getX(i0), y0 = nonIdxPos.getY(i0), z0 = nonIdxPos.getZ(i0);
+      const x1 = nonIdxPos.getX(i1), y1 = nonIdxPos.getY(i1), z1 = nonIdxPos.getZ(i1);
+      const x2 = nonIdxPos.getX(i2), y2 = nonIdxPos.getY(i2), z2 = nonIdxPos.getZ(i2);
+      const inCorridor = Math.abs(x0 - mt.centerX) <= corridorHalfWidth || Math.abs(x1 - mt.centerX) <= corridorHalfWidth || Math.abs(x2 - mt.centerX) <= corridorHalfWidth;
+      let dropTriangle = false;
+      if (inCorridor) {
+        const d0 = mouthLineSignedDistance(x0, y0, mt);
+        const d1 = mouthLineSignedDistance(x1, y1, mt);
+        const d2 = mouthLineSignedDistance(x2, y2, mt);
+        const dC = mouthLineSignedDistance((x0 + x1 + x2) / 3.0, (y0 + y1 + y2) / 3.0, mt);
+        dropTriangle = ((Math.max(d0, d1, d2) > edgeFeather) && (Math.min(d0, d1, d2) < -edgeFeather)) || (Math.abs(dC) <= lineHalfThickness);
+      }
+      if (dropTriangle) {
+        removedTriangles += 1;
+      } else {
+        keptPos.push(x0, y0, z0, x1, y1, z1, x2, y2, z2);
+        if (nonIdxUv) keptUv.push(nonIdxUv.getX(i0), nonIdxUv.getY(i0), nonIdxUv.getX(i1), nonIdxUv.getY(i1), nonIdxUv.getX(i2), nonIdxUv.getY(i2));
+      }
     }
-
-    keptPos.push(x0, y0, z0, x1, y1, z1, x2, y2, z2);
-    if (uvAttr) {
-      keptUv.push(
-        uvAttr.getX(i0), uvAttr.getY(i0),
-        uvAttr.getX(i1), uvAttr.getY(i1),
-        uvAttr.getX(i2), uvAttr.getY(i2),
-      );
-    }
+    src.dispose();
+    src.copy(new THREE.BufferGeometry());
+    src.setAttribute('position', new THREE.Float32BufferAttribute(keptPos, 3));
+    if (nonIdxUv && keptUv.length > 0) src.setAttribute('uv', new THREE.Float32BufferAttribute(keptUv, 2));
+    src.computeVertexNormals();
+    MouthPerfRuntime.triCount = Math.floor(keptPos.length / 9);
+    if (DEBUG_MOUTH_ENABLED) console.info('[mouth-topocut] fallback nonIndexed carve', { toNonIndexedMs: Number(toNonIndexedMs.toFixed(3)) });
   }
 
-  const carved = new THREE.BufferGeometry();
-  carved.setAttribute('position', new THREE.Float32BufferAttribute(keptPos, 3));
-  if (uvAttr && keptUv.length > 0) carved.setAttribute('uv', new THREE.Float32BufferAttribute(keptUv, 2));
-  carved.computeVertexNormals();
+  MouthPerfRuntime.trianglesRemoved = removedTriangles;
+  const carveMs = performance.now() - t0;
 
   if (DEBUG_MOUTH_ENABLED) {
     console.info('[mouth-topocut] carve result', {
       enabled: MOUTH_TOPO_CUT_ENABLED,
       mouthMode: mode,
       open: Number(RealisticMouthCutRuntime.open.toFixed(3)),
-      trianglesIn: triCount,
-      trianglesOut: Math.floor(keptPos.length / 9),
+      trianglesOut: MouthPerfRuntime.triCount,
       trianglesRemoved: removedTriangles,
       corridorHalfWidth: Number(corridorHalfWidth.toFixed(4)),
       lineHalfThickness: Number(lineHalfThickness.toFixed(5)),
       edgeFeather: Number(edgeFeather.toFixed(5)),
+      carveMs: Number(carveMs.toFixed(3)),
+      indexed: !!indexAttr,
+      vertexCount: posAttr.count,
     });
   }
 
-  return carved;
+  return src;
+}
+
+function assignRealisticSurfaceGeometry(geo) {
+  if (!particleSurfaceMesh || !geo) return;
+  particleSurfaceMesh.geometry = geo;
+  particlesGeometryRef = geo;
+  headWeightAttrRef = geo.getAttribute('aHeadWeight');
+  basePosAttrRef = geo.getAttribute('aBasePosition');
+  mouthWeightAttrRef = geo.getAttribute('aMouthWeight');
+  mouthSideAttrRef = geo.getAttribute('aMouthSide');
+  MouthPerfRuntime.vertexCount = geo.getAttribute('position')?.count ?? 0;
+}
+
+function swapRealisticGeometryByMode(reason = 'modeSwap') {
+  if (!particleSurfaceMesh) return false;
+  const geo = RealisticMouthCutRuntime.mode === 'split' ? RealisticMouthGeometryCache.split : RealisticMouthGeometryCache.sealed;
+  if (!geo) return false;
+  const t0 = performance.now();
+  assignRealisticSurfaceGeometry(geo);
+  const swapMs = performance.now() - t0;
+  RealisticMouthCutRuntime.lastRebuildAtMs = performance.now();
+  RealisticMouthCutRuntime.lastReason = reason;
+  MouthPerfRuntime.lastRebuildMs = swapMs;
+  MouthPerfRuntime.maxRebuildMs = Math.max(MouthPerfRuntime.maxRebuildMs, swapMs);
+  if (DEBUG_MOUTH_ENABLED) {
+    console.info('[mouth-topocut] geometry swap', {
+      reason,
+      mouthMode: RealisticMouthCutRuntime.mode,
+      swapMs: Number(swapMs.toFixed(3)),
+      vertexCount: MouthPerfRuntime.vertexCount,
+    });
+  }
+  return true;
 }
 
 function rebuildRealisticSurfaceGeometryNow(reason = 'manual') {
+  const t0 = performance.now();
   if (!isRealisticTheme || !particleSurfaceMesh || !realisticSourceGeometryRef) return;
-  const nextGeo = generateAnimatedSurfaceGeometry(realisticSourceGeometryRef, { mouthMode: RealisticMouthCutRuntime.mode });
-  const prevGeo = particleSurfaceMesh.geometry;
-  particleSurfaceMesh.geometry = nextGeo;
 
-  particlesGeometryRef = nextGeo;
-  headWeightAttrRef = nextGeo.getAttribute('aHeadWeight');
-  basePosAttrRef = nextGeo.getAttribute('aBasePosition');
-  mouthWeightAttrRef = nextGeo.getAttribute('aMouthWeight');
-  mouthSideAttrRef = nextGeo.getAttribute('aMouthSide');
+  const nextSealed = generateAnimatedSurfaceGeometry(realisticSourceGeometryRef, { mouthMode: 'sealed' });
+  const nextSplit = generateAnimatedSurfaceGeometry(realisticSourceGeometryRef, { mouthMode: 'split' });
 
-  if (prevGeo) prevGeo.dispose();
+  const oldSealed = RealisticMouthGeometryCache.sealed;
+  const oldSplit = RealisticMouthGeometryCache.split;
+  RealisticMouthGeometryCache.sealed = nextSealed;
+  RealisticMouthGeometryCache.split = nextSplit;
+  RealisticMouthGeometryCache.lastBuildReason = reason;
 
-  RealisticMouthCutRuntime.lastRebuildAtMs = performance.now();
+  if (oldSealed && oldSealed !== particleSurfaceMesh.geometry) oldSealed.dispose();
+  if (oldSplit && oldSplit !== particleSurfaceMesh.geometry) oldSplit.dispose();
+
+  swapRealisticGeometryByMode(`cacheSwap:${reason}`);
+
+  const doneMs = performance.now();
+  const rebuildMs = doneMs - t0;
+  RealisticMouthCutRuntime.lastRebuildAtMs = doneMs;
+  RealisticMouthCutRuntime.lastReason = reason;
+
+  MouthPerfRuntime.lastRebuildMs = rebuildMs;
+  MouthPerfRuntime.maxRebuildMs = Math.max(MouthPerfRuntime.maxRebuildMs, rebuildMs);
+  MouthPerfRuntime.rebuildCount += 1;
+  if (MouthPerfRuntime.rebuildWindowStartMs === 0) MouthPerfRuntime.rebuildWindowStartMs = doneMs;
+  MouthPerfRuntime.rebuildsInWindow += 1;
+  const rebuildWindowElapsed = Math.max(1, doneMs - MouthPerfRuntime.rebuildWindowStartMs);
+  MouthPerfRuntime.rebuildsPerMinute = (MouthPerfRuntime.rebuildsInWindow * 60000.0) / rebuildWindowElapsed;
+  MouthPerfRuntime.rebuildTimesMs.push(rebuildMs);
+  if (MouthPerfRuntime.rebuildTimesMs.length > 400) MouthPerfRuntime.rebuildTimesMs.shift();
+
+  if (rebuildMs > MOUTH_SPIKE_THRESHOLD_MS) {
+    const spike = {
+      reason,
+      rebuildMs: Number(rebuildMs.toFixed(3)),
+      mode: RealisticMouthCutRuntime.mode,
+      open: Number(RealisticMouthCutRuntime.open.toFixed(4)),
+      vertexCount: MouthPerfRuntime.vertexCount,
+      trianglesRemoved: MouthPerfRuntime.trianglesRemoved,
+      triCount: MouthPerfRuntime.triCount,
+    };
+    MouthPerfRuntime.spikes.push(spike);
+    if (MouthPerfRuntime.spikes.length > 30) MouthPerfRuntime.spikes.shift();
+    console.warn('[mouth-topocut] rebuild spike', spike);
+  }
 
   if (DEBUG_MOUTH_ENABLED) {
     console.info('[mouth-topocut] realistic geometry rebuilt', {
       reason,
       mouthMode: RealisticMouthCutRuntime.mode,
       open: Number(RealisticMouthCutRuntime.open.toFixed(3)),
-      trianglesRemoved: RealisticMouthCutRuntime.mode === 'split' ? 'see carve log' : 0,
-      vertexCount: nextGeo.getAttribute('position')?.count ?? 0,
+      trianglesRemoved: MouthPerfRuntime.trianglesRemoved,
+      vertexCount: MouthPerfRuntime.vertexCount,
+      rebuildMs: Number(rebuildMs.toFixed(3)),
+      sealedVertexCount: nextSealed.getAttribute('position')?.count ?? 0,
+      splitVertexCount: nextSplit.getAttribute('position')?.count ?? 0,
+      pendingScheduleMs: Number((MouthPerfRuntime.scheduleRequestedAtMs ? (t0 - MouthPerfRuntime.scheduleRequestedAtMs) : 0).toFixed(3)),
     });
   }
 }
 
 function scheduleRebuildRealisticSurfaceGeometry(reason = 'change') {
   if (_realisticRebuildPending) return;
+  const t0 = performance.now();
+  MouthPerfRuntime.pendingReason = reason;
+  MouthPerfRuntime.scheduleRequestedAtMs = t0;
   _realisticRebuildPending = true;
   requestAnimationFrame(() => {
     _realisticRebuildPending = false;
+    const queueMs = performance.now() - t0;
+    if (DEBUG_MOUTH_ENABLED) {
+      console.info('[mouth-topocut] schedule rebuild', {
+        reason,
+        queueMs: Number(queueMs.toFixed(3)),
+      });
+    }
     rebuildRealisticSurfaceGeometryNow(reason);
   });
 }
 
 function generateAnimatedSurfaceGeometry(srcGeometry, { mouthMode = RealisticMouthCutRuntime.mode } = {}) {
+  const t0 = performance.now();
+  const cloneOrCarveStart = performance.now();
   const carvedSource = mouthMode === 'split'
     ? carveMouthTopologyByMouthLine(srcGeometry, mouthMode)
     : srcGeometry.clone();
+  const cloneOrCarveMs = performance.now() - cloneOrCarveStart;
+  const sourceCloneStart = performance.now();
   // Random estable por posición para evitar grietas visuales en costuras UV.
   // Si dos vértices comparten posición espacial, recibirán el mismo offset.
   const stableHash = (n) => {
@@ -1669,6 +2222,7 @@ function generateAnimatedSurfaceGeometry(srcGeometry, { mouthMode = RealisticMou
   };
 
   const geo = carvedSource.clone();
+  const sourceCloneMs = performance.now() - sourceCloneStart;
   const srcPos = geo.getAttribute('position');
   const srcUv = geo.getAttribute('uv');
   const count = srcPos.count;
@@ -1729,9 +2283,9 @@ function generateAnimatedSurfaceGeometry(srcGeometry, { mouthMode = RealisticMou
       const dy = v.y - curveY;
       const ay = Math.abs(dy);
       if (ay <= mhAbs) {
-        const wx = 1.0 - ax / mwAbs;
-        const wy = 1.0 - ay / mhAbs;
-        weight = THREE.MathUtils.clamp(wx * wy, 0.0, 1.0);
+        const xMask = Math.pow(Math.max(0.0, 1.0 - ax / mwAbs), 1.8);
+        const lineMask = Math.pow(Math.max(0.0, 1.0 - ay / mhAbs), 2.2);
+        weight = THREE.MathUtils.clamp(xMask * lineMask, 0.0, 1.0);
         side = dy > 0.0 ? 1.0 : (dy < 0.0 ? -1.0 : 0.0);
       }
     }
@@ -1759,6 +2313,16 @@ function generateAnimatedSurfaceGeometry(srcGeometry, { mouthMode = RealisticMou
   geo.setAttribute('aMouthSide', new THREE.BufferAttribute(mouthSides, 1));
   geo.setAttribute('aHeadWeight', new THREE.BufferAttribute(headWeights, 1));
 
+  if (DEBUG_MOUTH_ENABLED) {
+    console.info('[mouth-topocut] generateAnimatedSurfaceGeometry', {
+      mouthMode,
+      vertexCount: count,
+      elapsedMs: Number((performance.now() - t0).toFixed(3)),
+      cloneOrCarveMs: Number(cloneOrCarveMs.toFixed(3)),
+      postCloneMs: Number(sourceCloneMs.toFixed(3)),
+    });
+  }
+
   return geo;
 }
 
@@ -1783,6 +2347,7 @@ uniform float uLipOpenFade;
 uniform float uLipCenterPull;
 uniform float uLipBandHalfHeight;
 uniform float uLipBandPull;
+uniform float uDebugMouthView;
 uniform vec3 uHeadRot;
 uniform vec3 uBodyRot;
 uniform vec3 uBodyOffset;
@@ -1803,6 +2368,9 @@ varying vec2 vUv;
 varying float vHeadWeight;
 varying float vBaseZ;
 varying vec2 vBaseXY;
+varying float vMouthWeight;
+varying float vMouthSide;
+varying float vMouthFactor;
 
 float hash11(float p){ return fract(sin(p * 127.1) * 43758.5453123); }
 float hash21(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453123); }
@@ -1817,6 +2385,8 @@ void main() {
   vHeadWeight = aHeadWeight;
   vBaseZ = aBasePosition.z;
   vBaseXY = aBasePosition.xy;
+  vMouthWeight = aMouthWeight;
+  vMouthSide = aMouthSide;
 
   vec3 pos = aBasePosition;
   float t = uTime;
@@ -1832,12 +2402,15 @@ void main() {
   float totalOpen = clamp(uRestOpen + max(sin(uTime * uTalkFreq), 0.0) * uTalk, 0.0, 1.0);
   float lipOpenMask = smoothstep(uLipOpenMin, uLipOpenFade, totalOpen);
   float mouthFactor = aMouthWeight * lipOpenMask;
+  vMouthFactor = mouthFactor;
   float sideSign = sign(aMouthSide);
   float lipAmp = mix(uTalkAmpBot, uTalkAmpTop, step(0.0, aMouthSide));
   float spreadY = sideSign * lipAmp * mouthFactor;
   float targetBandY = uLipCenterY + sideSign * uLipBandHalfHeight;
   float bandGatherY = (targetBandY - aBasePosition.y) * uLipBandPull * mouthFactor;
   float centerGatherX = (uLipCenterX - aBasePosition.x) * uLipCenterPull * mouthFactor;
+  bandGatherY = clamp(bandGatherY, -0.055, 0.055);
+  centerGatherX = clamp(centerGatherX, -0.045, 0.045);
   vec3 mouthOffset = vec3(centerGatherX, spreadY + bandGatherY, -uLipDepthAmp * mouthFactor);
 
   vec3 displaced = pos + globalOffset * uGlobalAmp + clusterOffset * uClusterAmp + microOffset * uNoiseAmp + breathOffset + mouthOffset;
@@ -1873,10 +2446,14 @@ uniform float uEyeMarkerAspect;
 uniform float uEyeMarkerScale;
 uniform float uEyeMarkerFeather;
 uniform float uDebugBlinkCover;
+uniform float uDebugMouthView;
 varying vec2 vUv;
 varying float vHeadWeight;
 varying float vBaseZ;
 varying vec2 vBaseXY;
+varying float vMouthWeight;
+varying float vMouthSide;
+varying float vMouthFactor;
 
 mat2 invRot(float a) {
   float s = sin(a);
@@ -1906,6 +2483,22 @@ void main() {
   if (uDebugHeadWeight > 0.5) {
     gl_FragColor = vec4(vec3(clamp(vHeadWeight, 0.0, 1.0)), 1.0);
     return;
+  }
+
+  if (uDebugMouthView > 0.5) {
+    if (uDebugMouthView < 1.5) {
+      gl_FragColor = vec4(vec3(clamp(vMouthWeight, 0.0, 1.0)), 1.0);
+      return;
+    }
+    if (uDebugMouthView < 2.5) {
+      vec3 c = vMouthSide > 0.0 ? vec3(0.12, 0.92, 0.45) : (vMouthSide < 0.0 ? vec3(0.2, 0.45, 1.0) : vec3(0.05));
+      gl_FragColor = vec4(c, 1.0);
+      return;
+    }
+    if (uDebugMouthView < 3.5) {
+      gl_FragColor = vec4(vec3(clamp(vMouthFactor, 0.0, 1.0)), 1.0);
+      return;
+    }
   }
 
   if (vBaseZ < 0.0) discard;
@@ -2098,7 +2691,9 @@ loader.load(
 
     const particlesGeo = generateFaceParticlesFromVertices(mergedGeom);
     realisticSourceGeometryRef = mergedGeom.clone();
-    const realisticSurfaceGeo = generateAnimatedSurfaceGeometry(realisticSourceGeometryRef, { mouthMode: RealisticMouthCutRuntime.mode });
+    RealisticMouthGeometryCache.sealed = generateAnimatedSurfaceGeometry(realisticSourceGeometryRef, { mouthMode: 'sealed' });
+    RealisticMouthGeometryCache.split = generateAnimatedSurfaceGeometry(realisticSourceGeometryRef, { mouthMode: 'split' });
+    const realisticSurfaceGeo = RealisticMouthCutRuntime.mode === 'split' ? RealisticMouthGeometryCache.split : RealisticMouthGeometryCache.sealed;
 
     // refs para edición / recompute
     const t = window.NeckTuning;
@@ -2214,6 +2809,7 @@ loader.load(
           uLipCenterPull: { value: window.MouthRealisticTuning.centerPull },
           uLipBandHalfHeight: { value: window.MouthRealisticTuning.bandHalfHeight },
           uLipBandPull: { value: window.MouthRealisticTuning.bandPull },
+          uDebugMouthView: { value: 0.0 },
           uHeadRot: { value: new THREE.Vector3(0, 0, 0) },
           uBodyRot: { value: new THREE.Vector3(0, 0, 0) },
           uBodyOffset: { value: new THREE.Vector3(0, 0, 0) },
@@ -2245,6 +2841,8 @@ loader.load(
       particleSurfaceMesh = new THREE.Mesh(realisticSurfaceGeo, particleMaterial);
       particleSurfaceMesh.frustumCulled = false;
       particleSurfaceMesh.renderOrder = 2;
+      const cavityCenter = computeMouthCenterFromGeometry(realisticSurfaceGeo) || new THREE.Vector3(window.MouthTuning.centerX, window.MouthTuning.centerY, 0.02);
+      realisticMouthCavityMesh = createRealisticMouthCavityMesh(cavityCenter, 1.95);
       particlePoints = null;
       particlePointsDetail = null;
 
@@ -2287,6 +2885,7 @@ loader.load(
     }
     if (particlePoints) scene.add(particlePoints);
     if (particlePointsDetail) scene.add(particlePointsDetail);
+    if (realisticMouthCavityMesh) scene.add(realisticMouthCavityMesh);
     if (particleSurfaceMesh) scene.add(particleSurfaceMesh);
 
     controls.target.set(0, 0.15, 0);
@@ -3325,6 +3924,8 @@ function animate() {
   const elapsedJump = prevFrameElapsed > 0 ? Math.max(0.0, elapsed - prevFrameElapsed) : 0.0;
   const deltaRaw = elapsedJump;
   prevFrameElapsed = elapsed;
+  const mouthNowMs = performance.now();
+  markMouthPerfFrame(mouthNowMs);
 
   // dt separado para evitar snaps en motion con spikes de RAF (tab switch/frame drops)
   const dtBlink = Math.min(deltaRaw, 0.05);
@@ -3336,6 +3937,17 @@ function animate() {
     let targetTalk = 0.0;
     if (lipHoldActive) targetTalk = 1.0;
     else targetTalk = getTalkLevelFromAudio();
+
+    const mouthTestDrive = getMouthTestDrive(elapsed * 1000.0);
+    if (mouthTestDrive) {
+      targetTalk = mouthTestDrive.talk;
+      MouthRuntimeState.timeMs = elapsed * 1000.0;
+      MouthRuntimeState.talkDriverRaw = mouthTestDrive.base;
+      MouthRuntimeState.stateDriverRaw = mouthTestDrive.base;
+      MouthRuntimeState.talkDriver = mouthTestDrive.talk;
+      MouthRuntimeState.stateDriver = mouthTestDrive.state;
+      MouthRuntimeState.noise = mouthTestDrive.noise;
+    }
 
     AvatarState.talkLevel = targetTalk;
 
@@ -3387,11 +3999,18 @@ function animate() {
     const forcedTalkLevel = (FORCE_TALK_LEVEL == null || Number.isNaN(FORCE_TALK_LEVEL))
       ? (DEBUG_EDIT_ENABLED ? DEBUG_EDIT_FORCE_TALK : null)
       : FORCE_TALK_LEVEL;
-    const mouthOpen = forcedTalkLevel == null
+    const mouthOpenFromTalk = forcedTalkLevel == null
       ? clamp01(AvatarState.talkLevel)
       : clamp01(forcedTalkLevel);
+    const mouthOpenForStateRaw = mouthTestDrive ? clamp01(mouthTestDrive.state) : mouthOpenFromTalk;
+    const mouthOpenForState = smoothMouthOpenForState(mouthOpenForStateRaw, mouthNowMs);
+    const mouthOpenShader = mouthOpenFromTalk;
+    MouthRuntimeState.stateDriverRaw = mouthOpenForStateRaw;
+    MouthRuntimeState.stateDriver = mouthOpenForState;
+    MouthRuntimeState.talkDriver = mouthOpenShader;
+
     if (isRealisticTheme) {
-      maybeUpdateRealisticMouthCutState(mouthOpen);
+      maybeUpdateRealisticMouthCutState(mouthOpenForState);
     }
     const headRotMag = headRot.length();
     reportMotionFrameDebug({
@@ -3415,8 +4034,14 @@ function animate() {
 
     for (const mat of particleMaterials) {
       mat.uniforms.uTime.value = elapsed;
-      mat.uniforms.uTalk.value = AvatarState.talkLevel;
+      mat.uniforms.uTalk.value = mouthOpenShader;
       mat.uniforms.uRestOpen.value = isRealisticTheme ? 0.0 : 0.03;
+      if (mat.uniforms.uDebugMouthView) {
+        const viewCode = MouthRuntimeState.debugView === 'weights'
+          ? 1.0
+          : (MouthRuntimeState.debugView === 'side' ? 2.0 : (MouthRuntimeState.debugView === 'bandmask' ? 3.0 : 0.0));
+        mat.uniforms.uDebugMouthView.value = viewCode;
+      }
       applyEyeBlinkUniforms(mat);
       mat.uniforms.uDebugHeadWeight.value = DebugView.headWeight ? 1.0 : 0.0;
 
@@ -3425,7 +4050,7 @@ function animate() {
       mat.uniforms.uBodyRot.value.copy(bodyRot);
 
       mat.uniforms.uBodyOffset.value.set(0.0, offY, 0.0);
-      if (!isRealisticTheme) applyMouthCutoutUniforms(mat, mouthOpen);
+      if (!isRealisticTheme) applyMouthCutoutUniforms(mat, mouthOpenForState);
 
       if (DEBUG_EDIT_ENABLED) {
         const t = window.NeckTuning;
@@ -3434,21 +4059,43 @@ function animate() {
       }
     }
 
+    const sampleMat = particleMaterials[0];
+    if (sampleMat?.uniforms) {
+      MouthRuntimeState.uniformSnapshot = {
+        uTime: sampleMat.uniforms.uTime?.value ?? elapsed,
+        uTalk: sampleMat.uniforms.uTalk?.value ?? 0.0,
+        uTalkFreq: sampleMat.uniforms.uTalkFreq?.value ?? 24.0,
+        uTalkAmpTop: sampleMat.uniforms.uTalkAmpTop?.value ?? 0.0,
+        uTalkAmpBot: sampleMat.uniforms.uTalkAmpBot?.value ?? 0.0,
+        uLipBandHalfHeight: sampleMat.uniforms.uLipBandHalfHeight?.value ?? 0.0,
+        uLipBandPull: sampleMat.uniforms.uLipBandPull?.value ?? 0.0,
+        uLipOpenMin: sampleMat.uniforms.uLipOpenMin?.value ?? 0.05,
+        uLipOpenFade: sampleMat.uniforms.uLipOpenFade?.value ?? 0.22,
+        uRestOpen: sampleMat.uniforms.uRestOpen?.value ?? 0.0,
+      };
+    }
+
+    if (isRealisticTheme && realisticMouthCavityMesh) {
+      const cavityVisible = RealisticMouthCutRuntime.mode === 'split' && RealisticMouthCutRuntime.open > REALISTIC_MOUTH_CAVITY.OPEN_VISIBLE_MIN;
+      realisticMouthCavityMesh.visible = cavityVisible;
+      updateRealisticMouthCavityRig(headRot, bodyRot, offY, Math.max(mouthOpenForState, 0.08));
+    }
+
     if (!isRealisticTheme && mouthInteriorMaterial && mouthInteriorMesh) {
-      mouthInteriorMaterial.uniforms.uOpen.value = mouthOpen;
-      mouthInteriorMesh.visible = DEBUG_MOUTH_ENABLED || mouthOpen > MOUTH_INTERIOR.OPEN_MIN;
+      mouthInteriorMaterial.uniforms.uOpen.value = mouthOpenForState;
+      mouthInteriorMesh.visible = DEBUG_MOUTH_ENABLED || mouthOpenForState > MOUTH_INTERIOR.OPEN_MIN;
       updateMouthInteriorRig(headRot, bodyRot, offY);
 
       if (DEBUG_MOUTH_ENABLED) {
         const nowMs = performance.now();
         if (mouthInteriorDebugEl && nowMs - mouthInteriorLastHudAtMs >= MOUTH_INTERIOR.LOG_INTERVAL_MS) {
           mouthInteriorLastHudAtMs = nowMs;
-          mouthInteriorDebugEl.textContent = `mouthOpen: ${mouthOpen.toFixed(2)}`;
+          mouthInteriorDebugEl.textContent = `mouthOpen: ${mouthOpenForState.toFixed(2)}`;
         }
         if (nowMs - mouthInteriorLastLogAtMs >= MOUTH_INTERIOR.LOG_INTERVAL_MS) {
           mouthInteriorLastLogAtMs = nowMs;
           console.info('[mouth-interior] debug', {
-            mouthOpen: Number(mouthOpen.toFixed(3)),
+            mouthOpen: Number(mouthOpenForState.toFixed(3)),
             visible: mouthInteriorMesh.visible,
             pos: {
               x: Number(mouthInteriorMesh.position.x.toFixed(3)),
@@ -3473,6 +4120,9 @@ function animate() {
     particleSurfaceMesh.rotation.set(0, 0, 0);
     particleSurfaceMesh.position.set(0, 0, 0);
   }
+
+  drawMouthCorridorOverlay();
+  updateMouthDebugHud(mouthNowMs);
 
   controls.update();
   const renderT0 = performance.now();
