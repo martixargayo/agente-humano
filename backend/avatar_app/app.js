@@ -2065,6 +2065,11 @@ function carveMouthTopologyByMouthLine(srcGeometry, mode = RealisticMouthCutRunt
   MouthPerfRuntime.trianglesRemoved = removedTriangles;
   const carveMs = performance.now() - t0;
 
+  const trianglesOut = Math.floor(keptPos.length / 9);
+  const carveMs = performance.now() - t0;
+  MouthPerfRuntime.triCount = trianglesOut;
+  MouthPerfRuntime.trianglesRemoved = removedTriangles;
+
   if (DEBUG_MOUTH_ENABLED) {
     console.info('[mouth-topocut] carve result', {
       enabled: MOUTH_TOPO_CUT_ENABLED,
