@@ -48,10 +48,13 @@ const FEEDBACK_CARDS = [
   },
 ];
 
-const TURN_DETAILS = {
-  user: 'hola tienes un momento para hablar conmigo',
-  avatar: 'Sí Lluís claro dime',
-};
+const TURN_DETAILS = [
+  {
+    user: 'hola tienes un momento para hablar conmigo',
+    avatar: 'Sí Lluís claro dime',
+  },
+  ...Array.from({ length: TURN_SCORES.length - 1 }, () => ({ user: '', avatar: '' })),
+];
 
 const DEMO_MODE_CONFIG = {
   demo_feedback: {
@@ -225,8 +228,8 @@ export function createDemoFeedbackMode({
             <svg class="fb-chart" viewBox="0 0 860 260" role="img" aria-label="Serie de cercanía al entendimiento por turno"></svg>
           </div>
           <aside class="fb-detail-panel" aria-live="polite">
-            <p class="fb-detail-line"><strong>tú</strong> ${escapeHtml(TURN_DETAILS.user)}</p>
-            <p class="fb-detail-line"><strong>él</strong> ${escapeHtml(TURN_DETAILS.avatar)}</p>
+            <p class="fb-detail-line"><strong>Tú:</strong></p>
+            <p class="fb-detail-line"><strong>Él:</strong></p>
           </aside>
         </div>
       </section>
@@ -304,11 +307,22 @@ export function createDemoFeedbackMode({
     }
 
     const svg = dashboard.querySelector('.fb-chart');
-    renderChart(svg);
+    const detailPanel = dashboard.querySelector('.fb-detail-panel');
+
+    let selectedIndex = 0;
+
+    renderChart(svg, setSelectedTurn, () => selectedIndex);
+    setSelectedTurn(0);
 
     overlay.appendChild(dashboard);
     document.body.appendChild(overlay);
     ui.feedbackOverlay = overlay;
+
+    function setSelectedTurn(index) {
+      selectedIndex = index;
+      renderDetailPanel(detailPanel, selectedIndex);
+      updateChartSelection(svg, selectedIndex);
+    }
   }
 
   function ensureFeedbackStyles() {
@@ -400,7 +414,7 @@ export function createDemoFeedbackMode({
 
       .fb-skill-card {
         padding: 18px;
-        border-width: 3px;
+        border-width: 2.1px;
       }
 
       .fb-skill-card.ok { border-color: var(--ok); }
@@ -577,7 +591,15 @@ function crossSvg() {
   return '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
 }
 
-function renderChart(svg) {
+function renderDetailPanel(panel, index) {
+  const detail = TURN_DETAILS[index] || { user: '', avatar: '' };
+  panel.innerHTML = `
+    <p class="fb-detail-line"><strong>Tú:</strong> ${escapeHtml(detail.user || '')}</p>
+    <p class="fb-detail-line"><strong>Él:</strong> ${escapeHtml(detail.avatar || '')}</p>
+  `;
+}
+
+function renderChart(svg, onSelectTurn, getSelectedIndex) {
   const NS = 'http://www.w3.org/2000/svg';
   const width = 860;
   const height = 260;
@@ -642,6 +664,17 @@ function renderChart(svg) {
     const y = yFor(value);
     const color = value >= ACCEPTANCE_THRESHOLD ? 'var(--ok)' : value >= 60 ? 'var(--warn)' : 'var(--bad)';
 
+    const ring = document.createElementNS(NS, 'circle');
+    ring.setAttribute('cx', String(x));
+    ring.setAttribute('cy', String(y));
+    ring.setAttribute('r', '9');
+    ring.setAttribute('fill', 'none');
+    ring.setAttribute('stroke', 'var(--focus)');
+    ring.setAttribute('stroke-width', '2');
+    ring.setAttribute('opacity', idx === 0 ? '0.9' : '0');
+    ring.classList.add('fb-chart-ring');
+    pointLayer.appendChild(ring);
+
     const point = document.createElementNS(NS, 'circle');
     point.setAttribute('cx', String(x));
     point.setAttribute('cy', String(y));
@@ -650,6 +683,15 @@ function renderChart(svg) {
     point.setAttribute('stroke', '#FFFFFF');
     point.setAttribute('stroke-width', '2');
     point.setAttribute('filter', 'url(#fbPointShadow)');
+    point.classList.add('fb-chart-point');
+    point.setAttribute('tabindex', '0');
+    point.setAttribute('role', 'button');
+    point.setAttribute('aria-label', `Turno ${idx + 1}`);
+
+    const activate = () => onSelectTurn(idx);
+    point.addEventListener('click', activate);
+    point.addEventListener('mouseenter', activate);
+    point.addEventListener('focus', activate);
     pointLayer.appendChild(point);
   });
 
@@ -740,6 +782,19 @@ function renderChart(svg) {
     fallback.setAttribute('stroke-linejoin', 'round');
     container.appendChild(fallback);
   }
+}
+
+function updateChartSelection(svg, index) {
+  const points = Array.from(svg.querySelectorAll('.fb-chart-point'));
+  const rings = Array.from(svg.querySelectorAll('.fb-chart-ring'));
+
+  points.forEach((p, idx) => {
+    p.setAttribute('r', idx === index ? '7' : '5');
+  });
+
+  rings.forEach((r, idx) => {
+    r.setAttribute('opacity', idx === index ? '0.9' : '0');
+  });
 }
 
 function escapeHtml(str) {
