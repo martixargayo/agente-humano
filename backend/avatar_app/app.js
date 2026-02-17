@@ -1141,6 +1141,8 @@ window.MouthRenderTuning.pointsLumaFloor ??= 0.12;
 window.MouthRenderTuning.pointsLumaStrength ??= 1.0;
 window.MouthRenderTuning.pointsLumaPreserveHue ??= 1.0;
 window.MouthRenderTuning.pointsLumaDebug ??= false;
+window.MouthRenderTuning.pointsCullBack ??= true;
+window.MouthRenderTuning.pointsDebugBackOnly ??= false;
 
 
 const MOUTH_DIAMOND_STORAGE_KEY = 'avatar_mouth_diamond_v1';
@@ -1257,6 +1259,13 @@ function buildMouthPointsGeometryFromAnimatedSurface(srcGeometry) {
     addPoint(x, y, z, bx, by, bz, uvAttr.getX(i), uvAttr.getY(i), w, mouthSideAttr.getX(i), headWeightAttr.getX(i), overlay);
   }
   const sourceCount = p.length / 3;
+  let frontCountSource = 0;
+  let backCountSource = 0;
+  for (let i = 0; i < sourceCount; i++) {
+    const bz = b[i * 3 + 2];
+    if (bz >= 0.0) frontCountSource += 1;
+    else backCountSource += 1;
+  }
 
   const indexAttr = srcGeometry.getIndex();
   const triWeights = [];
@@ -1290,6 +1299,8 @@ function buildMouthPointsGeometryFromAnimatedSurface(srcGeometry) {
   }
 
   let resampledCount = 0;
+  let frontCountResampled = 0;
+  let backCountResampled = 0;
   if (triIndices.length && tuning.rimResampleFactor > 0) {
     const targetResampled = Math.max(0, Math.round(sourceCount * tuning.rimResampleFactor));
     const totalWeight = triWeights.reduce((a, b) => a + b, 0.0) || 1.0;
@@ -1342,6 +1353,8 @@ function buildMouthPointsGeometryFromAnimatedSurface(srcGeometry) {
         const pO = THREE.MathUtils.clamp((ao * b0 + bo * b1 + co * b2) * (0.75 + triMask * 0.25), 0.0, 1.0);
 
         addPoint(ppx, ppy, ppz, pbx, pby, pbz, pu, pv, pW, pS, pH, pO);
+        if (pbz >= 0.0) frontCountResampled += 1;
+        else backCountResampled += 1;
         resampledCount += 1;
       }
     }
@@ -1362,6 +1375,10 @@ function buildMouthPointsGeometryFromAnimatedSurface(srcGeometry) {
     sourceCount,
     resampledCount,
     rimResampleFactor: tuning.rimResampleFactor,
+    frontCountSource,
+    backCountSource,
+    frontCountResampled,
+    backCountResampled,
   };
 }
 
@@ -1389,6 +1406,7 @@ attribute float aMouthOverlayMix;
 attribute vec2 aUv;
 varying float vMouthOverlayMix;
 varying vec2 vUv;
+varying float vBaseZ;
 
 mat3 rotX(float a){ float s=sin(a), c=cos(a); return mat3(1.,0.,0.,0.,c,-s,0.,s,c); }
 mat3 rotY(float a){ float s=sin(a), c=cos(a); return mat3(c,0.,s,0.,1.,0.,-s,0.,c); }
@@ -1398,6 +1416,7 @@ vec3 rotateAroundPivot(vec3 p, vec3 pivot, vec3 r){ vec3 q = p - pivot; q = rotY
 void main() {
   vMouthOverlayMix = aMouthOverlayMix;
   vUv = aUv;
+  vBaseZ = aBasePosition.z;
 
   float talkOpen = max(sin(uTime * uTalkFreq), 0.0) * uTalk;
   float totalOpen = clamp(uRestOpen + talkOpen, 0.0, 1.0);
@@ -1429,8 +1448,11 @@ uniform float uPointsLumaFloor;
 uniform float uPointsLumaStrength;
 uniform float uPointsLumaPreserveHue;
 uniform float uPointsLumaDebug;
+uniform float uMouthPointsCullBack;
+uniform float uMouthPointsDebugBackOnly;
 varying float vMouthOverlayMix;
 varying vec2 vUv;
+varying float vBaseZ;
 
 void main() {
   vec2 p = gl_PointCoord * 2.0 - 1.0;
@@ -1440,6 +1462,8 @@ void main() {
   float circle = 1.0 - smoothstep(0.68, 1.0, r);
   float alpha = circle * uMouthPointsAlpha * clamp(vMouthOverlayMix, 0.0, 1.0);
   if (alpha < uMouthPointsAlphaClip) discard;
+  if (uMouthPointsCullBack > 0.5 && vBaseZ < 0.0) discard;
+  if (uMouthPointsDebugBackOnly > 0.5 && vBaseZ >= 0.0) discard;
   vec3 texColor = texture2D(uColorMap, vUv).rgb;
   float l = dot(texColor, vec3(0.2126, 0.7152, 0.0722));
   float floorL = max(uPointsLumaFloor, 1e-4);
@@ -1954,6 +1978,20 @@ function setupRealisticSurfaceDebugTools() {
       console.info('[mouth-artifact-debug] surface.visible', !!enabled);
       return true;
     },
+    setMouthPointsCullBack(enabled = true) {
+      if (!mouthPointsMaterial?.uniforms?.uMouthPointsCullBack) return false;
+      mouthPointsMaterial.uniforms.uMouthPointsCullBack.value = enabled ? 1.0 : 0.0;
+      if (window.MouthRenderTuning) window.MouthRenderTuning.pointsCullBack = !!enabled;
+      console.info('[mouth-artifact-debug] mouthPoints.cullBack', !!enabled);
+      return true;
+    },
+    setMouthPointsDebugBackOnly(enabled = false) {
+      if (!mouthPointsMaterial?.uniforms?.uMouthPointsDebugBackOnly) return false;
+      mouthPointsMaterial.uniforms.uMouthPointsDebugBackOnly.value = enabled ? 1.0 : 0.0;
+      if (window.MouthRenderTuning) window.MouthRenderTuning.pointsDebugBackOnly = !!enabled;
+      console.info('[mouth-artifact-debug] mouthPoints.debugBackOnly', !!enabled);
+      return true;
+    },
     resetSurfaceMaterial() {
       if (!particleSurfaceMesh?.material || !realisticSurfaceDebugOriginal) return false;
       const mat = particleSurfaceMesh.material;
@@ -1980,6 +2018,10 @@ function setupRealisticSurfaceDebugTools() {
         hideSurface: 'window.RealisticMouthArtifactDebug.setSurfaceVisible(false)',
         showSurface: 'window.RealisticMouthArtifactDebug.setSurfaceVisible(true)',
         reset: 'window.RealisticMouthArtifactDebug.resetSurfaceMaterial()',
+        cullBackOn: 'window.RealisticMouthArtifactDebug.setMouthPointsCullBack(true)',
+        cullBackOff: 'window.RealisticMouthArtifactDebug.setMouthPointsCullBack(false)',
+        backOnlyOn: 'window.RealisticMouthArtifactDebug.setMouthPointsDebugBackOnly(true)',
+        backOnlyOff: 'window.RealisticMouthArtifactDebug.setMouthPointsDebugBackOnly(false)',
       });
     },
   };
@@ -2117,9 +2159,8 @@ loader.load(
       particleMaterial = new THREE.ShaderMaterial({
         vertexShader: realisticSurfaceVertexShader,
         fragmentShader: realisticSurfaceFragmentShader,
-        side: THREE.FrontSide,
+        side: THREE.DoubleSide,
         transparent: true,
-        depthWrite: false,
         uniforms: {
           uColor: { value: new THREE.Color(0xffffff) },
           uColorMap: { value: colorMap },
@@ -2225,6 +2266,8 @@ loader.load(
             uPointsLumaStrength: { value: window.MouthRenderTuning.pointsLumaStrength },
             uPointsLumaPreserveHue: { value: window.MouthRenderTuning.pointsLumaPreserveHue },
             uPointsLumaDebug: { value: window.MouthRenderTuning.pointsLumaDebug ? 1.0 : 0.0 },
+            uMouthPointsCullBack: { value: window.MouthRenderTuning.pointsCullBack ? 1.0 : 0.0 },
+            uMouthPointsDebugBackOnly: { value: window.MouthRenderTuning.pointsDebugBackOnly ? 1.0 : 0.0 },
             uHeadRot: { value: new THREE.Vector3(0, 0, 0) },
             uBodyRot: { value: new THREE.Vector3(0, 0, 0) },
             uBodyOffset: { value: new THREE.Vector3(0, 0, 0) },
@@ -2243,6 +2286,10 @@ loader.load(
             resampleFactor: mouthBuild.rimResampleFactor,
             resampledCount: mouthBuild.resampledCount,
             pointCount: mouthBuild.pointCount,
+            frontCountSource: mouthBuild.frontCountSource,
+            backCountSource: mouthBuild.backCountSource,
+            frontCountResampled: mouthBuild.frontCountResampled,
+            backCountResampled: mouthBuild.backCountResampled,
           });
           console.info('[mouth-points] luma-tuning', {
             pointsLumaFloor: window.MouthRenderTuning.pointsLumaFloor,
@@ -2257,6 +2304,10 @@ loader.load(
               depthWrite: particleMaterial.depthWrite,
               transparent: particleMaterial.transparent,
               renderOrder: particleSurfaceMesh.renderOrder,
+            });
+            console.info('[mouth-artifact-debug] mouthPoints defaults', {
+              cullBack: !!window.MouthRenderTuning.pointsCullBack,
+              debugBackOnly: !!window.MouthRenderTuning.pointsDebugBackOnly,
             });
             window.RealisticMouthArtifactDebug.help();
           }
@@ -3482,6 +3533,8 @@ function animate() {
     if (mouthPointsMaterial.uniforms.uPointsLumaStrength) mouthPointsMaterial.uniforms.uPointsLumaStrength.value = window.MouthRenderTuning.pointsLumaStrength;
     if (mouthPointsMaterial.uniforms.uPointsLumaPreserveHue) mouthPointsMaterial.uniforms.uPointsLumaPreserveHue.value = window.MouthRenderTuning.pointsLumaPreserveHue;
     if (mouthPointsMaterial.uniforms.uPointsLumaDebug) mouthPointsMaterial.uniforms.uPointsLumaDebug.value = window.MouthRenderTuning.pointsLumaDebug ? 1.0 : 0.0;
+    if (mouthPointsMaterial.uniforms.uMouthPointsCullBack) mouthPointsMaterial.uniforms.uMouthPointsCullBack.value = window.MouthRenderTuning.pointsCullBack ? 1.0 : 0.0;
+    if (mouthPointsMaterial.uniforms.uMouthPointsDebugBackOnly) mouthPointsMaterial.uniforms.uMouthPointsDebugBackOnly.value = window.MouthRenderTuning.pointsDebugBackOnly ? 1.0 : 0.0;
     mouthPointsMaterial.uniforms.uHeadRot.value.copy(mouthHeadRot);
     mouthPointsMaterial.uniforms.uBodyRot.value.copy(mouthBodyRot);
     mouthPointsMaterial.uniforms.uBodyOffset.value.set(0.0, mouthOffY, 0.0);
