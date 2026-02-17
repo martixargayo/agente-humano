@@ -603,7 +603,7 @@ function renderChart(svg, onSelectTurn, getSelectedIndex) {
   const NS = 'http://www.w3.org/2000/svg';
   const width = 860;
   const height = 260;
-  const pad = { top: 16, right: 0, bottom: 32, left: 0 };
+  const pad = { top: 16, right: 14, bottom: 32, left: 14 };
 
   const innerW = width - pad.left - pad.right;
   const innerH = height - pad.top - pad.bottom;
@@ -705,8 +705,9 @@ function renderChart(svg, onSelectTurn, getSelectedIndex) {
   turnOneConnector.setAttribute('stroke-dasharray', '4 4');
   svg.appendChild(turnOneConnector);
 
-  const labels = [];
-  for (let t = 1; t <= TURN_SCORES.length; t += 2) labels.push(t);
+  const labels = [1];
+  for (let t = 5; t <= TURN_SCORES.length; t += 5) labels.push(t);
+  if (!labels.includes(TURN_SCORES.length)) labels.push(TURN_SCORES.length);
 
   labels.forEach((turnLabel) => {
     const label = document.createElementNS(NS, 'text');
