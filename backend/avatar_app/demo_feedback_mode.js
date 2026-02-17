@@ -6,7 +6,7 @@ const DEMO_FORCED_REPLIES = [
 
 const FEEDBACK_SCORE = 84;
 const ACCEPTANCE_THRESHOLD = 80;
-const TURN_SCORES = [48, 44, 52, 58, 61, 72, 81, 78, 83, 86, 79, 84, 88, 90];
+const TURN_SCORES = [48, 44, 52, 58, 61, 72, 81, 78, 83, 86, 79, 84, 88, 90, 87, 89, 91, 92, 90, 93, 95];
 
 const FEEDBACK_CARDS = [
   {
@@ -225,7 +225,7 @@ export function createDemoFeedbackMode({
         </div>
         <div class="fb-chart-layout">
           <div class="fb-chart-shell">
-            <svg class="fb-chart" viewBox="0 0 860 260" role="img" aria-label="Serie de cercanía al entendimiento por turno"></svg>
+            <svg class="fb-chart" viewBox="0 0 860 260" preserveAspectRatio="none" role="img" aria-label="Serie de cercanía al entendimiento por turno"></svg>
           </div>
           <aside class="fb-detail-panel" aria-live="polite">
             <p class="fb-detail-line"><strong>Tú:</strong></p>
@@ -603,7 +603,7 @@ function renderChart(svg, onSelectTurn, getSelectedIndex) {
   const NS = 'http://www.w3.org/2000/svg';
   const width = 860;
   const height = 260;
-  const pad = { top: 16, right: 8, bottom: 32, left: 8 };
+  const pad = { top: 16, right: 0, bottom: 32, left: 0 };
 
   const innerW = width - pad.left - pad.right;
   const innerH = height - pad.top - pad.bottom;
@@ -711,9 +711,10 @@ function renderChart(svg, onSelectTurn, getSelectedIndex) {
   labels.forEach((turnLabel) => {
     const label = document.createElementNS(NS, 'text');
     const idx = turnLabel - 1;
-    label.setAttribute('x', String(xFor(idx) - 8));
+    label.setAttribute('x', String(xFor(idx)));
     label.setAttribute('y', String(height - 8));
     label.setAttribute('class', 'fb-axis-label');
+    label.setAttribute('text-anchor', 'middle');
     label.textContent = `T${turnLabel}`;
     svg.appendChild(label);
   });
