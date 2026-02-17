@@ -6,7 +6,7 @@ const DEMO_FORCED_REPLIES = [
 
 const FEEDBACK_SCORE = 84;
 const ACCEPTANCE_THRESHOLD = 80;
-const TURN_SCORES = [48, 44, 52, 58, 61, 72, 81, 78, 83, 86, 79, 84, 88, 90];
+const TURN_SCORES = [48, 44, 52, 58, 61, 72, 81, 78, 83, 86, 79, 84, 88, 90, 87, 89, 91, 92, 90, 93, 95];
 
 const FEEDBACK_CARDS = [
   {
@@ -454,8 +454,8 @@ export function createDemoFeedbackMode({
         gap: 12px;
       }
 
-      .fb-chart-shell { height: 260px; width: 100%; }
-      .fb-chart { width: 100%; height: 260px; display: block; }
+      .fb-chart-shell { width: 100%; aspect-ratio: 860 / 260; }
+      .fb-chart { width: 100%; height: auto; display: block; }
 
       .fb-detail-panel {
         position: relative;
