@@ -4246,6 +4246,21 @@ function getHandlesModel() {
     mouth_bottom: { x: m.centerX, y: m.centerY - mhAbs },
     mouth_curve: { x: mCurveX, y: mCurveY },
 
+    mouth_diamond_center: { x: window.MouthRenderTuning.fadeDiamondCX, y: window.MouthRenderTuning.fadeDiamondCY },
+    mouth_diamond_rx: (() => {
+      const t = window.MouthRenderTuning;
+      return { x: t.fadeDiamondCX + Math.cos(t.fadeDiamondRot) * Math.max(1e-6, Math.abs(t.fadeDiamondRX)), y: t.fadeDiamondCY + Math.sin(t.fadeDiamondRot) * Math.max(1e-6, Math.abs(t.fadeDiamondRX)) };
+    })(),
+    mouth_diamond_ry: (() => {
+      const t = window.MouthRenderTuning;
+      return { x: t.fadeDiamondCX - Math.sin(t.fadeDiamondRot) * Math.max(1e-6, Math.abs(t.fadeDiamondRY)), y: t.fadeDiamondCY + Math.cos(t.fadeDiamondRot) * Math.max(1e-6, Math.abs(t.fadeDiamondRY)) };
+    })(),
+    mouth_diamond_rot: (() => {
+      const t = window.MouthRenderTuning;
+      const r = Math.max(Math.abs(t.fadeDiamondRX), Math.abs(t.fadeDiamondRY)) + 0.05;
+      return { x: t.fadeDiamondCX + Math.cos(t.fadeDiamondRot) * r, y: t.fadeDiamondCY + Math.sin(t.fadeDiamondRot) * r };
+    })(),
+
     eye_left_center: { x: window.EyeBlinkTuning.left.centerX, y: window.EyeBlinkTuning.left.centerY },
     eye_left_upper_left: getEyeHandlePoint('left', 'upper', 'left'),
     eye_left_upper_center: getEyeHandlePoint('left', 'upper', 'center'),
@@ -4740,6 +4755,45 @@ function drawNeckEditorOverlay() {
   }
 
   // MOUTH HOLE DEBUG: no dibujamos rombos/contornos geométricos en overlay.
+
+  // =========================
+  // MOUTH DIAMOND (magenta)
+  // =========================
+  if (DEBUG_MOUTH_DIAMOND_ENABLED) {
+    const t = window.MouthRenderTuning;
+    const cx = t.fadeDiamondCX;
+    const cy = t.fadeDiamondCY;
+    const rx = Math.max(1e-6, Math.abs(t.fadeDiamondRX));
+    const ry = Math.max(1e-6, Math.abs(t.fadeDiamondRY));
+    const c = Math.cos(t.fadeDiamondRot);
+    const s = Math.sin(t.fadeDiamondRot);
+    const vx = { x: c * rx, y: s * rx };
+    const vy = { x: -s * ry, y: c * ry };
+
+    const p1 = screenProject(cx + vx.x, cy + vx.y, 0);
+    const p2 = screenProject(cx + vy.x, cy + vy.y, 0);
+    const p3 = screenProject(cx - vx.x, cy - vx.y, 0);
+    const p4 = screenProject(cx - vy.x, cy - vy.y, 0);
+
+    ctx.save();
+    ctx.strokeStyle = 'rgba(244,63,94,0.95)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.lineTo(p3.x, p3.y);
+    ctx.lineTo(p4.x, p4.y);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(244,63,94,0.12)';
+    ctx.fill();
+
+    const cpt = screenProject(cx, cy, 0);
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.font = '12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+    ctx.fillText(`diamond cx=${cx.toFixed(3)} cy=${cy.toFixed(3)} rx=${rx.toFixed(3)} ry=${ry.toFixed(3)} rot=${t.fadeDiamondRot.toFixed(3)}`, cpt.x + 12, cpt.y + 22);
+    ctx.restore();
+  }
 
   // =========================
   // EYES (amarillo / verde)
