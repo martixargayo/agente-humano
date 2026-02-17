@@ -6,7 +6,7 @@ const DEMO_FORCED_REPLIES = [
 
 const FEEDBACK_SCORE = 84;
 const ACCEPTANCE_THRESHOLD = 80;
-const TURN_SCORES = [22, 24, 27, 31, 34, 39, 43, 38, 46, 52, 58, 63, 69, 61, 67, 72, 76, 81, 79, 84, 87, 85, 89, 92];
+const TURN_SCORES = [48, 44, 52, 58, 61, 72, 81, 78, 83, 86, 79, 84, 88, 90];
 
 const FEEDBACK_CARDS = [
   {
@@ -305,6 +305,21 @@ export function createDemoFeedbackMode({
 
     const svg = dashboard.querySelector('.fb-chart');
     renderChart(svg);
+
+    copyButton.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(copyText);
+      } catch {
+        const ta = document.createElement('textarea');
+        ta.value = copyText;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+      }
+    });
 
     overlay.appendChild(dashboard);
     document.body.appendChild(overlay);
@@ -623,7 +638,15 @@ function renderChart(svg) {
   svg.appendChild(zoneText);
 
   for (let i = 0; i < TURN_SCORES.length - 1; i += 1) {
-    drawSegment(svg, xFor(i), yFor(TURN_SCORES[i]), xFor(i + 1), yFor(TURN_SCORES[i + 1]), TURN_SCORES[i], TURN_SCORES[i + 1]);
+    drawSegment(
+      svg,
+      xFor(i),
+      yFor(TURN_SCORES[i]),
+      xFor(i + 1),
+      yFor(TURN_SCORES[i + 1]),
+      TURN_SCORES[i],
+      TURN_SCORES[i + 1],
+    );
   }
 
   const pointLayer = document.createElementNS(NS, 'g');
@@ -732,6 +755,15 @@ function renderChart(svg) {
     fallback.setAttribute('stroke-linejoin', 'round');
     container.appendChild(fallback);
   }
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
 }
 
 function escapeHtml(str) {
