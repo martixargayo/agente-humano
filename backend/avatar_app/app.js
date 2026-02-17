@@ -1106,6 +1106,9 @@ window.MouthRenderTuning = window.MouthRenderTuning || {
   innerA: 0.70,
   innerB: 0.82,
   innerGain: 0.22,
+  innerCoreA: 0.82,
+  innerCoreB: 0.96,
+  innerCoreGain: 0.70,
   maskMin: 0.08,
   upsampleMinPoints: 260,
   upsampleAmpMin: 0.0007,
@@ -1143,6 +1146,9 @@ window.MouthRenderTuning.pointsLumaPreserveHue ??= 1.0;
 window.MouthRenderTuning.pointsLumaDebug ??= false;
 window.MouthRenderTuning.pointsCullBack ??= true;
 window.MouthRenderTuning.pointsDebugBackOnly ??= false;
+window.MouthRenderTuning.innerCoreA ??= 0.82;
+window.MouthRenderTuning.innerCoreB ??= 0.96;
+window.MouthRenderTuning.innerCoreGain ??= 0.70;
 
 
 const MOUTH_DIAMOND_STORAGE_KEY = 'avatar_mouth_diamond_v1';
@@ -1205,7 +1211,10 @@ loadMouthDiamondFromStorage();
 function mouthRimMaskFromWeight(w, tuning = window.MouthRenderTuning) {
   const rimMask = smoothstepJS(tuning.rimA, tuning.rimB, w) * (1.0 - smoothstepJS(tuning.rimC, tuning.rimD, w));
   const innerTiny = smoothstepJS(tuning.innerA, tuning.innerB, w) * tuning.innerGain;
-  return THREE.MathUtils.clamp(rimMask + innerTiny, 0.0, 1.0);
+  // Evita un “agujero” en el centro al usar mouthPointsOnly=1: mantenemos
+  // suficiente cobertura en el núcleo interno de boca además del aro de borde.
+  const innerCore = smoothstepJS(tuning.innerCoreA, tuning.innerCoreB, w) * tuning.innerCoreGain;
+  return THREE.MathUtils.clamp(rimMask + innerTiny + innerCore, 0.0, 1.0);
 }
 
 function stableHash3(x, y, z, salt = 0.0) {
