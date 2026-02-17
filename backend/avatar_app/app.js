@@ -2159,7 +2159,9 @@ loader.load(
       particleMaterial = new THREE.ShaderMaterial({
         vertexShader: realisticSurfaceVertexShader,
         fragmentShader: realisticSurfaceFragmentShader,
-        side: THREE.DoubleSide,
+        // FrontSide evita contribuciones de backfaces en el recorte de boca
+        // (rombo trasero pequeño detectado en modo realistic).
+        side: THREE.FrontSide,
         transparent: true,
         uniforms: {
           uColor: { value: new THREE.Color(0xffffff) },
