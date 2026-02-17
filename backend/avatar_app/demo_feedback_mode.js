@@ -6,7 +6,7 @@ const DEMO_FORCED_REPLIES = [
 
 const FEEDBACK_SCORE = 84;
 const ACCEPTANCE_THRESHOLD = 80;
-const TURN_SCORES = [22, 24, 27, 31, 34, 39, 43, 38, 46, 52, 58, 63, 69, 61, 67, 72, 76, 81, 79, 84, 87, 85, 89, 92];
+const TURN_SCORES = [48, 44, 52, 58, 61, 72, 81, 78, 83, 86, 79, 84, 88, 90];
 
 const FEEDBACK_CARDS = [
   {
@@ -645,7 +645,15 @@ function renderChart(svg, onSelectTurn, getSelectedIndex) {
   svg.appendChild(zoneText);
 
   for (let i = 0; i < TURN_SCORES.length - 1; i += 1) {
-    drawSegment(svg, xFor(i), yFor(TURN_SCORES[i]), xFor(i + 1), yFor(TURN_SCORES[i + 1]), TURN_SCORES[i], TURN_SCORES[i + 1]);
+    drawSegment(
+      svg,
+      xFor(i),
+      yFor(TURN_SCORES[i]),
+      xFor(i + 1),
+      yFor(TURN_SCORES[i + 1]),
+      TURN_SCORES[i],
+      TURN_SCORES[i + 1],
+    );
   }
 
   const pointLayer = document.createElementNS(NS, 'g');
@@ -709,8 +717,6 @@ function renderChart(svg, onSelectTurn, getSelectedIndex) {
     label.textContent = `T${turnLabel}`;
     svg.appendChild(label);
   });
-
-  updateChartSelection(svg, getSelectedIndex());
 
   function drawSegment(container, x1, y1, x2, y2, v1, v2) {
     const state = (v) => (v >= ACCEPTANCE_THRESHOLD ? 'ok' : v >= 60 ? 'warn' : 'bad');
