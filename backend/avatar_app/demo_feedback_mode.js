@@ -454,8 +454,8 @@ export function createDemoFeedbackMode({
         gap: 12px;
       }
 
-      .fb-chart-shell { height: 260px; width: 100%; }
-      .fb-chart { width: 100%; height: 260px; display: block; }
+      .fb-chart-shell { width: 100%; aspect-ratio: 860 / 260; }
+      .fb-chart { width: 100%; height: auto; display: block; }
 
       .fb-detail-panel {
         position: relative;
