@@ -6,7 +6,7 @@ const DEMO_FORCED_REPLIES = [
 
 const FEEDBACK_SCORE = 84;
 const ACCEPTANCE_THRESHOLD = 80;
-const TURN_SCORES = [48, 44, 52, 58, 61, 72, 81, 78, 83, 86, 79, 84, 88, 90];
+const TURN_SCORES = [48, 44, 52, 58, 61, 72, 81, 78, 83, 86, 79, 84, 88, 90, 87, 89, 91, 92, 90, 93, 95];
 
 const FEEDBACK_CARDS = [
   {
