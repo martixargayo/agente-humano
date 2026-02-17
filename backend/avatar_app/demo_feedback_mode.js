@@ -541,22 +541,16 @@ export function createDemoFeedbackMode({
         white-space: nowrap;
       }
 
-      .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-      .dot.ok { background: var(--ok); }
-
-      .fb-grid-cards {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 16px;
-      }
-
-      .fb-skill-card {
-        position: relative;
-        padding: 18px;
-        overflow: hidden;
-        opacity: 0;
-        transform: translateY(6px);
-        animation: fbCardIn 160ms ease-out forwards;
+      .demo-feedback-panel {
+        width: min(1080px, 100%);
+        max-height: min(920px, 92vh);
+        overflow: auto;
+        border: 1px solid var(--feedback-border);
+        border-radius: 24px;
+        background: var(--feedback-bg);
+        box-shadow: 0 28px 56px rgba(15, 23, 42, 0.22);
+        color: var(--feedback-text);
+        padding: clamp(20px, 4vw, 40px);
       }
 
       .fb-skill-card:nth-child(1) { animation-delay: 30ms; }
@@ -864,10 +858,11 @@ export function createDemoFeedbackMode({
         gap: 12px;
       }
 
-      .fb-numbered-list li {
-        display: grid;
-        grid-template-columns: 26px 1fr;
-        gap: 10px;
+      .demo-feedback-card {
+        border: 1px solid var(--feedback-border);
+        border-radius: 24px;
+        background: var(--feedback-bg);
+        padding: 16px;
       }
 
       .fb-number {
@@ -949,21 +944,12 @@ export function createDemoFeedbackMode({
         align-items: center;
       }
 
-      .fb-close-block h3 { margin-bottom: 6px; }
-
-      .fb-zone-label { fill: var(--muted2); font-size: 12px; }
-      .fb-axis-label { fill: var(--muted2); font-size: 11px; }
-      .fb-threshold-label { fill: var(--muted); font-size: 12px; }
-
-      @keyframes fbFade { from { opacity: 0; } to { opacity: 1; } }
-      @keyframes fbCardIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-
-      @media (max-width: 1023px) {
-        .demo-feedback-dashboard { padding: 20px; }
-        .fb-grid-cards,
-        .fb-recommendations-grid,
-        .fb-chart-layout { grid-template-columns: 1fr; }
-      }
+      @media (max-width: 700px) {
+        .demo-feedback-panel {
+          border-radius: 24px;
+          max-height: 95vh;
+          padding: 18px;
+        }
 
       @media (max-width: 767px) {
         .demo-feedback-dashboard { padding: 16px; }
