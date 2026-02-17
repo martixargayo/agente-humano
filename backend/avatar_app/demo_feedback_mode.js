@@ -50,8 +50,8 @@ const FEEDBACK_CARDS = [
 
 const TURN_DETAILS = [
   {
-    user: 'hola tienes un momento para hablar conmigo',
-    avatar: 'Sí Lluís claro dime',
+    user: 'Hola tienes un momento para hablar conmigo',
+    avatar: 'Si claro Lluís, dime',
   },
   ...Array.from({ length: TURN_SCORES.length - 1 }, () => ({ user: '', avatar: '' })),
 ];
