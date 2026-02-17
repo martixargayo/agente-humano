@@ -566,7 +566,8 @@ export function createDemoFeedbackMode({
 
   function updateFinishButtonVisibility() {
     if (!ui.finishButton) return;
-    ui.finishButton.style.display = shouldAllowFinish() ? 'inline-flex' : 'none';
+    const shouldShow = shouldAllowFinish() && state.userTurns >= 4;
+    ui.finishButton.style.display = shouldShow ? 'inline-flex' : 'none';
   }
 }
 
