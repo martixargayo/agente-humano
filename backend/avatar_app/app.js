@@ -21,6 +21,7 @@ const DEBUG_MOUTH_FADE_ENABLED = URL_PARAMS.get('debugMouthFade') === '1';
 const MOUTH_POINTS_ONLY_ENABLED = URL_PARAMS.get('mouthPointsOnly') === '1';
 const DEBUG_MOUTH_DIAMOND_ENABLED = DEBUG_EDIT_ENABLED || URL_PARAMS.get('debugMouthDiamond') === '1';
 const FORCE_BLINK_ENABLED = URL_PARAMS.get('forceBlink') === '1';
+const NEW_BOX_ENABLED = URL_PARAMS.get('newbox') === '1';
 const FORCE_BLINK_DURATION_SEC = 2.0;
 const FREEZE_IN_EDIT = DEBUG_EDIT_ENABLED; // En ?debugEdit=1 congelamos motion/UI conversacional para ajustar handles con precisión.
 const demoFeedbackMode = createDemoFeedbackMode({ urlParams: URL_PARAMS });
@@ -143,6 +144,7 @@ const activeThemeName = resolveTheme();
 const activeTheme = THEME_PRESETS[activeThemeName];
 const isRealisticTheme = activeThemeName === 'realistic';
 document.documentElement.dataset.avatarTheme = activeThemeName;
+document.documentElement.dataset.newbox = NEW_BOX_ENABLED ? '1' : '0';
 console.info('[theme] Avatar perceptual theme:', activeThemeName);
 
 const isWhiteCanvasTheme = isRealisticTheme;
@@ -198,7 +200,6 @@ const InputMode = {
 
 const AgentMode = {
   CHAT: 'chat',
-  NEGOCIAR: 'negociar',
 };
 
 let currentInputMode = InputMode.TALK;
@@ -1138,6 +1139,7 @@ window.MouthRenderTuning = window.MouthRenderTuning || {
   fadeDiamondRX: 0.11,
   fadeDiamondRY: 0.07,
   fadeDiamondRot: 0.0,
+  alwaysPointsMode: true,
 };
 
 window.MouthRenderTuning.pointsLumaFloor ??= 0.12;
@@ -1149,6 +1151,7 @@ window.MouthRenderTuning.pointsDebugBackOnly ??= false;
 window.MouthRenderTuning.innerCoreA ??= 0.82;
 window.MouthRenderTuning.innerCoreB ??= 0.96;
 window.MouthRenderTuning.innerCoreGain ??= 0.70;
+window.MouthRenderTuning.alwaysPointsMode ??= true;
 
 
 const MOUTH_DIAMOND_STORAGE_KEY = 'avatar_mouth_diamond_v1';
@@ -2489,7 +2492,7 @@ async function requestTTS(text) {
 }
 
 async function fetchAgentReply(message, { mode = AgentMode.CHAT } = {}) {
-  const endpoint = mode === AgentMode.CHAT ? '/chat' : '/negociar';
+  const endpoint = '/chat';
   const res = await fetch(`${BACKEND_URL}${endpoint}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -3418,7 +3421,9 @@ function animate() {
     const mouthSmoothing = 1.0 - Math.exp(-Math.max(0.0, dtMotion) * mouthSpeed);
     mouthOpenVisual += (targetTalk - mouthOpenVisual) * mouthSmoothing;
 
-    if (!mouthPointsVisibleLatched && mouthOpenVisual > mouthTuning.pointsOn) {
+    if (mouthTuning.alwaysPointsMode) {
+      mouthPointsVisibleLatched = true;
+    } else if (!mouthPointsVisibleLatched && mouthOpenVisual > mouthTuning.pointsOn) {
       mouthPointsVisibleLatched = true;
       if (DEBUG_MOUTH_POINTS_ENABLED) console.info('[mouth-points] latch ON', { mouthOpenVisual: Number(mouthOpenVisual.toFixed(3)) });
     } else if (mouthPointsVisibleLatched && mouthOpenVisual < mouthTuning.pointsOff) {
@@ -3512,7 +3517,7 @@ function animate() {
       if (mat.uniforms.uFadeDiamondRX) mat.uniforms.uFadeDiamondRX.value = window.MouthRenderTuning.fadeDiamondRX;
       if (mat.uniforms.uFadeDiamondRY) mat.uniforms.uFadeDiamondRY.value = window.MouthRenderTuning.fadeDiamondRY;
       if (mat.uniforms.uFadeDiamondRot) mat.uniforms.uFadeDiamondRot.value = window.MouthRenderTuning.fadeDiamondRot;
-      if (mat.uniforms.uMouthHoleActive) mat.uniforms.uMouthHoleActive.value = mouthPointsVisibleLatched ? 1.0 : 0.0;
+      if (mat.uniforms.uMouthHoleActive) mat.uniforms.uMouthHoleActive.value = (window.MouthRenderTuning.alwaysPointsMode || mouthPointsVisibleLatched) ? 1.0 : 0.0;
       if (mat.uniforms.uDebugMouthDiamond) mat.uniforms.uDebugMouthDiamond.value = DEBUG_MOUTH_DIAMOND_ENABLED ? 1.0 : 0.0;
       if (mat.uniforms.uDebugMouthFade) mat.uniforms.uDebugMouthFade.value = DEBUG_MOUTH_FADE_ENABLED ? 1.0 : 0.0;
 
@@ -3531,7 +3536,7 @@ function animate() {
   }
 
   if (mouthPoints && mouthPointsMaterial) {
-    mouthPoints.visible = MOUTH_POINTS_ONLY_ENABLED ? true : mouthPointsVisibleLatched;
+    mouthPoints.visible = MOUTH_POINTS_ONLY_ENABLED ? true : (window.MouthRenderTuning.alwaysPointsMode || mouthPointsVisibleLatched);
     mouthPointsMaterial.uniforms.uTime.value = elapsed;
     mouthPointsMaterial.uniforms.uTalk.value = AvatarState.talkLevel;
     mouthPointsMaterial.uniforms.uRestOpen.value = 0.03;
@@ -3616,7 +3621,6 @@ const ui = {
   talkMode: document.getElementById('talkMode'),
   writeMode: document.getElementById('writeMode'),
   agentChat: document.getElementById('agentChat'),
-  agentNegotiation: document.getElementById('agentNegotiation'),
   textInput: document.getElementById('textInput'),
   sendTextBtn: document.getElementById('sendTextBtn'),
 };
@@ -3717,14 +3721,13 @@ function setInputMode(mode) {
 }
 
 function setAgentMode(mode) {
-  currentAgentMode = mode;
-  if (ui.agentChat) ui.agentChat.classList.toggle('active', mode === AgentMode.CHAT);
-  if (ui.agentChat) ui.agentChat.setAttribute('aria-pressed', String(mode === AgentMode.CHAT));
-  if (ui.agentNegotiation) ui.agentNegotiation.classList.toggle('active', mode === AgentMode.NEGOCIAR);
-  if (ui.agentNegotiation) {
-    ui.agentNegotiation.setAttribute('aria-pressed', String(mode === AgentMode.NEGOCIAR));
+  currentAgentMode = AgentMode.CHAT;
+  if (ui.agentChat) {
+    ui.agentChat.classList.add('active');
+    ui.agentChat.setAttribute('aria-pressed', 'true');
   }
 }
+
 
 async function handleTextSend() {
   const text = (ui.textInput?.value || '').trim();
@@ -4025,9 +4028,6 @@ if (!DEBUG_EDIT_ENABLED) {
   }
   if (ui.agentChat) {
     ui.agentChat.addEventListener('click', () => setAgentMode(AgentMode.CHAT));
-  }
-  if (ui.agentNegotiation) {
-    ui.agentNegotiation.addEventListener('click', () => setAgentMode(AgentMode.NEGOCIAR));
   }
   if (ui.sendTextBtn) {
     ui.sendTextBtn.addEventListener('click', handleTextSend);
