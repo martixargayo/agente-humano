@@ -1094,6 +1094,7 @@ let mouthPoints = null;
 let mouthPointsMaterial = null;
 let mouthOpenVisual = 0.0;
 let mouthPointsVisibleLatched = false;
+let mouthTransition = 0.0;
 let realisticSurfaceDebugOriginal = null;
 let realisticSurfaceDebugSetupDone = false;
 
@@ -1132,6 +1133,10 @@ window.MouthRenderTuning = window.MouthRenderTuning || {
   meshAlphaMin: 0.01,
   meshFadeGamma: 3.0,
   meshFadeGain: 2.2,
+  transitionInMs: 160.0,
+  transitionOutMs: 190.0,
+  transitionMinVisible: 0.015,
+  holeEdgeSoftness: 0.065,
   useDiamondFade: true,
   fadeDiamondCX: -0.045,
   fadeDiamondCY: 0.16,
@@ -1718,6 +1723,8 @@ uniform float uFadeDiamondRX;
 uniform float uFadeDiamondRY;
 uniform float uFadeDiamondRot;
 uniform float uMouthHoleActive;
+uniform float uMouthTransition;
+uniform float uHoleEdgeSoftness;
 uniform float uDebugMouthDiamond;
 varying vec2 vUv;
 varying float vHeadWeight;
@@ -1774,12 +1781,11 @@ void main() {
 
   vec2 localDiamond = invRot(uFadeDiamondRot) * (vBaseXY - vec2(uFadeDiamondCX, uFadeDiamondCY));
   float diamondField = abs(localDiamond.x) / max(1e-5, abs(uFadeDiamondRX)) + abs(localDiamond.y) / max(1e-5, abs(uFadeDiamondRY));
-  float diamondInside = step(diamondField, 1.0);
-  float mouthHoleActive = step(0.5, uMouthHoleActive) * step(0.5, uUseDiamondFade);
-  if (mouthHoleActive > 0.5 && diamondInside > 0.5) {
-    discard;
-  }
-  finalColor = mix(finalColor, finalColor * 0.88, mouthFade * 0.35);
+  float mouthHoleGate = step(0.5, uMouthHoleActive) * step(0.5, uUseDiamondFade);
+  float mouthHoleMix = mouthHoleGate * clamp(uMouthTransition, 0.0, 1.0);
+  float holeSoft = max(0.002, abs(uHoleEdgeSoftness));
+  float holeMask = smoothstep(1.0 - holeSoft, 1.0 + holeSoft, diamondField);
+  finalColor = mix(finalColor, finalColor * 0.88, mouthFade * 0.35 * (1.0 - 0.45 * mouthHoleMix));
 
   if (uDebugBrows > 0.5) {
     vec2 leftLocal = invRot(uEyeLeftMain.w) * (vBaseXY - uEyeLeftMain.xy);
@@ -1826,11 +1832,13 @@ void main() {
       dbg = mix(dbg, vec3(1.0, 0.0, 1.0), clamp(edge, 0.0, 0.8));
     }
     float dbgAlpha = mix(1.0, clamp(uMouthMeshAlphaMin, 0.0, 1.0), mouthFade);
+    dbgAlpha *= mix(1.0, holeMask, mouthHoleMix);
     gl_FragColor = vec4(dbg, dbgAlpha);
     return;
   }
 
   float outAlpha = mix(1.0, clamp(uMouthMeshAlphaMin, 0.0, 1.0), mouthFade);
+  outAlpha *= mix(1.0, holeMask, mouthHoleMix);
   gl_FragColor = vec4(finalColor, outAlpha);
 }
 `;
@@ -2226,6 +2234,8 @@ loader.load(
           uFadeDiamondRY: { value: window.MouthRenderTuning.fadeDiamondRY },
           uFadeDiamondRot: { value: window.MouthRenderTuning.fadeDiamondRot },
           uMouthHoleActive: { value: 0.0 },
+          uMouthTransition: { value: 0.0 },
+          uHoleEdgeSoftness: { value: window.MouthRenderTuning.holeEdgeSoftness },
           uDebugMouthDiamond: { value: DEBUG_MOUTH_DIAMOND_ENABLED ? 1.0 : 0.0 },
         },
       });
@@ -3426,6 +3436,14 @@ function animate() {
       if (DEBUG_MOUTH_POINTS_ENABLED) console.info('[mouth-points] latch OFF', { mouthOpenVisual: Number(mouthOpenVisual.toFixed(3)) });
     }
 
+    const transitionInSec = Math.max(0.001, (mouthTuning.transitionInMs ?? 160.0) * 0.001);
+    const transitionOutSec = Math.max(0.001, (mouthTuning.transitionOutMs ?? 190.0) * 0.001);
+    const transitionTarget = (MOUTH_POINTS_ONLY_ENABLED || mouthPointsVisibleLatched) ? 1.0 : 0.0;
+    const transitionRate = transitionTarget > mouthTransition ? (1.0 / transitionInSec) : (1.0 / transitionOutSec);
+    const transitionStep = Math.max(0.0, dtMotion) * transitionRate;
+    mouthTransition += (transitionTarget - mouthTransition) * Math.min(1.0, transitionStep);
+    mouthTransition = THREE.MathUtils.clamp(mouthTransition, 0.0, 1.0);
+
     let microYaw = 0.0;
     let microPitch = 0.0;
     let microRoll = 0.0;
@@ -3513,6 +3531,8 @@ function animate() {
       if (mat.uniforms.uFadeDiamondRY) mat.uniforms.uFadeDiamondRY.value = window.MouthRenderTuning.fadeDiamondRY;
       if (mat.uniforms.uFadeDiamondRot) mat.uniforms.uFadeDiamondRot.value = window.MouthRenderTuning.fadeDiamondRot;
       if (mat.uniforms.uMouthHoleActive) mat.uniforms.uMouthHoleActive.value = mouthPointsVisibleLatched ? 1.0 : 0.0;
+      if (mat.uniforms.uMouthTransition) mat.uniforms.uMouthTransition.value = mouthTransition;
+      if (mat.uniforms.uHoleEdgeSoftness) mat.uniforms.uHoleEdgeSoftness.value = window.MouthRenderTuning.holeEdgeSoftness;
       if (mat.uniforms.uDebugMouthDiamond) mat.uniforms.uDebugMouthDiamond.value = DEBUG_MOUTH_DIAMOND_ENABLED ? 1.0 : 0.0;
       if (mat.uniforms.uDebugMouthFade) mat.uniforms.uDebugMouthFade.value = DEBUG_MOUTH_FADE_ENABLED ? 1.0 : 0.0;
 
@@ -3531,11 +3551,13 @@ function animate() {
   }
 
   if (mouthPoints && mouthPointsMaterial) {
-    mouthPoints.visible = MOUTH_POINTS_ONLY_ENABLED ? true : mouthPointsVisibleLatched;
+    const minVisible = Math.max(0.0, window.MouthRenderTuning.transitionMinVisible ?? 0.015);
+    const pointsVisible = MOUTH_POINTS_ONLY_ENABLED ? true : (mouthPointsVisibleLatched || mouthTransition > minVisible);
+    mouthPoints.visible = pointsVisible;
     mouthPointsMaterial.uniforms.uTime.value = elapsed;
     mouthPointsMaterial.uniforms.uTalk.value = AvatarState.talkLevel;
     mouthPointsMaterial.uniforms.uRestOpen.value = 0.03;
-    mouthPointsMaterial.uniforms.uMouthPointsAlpha.value = window.MouthRenderTuning.pointsAlpha;
+    mouthPointsMaterial.uniforms.uMouthPointsAlpha.value = window.MouthRenderTuning.pointsAlpha * mouthTransition;
     mouthPointsMaterial.uniforms.uMouthPointsAlphaClip.value = window.MouthRenderTuning.pointsAlphaClip;
     mouthPointsMaterial.uniforms.uPointSizeNear.value = window.MouthRenderTuning.pointsSizeNear;
     mouthPointsMaterial.uniforms.uPointSizeFar.value = window.MouthRenderTuning.pointsSizeFar;
