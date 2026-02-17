@@ -1132,8 +1132,8 @@ window.MouthRenderTuning = window.MouthRenderTuning || {
   useDiamondFade: true,
   fadeDiamondCX: -0.045,
   fadeDiamondCY: 0.16,
-  fadeDiamondRX: 0.11,
-  fadeDiamondRY: 0.07,
+  fadeDiamondRX: 0.0012,
+  fadeDiamondRY: 0.0009,
   fadeDiamondRot: 0.0,
 };
 
