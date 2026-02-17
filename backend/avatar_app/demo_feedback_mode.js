@@ -306,21 +306,6 @@ export function createDemoFeedbackMode({
     const svg = dashboard.querySelector('.fb-chart');
     renderChart(svg);
 
-    copyButton.addEventListener('click', async () => {
-      try {
-        await navigator.clipboard.writeText(copyText);
-      } catch {
-        const ta = document.createElement('textarea');
-        ta.value = copyText;
-        ta.style.position = 'fixed';
-        ta.style.opacity = '0';
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        ta.remove();
-      }
-    });
-
     overlay.appendChild(dashboard);
     document.body.appendChild(overlay);
     ui.feedbackOverlay = overlay;
@@ -759,18 +744,9 @@ function renderChart(svg) {
 
 function escapeHtml(str) {
   return String(str)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
-}
-
-function escapeHtml(str) {
-  return String(str)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
