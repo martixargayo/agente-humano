@@ -48,14 +48,10 @@ const FEEDBACK_CARDS = [
   },
 ];
 
-const TURN_DETAILS = [
-  {
-    user: 'hola tienes un momento para hablar conmigo',
-    avatar: 'Sí Lluís claro dime',
-    impacts: [],
-  },
-  ...Array.from({ length: TURN_SCORES.length - 1 }, () => ({ user: '', avatar: '', impacts: [] })),
-];
+const TURN_DETAILS = {
+  user: 'hola tienes un momento para hablar conmigo',
+  avatar: 'Sí Lluís claro dime',
+};
 
 const DEMO_MODE_CONFIG = {
   demo_feedback: {
@@ -214,7 +210,7 @@ export function createDemoFeedbackMode({
         <div class="fb-header-right">
           <div class="fb-stars" role="img" aria-label="4 de 5 estrellas">${createStarsMarkup()}</div>
           <div class="fb-score-pill">${FEEDBACK_SCORE} / 100</div>
-          <div class="fb-header-state"><span class="dot ok"></span>Alta probabilidad de acuerdo</div>
+          <div class="fb-header-state"><span class="dot ok"></span>Acuerdo alcanzado</div>
         </div>
       </header>
 
@@ -222,30 +218,20 @@ export function createDemoFeedbackMode({
 
       <section class="fb-card fb-chart-card">
         <div class="fb-chart-top">
-          <div>
-            <h2>Cercanía al entendimiento</h2>
-            <p>Umbral de aceptación: ${ACCEPTANCE_THRESHOLD}</p>
-          </div>
-          <div class="fb-header-state"><span class="dot ok"></span>Estado actual: Susceptible de aceptar</div>
+          <h2>Cercanía al entendimiento</h2>
         </div>
         <div class="fb-chart-layout">
-          <div>
-            <div class="fb-chart-shell">
-              <svg class="fb-chart" viewBox="0 0 860 240" role="img" aria-label="Serie de cercanía al entendimiento por turno"></svg>
-            </div>
-            <div class="fb-scrubber-wrap">
-              <div class="fb-scrubber-dots" aria-hidden="true"></div>
-              <input class="fb-scrubber" type="range" min="1" max="${TURN_SCORES.length}" value="${Math.ceil(
-      TURN_SCORES.length / 2,
-    )}" step="1" aria-label="Seleccionar turno" />
-            </div>
+          <div class="fb-chart-shell">
+            <svg class="fb-chart" viewBox="0 0 860 260" role="img" aria-label="Serie de cercanía al entendimiento por turno"></svg>
           </div>
-          <aside class="fb-detail-panel" aria-live="polite"></aside>
+          <aside class="fb-detail-panel" aria-live="polite">
+            <p class="fb-detail-line"><strong>tú</strong> ${escapeHtml(TURN_DETAILS.user)}</p>
+            <p class="fb-detail-line"><strong>él</strong> ${escapeHtml(TURN_DETAILS.avatar)}</p>
+          </aside>
         </div>
       </section>
 
       <section class="fb-card fb-recommendations">
-        <h2>Recomendaciones</h2>
         <div class="fb-recommendations-grid">
           <article>
             <h3>Recomendaciones generales</h3>
@@ -270,12 +256,12 @@ export function createDemoFeedbackMode({
             <p class="fb-correct-note"><span>${crossSvg()}</span>Hubo dos situaciones durante la conversación en las que deberías haber usado el ‘yo siento’ en vez del ‘tú eres’.</p>
             <div class="fb-mini-cards">
               <div class="fb-mini-card">
-                <div class="fb-mini-head"><strong>Turno 11</strong><span class="fb-mini-badge">A corregir</span></div>
+                <div class="fb-mini-head"><strong>Turno 8</strong><span class="fb-mini-badge">A corregir</span></div>
                 <p><span class="muted">Dijiste:</span> Es que tú siempre lo dejas para el final.</p>
                 <p><span class="muted">Mejor:</span> <span class="fb-better">Yo siento que cuando llega al final del día sin el parte, me cuesta planificar.</span></p>
               </div>
               <div class="fb-mini-card">
-                <div class="fb-mini-head"><strong>Turno 4</strong><span class="fb-mini-badge">A corregir</span></div>
+                <div class="fb-mini-head"><strong>Turno 13</strong><span class="fb-mini-badge">A corregir</span></div>
                 <p><span class="muted">Dijiste:</span> Tú eres muy desordenado con los tiempos.</p>
                 <p><span class="muted">Mejor:</span> <span class="fb-better">Yo siento que cuando no tengo el parte temprano se me desordena el día.</span></p>
               </div>
@@ -287,7 +273,6 @@ export function createDemoFeedbackMode({
             <h3>Frase recomendada de cierre</h3>
             <p>“¿Te parece si lo dejamos así: me lo envías antes de las 12:00 cada lunes, y si no lo tienes completo me mandas un avance?”</p>
           </div>
-          <button type="button" class="fb-copy-btn">Copiar</button>
         </div>
       </section>
     `;
@@ -319,23 +304,7 @@ export function createDemoFeedbackMode({
     }
 
     const svg = dashboard.querySelector('.fb-chart');
-    const detailPanel = dashboard.querySelector('.fb-detail-panel');
-    const scrubber = dashboard.querySelector('.fb-scrubber');
-    const copyButton = dashboard.querySelector('.fb-copy-btn');
-
-    const copyText =
-      '¿Te parece si lo dejamos así: me lo envías antes de las 12:00 cada lunes, y si no lo tienes completo me mandas un avance?';
-
-    let selectedIndex = null;
-
-    renderChart(svg, setSelectedTurn, () => selectedIndex);
-    renderDetailPanel(detailPanel, null);
-    updateScrubberUI(dashboard, Number(scrubber.value));
-
-    scrubber.addEventListener('input', () => {
-      const turn = Number(scrubber.value);
-      setSelectedTurn(turn - 1);
-    });
+    renderChart(svg);
 
     copyButton.addEventListener('click', async () => {
       try {
@@ -355,14 +324,6 @@ export function createDemoFeedbackMode({
     overlay.appendChild(dashboard);
     document.body.appendChild(overlay);
     ui.feedbackOverlay = overlay;
-
-    function setSelectedTurn(index) {
-      selectedIndex = index;
-      renderDetailPanel(detailPanel, selectedIndex);
-      updateChartSelection(svg, selectedIndex);
-      scrubber.value = String((selectedIndex ?? Math.ceil(TURN_SCORES.length / 2) - 1) + 1);
-      updateScrubberUI(dashboard, Number(scrubber.value));
-    }
   }
 
   function ensureFeedbackStyles() {
@@ -389,7 +350,6 @@ export function createDemoFeedbackMode({
         --bad: #F04438;
         --badBg: rgba(240,68,56,0.12);
         --focus: #2E90FA;
-        --focusBg: rgba(46,144,250,0.12);
       }
 
       .demo-feedback-overlay * { box-sizing: border-box; }
@@ -406,8 +366,7 @@ export function createDemoFeedbackMode({
       }
 
       .demo-feedback-dashboard {
-        position: relative;
-        max-width: 1200px;
+        max-width: 1240px;
         margin: 0 auto;
         padding: 28px;
         display: grid;
@@ -419,12 +378,6 @@ export function createDemoFeedbackMode({
         border: 1px solid var(--border);
         border-radius: var(--radius-lg);
         box-shadow: var(--shadow);
-        transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
-      }
-
-      .fb-card:hover {
-        border-color: rgba(46,144,250,0.35);
-        box-shadow: 0 10px 36px rgba(11,15,20,0.08);
       }
 
       .fb-header {
@@ -435,13 +388,12 @@ export function createDemoFeedbackMode({
         justify-content: space-between;
       }
 
-      .fb-header h1 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.2px; }
+      .fb-header h1 { margin: 0; font-size: 18px; font-weight: 600; }
 
-      .fb-header p, .fb-chart-top p, .muted {
+      .fb-header p, .muted {
         margin: 6px 0 0;
         color: var(--muted);
         font-size: 12.5px;
-        font-weight: 400;
       }
 
       .fb-header-right { display: inline-flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
@@ -449,42 +401,29 @@ export function createDemoFeedbackMode({
 
       .fb-score-pill {
         border: 1px solid var(--border);
-        background: #FFFFFF;
         border-radius: 999px;
         padding: 7px 10px;
         font-size: 16px;
         font-weight: 600;
-        line-height: 1;
       }
 
-      .fb-header-state { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12.5px; white-space: nowrap; }
+      .fb-header-state { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12.5px; }
       .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
       .dot.ok { background: var(--ok); }
 
       .fb-grid-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 
       .fb-skill-card {
-        position: relative;
         padding: 18px;
-        overflow: hidden;
+        border-width: 3px;
       }
 
-      .fb-skill-card::before {
-        content: '';
-        position: absolute;
-        left: 8px;
-        top: 8px;
-        bottom: 8px;
-        width: 3px;
-        border-radius: 3px;
-      }
+      .fb-skill-card.ok { border-color: var(--ok); }
+      .fb-skill-card.bad { border-color: var(--bad); }
+      .fb-skill-card.warn { border-color: var(--warn); }
 
-      .fb-skill-card.ok::before { background: var(--ok); }
-      .fb-skill-card.warn::before { background: var(--warn); }
-      .fb-skill-card.bad::before { background: var(--bad); }
-
-      .fb-skill-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-left: 10px; }
-      .fb-skill-top h2, .fb-chart-top h2, .fb-recommendations h2 { margin: 0; font-size: 14px; font-weight: 600; }
+      .fb-skill-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+      .fb-skill-top h2, .fb-chart-top h2 { margin: 0; font-size: 14px; font-weight: 600; }
 
       .fb-badge {
         display: inline-flex;
@@ -494,69 +433,68 @@ export function createDemoFeedbackMode({
         border-radius: 999px;
         border: 1px solid var(--border);
         font-size: 12px;
-        font-weight: 500;
       }
 
       .fb-badge.ok { background: var(--okBg); color: var(--ok); }
       .fb-badge.warn { background: var(--warnBg); color: var(--warn); }
       .fb-badge.bad { background: var(--badBg); color: var(--bad); }
 
-      .fb-skill-card ul { list-style: none; margin: 12px 0 0 10px; padding: 0; display: grid; gap: 8px; }
-      .fb-skill-card li { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; line-height: 1.5; font-weight: 400; color: rgba(11,15,20,0.92); }
+      .fb-skill-card ul { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
+      .fb-skill-card li { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; line-height: 1.5; }
 
       .fb-item-icon { width: 14px; height: 14px; flex: 0 0 14px; margin-top: 2px; }
       .fb-item-icon.ok svg { color: var(--ok); }
       .fb-item-icon.bad svg { color: var(--bad); }
 
       .fb-chart-card, .fb-recommendations { padding: 22px; }
-
-      .fb-chart-top { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+      .fb-chart-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 
       .fb-chart-layout {
-        margin-top: 16px;
         display: grid;
-        grid-template-columns: minmax(0, 1fr) 320px;
-        gap: 16px;
-        align-items: start;
+        grid-template-columns: 1fr;
+        gap: 12px;
       }
 
-      .fb-chart-shell { height: 240px; width: 100%; }
-      .fb-chart { width: 100%; height: 240px; display: block; }
+      .fb-chart-shell { height: 260px; width: 100%; }
+      .fb-chart { width: 100%; height: 260px; display: block; }
 
-      .fb-detail-panel { border: 1px solid var(--border); border-radius: var(--radius-md); background: #FFFFFF; padding: 14px; }
-      .fb-detail-empty { margin: 0; color: var(--muted); font-size: 12.5px; min-height: 32px; }
-      .fb-detail-line { margin: 0; font-size: 13px; line-height: 1.5; }
-
-      .fb-scrubber-wrap { position: relative; margin-top: 12px; height: 28px; display: flex; align-items: center; }
-      .fb-scrubber-dots { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(${TURN_SCORES.length}, 1fr); align-items: center; pointer-events: none; }
-      .fb-scrubber-dots span { width: 3px; height: 3px; border-radius: 50%; background: rgba(102,112,133,0.45); justify-self: center; }
-
-      .fb-scrubber { appearance: none; -webkit-appearance: none; width: 100%; height: 28px; margin: 0; background: transparent; }
-      .fb-scrubber:focus-visible, .fb-copy-btn:focus-visible, .fb-chart-point:focus-visible { outline: 1px solid var(--focus); box-shadow: 0 0 0 2px var(--focusBg); }
-
-      .fb-scrubber::-webkit-slider-runnable-track { height: 2px; background: rgba(102,112,133,0.18); border-radius: 999px; }
-      .fb-scrubber::-moz-range-track { height: 2px; background: rgba(102,112,133,0.18); border-radius: 999px; }
-
-      .fb-scrubber::-webkit-slider-thumb {
-        appearance: none;
-        -webkit-appearance: none;
-        width: 12px;
-        height: 12px;
-        border-radius: 50%;
-        border: 2px solid #FFFFFF;
-        background: var(--focus);
-        margin-top: -5px;
+      .fb-detail-panel {
+        position: relative;
+        border: 2px solid var(--focus);
+        border-radius: var(--radius-md);
+        background: #FFFFFF;
+        padding: 14px;
+        margin-top: 0;
+        margin-left: 10px;
+        max-width: 440px;
       }
 
-      .fb-scrubber::-moz-range-thumb {
-        width: 12px;
-        height: 12px;
-        border-radius: 50%;
-        border: 2px solid #FFFFFF;
-        background: var(--focus);
+      .fb-detail-panel::before {
+        content: '';
+        position: absolute;
+        top: -10px;
+        left: 22px;
+        width: 0;
+        height: 0;
+        border-left: 9px solid transparent;
+        border-right: 9px solid transparent;
+        border-bottom: 10px solid var(--focus);
       }
 
-      .fb-recommendations h2 { margin-bottom: 14px; }
+      .fb-detail-panel::after {
+        content: '';
+        position: absolute;
+        top: -8px;
+        left: 23px;
+        width: 0;
+        height: 0;
+        border-left: 8px solid transparent;
+        border-right: 8px solid transparent;
+        border-bottom: 9px solid #fff;
+      }
+
+      .fb-detail-line { margin: 0; font-size: 13px; line-height: 1.6; }
+      .fb-detail-line + .fb-detail-line { margin-top: 6px; }
 
       .fb-recommendations-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
       .fb-recommendations h3 { margin: 0; font-size: 14px; font-weight: 600; }
@@ -576,15 +514,13 @@ export function createDemoFeedbackMode({
         justify-content: center;
       }
 
-      .fb-numbered-list strong, .fb-correct-note, .fb-mini-card p { font-size: 13px; }
-
       .fb-numbered-list p, .fb-mini-card p, .fb-close-block p {
         margin: 4px 0 0;
         font-size: 12.5px;
         color: var(--muted);
       }
 
-      .fb-correct-note { margin: 12px 0; display: flex; gap: 8px; align-items: flex-start; }
+      .fb-correct-note { margin: 12px 0; display: flex; gap: 8px; align-items: flex-start; font-size: 13px; }
       .fb-correct-note svg { color: var(--bad); width: 14px; height: 14px; margin-top: 2px; }
 
       .fb-mini-cards { display: grid; gap: 10px; }
@@ -597,7 +533,6 @@ export function createDemoFeedbackMode({
         border-radius: 999px;
         border: 1px solid var(--border);
         font-size: 12px;
-        font-weight: 500;
         color: var(--bad);
         background: var(--badBg);
       }
@@ -610,44 +545,20 @@ export function createDemoFeedbackMode({
         border: 1px solid rgba(102,112,133,0.12);
         background: rgba(102,112,133,0.05);
         padding: 12px;
-        display: flex;
-        justify-content: space-between;
-        gap: 12px;
-        align-items: center;
       }
 
-      .fb-close-block h3 { margin-bottom: 6px; }
-
-      .fb-copy-btn {
-        height: 32px;
-        padding: 0 12px;
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        background: #FFF;
-        color: var(--text);
-        font-size: 12px;
-        font-weight: 500;
-        cursor: pointer;
-        white-space: nowrap;
-      }
-
-      .fb-copy-btn:hover {
-        background: rgba(46,144,250,0.06);
-        border-color: rgba(46,144,250,0.25);
-      }
+      .fb-close-block h3 { margin: 0 0 6px; }
 
       .fb-axis-label { fill: var(--muted2); font-size: 11px; }
-      .fb-threshold-label { fill: var(--muted); font-size: 12px; }
 
       @media (max-width: 1023px) {
         .demo-feedback-dashboard { padding: 20px; }
-        .fb-grid-cards, .fb-recommendations-grid, .fb-chart-layout { grid-template-columns: 1fr; }
+        .fb-grid-cards, .fb-recommendations-grid { grid-template-columns: 1fr; }
       }
 
       @media (max-width: 767px) {
         .demo-feedback-dashboard { padding: 16px; }
-        .fb-header { min-height: auto; height: auto; padding: 18px 22px; align-items: flex-start; flex-direction: column; gap: 12px; }
-        .fb-close-block { flex-direction: column; align-items: flex-start; }
+        .fb-header { padding: 18px 22px; align-items: flex-start; flex-direction: column; gap: 12px; }
       }
     `;
 
@@ -681,24 +592,11 @@ function crossSvg() {
   return '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
 }
 
-function renderDetailPanel(panel, index) {
-  if (index === null || index === undefined || index !== 0) {
-    panel.innerHTML = '<p class="fb-detail-empty"></p>';
-    return;
-  }
-
-  const detail = TURN_DETAILS[0];
-  panel.innerHTML = `
-    <p class="fb-detail-line">${escapeHtml(detail.user)}</p>
-    <p class="fb-detail-line">${escapeHtml(detail.avatar)}</p>
-  `;
-}
-
-function renderChart(svg, onSelectTurn, getSelectedIndex) {
+function renderChart(svg) {
   const NS = 'http://www.w3.org/2000/svg';
   const width = 860;
-  const height = 240;
-  const pad = { top: 16, right: 20, bottom: 32, left: 28 };
+  const height = 260;
+  const pad = { top: 16, right: 8, bottom: 32, left: 8 };
 
   const innerW = width - pad.left - pad.right;
   const innerH = height - pad.top - pad.bottom;
@@ -731,15 +629,8 @@ function renderChart(svg, onSelectTurn, getSelectedIndex) {
     svg.appendChild(line);
   }
 
-  const threshold = document.createElementNS(NS, 'text');
-  threshold.setAttribute('x', '8');
-  threshold.setAttribute('y', String(yFor(ACCEPTANCE_THRESHOLD) + 4));
-  threshold.setAttribute('class', 'fb-threshold-label');
-  threshold.textContent = String(ACCEPTANCE_THRESHOLD);
-  svg.appendChild(threshold);
-
   const zoneText = document.createElementNS(NS, 'text');
-  zoneText.setAttribute('x', String(width - pad.right - 170));
+  zoneText.setAttribute('x', String(width - 198));
   zoneText.setAttribute('y', String(yFor(100) + 14));
   zoneText.setAttribute('fill', 'rgba(18,183,106,0.65)');
   zoneText.setAttribute('font-size', '12');
@@ -758,19 +649,7 @@ function renderChart(svg, onSelectTurn, getSelectedIndex) {
     );
   }
 
-  const guide = document.createElementNS(NS, 'line');
-  guide.setAttribute('x1', String(xFor(0)));
-  guide.setAttribute('x2', String(xFor(0)));
-  guide.setAttribute('y1', String(pad.top));
-  guide.setAttribute('y2', String(height - pad.bottom));
-  guide.setAttribute('stroke', 'rgba(46,144,250,0.25)');
-  guide.setAttribute('stroke-dasharray', '3 4');
-  guide.style.display = 'none';
-  guide.classList.add('fb-guide');
-  svg.appendChild(guide);
-
   const pointLayer = document.createElementNS(NS, 'g');
-  pointLayer.classList.add('fb-points-layer');
   svg.appendChild(pointLayer);
 
   TURN_SCORES.forEach((value, idx) => {
@@ -778,36 +657,26 @@ function renderChart(svg, onSelectTurn, getSelectedIndex) {
     const y = yFor(value);
     const color = value >= ACCEPTANCE_THRESHOLD ? 'var(--ok)' : value >= 60 ? 'var(--warn)' : 'var(--bad)';
 
-    const ring = document.createElementNS(NS, 'circle');
-    ring.setAttribute('cx', String(x));
-    ring.setAttribute('cy', String(y));
-    ring.setAttribute('r', '9');
-    ring.setAttribute('fill', 'none');
-    ring.setAttribute('stroke', 'var(--focus)');
-    ring.setAttribute('stroke-width', '2');
-    ring.setAttribute('opacity', '0');
-    ring.classList.add('fb-chart-ring');
-    pointLayer.appendChild(ring);
-
     const point = document.createElementNS(NS, 'circle');
     point.setAttribute('cx', String(x));
     point.setAttribute('cy', String(y));
-    point.setAttribute('r', '5');
+    point.setAttribute('r', idx === 0 ? '7' : '5');
     point.setAttribute('fill', color);
     point.setAttribute('stroke', '#FFFFFF');
     point.setAttribute('stroke-width', '2');
     point.setAttribute('filter', 'url(#fbPointShadow)');
-    point.classList.add('fb-chart-point');
-    point.setAttribute('tabindex', '0');
-    point.setAttribute('role', 'button');
-    point.setAttribute('aria-label', `Turno ${idx + 1}`);
-
-    const activate = () => onSelectTurn(idx);
-    point.addEventListener('mouseenter', activate);
-    point.addEventListener('focus', activate);
-    point.addEventListener('click', activate);
     pointLayer.appendChild(point);
   });
+
+  const turnOneConnector = document.createElementNS(NS, 'line');
+  turnOneConnector.setAttribute('x1', String(xFor(0)));
+  turnOneConnector.setAttribute('x2', String(xFor(0)));
+  turnOneConnector.setAttribute('y1', String(yFor(TURN_SCORES[0]) + 9));
+  turnOneConnector.setAttribute('y2', String(height - 2));
+  turnOneConnector.setAttribute('stroke', 'var(--focus)');
+  turnOneConnector.setAttribute('stroke-width', '2');
+  turnOneConnector.setAttribute('stroke-dasharray', '4 4');
+  svg.appendChild(turnOneConnector);
 
   const labels = [];
   for (let t = 1; t <= TURN_SCORES.length; t += 2) labels.push(t);
@@ -821,8 +690,6 @@ function renderChart(svg, onSelectTurn, getSelectedIndex) {
     label.textContent = `T${turnLabel}`;
     svg.appendChild(label);
   });
-
-  updateChartSelection(svg, getSelectedIndex());
 
   function drawSegment(container, x1, y1, x2, y2, v1, v2) {
     const state = (v) => (v >= ACCEPTANCE_THRESHOLD ? 'ok' : v >= 60 ? 'warn' : 'bad');
@@ -890,46 +757,13 @@ function renderChart(svg, onSelectTurn, getSelectedIndex) {
   }
 }
 
-function updateChartSelection(svg, index) {
-  const points = Array.from(svg.querySelectorAll('.fb-chart-point'));
-  const rings = Array.from(svg.querySelectorAll('.fb-chart-ring'));
-  const guide = svg.querySelector('.fb-guide');
-
-  points.forEach((p, idx) => {
-    p.setAttribute('r', idx === index ? '7' : '5');
-  });
-
-  rings.forEach((r, idx) => {
-    r.setAttribute('opacity', idx === index ? '0.9' : '0');
-  });
-
-  if (guide && index !== null && index !== undefined && points[index]) {
-    const point = points[index];
-    const x = point.getAttribute('cx');
-    const y = point.getAttribute('cy');
-    guide.setAttribute('x1', x);
-    guide.setAttribute('x2', x);
-    guide.setAttribute('y1', y);
-    guide.style.display = 'block';
-  } else if (guide) {
-    guide.style.display = 'none';
-  }
-}
-
-function updateScrubberUI(dashboard, value) {
-  const dotsContainer = dashboard.querySelector('.fb-scrubber-dots');
-  if (!dotsContainer) return;
-
-  if (!dotsContainer.childElementCount) {
-    for (let i = 1; i <= TURN_SCORES.length; i += 1) {
-      dotsContainer.appendChild(document.createElement('span'));
-    }
-  }
-
-  const dots = dotsContainer.querySelectorAll('span');
-  dots.forEach((dot, idx) => {
-    dot.style.background = idx + 1 === value ? 'var(--focus)' : 'rgba(102,112,133,0.45)';
-  });
+function escapeHtml(str) {
+  return String(str)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
 }
 
 function escapeHtml(str) {
