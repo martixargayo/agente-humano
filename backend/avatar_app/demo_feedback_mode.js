@@ -329,7 +329,7 @@ export function createDemoFeedbackMode({
         max-height: min(920px, 92vh);
         overflow: auto;
         border: 1px solid var(--feedback-border);
-        border-radius: 16px;
+        border-radius: 24px;
         background: var(--feedback-bg);
         box-shadow: 0 28px 56px rgba(15, 23, 42, 0.22);
         color: var(--feedback-text);
@@ -396,7 +396,7 @@ export function createDemoFeedbackMode({
 
       .demo-feedback-card {
         border: 1px solid var(--feedback-border);
-        border-radius: 14px;
+        border-radius: 24px;
         background: var(--feedback-bg);
         padding: 16px;
       }
@@ -442,7 +442,7 @@ export function createDemoFeedbackMode({
 
       @media (max-width: 700px) {
         .demo-feedback-panel {
-          border-radius: 14px;
+          border-radius: 24px;
           max-height: 95vh;
           padding: 18px;
         }
