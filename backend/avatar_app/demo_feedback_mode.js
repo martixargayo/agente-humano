@@ -225,7 +225,7 @@ export function createDemoFeedbackMode({
         </div>
         <div class="fb-chart-layout">
           <div class="fb-chart-shell">
-            <svg class="fb-chart" viewBox="0 0 860 260" role="img" aria-label="Serie de cercanía al entendimiento por turno"></svg>
+            <svg class="fb-chart" viewBox="0 0 860 260" preserveAspectRatio="none" role="img" aria-label="Serie de cercanía al entendimiento por turno"></svg>
           </div>
           <aside class="fb-detail-panel" aria-live="polite">
             <p class="fb-detail-line"><strong>Tú:</strong></p>
