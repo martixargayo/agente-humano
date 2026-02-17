@@ -1138,6 +1138,7 @@ window.MouthRenderTuning = window.MouthRenderTuning || {
   fadeDiamondRX: 0.11,
   fadeDiamondRY: 0.07,
   fadeDiamondRot: 0.0,
+  alwaysPointsMode: true,
 };
 
 window.MouthRenderTuning.pointsLumaFloor ??= 0.12;
@@ -1149,6 +1150,7 @@ window.MouthRenderTuning.pointsDebugBackOnly ??= false;
 window.MouthRenderTuning.innerCoreA ??= 0.82;
 window.MouthRenderTuning.innerCoreB ??= 0.96;
 window.MouthRenderTuning.innerCoreGain ??= 0.70;
+window.MouthRenderTuning.alwaysPointsMode ??= true;
 
 
 const MOUTH_DIAMOND_STORAGE_KEY = 'avatar_mouth_diamond_v1';
@@ -3418,7 +3420,9 @@ function animate() {
     const mouthSmoothing = 1.0 - Math.exp(-Math.max(0.0, dtMotion) * mouthSpeed);
     mouthOpenVisual += (targetTalk - mouthOpenVisual) * mouthSmoothing;
 
-    if (!mouthPointsVisibleLatched && mouthOpenVisual > mouthTuning.pointsOn) {
+    if (mouthTuning.alwaysPointsMode) {
+      mouthPointsVisibleLatched = true;
+    } else if (!mouthPointsVisibleLatched && mouthOpenVisual > mouthTuning.pointsOn) {
       mouthPointsVisibleLatched = true;
       if (DEBUG_MOUTH_POINTS_ENABLED) console.info('[mouth-points] latch ON', { mouthOpenVisual: Number(mouthOpenVisual.toFixed(3)) });
     } else if (mouthPointsVisibleLatched && mouthOpenVisual < mouthTuning.pointsOff) {
@@ -3512,7 +3516,7 @@ function animate() {
       if (mat.uniforms.uFadeDiamondRX) mat.uniforms.uFadeDiamondRX.value = window.MouthRenderTuning.fadeDiamondRX;
       if (mat.uniforms.uFadeDiamondRY) mat.uniforms.uFadeDiamondRY.value = window.MouthRenderTuning.fadeDiamondRY;
       if (mat.uniforms.uFadeDiamondRot) mat.uniforms.uFadeDiamondRot.value = window.MouthRenderTuning.fadeDiamondRot;
-      if (mat.uniforms.uMouthHoleActive) mat.uniforms.uMouthHoleActive.value = mouthPointsVisibleLatched ? 1.0 : 0.0;
+      if (mat.uniforms.uMouthHoleActive) mat.uniforms.uMouthHoleActive.value = (window.MouthRenderTuning.alwaysPointsMode || mouthPointsVisibleLatched) ? 1.0 : 0.0;
       if (mat.uniforms.uDebugMouthDiamond) mat.uniforms.uDebugMouthDiamond.value = DEBUG_MOUTH_DIAMOND_ENABLED ? 1.0 : 0.0;
       if (mat.uniforms.uDebugMouthFade) mat.uniforms.uDebugMouthFade.value = DEBUG_MOUTH_FADE_ENABLED ? 1.0 : 0.0;
 
@@ -3531,7 +3535,7 @@ function animate() {
   }
 
   if (mouthPoints && mouthPointsMaterial) {
-    mouthPoints.visible = MOUTH_POINTS_ONLY_ENABLED ? true : mouthPointsVisibleLatched;
+    mouthPoints.visible = MOUTH_POINTS_ONLY_ENABLED ? true : (window.MouthRenderTuning.alwaysPointsMode || mouthPointsVisibleLatched);
     mouthPointsMaterial.uniforms.uTime.value = elapsed;
     mouthPointsMaterial.uniforms.uTalk.value = AvatarState.talkLevel;
     mouthPointsMaterial.uniforms.uRestOpen.value = 0.03;
