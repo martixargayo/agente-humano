@@ -327,25 +327,22 @@
 
     .conversation-mode-trigger {
       display: inline-flex;
-      flex-direction: column;
       align-items: center;
       justify-content: center;
-      min-width: 114px;
-      gap: 1px;
-      border: 1px solid rgba(148, 163, 184, 0.28);
-      border-radius: 14px;
-      background: rgba(15, 23, 42, 0.45);
+      gap: 6px;
+      border: none;
+      background: transparent;
       color: var(--text-primary);
-      padding: 7px 10px 6px;
+      padding: 2px 0;
       font-size: 11px;
       line-height: 1;
       cursor: pointer;
-      transition: border-color 0.18s ease, transform 0.18s ease, background 0.18s ease;
+      transition: color 0.18s ease, transform 0.18s ease;
     }
 
     .conversation-mode-trigger:hover {
       transform: translateY(-1px);
-      border-color: rgba(96, 165, 250, 0.55);
+      color: #e2e8f0;
     }
 
     .conversation-mode-trigger .mode-current {
@@ -356,10 +353,10 @@
     }
 
     .conversation-mode-trigger .mode-chevron {
-      font-size: 14px;
+      font-size: 13px;
       line-height: 1;
       color: #cbd5e1;
-      transform: translateY(1px);
+      transform: translateY(0);
     }
 
     .conversation-mode-menu {
@@ -538,11 +535,6 @@
       color: var(--text-primary);
     }
 
-    html[data-avatar-theme="realistic"] .conversation-mode-trigger {
-      background: rgba(255, 255, 255, 0.86);
-      border-color: rgba(15, 23, 42, 0.15);
-    }
-
     html[data-avatar-theme="realistic"] .conversation-mode-trigger .mode-current,
     html[data-avatar-theme="realistic"] .conversation-mode-trigger .mode-chevron {
       color: #0f172a;
@@ -661,11 +653,6 @@
       background: #ffffff;
       color: #111827;
       box-shadow: 0 2px 5px rgba(15, 23, 42, 0.12);
-    }
-
-    html[data-newbox="1"] .conversation-mode-trigger {
-      background: #f9fafb;
-      border-color: rgba(15, 23, 42, 0.12);
     }
 
     html[data-newbox="1"] .conversation-mode-trigger .mode-current,
