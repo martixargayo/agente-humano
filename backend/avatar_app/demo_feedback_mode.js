@@ -1,7 +1,7 @@
 const DEMO_FORCED_REPLIES = [
   'Si claro Lluís, dime.',
   'No es que no quiera compartirla. Muchas veces todavía la estoy revisando y no quiero enviarte algo incompleto.',
-  'Entonces… ¿quieres que te pase información que todavía puede ser errónea?',
+  'Pero si hago esto que me pides, te estaría pasando información que podría ser errónea. No tengo claro que sea una buena solución…',
 ];
 
 const FEEDBACK_SCORE = 84;
