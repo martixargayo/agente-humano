@@ -148,12 +148,15 @@ def update_progress_state(
         progress["policy_state"] = hydrate_policy_state_from_catalog(policy_id, turn_count=turn_count)
 
     loop_flags = list(progress.get("loop_flags", []))
-    if (
+    stuck_in_policy_now = (
         progress.get("turns_in_same_mode", 0) >= 2
         and progress.get("last_executed_policy_outcome") != OUTCOME_GOOD
-    ):
+    )
+    if stuck_in_policy_now:
         if "stuck_in_policy" not in loop_flags:
             loop_flags.append("stuck_in_policy")
+    else:
+        loop_flags = [flag for flag in loop_flags if flag != "stuck_in_policy"]
     progress["loop_flags"] = loop_flags
 
     return progress

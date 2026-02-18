@@ -161,3 +161,55 @@ def test_planner_skips_when_continue_policy_and_calls_when_replan():
     }
     phase_policy_planner_node(replan_state)
     assert called["planner"] == 1
+
+
+def test_progress_updater_adds_stuck_loop_flag_when_repeated_neutral_policy():
+    prev_progress = default_progress_state()
+    prev_progress["turns_in_same_mode"] = 1
+    prev_progress["last_chosen_policy_id"] = "rapport_build"
+
+    decision = default_policy_decision()
+    decision["policy_id"] = "rapport_build"
+
+    progress = update_progress_state(
+        prev_progress=prev_progress,
+        policy_decision=decision,
+        last_policy_executed={"policy_id": "rapport_build"},
+        prev_world_state=default_world_state(),
+        world_state=default_world_state(),
+        prev_belief_state=default_belief_state(),
+        belief_state=default_belief_state(),
+        turn_count=2,
+    )
+
+    assert "stuck_in_policy" in progress["loop_flags"]
+
+
+def test_progress_updater_clears_stuck_loop_flag_after_good_outcome():
+    prev_progress = default_progress_state()
+    prev_progress["loop_flags"] = ["stuck_in_policy"]
+    prev_progress["turns_in_same_mode"] = 3
+    prev_progress["last_chosen_policy_id"] = "deescalate_tension"
+
+    tense_belief = default_belief_state()
+    tense_belief["universal"]["dynamics"]["interaction_health"] = "tense"
+
+    stable_belief = default_belief_state()
+    stable_belief["universal"]["dynamics"]["interaction_health"] = "stable"
+
+    decision = default_policy_decision()
+    decision["policy_id"] = "deescalate_tension"
+
+    progress = update_progress_state(
+        prev_progress=prev_progress,
+        policy_decision=decision,
+        last_policy_executed={"policy_id": "deescalate_tension"},
+        prev_world_state=default_world_state(),
+        world_state=default_world_state(),
+        prev_belief_state=tense_belief,
+        belief_state=stable_belief,
+        turn_count=4,
+    )
+
+    assert progress["last_executed_policy_outcome"] == "good"
+    assert "stuck_in_policy" not in progress["loop_flags"]
