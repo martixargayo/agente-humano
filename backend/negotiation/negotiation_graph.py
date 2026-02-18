@@ -544,6 +544,8 @@ def run_negotiation_agent(
             "t_reply_saved": t_reply_saved,
             "t_summary_enqueued": t_summary_enqueued,
             "summary_enqueue_meta": summary_enqueue_meta,
+            "user_message": user_message,
+            "assistant_reply": reply_text,
             "world_prev": graph_state["world_state"],
             "world_new": new_world_state,
             "world_diff": new_graph_state.get("world_diff", {}),

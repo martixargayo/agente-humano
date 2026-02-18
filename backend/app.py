@@ -4,6 +4,7 @@ from __future__ import annotations
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
+import json
 
 import os
 import pathlib
@@ -24,7 +25,12 @@ BASE_DIR = pathlib.Path(__file__).resolve().parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-from state import get_session_state, DEFAULT_CONTEXT_LIMIT_TURNS, DEFAULT_KEEP_LAST_TURNS
+from state import (
+    SESSIONS,
+    DEFAULT_CONTEXT_LIMIT_TURNS,
+    DEFAULT_KEEP_LAST_TURNS,
+    get_session_state,
+)
 from agent import run_agent
 
 
@@ -54,6 +60,7 @@ _migrate_negotiation_env_aliases()
 from negotiation.negotiation_graph import run_negotiation_agent
 from negotiation.summary_jobs import SUMMARY_JOBS, deferred_summary_enabled, make_turn_job
 from negotiation.state.deps import DEFAULT_DEPS
+from negotiation.telemetry.live_trace import build_trace_event, list_recent_trace_events
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -275,6 +282,207 @@ def negociar_endpoint(payload: ChatRequest):
             status_code=500,
             detail=f"Error interno en el agente de negociación: {e}",
         )
+
+
+def _trace_sse_generator():
+    seen_counts: dict[tuple[str, str], int] = {
+        (event["user_id"], event["session_id"]): int(event["trace_index"]) + 1
+        for event in list_recent_trace_events(SESSIONS)
+    }
+
+    for event in list_recent_trace_events(SESSIONS):
+        yield f"event: trace\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+    while True:
+        sent = False
+        for (user_id, session_id), session in sorted(
+            SESSIONS.items(),
+            key=lambda item: item[1].last_updated,
+        ):
+            trace = session.debug_trace or []
+            last_seen = seen_counts.get((user_id, session_id), 0)
+            if last_seen >= len(trace):
+                continue
+
+            for trace_index in range(last_seen, len(trace)):
+                event = build_trace_event(
+                    user_id=user_id,
+                    session_id=session_id,
+                    session=session,
+                    trace_index=trace_index,
+                    trace_item=trace[trace_index],
+                )
+                yield f"event: trace\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
+            seen_counts[(user_id, session_id)] = len(trace)
+            sent = True
+
+        if not sent:
+            yield "event: ping\ndata: {}\n\n"
+        time.sleep(1.0)
+
+
+@app.get("/negociacion/trazas/stream")
+def negotiation_trace_stream():
+    return StreamingResponse(
+        _trace_sse_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@app.get("/negociacion/trazas", response_class=HTMLResponse)
+def negotiation_trace_panel():
+    return """
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Panel LiveTrace - Negociación</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { font-family: Inter, system-ui, sans-serif; margin: 0; background: #020617; color: #e2e8f0; }
+    .wrap { max-width: 1320px; margin: 0 auto; padding: 20px; }
+    h1 { margin: 0 0 8px; font-size: 24px; }
+    .hint { color: #94a3b8; margin-bottom: 14px; }
+    .status { margin-bottom: 12px; font-size: 14px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; }
+    .ok { background: #14532d; color: #bbf7d0; }
+    .warn { background: #7c2d12; color: #fed7aa; }
+    .controls { display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
+    .controls input { background:#0f172a; border:1px solid #334155; color:#e2e8f0; border-radius:8px; padding:8px 10px; }
+    .list { display: grid; gap: 12px; }
+    .item { border: 1px solid #1e293b; border-radius: 12px; padding: 12px; background: #0b1326; }
+    .head { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+    .meta { color: #93c5fd; font-size: 13px; }
+    .row { margin-top: 7px; font-size: 13px; }
+    .grid { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:8px; margin-top: 8px; }
+    .pill { background:#1e293b; border:1px solid #334155; border-radius:8px; padding:6px 8px; font-size:12px; }
+    .kv { display:grid; grid-template-columns: 220px 1fr; gap:8px; font-size:12px; margin-top:6px; }
+    .k { color:#94a3b8; }
+    .v { color:#cbd5e1; word-break: break-word; }
+    details { margin-top:8px; border:1px solid #1e293b; border-radius:8px; padding:6px 10px; background:#0f172a; }
+    summary { cursor:pointer; color:#93c5fd; }
+    pre { margin:8px 0 0; white-space:pre-wrap; word-break:break-word; font-size:12px; color:#cbd5e1; }
+    code { color: #c4b5fd; }
+    .err { color: #fca5a5; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>LiveTrace Negociación</h1>
+    <div class="hint">Abre siempre esta URL para ver todo en directo (todas las sesiones). Incluye respuesta final, gates, estado base/nuevo y razonamiento.</div>
+    <div class="status">
+      <span>Conexión SSE:</span> <span id="conn" class="badge warn">conectando...</span>
+      <span class="badge" id="total">0 eventos</span>
+    </div>
+    <div class="controls">
+      <input id="sessionFilter" placeholder="Filtrar por session_id o user_id" />
+      <input id="textFilter" placeholder="Filtrar por policy/fase/respuesta" />
+    </div>
+    <div id="events" class="list"></div>
+  </div>
+
+  <script>
+    const connEl = document.getElementById('conn');
+    const eventsEl = document.getElementById('events');
+    const totalEl = document.getElementById('total');
+    const sessionFilter = document.getElementById('sessionFilter');
+    const textFilter = document.getElementById('textFilter');
+    const store = [];
+
+    function pretty(obj) { return JSON.stringify(obj || {}, null, 2); }
+    function joinOrDash(arr) { return (arr && arr.length) ? arr.join(', ') : '—'; }
+
+    function matchesFilters(evt) {
+      const sf = sessionFilter.value.trim().toLowerCase();
+      const tf = textFilter.value.trim().toLowerCase();
+      if (sf) {
+        const identity = `${evt.user_id} ${evt.session_id}`.toLowerCase();
+        if (!identity.includes(sf)) return false;
+      }
+      if (tf) {
+        const haystack = `${evt.policy || ''} ${evt.phase || ''} ${evt.final_reply || ''}`.toLowerCase();
+        if (!haystack.includes(tf)) return false;
+      }
+      return true;
+    }
+
+    function durationMs(timing) {
+      const start = Number(timing?.t_turn_start || 0);
+      const end = Number(timing?.t_after_graph || 0);
+      if (!start || !end || end < start) return 'n/a';
+      return `${((end - start) * 1000).toFixed(1)} ms`;
+    }
+
+    function renderAll() {
+      eventsEl.innerHTML = '';
+      const visible = store.filter(matchesFilters);
+      for (const evt of visible) {
+        const plannerFail = evt.planner_failed || evt.belief_update_failed;
+        const card = document.createElement('div');
+        card.className = 'item';
+        const when = new Date(evt.updated_at).toLocaleTimeString();
+        const gateChoices = (evt.gate_choices || []).map(g => `${g.gate}: ${g.selected}`).join(' | ') || 'sin gates booleanos';
+        card.innerHTML = `
+          <div class="head">
+            <strong>${plannerFail ? '⚠️' : '✅'} turno ${evt.turn} · ${evt.policy || 'policy:n/a'}</strong>
+            <span class="meta">${evt.user_id} / ${evt.session_id} · ${when}</span>
+          </div>
+          <div class="row">fase: <code>${evt.phase || 'n/a'}</code> · duración: <code>${durationMs(evt.timing)}</code> · fallback planner: <code>${evt.planner_fallback_used ? 'sí' : 'no'}</code></div>
+          <div class="row">mensaje usuario: <code>${(evt.input_message || '').replaceAll('<','&lt;')}</code></div>
+          <div class="row">respuesta final agente: <code>${(evt.final_reply || '').replaceAll('<','&lt;')}</code></div>
+
+          <div class="grid">
+            <div class="pill"><strong>Policies permitidas:</strong> ${joinOrDash(evt.allowed_policy_ids)}</div>
+            <div class="pill"><strong>Gate elegido:</strong> ${gateChoices}</div>
+            <div class="pill"><strong>world changed:</strong> ${joinOrDash(evt.world_changed_keys)} </div>
+            <div class="pill"><strong>world unchanged:</strong> ${joinOrDash(evt.world_unchanged_keys)} </div>
+            <div class="pill"><strong>belief changed:</strong> ${joinOrDash(evt.belief_changed_keys)} </div>
+            <div class="pill"><strong>belief unchanged:</strong> ${joinOrDash(evt.belief_unchanged_keys)} </div>
+          </div>
+
+          <div class="kv"><span class="k">extractor</span><span class="v">used=${evt.extractor_used ? 'sí' : 'no'} · reasons=${joinOrDash(evt.extractor_reasons)} · patch_keys=${joinOrDash(evt.extractor_world_patch_keys)}</span></div>
+          <div class="kv"><span class="k">evidencia top</span><span class="v">${(evt.top_evidence_v2 || []).map(r => `${r.path}=${r.value}(${r.confidence})`).join(' | ') || '—'}</span></div>
+          <div class="kv"><span class="k">intención</span><span class="v">step=${evt.intent?.step_kind || '—'} · target=${evt.intent?.target_slot || '—'} · decision=${evt.intent?.decision || '—'} · transition=${evt.intent?.transition || '—'}</span></div>
+          <div class="kv"><span class="k">errores</span><span class="v ${plannerFail ? 'err' : ''}">planner=${evt.planner_error || '—'} · belief=${evt.belief_update_error || '—'}</span></div>
+
+          <details><summary>Estado base vs nuevo (world)</summary><pre>${pretty({base: evt.raw?.world_prev, new: evt.raw?.world_new, diff: evt.raw?.world_diff})}</pre></details>
+          <details><summary>Estado base vs nuevo (belief)</summary><pre>${pretty({base: evt.raw?.belief_prev, new: evt.raw?.belief_new, diff: evt.raw?.belief_diff})}</pre></details>
+          <details><summary>Decisión y planificación</summary><pre>${pretty({policy_decision: evt.policy_decision, policy_pre_repair: evt.policy_pre_repair, policy_post_repair: evt.policy_post_repair, executed_policy: evt.executed_policy, phase_candidate: evt.phase_candidate, phase_effective: evt.phase_effective, planner_reason: evt.planner_reason, planner_meta: evt.raw?.planner_meta, gates: evt.gates})}</pre></details>
+          <details><summary>Validación, memoria y modelo</summary><pre>${pretty({validation_issues: evt.validation_issues, memory_meta: evt.memory_meta, refresh_meta: evt.refresh_meta, summary_enqueue_meta: evt.summary_enqueue_meta, model_params: evt.model_params, timing: evt.timing})}</pre></details>
+          <details><summary>Evento completo (raw)</summary><pre>${pretty(evt.raw)}</pre></details>
+        `;
+        eventsEl.appendChild(card);
+      }
+      totalEl.textContent = `${visible.length} eventos visibles / ${store.length} total`;
+    }
+
+    [sessionFilter, textFilter].forEach(el => el.addEventListener('input', renderAll));
+
+    const es = new EventSource('/negociacion/trazas/stream');
+    es.addEventListener('open', () => {
+      connEl.textContent = 'conectado';
+      connEl.className = 'badge ok';
+    });
+    es.addEventListener('error', () => {
+      connEl.textContent = 'reconectando';
+      connEl.className = 'badge warn';
+    });
+    es.addEventListener('trace', (event) => {
+      const data = JSON.parse(event.data);
+      store.unshift(data);
+      if (store.length > 250) store.pop();
+      renderAll();
+    });
+  </script>
+</body>
+</html>
+"""
 
 @app.get("/demo", response_class=HTMLResponse)
 def demo_page():
