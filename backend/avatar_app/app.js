@@ -200,6 +200,12 @@ const InputMode = {
 
 const AgentMode = {
   CHAT: 'chat',
+  NEGOTIATION: 'negotiation',
+};
+
+const AgentModeLabels = {
+  [AgentMode.CHAT]: 'Chat',
+  [AgentMode.NEGOTIATION]: 'Negociación',
 };
 
 let currentInputMode = InputMode.TALK;
@@ -2492,7 +2498,7 @@ async function requestTTS(text) {
 }
 
 async function fetchAgentReply(message, { mode = AgentMode.CHAT } = {}) {
-  const endpoint = '/chat';
+  const endpoint = mode === AgentMode.NEGOTIATION ? '/negociar' : '/chat';
   const res = await fetch(`${BACKEND_URL}${endpoint}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -3620,7 +3626,11 @@ const ui = {
   modeWrite: document.getElementById('modeWrite'),
   talkMode: document.getElementById('talkMode'),
   writeMode: document.getElementById('writeMode'),
-  agentChat: document.getElementById('agentChat'),
+  conversationMode: document.getElementById('conversationMode'),
+  conversationModeTrigger: document.getElementById('conversationModeTrigger'),
+  conversationModeCurrent: document.getElementById('conversationModeCurrent'),
+  conversationModeMenu: document.getElementById('conversationModeMenu'),
+  conversationModeOptions: Array.from(document.querySelectorAll('[data-agent-mode]')),
   textInput: document.getElementById('textInput'),
   sendTextBtn: document.getElementById('sendTextBtn'),
 };
@@ -3721,11 +3731,36 @@ function setInputMode(mode) {
 }
 
 function setAgentMode(mode) {
-  currentAgentMode = AgentMode.CHAT;
-  if (ui.agentChat) {
-    ui.agentChat.classList.add('active');
-    ui.agentChat.setAttribute('aria-pressed', 'true');
+  const nextMode = Object.values(AgentMode).includes(mode) ? mode : AgentMode.CHAT;
+  currentAgentMode = nextMode;
+
+  if (ui.conversationModeCurrent) {
+    ui.conversationModeCurrent.textContent = AgentModeLabels[nextMode] || 'Chat';
   }
+
+  if (ui.conversationModeOptions?.length) {
+    ui.conversationModeOptions.forEach((option) => {
+      const isActive = option.dataset.agentMode === nextMode;
+      option.classList.toggle('active', isActive);
+      option.setAttribute('aria-checked', String(isActive));
+    });
+  }
+}
+
+function closeConversationModeMenu() {
+  if (!ui.conversationMode) return;
+  ui.conversationMode.classList.remove('open');
+  if (ui.conversationModeTrigger) {
+    ui.conversationModeTrigger.setAttribute('aria-expanded', 'false');
+  }
+}
+
+function toggleConversationModeMenu(forceOpen = null) {
+  if (!ui.conversationMode || !ui.conversationModeTrigger) return;
+  const isOpen = ui.conversationMode.classList.contains('open');
+  const shouldOpen = forceOpen === null ? !isOpen : Boolean(forceOpen);
+  ui.conversationMode.classList.toggle('open', shouldOpen);
+  ui.conversationModeTrigger.setAttribute('aria-expanded', String(shouldOpen));
 }
 
 
@@ -4026,8 +4061,21 @@ if (!DEBUG_EDIT_ENABLED) {
   if (ui.modeWrite) {
     ui.modeWrite.addEventListener('click', () => setInputMode(InputMode.WRITE));
   }
-  if (ui.agentChat) {
-    ui.agentChat.addEventListener('click', () => setAgentMode(AgentMode.CHAT));
+  if (ui.conversationModeTrigger) {
+    ui.conversationModeTrigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleConversationModeMenu();
+    });
+  }
+
+  if (ui.conversationModeOptions?.length) {
+    ui.conversationModeOptions.forEach((option) => {
+      option.addEventListener('click', (e) => {
+        e.stopPropagation();
+        setAgentMode(option.dataset.agentMode);
+        closeConversationModeMenu();
+      });
+    });
   }
   if (ui.sendTextBtn) {
     ui.sendTextBtn.addEventListener('click', handleTextSend);
@@ -4041,7 +4089,16 @@ if (!DEBUG_EDIT_ENABLED) {
     });
   }
 
+  document.addEventListener('click', (e) => {
+    if (!ui.conversationMode?.contains(e.target)) {
+      closeConversationModeMenu();
+    }
+  });
+
   window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      closeConversationModeMenu();
+    }
     if (e.key === 'Enter' && !e.repeat && AvatarState.mode === 'LISTENING') {
       e.preventDefault();
       finishUserTurn();
