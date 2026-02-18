@@ -134,32 +134,31 @@ def plan_phase_policy(
     meta = {
         "planner_failed": False,
         "planner_error": "",
+        "planner_error_stage": "",
         "planner_fallback_used": False,
         "policy_normalization_changed": False,
         "issues": [],
         "allowed_policy_ids": allowed_policy_ids,
     }
 
-
-    messages = _planner_prompt.format_messages(
-        world_state=json.dumps(world_state, ensure_ascii=False),
-        world_diff=json.dumps(world_diff or {}, ensure_ascii=False),
-        belief_state=json.dumps(belief_state, ensure_ascii=False),
-        belief_cues=json.dumps(_belief_cues_governed(belief_state), ensure_ascii=False),
-        policy_state=json.dumps(policy_state or {}, ensure_ascii=False),
-        policy_plan_summary=json.dumps(
-            policy_plan_summary or _policy_plan_summary(progress_state), ensure_ascii=False
-        ),
-        phase_state=json.dumps(progress_state.get("phase_state", {}), ensure_ascii=False),
-        allowed_policy_ids=json.dumps(allowed_policy_ids, ensure_ascii=False),
-        policy_catalog=policy_catalog_text(),
-        policy_catalog_with_phases=policy_catalog_with_phases_text(),
-        objective=objective,
-        constraints=constraints,
-        recent_context=recent_context,
-    )
-
     try:
+        messages = _planner_prompt.format_messages(
+            world_state=json.dumps(world_state, ensure_ascii=False),
+            world_diff=json.dumps(world_diff or {}, ensure_ascii=False),
+            belief_state=json.dumps(belief_state, ensure_ascii=False),
+            belief_cues=json.dumps(_belief_cues_governed(belief_state), ensure_ascii=False),
+            policy_state=json.dumps(policy_state or {}, ensure_ascii=False),
+            policy_plan_summary=json.dumps(
+                policy_plan_summary or _policy_plan_summary(progress_state), ensure_ascii=False
+            ),
+            phase_state=json.dumps(progress_state.get("phase_state", {}), ensure_ascii=False),
+            allowed_policy_ids=json.dumps(allowed_policy_ids, ensure_ascii=False),
+            policy_catalog=policy_catalog_text(),
+            policy_catalog_with_phases=policy_catalog_with_phases_text(),
+            objective=objective,
+            constraints=constraints,
+            recent_context=recent_context,
+        )
         structured = get_planner_llm().with_structured_output(PhasePolicyDecisionModel)
 
         result = structured.invoke(messages)
@@ -192,8 +191,9 @@ def plan_phase_policy(
         meta["planner_failed"] = True
         meta["planner_fallback_used"] = True
         meta["planner_error"] = str(exc)
+        meta["planner_error_stage"] = "prompt_format" if isinstance(exc, (KeyError, ValueError)) else "llm_invoke"
         meta["issues"].append("planner_exception")
-        logger.warning("phase_policy_planner_error=%s", exc)
+        logger.warning("phase_policy_planner_error stage=%s detail=%s", meta["planner_error_stage"], exc)
         return (
             {
                 "phase": "climate",
