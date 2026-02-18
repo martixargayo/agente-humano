@@ -315,9 +315,100 @@
     .bar-top {
       display: flex;
       align-items: center;
-      justify-content: flex-start;
+      justify-content: space-between;
       gap: 12px;
       margin-bottom: 10px;
+    }
+
+    .conversation-mode {
+      position: relative;
+      margin-left: auto;
+    }
+
+    .conversation-mode-trigger {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-width: 114px;
+      gap: 1px;
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      border-radius: 14px;
+      background: rgba(15, 23, 42, 0.45);
+      color: var(--text-primary);
+      padding: 7px 10px 6px;
+      font-size: 11px;
+      line-height: 1;
+      cursor: pointer;
+      transition: border-color 0.18s ease, transform 0.18s ease, background 0.18s ease;
+    }
+
+    .conversation-mode-trigger:hover {
+      transform: translateY(-1px);
+      border-color: rgba(96, 165, 250, 0.55);
+    }
+
+    .conversation-mode-trigger .mode-current {
+      font-size: 12px;
+      font-weight: 600;
+      color: #e2e8f0;
+      letter-spacing: 0.01em;
+    }
+
+    .conversation-mode-trigger .mode-chevron {
+      font-size: 14px;
+      line-height: 1;
+      color: #cbd5e1;
+      transform: translateY(1px);
+    }
+
+    .conversation-mode-menu {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      min-width: 170px;
+      background: rgba(2, 6, 23, 0.96);
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      border-radius: 14px;
+      padding: 6px;
+      box-shadow: 0 16px 32px rgba(15, 23, 42, 0.38);
+      display: none;
+      z-index: 8;
+    }
+
+    .conversation-mode.open .conversation-mode-menu {
+      display: block;
+    }
+
+    .conversation-mode-option {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border: none;
+      border-radius: 10px;
+      background: transparent;
+      color: #cbd5e1;
+      padding: 8px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .conversation-mode-option:hover {
+      background: rgba(96, 165, 250, 0.12);
+      color: #e2e8f0;
+    }
+
+    .conversation-mode-option.active {
+      background: rgba(96, 165, 250, 0.18);
+      color: #e2e8f0;
+      font-weight: 600;
+    }
+
+    .conversation-mode-option.active::after {
+      content: "✓";
+      color: #93c5fd;
     }
 
     .mode-tabs {
@@ -447,6 +538,31 @@
       color: var(--text-primary);
     }
 
+    html[data-avatar-theme="realistic"] .conversation-mode-trigger {
+      background: rgba(255, 255, 255, 0.86);
+      border-color: rgba(15, 23, 42, 0.15);
+    }
+
+    html[data-avatar-theme="realistic"] .conversation-mode-trigger .mode-current,
+    html[data-avatar-theme="realistic"] .conversation-mode-trigger .mode-chevron {
+      color: #0f172a;
+    }
+
+    html[data-avatar-theme="realistic"] .conversation-mode-menu {
+      background: rgba(255, 255, 255, 0.97);
+      border-color: rgba(15, 23, 42, 0.12);
+      box-shadow: 0 14px 30px rgba(15, 23, 42, 0.16);
+    }
+
+    html[data-avatar-theme="realistic"] .conversation-mode-option {
+      color: rgba(15, 23, 42, 0.82);
+    }
+
+    html[data-avatar-theme="realistic"] .conversation-mode-option:hover,
+    html[data-avatar-theme="realistic"] .conversation-mode-option.active {
+      color: #0f172a;
+    }
+
     html[data-avatar-theme="realistic"] .agent-toggle button,
     html[data-avatar-theme="realistic"] .finish-button,
     html[data-avatar-theme="realistic"] .keycap,
@@ -547,6 +663,26 @@
       box-shadow: 0 2px 5px rgba(15, 23, 42, 0.12);
     }
 
+    html[data-newbox="1"] .conversation-mode-trigger {
+      background: #f9fafb;
+      border-color: rgba(15, 23, 42, 0.12);
+    }
+
+    html[data-newbox="1"] .conversation-mode-trigger .mode-current,
+    html[data-newbox="1"] .conversation-mode-trigger .mode-chevron {
+      color: #111827;
+    }
+
+    html[data-newbox="1"] .conversation-mode-menu {
+      background: #ffffff;
+      border-color: rgba(15, 23, 42, 0.1);
+      box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14);
+    }
+
+    html[data-newbox="1"] .conversation-mode-option {
+      color: rgba(15, 23, 42, 0.86);
+    }
+
     html[data-newbox="1"] .status-text {
       color: rgba(15, 23, 42, 0.74);
     }
@@ -590,6 +726,8 @@
       .finish-button { width: 100%; justify-content: center; }
       .write-area { width: 100%; }
       .send-btn { align-self: flex-end; }
+      .bar-top { align-items: flex-start; }
+      .conversation-mode { margin-left: 0; }
     }
   </style>
 </head>
@@ -631,6 +769,24 @@
         <div class="mode-tabs" role="tablist" aria-label="Modo de entrada">
           <button id="modeTalk" class="mode-tab active" role="tab" aria-selected="true">Hablar</button>
           <button id="modeWrite" class="mode-tab" role="tab" aria-selected="false">Escribir</button>
+        </div>
+        <div id="conversationMode" class="conversation-mode">
+          <button
+            id="conversationModeTrigger"
+            class="conversation-mode-trigger"
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded="false"
+            aria-controls="conversationModeMenu"
+            aria-label="Seleccionar modo de conversación"
+          >
+            <span id="conversationModeCurrent" class="mode-current">Chat</span>
+            <span class="mode-chevron">▾</span>
+          </button>
+          <div id="conversationModeMenu" class="conversation-mode-menu" role="menu" aria-label="Modo de conversación">
+            <button type="button" class="conversation-mode-option active" role="menuitemradio" aria-checked="true" data-agent-mode="chat">Chat</button>
+            <button type="button" class="conversation-mode-option" role="menuitemradio" aria-checked="false" data-agent-mode="negotiation">Negociación</button>
+          </div>
         </div>
       </div>
 
