@@ -21,6 +21,101 @@ def _current_step_for_policy(policy_id: str, step_idx: int):
     return plan.steps[step_idx]
 
 
+def _build_active_plan(
+    *,
+    policy_decision: dict,
+    phase_effective: dict,
+    turn_count: int,
+    previous_plan: dict | None,
+    judgement: dict | None,
+) -> tuple[str, dict | None]:
+    plan_status = str((judgement or {}).get("plan_status", "")).strip()
+    if plan_status == "completed":
+        return "completed", None
+
+    if previous_plan and plan_status in {"continue_same_step", "advance_step"}:
+        plan = dict(previous_plan)
+        plan["updated_turn"] = turn_count
+        if plan_status == "advance_step":
+            steps = list(plan.get("steps", []))
+            cur = int(plan.get("current_step_idx", 0) or 0)
+            if steps:
+                plan["current_step_idx"] = min(cur + 1, len(steps) - 1)
+            else:
+                plan["current_step_idx"] = 0
+        return "active", plan
+
+    phase_assessment = {
+        "phase": phase_effective.get("phase_effective") or phase_effective.get("phase", "climate"),
+        "confidence": float(phase_effective.get("confidence", 0.0) or 0.0),
+        "reason": str(policy_decision.get("why_short", "") or ""),
+        "evidence": [],
+        "recovery_mode": bool(phase_effective.get("recovery_mode", False)),
+    }
+    micro_goal = str(policy_decision.get("micro_goal", "") or "Mantener avance negociador con una acción clara.")
+    ask = []
+    if micro_goal:
+        ask = [f"¿Podrías concretar: {micro_goal[:100]}?"]
+    plan = {
+        "phase_assessment": phase_assessment,
+        "schema_version": "v1",
+        "plan_id": f"plan_t{turn_count}",
+        "created_turn": turn_count,
+        "updated_turn": turn_count,
+        "horizon_turns": 1,
+        "current_step_idx": 0,
+        "inspirations": [
+            {
+                "policy_id": policy_decision.get("policy_id", ""),
+                "fit_reason": str(policy_decision.get("why_short", "") or "Alineado al contexto actual.")[:120],
+                "risk": str(policy_decision.get("risk_posture", "low") or "low"),
+            }
+        ],
+        "global_goal": micro_goal[:180],
+        "steps": [
+            {
+                "step_idx": 0,
+                "micro_goal": micro_goal[:160],
+                "what_to_do": f"Aplicar {policy_decision.get('policy_id', 'safe_neutral')} y pedir un dato verificable para avanzar."[:260],
+                "ask": ask[:2],
+                "success_criteria": ["nueva_informacion_verificable"],
+                "replan_triggers": ["ambiguedad_persistente", "escalada"],
+                "safe_mode": "deescalate" if bool(phase_effective.get("recovery_mode", False)) else "normal",
+            }
+        ],
+        "plan_constraints": {
+            "max_questions_per_turn": 2,
+            "must_avoid": ["escalar_tension"],
+            "stop_conditions": ["amenaza"],
+        },
+    }
+    return "active", plan
+
+
+def _build_executor_instruction(active_plan: dict | None) -> dict:
+    if not isinstance(active_plan, dict):
+        return {}
+    steps = list(active_plan.get("steps", []))
+    cur = int(active_plan.get("current_step_idx", 0) or 0)
+    if not steps:
+        return {}
+    cur = max(0, min(cur, len(steps) - 1))
+    step = steps[cur] if isinstance(steps[cur], dict) else {}
+    return {
+        "schema_version": "v1",
+        "plan_id": str(active_plan.get("plan_id", ""))[:40],
+        "step_idx": cur,
+        "step_micro_goal": str(step.get("micro_goal", ""))[:160],
+        "instruction": str(step.get("what_to_do", ""))[:320],
+        "ask": list(step.get("ask", []))[:2],
+        "safe_mode": str(step.get("safe_mode", "normal") or "normal"),
+        "must_follow": ["seguir_step_activo"],
+        "must_avoid": list((active_plan.get("plan_constraints") or {}).get("must_avoid", []))[:4],
+        "stop_conditions": list((active_plan.get("plan_constraints") or {}).get("stop_conditions", []))[:4],
+        "trace_tags": ["plan_instruction"],
+    }
+
+
 def phase_policy_planner_node(state: dict) -> dict:
     deps = state.get("deps", DEFAULT_DEPS)
     _ensure_objective(state)
@@ -206,6 +301,18 @@ def phase_policy_planner_node(state: dict) -> dict:
     state["policy_decision"] = policy_decision
     state["planner_meta"] = planner_meta
     state["allowed_policy_ids"] = allowed_all
+    previous_plan = progress_state.get("active_plan")
+    judgement = state.get("policy_plan_judgement")
+    active_plan_status, active_plan = _build_active_plan(
+        policy_decision=policy_decision,
+        phase_effective=phase_effective or {},
+        turn_count=turn_count,
+        previous_plan=previous_plan if isinstance(previous_plan, dict) else None,
+        judgement=judgement if isinstance(judgement, dict) else None,
+    )
+    progress_state["active_plan_status"] = active_plan_status
+    progress_state["active_plan"] = active_plan
+    state["executor_instruction"] = _build_executor_instruction(active_plan)
     state["progress_state"] = progress_state
     state["gate_meta"] = {
         "world_skipped": state.get("extractor_meta", {}).get("extractor_skipped", False),
