@@ -1,7 +1,7 @@
 import os
 
 from negotiation.belief_governor import derive_behavior_guidance
-from negotiation.policy_planner import allowed_policy_ids_no_phase
+from negotiation.policy_planner import allowed_policy_ids
 from negotiation.schemas import default_belief_state, default_progress_state, default_world_state
 
 
@@ -24,10 +24,10 @@ def test_required_beliefs_filter_is_flagged(monkeypatch):
     progress = default_progress_state()
 
     monkeypatch.setenv("POLICY_REQUIRED_BELIEFS_ENABLED", "0")
-    no_flag = allowed_policy_ids_no_phase(world, belief, progress, {})
+    no_flag = allowed_policy_ids(world, belief, progress, {})
 
     monkeypatch.setenv("POLICY_REQUIRED_BELIEFS_ENABLED", "1")
-    with_flag = allowed_policy_ids_no_phase(world, belief, progress, {})
+    with_flag = allowed_policy_ids(world, belief, progress, {})
 
     assert "deescalate_tension" in no_flag
     assert "deescalate_tension" not in with_flag

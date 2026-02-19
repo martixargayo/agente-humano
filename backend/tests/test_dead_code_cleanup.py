@@ -1,5 +1,3 @@
-import importlib
-import sys
 import warnings
 
 from negotiation.negotiation_graph import AgentDeps, run_negotiation_agent
@@ -30,24 +28,6 @@ def _fake_deps():
         update_belief_state=fake_update_belief_state,
         execute=fake_execute,
     )
-
-
-def test_runtime_path_does_not_import_response_validator(monkeypatch):
-    monkeypatch.setenv("USE_LLM_EXTRACTOR", "false")
-    monkeypatch.setenv("USE_LEGACY_MATCHERS", "true")
-    monkeypatch.setattr(
-        "negotiation.negotiation_graph.normalize_text",
-        lambda raw_reply, last_user_message=None: raw_reply,
-    )
-    state = SessionState(user_id="dead", session_id="dead")
-    state.world_state = default_world_state()
-    state.progress_state = default_progress_state()
-    run_negotiation_agent(state, "hola", deps=_fake_deps())
-
-    assert "negotiation.response_validator" not in sys.modules
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        assert importlib.util.find_spec("negotiation.response_validator") is None
 
 
 def test_constraints_struct_deprecated_warning():

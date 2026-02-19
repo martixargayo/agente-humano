@@ -6,5 +6,4 @@ __all__ = [
     "gating_deprecated",
     "intent_constraints",
     "intent_manager",
-    "intent_node",
 ]
