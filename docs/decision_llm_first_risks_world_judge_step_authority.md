@@ -157,3 +157,8 @@ Esto puede crear estados incoherentes (avance doble, replan no sincronizado, exe
 - **Riesgo 4 (doble step_idx):** unificar autoridad por diseño ya y transición incremental desde ahora (**sí**).
 
 No recomiendo activar controlador full sin pasar por shadow+híbrido y sin resolver autoridad única de step.
+
+## Nota operativa de flags (estado actual)
+
+- Mantener `POLICY_PLAN_JUDGE_ENABLED=0` por defecto hasta tener World Judge real (aunque sea shadow robusto con contrato completo).
+- `WORLD_JUDGE_NO_PLAN_AUTOFILL=1` puede usarse solo como soporte del caso `no_active_plan`; no sustituye judgement real de progreso.

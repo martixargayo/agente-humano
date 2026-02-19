@@ -273,6 +273,8 @@ class NegotiationTurn(TypedDict):
     policy_post_repair: PolicyDecision | None
     phase_candidate: dict | None
     phase_effective: dict | None
+    policy_plan_judgement: dict | None
+    executor_instruction: dict | None
     executed_policy: PolicyDecision | None
     last_policy_executed: PolicyDecision | None
     last_assistant_message: str
@@ -535,6 +537,8 @@ def run_negotiation_agent(
         "policy_post_repair": None,
         "phase_candidate": None,
         "phase_effective": None,
+        "policy_plan_judgement": None,
+        "executor_instruction": None,
         "executed_policy": None,
         "last_policy_executed": last_policy_executed_input,
         "last_assistant_message": _last_assistant_message(state.history),
