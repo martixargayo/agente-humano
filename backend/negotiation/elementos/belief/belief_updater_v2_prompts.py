@@ -10,7 +10,8 @@ universal_patch must contain:
 - dynamics: {interaction_health stable|tense|stalled, escalation up|down|none, looping bool, evasion bool, commitment hard|soft|none}
 - tom: {other_goals[], other_tactics[], other_belief_about_me[], confidence 0..1}
 - reasons: object with ONLY keys from allowlist:
-  tone_shift, evasion_signal, boundary_signal, loop_signal, commitment_signal, cooperation_signal, clarity_signal
+  tone_shift, evasion_signal, boundary_signal, loop_signal, commitment_signal, cooperation_signal, clarity_signal,
+  constraint_signal, urgency_signal, preference_signal, market_demand_uncertainty
 Each reason item: {weight 0..1, confidence 0..1, evidence_text<=180}
 Be conservative: do not swing metrics wildly.
 """

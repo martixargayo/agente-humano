@@ -7,6 +7,10 @@ UNIVERSAL_REASON_KEYS = {
     "commitment_signal",
     "cooperation_signal",
     "clarity_signal",
+    "constraint_signal",
+    "urgency_signal",
+    "preference_signal",
+    "market_demand_uncertainty",
 }
 
 UNIVERSAL_LIMITS = {
