@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 
 from .llm_clients import get_belief_llm
 from .gate_utils import _split_world_diff
@@ -117,6 +118,40 @@ def _micro_negotiation_patch_from_world(world_state: dict, prev_belief: dict) ->
     return patch
 
 
+
+
+def _pre_patch_from_world(world_state: dict, prev_belief: dict) -> tuple[dict, dict]:
+    neg_patch = _micro_negotiation_patch_from_world(world_state, prev_belief)
+    uni_patch: dict = {}
+    if not neg_patch:
+        return uni_patch, neg_patch
+
+    stance = (neg_patch.get("stance") or {}) if isinstance(neg_patch.get("stance"), dict) else {}
+    tp = float(stance.get("time_pressure", 0.5) or 0.5)
+    guidance = {
+        "pace_preference": min(1.0, max(0.0, 0.5 + max(0.0, tp - 0.5))),
+        "verification_need": min(1.0, max(0.0, 0.5 + max(0.0, tp - 0.6))),
+    }
+    uni_patch = {"behavior_guidance": guidance}
+    return uni_patch, neg_patch
+
+
+def _safe_parse_belief_json(raw_text: str) -> dict:
+    text = (raw_text or "").strip()
+    if not text:
+        raise ValueError("empty_belief_response")
+    i = text.find("{")
+    j = text.rfind("}")
+    if i >= 0 and j > i:
+        text = text[i : j + 1]
+    try:
+        return json.loads(text)
+    except Exception:
+        repaired = re.sub(r",\s*([}\]])", r"\1", text)
+        repaired = repaired.replace("“", '"').replace("”", '"')
+        return json.loads(repaired)
+
+
 def extract_belief_patch_llm_v3(
     user_message: str,
     world_state: dict,
@@ -145,7 +180,7 @@ def extract_belief_patch_llm_v3(
     ]
     raw = get_belief_llm().invoke(messages)
     text = raw if isinstance(raw, str) else getattr(raw, "content", "")
-    data = _safe_json_load(text)
+    data = _safe_parse_belief_json(text)
 
     if data.get("schema_version") != "belief_updater_v2":
         raise ValueError("belief_updater_v2 invalid schema_version")
@@ -257,6 +292,8 @@ def update_belief_state(
 
     conversation_mode = conversation_mode or "negotiation"
 
+    pre_uni_patch, pre_neg_patch = _pre_patch_from_world(world_state, previous)
+
     try:
         uni_patch, neg_patch, meta_patch = extract_belief_patch_llm_v3(
             user_message=user_message,
@@ -271,7 +308,13 @@ def update_belief_state(
         logger.warning("belief_state_updater_unexpected_error=%s", exc)
         meta["belief_update_failed"] = True
         meta["belief_update_error"] = str(exc)
-        return previous, meta
+        meta["belief_fallback_used"] = True
+        uni_patch, neg_patch = {}, {}
+
+    if pre_uni_patch:
+        uni_patch = _deep_merge_dict_limited(pre_uni_patch, uni_patch, max_depth=3, max_keys=40)
+    if pre_neg_patch:
+        neg_patch = _deep_merge_dict_limited(pre_neg_patch, neg_patch, max_depth=3, max_keys=60)
 
     allow_health_change = _interaction_strong(world_state, world_diff)
     prev_uni = previous.get("universal") or {}

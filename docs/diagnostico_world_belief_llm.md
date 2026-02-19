@@ -262,3 +262,63 @@ Porque el pipeline separa dos carriles:
 - **Carril abierto (`open_claims`/unknown):** sirve como memoria de señal extra, pero no gobierna directamente los campos estructurados críticos.
 
 Resultado: la LLM puede “ver” o incluso emitir señales nuevas, pero si no entran en el carril canónico, no impactan tanto en el comportamiento del sistema.
+
+---
+
+## 11) Plan de mejoras actualizado (incluye estructuración de offers/terms en `negotiation_v2`)
+
+Para romper el ciclo actual y, además, evitar que la negociación quede “sin material estructurado”, el plan recomendado queda así:
+
+### P1 — Blindar BELIEF ante parseos frágiles
+
+Objetivo: que un JSON malformado del LLM no devuelva siempre `belief_diff = {}`.
+
+- Añadir parse resiliente en 3 capas (parse normal → reparación mínima → fallback determinista).
+- Si falla el parse, aplicar micro-update desde world (`time_pressure`, `pace_preference`, `verification_need`) con límites conservadores.
+- Trazar explícitamente `belief_fallback_used` y `belief_fallback_reason`.
+
+### P2 — Romper `interval_hold` cuando haya lenguaje negociable
+
+Objetivo: no perder señales por saltarse world en turnos con tradeoff/oferta.
+
+- En `gate_world`, añadir triggers semánticos de oferta/tradeoff:
+  - “más X hoy / menos X futuro”
+  - “si me das…, yo…”
+  - “a cambio de…”
+- Si hay trigger, forzar extractor aunque el intervalo no haya vencido.
+- Mantener throttle para no aumentar coste en turnos neutrales.
+
+### P3 — Estructuración explícita de offers/terms hacia `negotiation_v2`
+
+Objetivo: que el planner tenga “qué negociar” y no se quede sólo en climate/deescalate.
+
+#### 11.1 Extractor/patch dedicado a `negotiation_v2.offers/terms`
+
+Detectar patrones de intercambio y mapear a estructura mínima:
+
+- `offers[]`: `{give, get, amount, timing, conditions}`
+- `concessions[]`: concesión explícita o inferida de tradeoff
+- `constraints[]`: límites de presupuesto/plazo/urgencia
+- `subject.item` y `subject.context`: objeto y contexto de la negociación
+
+Regla de calidad:
+
+- Si no hay evidencia literal suficiente, no inventar `amount`; dejar campos vacíos pero crear la estructura con `timing/conditions` cuando exista señal textual.
+
+#### 11.2 Trigger específico para no perder “material negociable”
+
+- Si el mensaje activa patrón de tradeoff/oferta, no permitir `world_skipped=interval_hold` en ese turno.
+- En trace, dejar marca explícita (`tradeoff_offer_trigger=true`) para distinguirlo de otros despertares del gate.
+
+#### 11.3 Fallback mínimo cuando `world_skipped=true`
+
+- Ejecutar chequeo heurístico liviano (throttled):
+  - si detecta oferta/tradeoff claro, rellenar al menos `negotiation_v2.offers` o `constraints`.
+- Este fallback evita dependencia total del refresh world completo.
+
+### Señales de éxito esperadas en Live Trace
+
+- `world_skipped=false` en turnos con lenguaje de oferta/tradeoff.
+- `diff_paths` y `merged_changed_paths` incluyendo rutas en `negotiation_v2.offers|constraints|concessions|subject`.
+- `belief_skipped=false` o `belief_fallback_used=true` en turnos con señal fuerte.
+- Menos episodios de `belief_update_error` con impacto nulo.

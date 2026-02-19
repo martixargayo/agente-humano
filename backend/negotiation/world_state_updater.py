@@ -181,6 +181,121 @@ def _apply_world_backstop(user_message: str, n_dom_patch: dict, open_claims: lis
     return patch, claims, reasons
 
 
+
+
+def _extract_offer_terms_patch(user_message: str) -> tuple[dict, list[str]]:
+    text = str(user_message or "").strip()
+    lower = text.lower()
+    reasons: list[str] = []
+    patch: dict = {}
+
+    tradeoff = bool(
+        re.search(r"\ba cambio de\b", lower)
+        or re.search(r"\bsi me das\b", lower)
+        or (
+            re.search(r"\bm[aá]s\b", lower)
+            and re.search(r"\bmenos\b", lower)
+            and re.search(r"\b(hoy|ma[ñn]ana|futuro)\b", lower)
+        )
+    )
+    if not tradeoff:
+        return patch, reasons
+
+    reasons.append("offer_tradeoff_backstop")
+    offer = {
+        "side": "seller",
+        "kind": "condition",
+        "value": {"give": "menos_dinero_futuro", "get": "mas_dinero_hoy"},
+        "terms": [
+            {"dimension": "price", "timing": "future", "direction": "down"},
+            {"dimension": "price", "timing": "today", "direction": "up"},
+        ],
+        "text": text[:180],
+        "firmness": "medium",
+        "status": "proposed",
+        "confidence": 0.7,
+    }
+    patch = {
+        "subject": {"item": "intercambio_economico", "context": text[:180], "attributes": {"tradeoff": True}},
+        "offers": [offer],
+        "concessions": [
+            {
+                "side": "seller",
+                "dimension": "price",
+                "from": "futuro",
+                "to": "hoy",
+                "text": text[:180],
+                "confidence": 0.65,
+            }
+        ],
+        "constraints": [
+            {
+                "side": "seller",
+                "kind": "limit",
+                "dimension": "time",
+                "value": "hoy",
+                "text": "preferencia por liquidez inmediata",
+                "flexibility": 0.4,
+                "status": "claimed",
+                "confidence": 0.7,
+            }
+        ],
+    }
+    return patch, reasons
+
+
+def _merge_negotiation_v2_terms(world: dict, user_message: str) -> list[str]:
+    n2_patch, reasons = _extract_offer_terms_patch(user_message)
+    if not n2_patch:
+        return []
+
+    current_n2 = dict(world.get("negotiation_v2") or {})
+    merged = dict(current_n2)
+    for key in ("subject", "offers", "concessions", "constraints"):
+        if key not in n2_patch:
+            continue
+        if isinstance(n2_patch[key], list):
+            prev_items = merged.get(key, []) if isinstance(merged.get(key), list) else []
+            merged[key] = (prev_items + n2_patch[key])[:8]
+        elif isinstance(n2_patch[key], dict):
+            prev_obj = merged.get(key, {}) if isinstance(merged.get(key), dict) else {}
+            merged[key] = {**prev_obj, **n2_patch[key]}
+    world["negotiation_v2"] = merged
+    return reasons
+
+
+def apply_world_skip_fallback(prev_world: WorldState, user_message: str, turn_count: int | None = None) -> tuple[WorldState, dict]:
+    base, _ = normalize_world_state(prev_world or default_world_state())
+    world = world_v1_to_v2(base)
+    reasons: list[str] = []
+
+    n_patch, claims, backstop_reasons = _apply_world_backstop(user_message, {}, world.get("open_claims") or [])
+    if n_patch:
+        world["negotiation"] = dict(world.get("negotiation") or {})
+        world["negotiation"].update(n_patch)
+        reasons.extend(backstop_reasons)
+
+    if claims != (world.get("open_claims") or []):
+        world["open_claims"], _ = _normalize_open_claims_with_rejections(claims, max_total=8)
+
+    world = world_v1_to_v2(world)
+    offer_reasons = _merge_negotiation_v2_terms(world, user_message)
+    if offer_reasons:
+        reasons.extend(offer_reasons)
+    world, issues = normalize_world_state_v2(world)
+    changed = diff_world_state(base, world)
+    meta = {
+        "extractor_used": False,
+        "extractor_skipped": True,
+        "fallback_applied": bool(changed),
+        "fallback_reasons": reasons,
+        "v2_issues": issues,
+        "diff_paths": sorted(_flatten_paths(changed)),
+    }
+    if turn_count is not None and changed:
+        world.setdefault("world_state_meta", {})["turn_idx"] = int(turn_count)
+    return world, meta
+
 def _default_world_llm():
     return get_world_llm()
 
@@ -324,6 +439,7 @@ def update_world_state(
         )
         world["universal_domain"].update(u_dom_patch)
         world["negotiation"].update(n_dom_patch)
+        offer_reasons: list[str] = []
 
         prev_universal_state = world.get("universal_state") or {}
         world["universal_state"] = merge_universal_state(
@@ -349,6 +465,9 @@ def update_world_state(
         world["world_state_meta"]["unknown_claims"] = unknown_claims[-50:]
 
         world = world_v1_to_v2(world)
+        offer_reasons = _merge_negotiation_v2_terms(world, user_message)
+        if offer_reasons:
+            backstop_reasons = sorted(list(set(backstop_reasons + offer_reasons)))
         world, v2_issues = normalize_world_state_v2(world)
         world["world_state_meta"]["last_update_source"] = "llm"
         world["world_state_meta"]["error"] = ""
@@ -380,6 +499,9 @@ def update_world_state(
         world["world_state_meta"]["error"] = f"{type(exc).__name__}: {exc}"
         world["world_state_meta"]["extractor_failed"] = True
         world = world_v1_to_v2(world)
+        offer_reasons = _merge_negotiation_v2_terms(world, user_message)
+        if offer_reasons:
+            backstop_reasons = sorted(list(set(backstop_reasons + offer_reasons)))
         world, v2_issues = normalize_world_state_v2(world)
         meta = {"extractor_used": True, "extractor_failed": True, "error": str(exc), "v2_issues": v2_issues}
         return world, meta
