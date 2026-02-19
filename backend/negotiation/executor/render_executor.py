@@ -180,6 +180,7 @@ def build_strategy_summary(
         phase_effective = (state.get("progress_state") or {}).get("phase_state", {}).get("phase", "")
 
     next_hint = policy_hint.get("next_action_hint") or intent_hint.get("next_action_hint") or ""
+    executor_instruction = state.get("executor_instruction") if isinstance(state.get("executor_instruction"), dict) else {}
 
     return {
         "policy_id": policy_id,
@@ -192,6 +193,7 @@ def build_strategy_summary(
         "intent_next_hint": next_hint,
         "conversation_mode": conversation_mode,
         "policy_pack_active": policy_pack_active,
+        "executor_instruction": executor_instruction,
     }
 
 
@@ -294,6 +296,7 @@ def render_executor_output(
         phase_effective=strategy_summary.get("phase_effective", ""),
         policy_next_hint=strategy_summary.get("policy_next_hint", ""),
         intent_next_hint=strategy_summary.get("intent_next_hint", ""),
+        executor_instruction_json=json.dumps(strategy_summary.get("executor_instruction", {}), ensure_ascii=False),
         persona_json=json.dumps(persona, ensure_ascii=False),
         scene_json=json.dumps(scene, ensure_ascii=False),
         style_json=json.dumps(style, ensure_ascii=False),

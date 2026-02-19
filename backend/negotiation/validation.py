@@ -1415,6 +1415,29 @@ def normalize_progress_state(raw: object) -> Tuple[ProgressState, List[str]]:
     issues.extend(intent_issues)
     base["policy_state"], policy_issues = normalize_policy_state(raw.get("policy_state", {}))
     issues.extend(policy_issues)
+    active_plan_status = raw.get("active_plan_status", base.get("active_plan_status", "none"))
+    if active_plan_status not in {"none", "active", "completed", "interrupted"}:
+        issues.append("progress_active_plan_status_invalid")
+        active_plan_status = "none"
+    base["active_plan_status"] = active_plan_status  # type: ignore[assignment]
+
+    active_plan = raw.get("active_plan", base.get("active_plan"))
+    if active_plan is None:
+        base["active_plan"] = None  # type: ignore[assignment]
+    elif isinstance(active_plan, dict):
+        base["active_plan"] = active_plan  # type: ignore[assignment]
+    else:
+        issues.append("progress_active_plan_invalid")
+        base["active_plan"] = None  # type: ignore[assignment]
+
+    try:
+        base["judgement_missing_streak"] = max(
+            0, int(raw.get("judgement_missing_streak", base.get("judgement_missing_streak", 0)))
+        )
+    except (TypeError, ValueError):
+        issues.append("progress_judgement_missing_streak_invalid")
+        base["judgement_missing_streak"] = 0
+
     base["phase_state"], phase_issues = normalize_phase_state(raw.get("phase_state", {}))
     issues.extend(phase_issues)
     base["gate_state"], gate_issues = _normalize_gate_state(raw.get("gate_state", {}))
