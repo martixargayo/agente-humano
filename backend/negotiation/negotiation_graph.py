@@ -655,6 +655,11 @@ def run_negotiation_agent(
             "preset_meta": preset_meta,
             "exit_issues": exit_issues,
             "max_total_cost_margin": margin,
+            "build_git_sha": (
+                os.getenv("BUILD_GIT_SHA")
+                or os.getenv("GIT_SHA")
+                or "unknown"
+            ),
             "validation_issues": {
                 "world_in": world_issues_in,
                 "belief_in": belief_issues_in,

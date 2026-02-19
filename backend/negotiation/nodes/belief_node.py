@@ -48,6 +48,7 @@ def belief_updater_node(state: dict) -> dict:
             "skip_reason": skip_reason,
             "belief_node_entered": True,
             "belief_updater_invoked": False,
+            "belief_noop_reason": "gate_skipped",
         }
     else:
         belief_state, belief_meta = deps.update_belief_state(
@@ -67,6 +68,7 @@ def belief_updater_node(state: dict) -> dict:
         belief_meta["belief_node_entered"] = True
         belief_meta["belief_updater_invoked"] = True
         belief_meta["belief_gate_skip_reason"] = skip_reason
+        belief_meta.setdefault("belief_noop_reason", "")
 
     curr_belief_fp = _state_fingerprint(belief_state)
     belief_meta["belief_gate_decision"] = {
