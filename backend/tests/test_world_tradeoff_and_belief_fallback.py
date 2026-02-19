@@ -58,7 +58,8 @@ def test_belief_update_uses_prepatch_when_llm_parse_fails(monkeypatch):
     )
     assert meta.get("belief_llm_failed") is True
     assert meta.get("belief_updated_via_fallback") is True
-    assert belief["negotiation"]["stance"]["time_pressure"] > 0.5
+    assert belief == default_belief_state()
+    assert meta.get("belief_fallback_reason") == "parse_error"
 
 
 def test_merge_belief_buckets_prefers_update_not_rewrite():

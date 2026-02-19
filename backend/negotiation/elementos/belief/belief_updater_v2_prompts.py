@@ -1,6 +1,10 @@
 BELIEF_UPDATER_V2_SYSTEM_PROMPT = """
 You are a strict JSON belief updater.
 Return ONLY valid JSON. No markdown. No extra keys.
+Do not include explanations.
+Do not include comments.
+Do not include trailing commas.
+Do not include NaN or Infinity.
 """
 
 OUTPUT_SCHEMA = """
@@ -19,6 +23,22 @@ Output JSON schema:
   },
   "meta": { ... }
 }
+
+Mandatory JSON skeleton:
+{
+  "schema_version": "belief_updater_v2",
+  "universal_patch": {},
+  "negotiation_patch": {},
+  "belief_buckets_patch": {
+    "hypotheses": [],
+    "strategy_notes": [],
+    "risk_flags": [],
+    "watch_items": []
+  },
+  "meta": {
+    "schema_valid": true
+  }
+}
 """
 
 UNIVERSAL_SPEC = """
@@ -36,6 +56,7 @@ belief_buckets_patch rules:
 - Max active hypotheses target: 6.
 - Hypothesis text MUST end with confidence in parentheses, e.g. "Alta urgencia por liquidez hoy. (0.86)".
 - If world shows repeated pattern (more money today <-> future/service concession), increase confidence of existing related hypotheses.
+- If a hypothesis already exists with same meaning, update confidence instead of creating another similar hypothesis.
 """
 
 BELIEF_UPDATER_V2_USER_PROMPT = """
