@@ -38,3 +38,23 @@ def universal_state_fingerprint(universal_state: dict) -> str:
     norm = normalize_universal_state(universal_state)
     payload = json.dumps(norm, ensure_ascii=False, sort_keys=True)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+
+def world_buckets_fingerprint(world_state: dict | None) -> str:
+    world_state = world_state or {}
+    buckets = world_state.get("world_buckets") if isinstance(world_state.get("world_buckets"), dict) else {}
+    canon = {}
+    for bucket in ("offers", "concessions", "constraints", "interests", "claims", "requests", "context"):
+        values = buckets.get(bucket, []) if isinstance(buckets.get(bucket), list) else []
+        raw_items = []
+        for item in values:
+            if not isinstance(item, dict):
+                continue
+            raw = str(item.get("raw_text", "") or item.get("text", "")).strip().lower()
+            raw = " ".join(raw.split())
+            if raw:
+                raw_items.append(raw)
+        canon[bucket] = sorted(set(raw_items))
+    payload = json.dumps(canon, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
