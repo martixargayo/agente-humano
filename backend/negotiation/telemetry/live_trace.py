@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import os
 from typing import Any
 
 from state import SessionState
@@ -36,6 +37,38 @@ def _gate_choices(gates: dict[str, Any]) -> list[dict[str, Any]]:
     return choices
 
 
+
+
+def _belief_debug(trace_item: dict[str, Any]) -> dict[str, Any]:
+    meta = trace_item.get("belief_update_meta") or {}
+    out = {
+        "belief_gate_decision": meta.get("belief_gate_decision") or {},
+        "belief_gate_skip_reason": meta.get("belief_gate_skip_reason", ""),
+        "belief_node_entered": bool(meta.get("belief_node_entered", False)),
+        "belief_updater_invoked": bool(meta.get("belief_updater_invoked", False)),
+        "belief_llm_used": bool(meta.get("belief_llm_used", False)),
+        "belief_llm_prompt_hash": meta.get("belief_llm_prompt_hash", ""),
+        "belief_llm_model": meta.get("belief_llm_model", ""),
+        "belief_llm_raw_response_preview": meta.get("belief_llm_raw_response_preview", ""),
+        "belief_llm_latency_ms": int(meta.get("belief_llm_latency_ms") or 0),
+        "belief_parse_ok": bool(meta.get("belief_parse_ok", False)),
+        "belief_json_repair_used": bool(meta.get("belief_json_repair_used", False)),
+        "belief_parse_error": meta.get("belief_parse_error", ""),
+        "belief_repair_steps": meta.get("belief_repair_steps") or [],
+        "belief_patch_keys": meta.get("belief_patch_keys") or [],
+        "belief_patch_counts": meta.get("belief_patch_counts") or {"hypotheses": 0, "strategy_notes": 0, "risk_flags": 0, "watch_items": 0},
+        "belief_patch_preview": meta.get("belief_patch_preview") or {},
+        "belief_patch_after_normalize_counts": meta.get("belief_patch_after_normalize_counts") or {"hypotheses": 0, "strategy_notes": 0, "risk_flags": 0, "watch_items": 0},
+        "belief_validation_issues_out": meta.get("belief_validation_issues_out") or [],
+        "belief_dropped_fields": meta.get("belief_dropped_fields") or [],
+        "belief_confidence_clamps": meta.get("belief_confidence_clamps") or {"num_clamped": 0},
+        "belief_before_fingerprint": meta.get("belief_before_fingerprint", ""),
+        "belief_after_fingerprint": meta.get("belief_after_fingerprint", ""),
+        "belief_merge_changed": bool(meta.get("belief_merge_changed", False)),
+        "belief_noop_reason": meta.get("belief_noop_reason", ""),
+        "belief_final_top_keys": meta.get("belief_final_top_keys") or [],
+    }
+    return out
 def build_trace_event(
     *,
     user_id: str,
@@ -53,6 +86,7 @@ def build_trace_event(
     world_changed, world_unchanged = _changed_unchanged(world_prev, world_new)
     belief_changed, belief_unchanged = _changed_unchanged(belief_prev, belief_new)
 
+    build_git_sha = os.getenv("BUILD_GIT_SHA") or os.getenv("BUILD_ID") or "unknown"
     return {
         "user_id": user_id,
         "session_id": session_id,
@@ -102,6 +136,7 @@ def build_trace_event(
         "extractor_confidence_summary": trace_item.get("extractor_confidence_summary") or {},
         "top_evidence_v2": trace_item.get("top_evidence_v2") or [],
         "unknown_claims_count": int(trace_item.get("unknown_claims_count") or 0),
+        "build_git_sha": build_git_sha,
         "validation_issues": trace_item.get("validation_issues") or {},
         "timing": {
             "t_turn_start": trace_item.get("t_turn_start", 0.0),
@@ -136,6 +171,7 @@ def build_trace_event(
             for key, value in trace_item.items()
             if key.startswith("negotiation_") or key.endswith("_model") or key.endswith("_temperature")
         },
+        "trace": {"debug": {"belief": _belief_debug(trace_item)}},
         "raw": trace_item,
     }
 

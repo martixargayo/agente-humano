@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import re
+import time
 
 from .llm_clients import get_belief_llm
 from .gate_utils import _split_world_diff
@@ -160,6 +161,7 @@ def _safe_parse_belief_json(raw_text: str) -> tuple[dict, dict]:
         "belief_parse_error": "",
         "belief_json_repair_used": False,
         "belief_json_repair_type": "",
+        "belief_repair_steps": [],
     }
     if not text:
         parse_meta["belief_parse_error"] = "empty_belief_response"
@@ -173,9 +175,13 @@ def _safe_parse_belief_json(raw_text: str) -> tuple[dict, dict]:
         parse_meta["belief_parse_ok"] = True
         return data, parse_meta
     except Exception as first_error:
+        parse_meta["belief_parse_error"] = str(first_error)
         repaired = re.sub(r",\s*([}\]])", r"\1", text)
+        parse_meta["belief_repair_steps"].append("remove_trailing_commas")
         repaired = repaired.replace("“", '"').replace("”", '"')
+        parse_meta["belief_repair_steps"].append("normalize_quotes")
         repaired = re.sub(r"\bNaN\b|\bInfinity\b|-Infinity", "null", repaired)
+        parse_meta["belief_repair_steps"].append("replace_nan_infinity")
         parse_meta["belief_json_repair_used"] = True
         parse_meta["belief_json_repair_type"] = "trailing_comma_quotes_nan"
         try:
@@ -183,7 +189,7 @@ def _safe_parse_belief_json(raw_text: str) -> tuple[dict, dict]:
             parse_meta["belief_parse_ok"] = True
             return data, parse_meta
         except Exception as second_error:
-            parse_meta["belief_parse_error"] = str(second_error)
+            parse_meta["belief_parse_error"] = str(first_error)
             raise ValueError(f"parse_error: {second_error}") from first_error
 
 
@@ -225,6 +231,44 @@ def _safe_preview(value: object, max_chars: int = 300) -> str:
     return txt[:max_chars]
 
 
+
+
+def _sanitize_preview_text(text: str, max_chars: int = 500) -> str:
+    sanitized = str(text or "")
+    sanitized = re.sub(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", "[redacted_email]", sanitized)
+    sanitized = re.sub(r"\+?\d[\d\s().-]{7,}\d", "[redacted_phone]", sanitized)
+    sanitized = re.sub(r"https?://\S+|www\.\S+", "[redacted_url]", sanitized)
+    return sanitized[:max_chars]
+
+
+def _belief_bucket_counts(payload: dict | None) -> dict:
+    src = payload if isinstance(payload, dict) else {}
+    return {
+        "hypotheses": len(src.get("hypotheses", []) or []),
+        "strategy_notes": len(src.get("strategy_notes", []) or []),
+        "risk_flags": len(src.get("risk_flags", []) or []),
+        "watch_items": len(src.get("watch_items", []) or []),
+    }
+
+
+def _belief_bucket_preview(payload: dict | None) -> dict:
+    src = payload if isinstance(payload, dict) else {}
+    out: dict = {}
+    for bucket in ("hypotheses", "strategy_notes", "risk_flags", "watch_items"):
+        items = src.get(bucket, []) if isinstance(src.get(bucket), list) else []
+        clipped = []
+        for item in items[:2]:
+            if not isinstance(item, dict):
+                continue
+            clipped.append(
+                {
+                    "text": _sanitize_preview_text(item.get("text", ""), max_chars=160),
+                    "confidence": float(item.get("confidence", 0.0) or 0.0),
+                    "status": str(item.get("status", "active") or "active"),
+                }
+            )
+        out[bucket] = clipped
+    return out
 def extract_belief_patch_llm_v3(
     user_message: str,
     world_state: dict,
@@ -252,8 +296,13 @@ def extract_belief_patch_llm_v3(
         {"role": "system", "content": BELIEF_UPDATER_V2_SYSTEM_PROMPT.strip()},
         {"role": "user", "content": user_prompt.strip()},
     ]
+    prompt_hash = hashlib.sha256(
+        (BELIEF_UPDATER_V2_SYSTEM_PROMPT.strip() + "\n" + user_prompt.strip()).encode("utf-8")
+    ).hexdigest()
     llm = get_belief_llm()
+    t0 = time.perf_counter()
     raw = llm.invoke(messages)
+    latency_ms = int((time.perf_counter() - t0) * 1000)
     text = raw if isinstance(raw, str) else getattr(raw, "content", "")
     data, parse_meta = _safe_parse_belief_json(text)
 
@@ -267,20 +316,17 @@ def extract_belief_patch_llm_v3(
     meta["extractor_version"] = "belief_updater_v3"
     meta["belief_llm_used"] = True
     meta["belief_llm_model"] = str(getattr(llm, "model", ""))
-    meta["belief_llm_raw_response_preview"] = (text or "")[:300]
+    meta["belief_llm_prompt_hash"] = prompt_hash
+    meta["belief_llm_raw_response_preview"] = _sanitize_preview_text(text or "", max_chars=500)
+    meta["belief_llm_latency_ms"] = latency_ms
     meta.update(parse_meta)
     meta["belief_patch_keys"] = [
         key
         for key in ("universal_patch", "negotiation_patch", "belief_buckets_patch", "meta")
         if key in data
     ]
-    meta["belief_patch_preview"] = _safe_preview(
-        {
-            "universal_patch": uni_patch,
-            "negotiation_patch": neg_patch,
-            "belief_buckets_patch": belief_buckets_patch,
-        }
-    )
+    meta["belief_patch_counts"] = _belief_bucket_counts(belief_buckets_patch)
+    meta["belief_patch_preview"] = _belief_bucket_preview(belief_buckets_patch)
     return uni_patch, neg_patch, belief_buckets_patch, meta
 
 
@@ -372,6 +418,11 @@ def update_belief_state(
         "belief_llm_failed": False,
         "belief_updated_via_fallback": False,
         "belief_node_entered": True,
+        "belief_llm_used": False,
+        "belief_llm_prompt_hash": "",
+        "belief_llm_model": "",
+        "belief_llm_raw_response_preview": "",
+        "belief_llm_latency_ms": 0,
     }
 
     if not force_update:
@@ -419,7 +470,11 @@ def update_belief_state(
         meta.setdefault("belief_json_repair_used", False)
         meta.setdefault("belief_json_repair_type", "")
         meta.setdefault("belief_patch_keys", [])
-        meta.setdefault("belief_patch_preview", "")
+        meta.setdefault("belief_patch_preview", {})
+        meta.setdefault("belief_patch_counts", _belief_bucket_counts({}))
+        meta.setdefault("belief_llm_prompt_hash", "")
+        meta.setdefault("belief_llm_model", "")
+        meta.setdefault("belief_llm_latency_ms", 0)
 
     if pre_uni_patch and not llm_failed:
         uni_patch = _deep_merge_dict_limited(pre_uni_patch, uni_patch, max_depth=3, max_keys=40)
@@ -448,6 +503,12 @@ def update_belief_state(
     belief_before_fingerprint = _belief_fingerprint(previous)
     raw_bucket_keys = sorted(list((belief_buckets_patch or {}).keys())) if isinstance(belief_buckets_patch, dict) else []
     normalized_buckets_patch = normalize_belief_buckets(belief_buckets_patch)
+    raw_conf_values = []
+    for bucket in ("hypotheses", "strategy_notes", "risk_flags", "watch_items"):
+        for item in (belief_buckets_patch.get(bucket, []) if isinstance(belief_buckets_patch, dict) else []):
+            if isinstance(item, dict):
+                raw_conf_values.append(float(item.get("confidence", 0.0) or 0.0))
+    num_clamped = sum(1 for conf in raw_conf_values if conf < 0.0 or conf > 1.0)
     belief_dropped_fields = [k for k in raw_bucket_keys if k not in normalized_buckets_patch]
 
     belief_v2 = {"schema_version": "v2", "universal": uni_new, "negotiation": neg_new}
@@ -483,8 +544,10 @@ def update_belief_state(
             "belief_after_fingerprint": belief_after_fingerprint,
             "belief_merge_changed": belief_merge_changed,
             "belief_patch_after_normalize": _safe_preview(normalized_buckets_patch),
+            "belief_patch_after_normalize_counts": _belief_bucket_counts(normalized_buckets_patch),
             "belief_validation_issues_out": _issues,
             "belief_dropped_fields": belief_dropped_fields,
+            "belief_confidence_clamps": {"num_clamped": num_clamped},
             "belief_updated_fields": sorted(list(belief_state.keys())),
             "belief_final_top_keys": sorted(list(belief_state.keys())),
             "belief_noop_reason": (

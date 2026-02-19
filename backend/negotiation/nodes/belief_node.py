@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 
 from ..gate_utils import gate_belief, world_buckets_fingerprint
+from ..belief_state_updater import _belief_fingerprint
 from ..schemas import default_belief_state, default_progress_state
 from ..state.deps import DEFAULT_DEPS
 
@@ -17,6 +18,9 @@ def belief_updater_node(state: dict) -> dict:
     turn_count = state.get("turn_count", 0) or 0
     conversation_mode = state.get("conversation_mode", "general") or "general"
 
+    prev_world_buckets_fp = str(gate_state.get("world_buckets_fingerprint_prev", "") or "")
+    curr_world_buckets_fp = world_buckets_fingerprint(state.get("world_state", {}))
+    prev_belief_fp = _belief_fingerprint(prev_belief)
     belief_skipped, skip_reason = gate_belief(
         world_diff=state.get("world_diff", {}),
         prev_world=state.get("prev_world_state", {}),
@@ -26,8 +30,16 @@ def belief_updater_node(state: dict) -> dict:
         last_refresh_turn=int(gate_state.get("last_belief_refresh_turn", 0) or 0),
         interval=int(os.getenv("BELIEF_REFRESH_INTERVAL_TURNS", "3")),
         prev_universal_fingerprint=str(gate_state.get("universal_state_fingerprint_prev", "")),
-        prev_world_buckets_fingerprint=str(gate_state.get("world_buckets_fingerprint_prev", "")),
+        prev_world_buckets_fingerprint=prev_world_buckets_fp,
     )
+    gate_decision = {
+        "skipped": bool(belief_skipped),
+        "reason": skip_reason,
+        "prev_world_buckets_fp": prev_world_buckets_fp or None,
+        "curr_world_buckets_fp": curr_world_buckets_fp or None,
+        "prev_belief_fp": prev_belief_fp or None,
+        "curr_belief_fp": None,
+    }
     if belief_skipped:
         gate_state["belief_skip_count"] = int(gate_state.get("belief_skip_count", 0) or 0) + 1
         belief_state = prev_belief
@@ -38,6 +50,8 @@ def belief_updater_node(state: dict) -> dict:
             "skip_reason": skip_reason,
             "belief_node_entered": True,
             "belief_updater_invoked": False,
+            "belief_gate_skip_reason": skip_reason,
+            "belief_gate_decision": gate_decision,
         }
     else:
         belief_state, belief_meta = deps.update_belief_state(
@@ -57,8 +71,10 @@ def belief_updater_node(state: dict) -> dict:
         belief_meta["belief_node_entered"] = True
         belief_meta["belief_updater_invoked"] = True
         belief_meta["belief_gate_skip_reason"] = skip_reason
+        gate_decision["curr_belief_fp"] = _belief_fingerprint(belief_state)
+        belief_meta["belief_gate_decision"] = gate_decision
 
-    gate_state["world_buckets_fingerprint_prev"] = world_buckets_fingerprint(state.get("world_state", {}))
+    gate_state["world_buckets_fingerprint_prev"] = curr_world_buckets_fp
     state["belief_state"] = belief_state
     state["belief_update_meta"] = belief_meta
     state["progress_state"]["gate_state"] = gate_state
