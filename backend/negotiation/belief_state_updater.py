@@ -15,16 +15,24 @@ from .elementos.belief.belief_updater_v2_prompts import (
     UNIVERSAL_SPEC,
     NEGOTIATION_SPEC,
     OUTPUT_SCHEMA,
+    BELIEF_BUCKET_RULES,
 )
 
 from .elementos.belief.belief_contracts import UNIVERSAL_LIMITS
 from .schemas import BeliefState, PolicyDecision, WorldState, default_belief_state
-from .validation import normalize_belief_state, normalize_belief_state_v2, normalize_belief_universal
+from .validation import normalize_belief_state, normalize_belief_state_v2, normalize_belief_universal, normalize_belief_buckets
 from .belief_governor import derive_behavior_guidance
 from .world_belief_adapters import world_v1_to_v2
 
 
 logger = logging.getLogger(__name__)
+
+BELIEF_MODEL = os.getenv("NEGOTIATION_BELIEF_MODEL") or os.getenv("BELIEF_MODEL_NAME", "gpt-4o-mini")
+BELIEF_TEMPERATURE = float(
+    os.getenv("NEGOTIATION_BELIEF_TEMPERATURE")
+    or os.getenv("BELIEF_TEMPERATURE", "0.2")
+)
+
 
 def _limit_reasons(reasons: dict) -> dict:
     if not isinstance(reasons, dict):
@@ -154,10 +162,39 @@ def _safe_parse_belief_json(raw_text: str) -> dict:
         text = text[i : j + 1]
     try:
         return json.loads(text)
-    except Exception:
+    except Exception as first_error:
         repaired = re.sub(r",\s*([}\]])", r"\1", text)
         repaired = repaired.replace("“", '"').replace("”", '"')
-        return json.loads(repaired)
+        repaired = re.sub(r"\bNaN\b|\bInfinity\b|-Infinity", "null", repaired)
+        try:
+            return json.loads(repaired)
+        except Exception as second_error:
+            raise ValueError(f"parse_error: {second_error}") from first_error
+
+
+def merge_belief_buckets_update_not_rewrite(prev: dict, patch: dict) -> dict:
+    limits = {"hypotheses": 6, "strategy_notes": 3, "risk_flags": 3, "watch_items": 3}
+    out = {k: list(v) for k, v in normalize_belief_buckets(prev).items()}
+    incoming = normalize_belief_buckets(patch)
+
+    def _key(bucket: str, text: str) -> str:
+        base = str(text or "").strip().lower()
+        if bucket == "hypotheses":
+            base = re.sub(r"\s*\([0-9]+(?:\.[0-9]+)?\)\s*$", "", base)
+        return base
+
+    for bucket, max_items in limits.items():
+        index = {_key(bucket, it.get("text", "")): dict(it) for it in out.get(bucket, []) if isinstance(it, dict)}
+        for item in incoming.get(bucket, []):
+            key = _key(bucket, item.get("text", ""))
+            if not key:
+                continue
+            prev_item = index.get(key)
+            if prev_item is None or float(item.get("confidence", 0.0)) >= float(prev_item.get("confidence", 0.0)):
+                index[key] = dict(item)
+        vals = sorted(index.values(), key=lambda d: float(d.get("confidence", 0.0)), reverse=True)[:max_items]
+        out[bucket] = vals
+    return out
 
 
 def extract_belief_patch_llm_v3(
@@ -166,7 +203,7 @@ def extract_belief_patch_llm_v3(
     world_diff: dict,
     prev_belief: dict,
     conversation_mode: str,
-) -> tuple[dict, dict, dict]:
+) -> tuple[dict, dict, dict, dict]:
     world_state_json = json.dumps(world_state or {}, ensure_ascii=False)
     world_diff_json = json.dumps(world_diff or {}, ensure_ascii=False)
     prev_belief_json = json.dumps(prev_belief or {}, ensure_ascii=False)
@@ -180,6 +217,7 @@ def extract_belief_patch_llm_v3(
         output_schema=OUTPUT_SCHEMA.strip(),
         universal_spec=UNIVERSAL_SPEC.strip(),
         negotiation_spec=NEGOTIATION_SPEC.strip(),
+        belief_bucket_rules=BELIEF_BUCKET_RULES.strip(),
     )
 
     messages = [
@@ -195,9 +233,10 @@ def extract_belief_patch_llm_v3(
 
     uni_patch = dict(data.get("universal_patch") or {})
     neg_patch = dict(data.get("negotiation_patch") or {})
+    belief_buckets_patch = dict(data.get("belief_buckets_patch") or {})
     meta = dict(data.get("meta") or {})
     meta["extractor_version"] = "belief_updater_v3"
-    return uni_patch, neg_patch, meta
+    return uni_patch, neg_patch, belief_buckets_patch, meta
 
 
 def merge_belief_universal(
@@ -304,8 +343,10 @@ def update_belief_state(
 
     pre_uni_patch, pre_neg_patch = _pre_patch_from_world(world_state, previous)
 
+    llm_failed = False
+    parse_error_message = ""
     try:
-        uni_patch, neg_patch, meta_patch = extract_belief_patch_llm_v3(
+        uni_patch, neg_patch, belief_buckets_patch, meta_patch = extract_belief_patch_llm_v3(
             user_message=user_message,
             world_state=world_state,
             world_diff=world_diff,
@@ -316,15 +357,19 @@ def update_belief_state(
         meta.update(meta_patch)
     except Exception as exc:
         logger.warning("belief_state_updater_unexpected_error=%s", exc)
+        llm_failed = True
+        parse_error_message = str(exc)
         meta["belief_llm_failed"] = True
         meta["belief_update_error"] = str(exc)
         meta["belief_fallback_used"] = True
+        meta["belief_fallback_reason"] = "parse_error"
+        meta["belief_error"] = str(exc)
         meta["belief_updated_via_fallback"] = True
-        uni_patch, neg_patch = {}, {}
+        uni_patch, neg_patch, belief_buckets_patch = {}, {}, {}
 
-    if pre_uni_patch:
+    if pre_uni_patch and not llm_failed:
         uni_patch = _deep_merge_dict_limited(pre_uni_patch, uni_patch, max_depth=3, max_keys=40)
-    if pre_neg_patch:
+    if pre_neg_patch and not llm_failed:
         neg_patch = _deep_merge_dict_limited(pre_neg_patch, neg_patch, max_depth=3, max_keys=60)
 
     allow_health_change = _interaction_strong(world_state, world_diff)
@@ -337,7 +382,7 @@ def update_belief_state(
     )
 
     neg_new = previous.get("negotiation") or {}
-    if conversation_mode != "negotiation":
+    if conversation_mode != "negotiation" and not llm_failed:
         micro_patch = _micro_negotiation_patch_from_world(world_state, previous)
         if micro_patch:
             neg_patch = _deep_merge_dict_limited(neg_patch, micro_patch, max_depth=2, max_keys=40)
@@ -348,6 +393,15 @@ def update_belief_state(
 
     belief_v2 = {"schema_version": "v2", "universal": uni_new, "negotiation": neg_new}
     belief_state, _issues = normalize_belief_state_v2(belief_v2)
+    prev_buckets = (previous or {}).get("belief_buckets", {}) if isinstance(previous, dict) else {}
+    belief_state["belief_buckets"] = merge_belief_buckets_update_not_rewrite(prev_buckets, belief_buckets_patch)
+    if llm_failed:
+        belief_state = dict(previous)
+        if "belief_buckets" in belief_state or prev_buckets:
+            belief_state["belief_buckets"] = merge_belief_buckets_update_not_rewrite(
+                prev_buckets,
+                {},
+            )
 
     if os.getenv("BELIEF_GOVERNOR_ENABLED", "0") == "1":
         world_v2 = world_v1_to_v2(world_state)
@@ -361,6 +415,9 @@ def update_belief_state(
             "allow_health_change": allow_health_change,
             "uni_patch_keys": sorted(list((uni_patch or {}).keys()))[:50],
             "negotiation_patch_keys": sorted(list((neg_patch or {}).keys()))[:50],
+            "belief_bucket_patch_keys": sorted(list((belief_buckets_patch or {}).keys()))[:20],
+            "belief_issue": "parse_error" if llm_failed else "",
+            "belief_error": parse_error_message if llm_failed else "",
         }
     )
 
