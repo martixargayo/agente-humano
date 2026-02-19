@@ -44,6 +44,9 @@ phase_effective: {phase_effective}
 policy_next_hint: {policy_next_hint}
 intent_next_hint: {intent_next_hint}
 
+EXECUTOR INSTRUCTION (authoritative when provided):
+{executor_instruction_json}
+
 belief_state_summary: {belief_state_summary}
 belief_summary_truncated: {belief_summary_truncated}
 belief_summary_keys: {belief_summary_keys}
