@@ -60,6 +60,8 @@ def extract_world_patch_llm_v3(
     n_patch = dict(data.get("negotiation_domain_patch") or {})
     universal_patch = dict(data.get("universal_patch") or {})
     open_claims = list(data.get("open_claims") or [])
+    raw_u_keys = sorted(u_patch.keys())
+    raw_n_keys = sorted(n_patch.keys())
 
     u_allowed = set(ALLOWED_UNIVERSAL_DOMAIN_KEYS)
     for k in list(u_patch.keys()):
@@ -83,5 +85,15 @@ def extract_world_patch_llm_v3(
         "open_claims_spec": OPEN_CLAIMS_SPEC,
         "universal_domain_spec": UNIVERSAL_DOMAIN_SPEC,
         "negotiation_domain_spec": NEGOTIATION_DOMAIN_SPEC,
+        "raw_llm_patch_keys": {
+            "universal_domain": raw_u_keys,
+            "negotiation_domain": raw_n_keys,
+        },
+        "filtered_patch_keys": {
+            "universal_domain": sorted(u_patch.keys()),
+            "negotiation_domain": sorted(n_patch.keys()),
+            "universal_patch": sorted(universal_patch.keys()),
+        },
+        "open_claims_raw_count": len(open_claims),
     }
     return u_patch, n_patch, universal_patch, open_claims, meta
