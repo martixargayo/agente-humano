@@ -44,7 +44,7 @@ def test_policy_id_is_clamped_to_allowed_ids(monkeypatch):
 
     deps = _fake_deps(fake_plan_phase_policy)
     monkeypatch.setattr(
-        "negotiation.nodes.planner_node.allowed_policy_ids_no_phase",
+        "negotiation.nodes.planner_node.allowed_policy_ids",
         lambda *_args, **_kwargs: ["safe_neutral"],
     )
     monkeypatch.setattr(
@@ -84,14 +84,14 @@ def test_phase_repair_reflected_in_trace(monkeypatch):
         lambda raw_reply, last_user_message=None: raw_reply,
     )
     monkeypatch.setattr(
-        "negotiation.nodes.planner_node.allowed_policy_ids_no_phase",
+        "negotiation.nodes.planner_node.allowed_policy_ids",
         lambda *_args, **_kwargs: ["info_extract_critical", "close_with_conditions"],
     )
     monkeypatch.setattr(
         "negotiation.nodes.planner_node.policy_phase_catalog",
         lambda: {
             "info_extract_critical": ["opening"],
-            "close_with_conditions": ["closing"],
+            "close_with_conditions": ["formalize"],
         },
     )
     monkeypatch.setattr(
@@ -154,7 +154,7 @@ def test_planner_refresh_on_implicit_acceptance(monkeypatch):
 
     deps = _fake_deps(fake_plan_phase_policy)
     monkeypatch.setattr(
-        "negotiation.nodes.planner_node.allowed_policy_ids_no_phase",
+        "negotiation.nodes.planner_node.allowed_policy_ids",
         lambda *_args, **_kwargs: ["rapport_build"],
     )
     monkeypatch.setattr(

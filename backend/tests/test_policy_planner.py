@@ -1,4 +1,4 @@
-from negotiation.policy_planner import allowed_policy_ids_no_phase
+from negotiation.policy_planner import allowed_policy_ids
 from negotiation.policies import (
     POLICIES,
     get_policy,
@@ -18,10 +18,10 @@ def test_allowed_no_longer_filters_by_phase():
     progress_state = default_progress_state()
     progress_state["phase_state"]["phase"] = "opening"
 
-    allowed_opening = allowed_policy_ids_no_phase(world_state, belief_state, progress_state)
+    allowed_opening = allowed_policy_ids(world_state, belief_state, progress_state)
 
     progress_state["phase_state"]["phase"] = "closing"
-    allowed_closing = allowed_policy_ids_no_phase(world_state, belief_state, progress_state)
+    allowed_closing = allowed_policy_ids(world_state, belief_state, progress_state)
 
     assert set(allowed_opening) == set(allowed_closing)
 
@@ -31,11 +31,11 @@ def test_allowed_policy_ids_filters_by_required_inputs_true():
     belief_state = default_belief_state()
     progress_state = default_progress_state()
 
-    allowed = allowed_policy_ids_no_phase(world_state, belief_state, progress_state)
+    allowed = allowed_policy_ids(world_state, belief_state, progress_state)
     assert "test_credibility" not in allowed
 
     world_state["negotiation"]["other_buyer_claimed"] = True
-    allowed = allowed_policy_ids_no_phase(world_state, belief_state, progress_state)
+    allowed = allowed_policy_ids(world_state, belief_state, progress_state)
     assert "test_credibility" in allowed
 
 

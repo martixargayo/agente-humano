@@ -1,7 +1,7 @@
 import copy
 
-import negotiation.intent_manager as intent_manager
-from negotiation.intent_manager import build_steps, update_intent_state
+import negotiation.legacy.intent_manager as intent_manager
+from negotiation.legacy.intent_manager import build_steps, update_intent_state
 from negotiation.schemas import (
     StepKind,
     default_belief_state,

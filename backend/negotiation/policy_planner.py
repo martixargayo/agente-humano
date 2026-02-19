@@ -2,16 +2,11 @@
 from __future__ import annotations
 
 import os
-import warnings
 
 from .elementos.strategy_definitions import PHASE_INDEX
 
 from .policies import POLICIES, list_policy_ids, policy_phase_catalog, safe_neutral_policy_id
-from .legacy.intent_constraints import (
-    _preferred_policy_ids as _legacy_preferred_policy_ids,
-    apply_intent_constraints as _legacy_apply_intent_constraints,
-)
-from .schemas import BeliefState, IntentHint, NegotiationPhase, ProgressState, WorldState
+from .schemas import BeliefState, ProgressState, WorldState
 
 
 _POLICY_BY_ID = {policy.policy_id: policy for policy in POLICIES}
@@ -186,26 +181,6 @@ def _allowed_policy_ids_minimal(
     return allowed
 
 
-def allowed_policy_ids_no_phase(
-    world_state: WorldState,
-    belief_state: BeliefState,
-    progress_state: ProgressState,
-    constraints_struct: dict | None = None,
-) -> list[str]:
-    del progress_state
-    policy_ids = list_policy_ids()
-    if not policy_ids:
-        return [safe_neutral_policy_id()]
-    allowed = [
-        policy_id
-        for policy_id in policy_ids
-        if _required_inputs_met(policy_id, world_state)
-        and not _violates_hard_constraints(policy_id, world_state, constraints_struct)
-        and (os.getenv("POLICY_REQUIRED_BELIEFS_ENABLED", "0") != "1" or _required_beliefs_met(policy_id, belief_state))
-    ]
-    return allowed or [safe_neutral_policy_id()]
-
-
 def _required_inputs_met(policy_id: str, world_state: WorldState) -> bool:
     policy = _POLICY_BY_ID.get(policy_id)
     if not policy or not policy.required_inputs:
@@ -248,24 +223,3 @@ def allowed_policy_ids(
         return base
     filtered = [pid for pid in base if _required_beliefs_met(pid, belief_state)]
     return filtered or [safe_neutral_policy_id()]
-
-
-def _preferred_policy_ids(intent_hint: IntentHint | None) -> list[str]:
-    warnings.warn(
-        "policy_planner._preferred_policy_ids is deprecated; use legacy.intent_constraints.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return _legacy_preferred_policy_ids(intent_hint)
-
-
-def apply_intent_constraints(
-    allowed: list[str],
-    intent_hint: IntentHint | None,
-) -> tuple[list[str], list[str], dict]:
-    warnings.warn(
-        "policy_planner.apply_intent_constraints is deprecated; use legacy.intent_constraints.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return _legacy_apply_intent_constraints(allowed, intent_hint)

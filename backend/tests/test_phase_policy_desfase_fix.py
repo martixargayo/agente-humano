@@ -4,7 +4,7 @@ import pytest
 
 from negotiation.nodes.planner_node import phase_policy_planner_node
 from negotiation.policies import get_policy, policy_phase_catalog
-from negotiation.policy_planner import allowed_policy_ids_no_phase
+from negotiation.policy_planner import allowed_policy_ids
 from negotiation.schemas import (
     default_belief_state,
     default_policy_state,
@@ -31,7 +31,7 @@ def _planner_state(progress_state):
 def _choose_policy_ids(progress_state):
     world_state = default_world_state()
     belief_state = default_belief_state()
-    allowed_all = allowed_policy_ids_no_phase(
+    allowed_all = allowed_policy_ids(
         world_state, belief_state, progress_state, constraints_struct={}
     )
     phase_catalog = policy_phase_catalog()

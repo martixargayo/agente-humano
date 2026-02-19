@@ -2,11 +2,7 @@ from __future__ import annotations
 
 from ..phase_state_updater import postprocess_phase_candidate
 from ..policies import get_policy, policy_phase_catalog, safe_neutral_policy_id
-from ..policy_planner import (
-    allowed_policy_ids,
-    allowed_policy_ids_no_phase,
-    repair_policy_by_phase,
-)
+from ..policy_planner import allowed_policy_ids, repair_policy_by_phase
 from ..schemas import default_policy_decision, default_policy_state, default_progress_state
 from ..state.deps import DEFAULT_DEPS
 from ..validation import normalize_policy_decision

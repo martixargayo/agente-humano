@@ -1,6 +1,6 @@
-import negotiation.intent_manager as intent_manager
-from negotiation.intent_manager import update_intent_state
-from negotiation.policy_planner import apply_intent_constraints
+import negotiation.legacy.intent_manager as intent_manager
+from negotiation.legacy.intent_manager import update_intent_state
+from negotiation.legacy.intent_constraints import apply_intent_constraints
 from negotiation.schemas import default_belief_state, default_intent_state, default_progress_state
 from negotiation.schemas import default_world_state
 
