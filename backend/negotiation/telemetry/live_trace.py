@@ -57,12 +57,38 @@ def build_trace_event(
     world_changed, world_unchanged = _changed_unchanged(world_prev, world_new)
     belief_changed_keys, belief_unchanged = _changed_unchanged(belief_prev, belief_new)
 
-    build_git_sha = (
-        trace_item.get("build_git_sha")
-        or os.getenv("BUILD_GIT_SHA")
-        or os.getenv("GIT_SHA")
-        or "unknown"
+    build_git_sha_source = "unknown"
+    build_git_sha = trace_item.get("build_git_sha")
+    if build_git_sha:
+        build_git_sha_source = "trace_item"
+    elif os.getenv("BUILD_GIT_SHA"):
+        build_git_sha = os.getenv("BUILD_GIT_SHA")
+        build_git_sha_source = "env_BUILD_GIT_SHA"
+    elif os.getenv("GIT_SHA"):
+        build_git_sha = os.getenv("GIT_SHA")
+        build_git_sha_source = "env_GIT_SHA"
+    elif os.getenv("BUILD_ID"):
+        build_git_sha = os.getenv("BUILD_ID")
+        build_git_sha_source = "env_BUILD_ID"
+    else:
+        build_git_sha = "unknown"
+
+    exit_issues = list(trace_item.get("exit_issues") or [])
+    if str(build_git_sha) == "unknown" and "build_sha_unknown" not in exit_issues:
+        exit_issues.append("build_sha_unknown")
+
+    belief_meta = trace_item.get("belief_update_meta") or {}
+    belief_diff_keys = sorted((trace_item.get("belief_diff") or {}).keys())
+    belief_updated_fields = [str(key) for key in (belief_meta.get("belief_updated_fields") or []) if key]
+    belief_changed = bool(
+        belief_diff_keys
+        or belief_changed_keys
+        or belief_meta.get("belief_merge_changed", False)
     )
+    if not belief_diff_keys and belief_changed and belief_updated_fields:
+        belief_diff_keys = sorted(set(belief_updated_fields))
+    if belief_changed and "belief_buckets" in belief_updated_fields and "belief_buckets" not in belief_changed_keys:
+        belief_changed_keys.append("belief_buckets")
 
     belief_meta = trace_item.get("belief_update_meta") or {}
     belief_diff_keys = sorted((trace_item.get("belief_diff") or {}).keys())
@@ -104,6 +130,7 @@ def build_trace_event(
         "belief_changed_keys": belief_changed_keys,
         "belief_unchanged_keys": belief_unchanged,
         "build_git_sha": str(build_git_sha),
+        "build_git_sha_source": build_git_sha_source,
         "belief_node_entered": bool(belief_meta.get("belief_node_entered", False)),
         "belief_updater_invoked": bool(belief_meta.get("belief_updater_invoked", False)),
         "belief_noop_reason": str(belief_meta.get("belief_noop_reason", "")),
@@ -132,6 +159,7 @@ def build_trace_event(
         "top_evidence_v2": trace_item.get("top_evidence_v2") or [],
         "unknown_claims_count": int(trace_item.get("unknown_claims_count") or 0),
         "validation_issues": trace_item.get("validation_issues") or {},
+        "exit_issues": exit_issues,
         "timing": {
             "t_turn_start": trace_item.get("t_turn_start", 0.0),
             "t_before_graph": trace_item.get("t_before_graph", 0.0),

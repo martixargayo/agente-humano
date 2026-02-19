@@ -103,18 +103,61 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 
+def _jsonable_belief_bucket_item(item: Any, *, max_text: int = 220) -> dict[str, Any] | None:
+    if hasattr(item, "model_dump"):
+        try:
+            item = item.model_dump()
+        except Exception:
+            return None
+    elif hasattr(item, "dict"):
+        try:
+            item = item.dict()
+        except Exception:
+            return None
+
+    if not isinstance(item, dict):
+        return None
+    text = str(item.get("text", "")).strip()[:max_text]
+    if not text:
+        return None
+
+    confidence_raw = item.get("confidence", 0.0)
+    try:
+        confidence = float(confidence_raw)
+    except Exception:
+        confidence = 0.0
+    confidence = max(0.0, min(1.0, confidence))
+
+    status = str(item.get("status", "active")).strip() or "active"
+    return {
+        "text": text,
+        "confidence": confidence,
+        "status": status,
+    }
+
+
 def _compact_belief_buckets(belief_state: dict[str, Any] | None) -> dict[str, Any]:
     buckets = (belief_state or {}).get("belief_buckets")
     if not isinstance(buckets, dict):
         return {}
-    compact: dict[str, Any] = {}
-    hypotheses = buckets.get("hypotheses")
-    if isinstance(hypotheses, list):
-        compact["hypotheses"] = [str(item)[:180] for item in hypotheses[:5]]
-    for key in ("indicators", "needs", "fears", "constraints"):
+    limits = {
+        "hypotheses": 5,
+        "strategy_notes": 5,
+        "risk_flags": 5,
+        "watch_items": 5,
+    }
+    compact: dict[str, Any] = {key: [] for key in limits}
+    for key, limit in limits.items():
         value = buckets.get(key)
-        if isinstance(value, list):
-            compact[key] = [str(item)[:140] for item in value[:5]]
+        if not isinstance(value, list):
+            continue
+        items: list[dict[str, Any]] = []
+        for raw_item in value[:limit]:
+            parsed = _jsonable_belief_bucket_item(raw_item)
+            if parsed is None:
+                continue
+            items.append(parsed)
+        compact[key] = items
     return compact
 
 

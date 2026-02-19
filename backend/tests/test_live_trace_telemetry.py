@@ -151,3 +151,43 @@ def test_build_trace_event_detects_belief_buckets_when_present_in_snapshots():
     assert event["belief_changed"] is True
     assert "belief_buckets" in event["belief_changed_keys"]
     assert "belief_buckets" in event["belief_diff_keys"]
+
+
+
+def test_build_trace_event_build_git_sha_source_from_env(monkeypatch):
+    session = SessionState(user_id="u1", session_id="s1")
+    session.last_updated = datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+    monkeypatch.delenv("GIT_SHA", raising=False)
+    monkeypatch.delenv("BUILD_ID", raising=False)
+    monkeypatch.setenv("BUILD_GIT_SHA", "abc")
+
+    event = build_trace_event(
+        user_id="u1",
+        session_id="s1",
+        session=session,
+        trace_index=0,
+        trace_item={"turn": 1},
+    )
+
+    assert event["build_git_sha"] == "abc"
+    assert event["build_git_sha_source"] == "env_BUILD_GIT_SHA"
+
+
+def test_build_trace_event_build_git_sha_unknown_adds_issue(monkeypatch):
+    session = SessionState(user_id="u1", session_id="s1")
+    session.last_updated = datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+    monkeypatch.delenv("BUILD_GIT_SHA", raising=False)
+    monkeypatch.delenv("GIT_SHA", raising=False)
+    monkeypatch.delenv("BUILD_ID", raising=False)
+
+    event = build_trace_event(
+        user_id="u1",
+        session_id="s1",
+        session=session,
+        trace_index=0,
+        trace_item={"turn": 1},
+    )
+
+    assert event["build_git_sha"] == "unknown"
+    assert event["build_git_sha_source"] == "unknown"
+    assert "build_sha_unknown" in event["exit_issues"]
