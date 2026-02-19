@@ -18,7 +18,10 @@ If unsure, use {}.
 
 NEGOTIATION_DOMAIN_SPEC = """
 negotiation_domain_patch: object with ONLY keys in ALLOWED_NEGOTIATION_DOMAIN_KEYS.
-If conversation_mode != "negotiation", negotiation_domain_patch MUST be {}.
+If conversation_mode == "negotiation", extract all supported negotiation signals.
+If conversation_mode != "negotiation", you MAY still emit clear high-precision negotiation signals
+(e.g., urgency/deadline/constraints/evidence) with conservative confidence and literal evidence.
+Do not hallucinate values; prefer {} over guesses.
 If unsure, use {}.
 """.strip()
 

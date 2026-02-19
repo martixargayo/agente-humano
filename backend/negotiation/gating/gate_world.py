@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, Tuple
 
 from .shared import input_shape_changed_materially
@@ -24,6 +25,19 @@ def _fingerprint_changed_fields(
         if prev_fp.get(k) != curr_fp.get(k):
             out.append(k)
     return out
+
+
+def _has_tradeoff_signal(user_message: str) -> bool:
+    lower_msg = (user_message or "").lower()
+    return bool(
+        re.search(r"\ba cambio de\b", lower_msg)
+        or re.search(r"\bsi me das\b", lower_msg)
+        or (
+            re.search(r"\bm[aá]s\b", lower_msg)
+            and re.search(r"\bmenos\b", lower_msg)
+            and re.search(r"\b(hoy|ma[ñn]ana|futuro)\b", lower_msg)
+        )
+    )
 
 
 def gate_world(
@@ -58,6 +72,7 @@ def gate_world(
     interaction_strong_for_world = any(
         f in _STRONG_INTERACTION_FIELDS_FOR_WORLD for f in interaction_changed_fields
     )
+    tradeoff_signal = _has_tradeoff_signal(user_message)
     change_meta: Dict[str, Any] = {
         "changed_keys": changed_keys,
         "interaction_changed": interaction_changed,
@@ -76,5 +91,11 @@ def gate_world(
     if interaction_strong_for_world:
         change_meta["extractor_mode"] = "llm"
         return False, "interaction_changed", change_meta
+    if tradeoff_signal:
+        change_meta["changed_keys"] = sorted(
+            list(set((change_meta.get("changed_keys") or []) + ["semantic_tradeoff_trigger"]))
+        )
+        change_meta["extractor_mode"] = "llm"
+        return False, "semantic_tradeoff_trigger", change_meta
     change_meta["extractor_mode"] = "none"
     return True, "interval_hold", change_meta

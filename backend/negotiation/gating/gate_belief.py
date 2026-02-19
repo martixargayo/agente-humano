@@ -24,6 +24,8 @@ def gate_belief(
     prev_negotiation = prev_world.get("negotiation", {}) if isinstance(prev_world, dict) else {}
     universal = world.get("universal_domain", {}) if isinstance(world, dict) else {}
     negotiation = world.get("negotiation", {}) if isinstance(world, dict) else {}
+    prev_open_claims = prev_world.get("open_claims", []) if isinstance(prev_world, dict) else []
+    open_claims = world.get("open_claims", []) if isinstance(world, dict) else []
 
     def _flag_value(state: dict, flag: str) -> object:
         uni = state.get("universal_domain", {}) if isinstance(state, dict) else {}
@@ -56,11 +58,13 @@ def gate_belief(
         and prev_universal_fingerprint != curr_universal_fp
     )
     interval_expired = (turn_count - last_refresh_turn) >= interval
+    open_claims_changed = bool(prev_open_claims != open_claims)
     if (
         world_diff_empty
         and not critical_change
         and not tone_change
         and not interaction_strong_for_belief
+        and not open_claims_changed
         and not interaction_universal_signal
         and not fingerprint_changed
         and not health_should_refresh
