@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import re
+import time
 
 from .llm_clients import get_belief_llm
 from .gate_utils import _split_world_diff
@@ -212,6 +213,33 @@ def merge_belief_buckets_update_not_rewrite(prev: dict, patch: dict) -> dict:
     return out
 
 
+def _bucket_counts(buckets: dict | None) -> dict:
+    buckets = buckets or {}
+    return {
+        "hypotheses": len(buckets.get("hypotheses", []) if isinstance(buckets.get("hypotheses"), list) else []),
+        "strategy_notes": len(buckets.get("strategy_notes", []) if isinstance(buckets.get("strategy_notes"), list) else []),
+        "risk_flags": len(buckets.get("risk_flags", []) if isinstance(buckets.get("risk_flags"), list) else []),
+        "watch_items": len(buckets.get("watch_items", []) if isinstance(buckets.get("watch_items"), list) else []),
+    }
+
+
+def _count_confidence_out_of_range(buckets: dict | None) -> int:
+    buckets = buckets or {}
+    count = 0
+    for key in ("hypotheses", "strategy_notes", "risk_flags", "watch_items"):
+        vals = buckets.get(key, []) if isinstance(buckets.get(key), list) else []
+        for item in vals:
+            if not isinstance(item, dict):
+                continue
+            try:
+                c = float(item.get("confidence", 0.0) or 0.0)
+            except Exception:
+                c = 0.0
+            if c < 0.0 or c > 1.0:
+                count += 1
+    return count
+
+
 def _belief_fingerprint(state: dict) -> str:
     payload = json.dumps(state or {}, ensure_ascii=False, sort_keys=True)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
@@ -222,6 +250,9 @@ def _safe_preview(value: object, max_chars: int = 300) -> str:
         txt = json.dumps(value, ensure_ascii=False, sort_keys=True)
     except Exception:
         txt = str(value)
+    txt = re.sub(r"https?://\S+", "[url]", txt)
+    txt = re.sub(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", "[email]", txt)
+    txt = re.sub(r"\+?\d[\d\s().-]{7,}\d", "[phone]", txt)
     return txt[:max_chars]
 
 
@@ -248,12 +279,15 @@ def extract_belief_patch_llm_v3(
         belief_bucket_rules=BELIEF_BUCKET_RULES.strip(),
     )
 
+    prompt_hash = hashlib.sha256(user_prompt.encode("utf-8")).hexdigest()
     messages = [
         {"role": "system", "content": BELIEF_UPDATER_V2_SYSTEM_PROMPT.strip()},
         {"role": "user", "content": user_prompt.strip()},
     ]
     llm = get_belief_llm()
+    t0 = time.perf_counter()
     raw = llm.invoke(messages)
+    llm_latency_ms = (time.perf_counter() - t0) * 1000.0
     text = raw if isinstance(raw, str) else getattr(raw, "content", "")
     data, parse_meta = _safe_parse_belief_json(text)
 
@@ -267,7 +301,9 @@ def extract_belief_patch_llm_v3(
     meta["extractor_version"] = "belief_updater_v3"
     meta["belief_llm_used"] = True
     meta["belief_llm_model"] = str(getattr(llm, "model", ""))
-    meta["belief_llm_raw_response_preview"] = (text or "")[:300]
+    meta["belief_llm_prompt_hash"] = prompt_hash
+    meta["belief_llm_latency_ms"] = round(float(llm_latency_ms), 3)
+    meta["belief_llm_raw_response_preview"] = _safe_preview(text or "", max_chars=500)
     meta.update(parse_meta)
     meta["belief_patch_keys"] = [
         key
@@ -447,7 +483,10 @@ def update_belief_state(
 
     belief_before_fingerprint = _belief_fingerprint(previous)
     raw_bucket_keys = sorted(list((belief_buckets_patch or {}).keys())) if isinstance(belief_buckets_patch, dict) else []
+    raw_patch_counts = _bucket_counts(belief_buckets_patch if isinstance(belief_buckets_patch, dict) else {})
+    confidence_clamps = _count_confidence_out_of_range(belief_buckets_patch if isinstance(belief_buckets_patch, dict) else {})
     normalized_buckets_patch = normalize_belief_buckets(belief_buckets_patch)
+    normalized_patch_counts = _bucket_counts(normalized_buckets_patch)
     belief_dropped_fields = [k for k in raw_bucket_keys if k not in normalized_buckets_patch]
 
     belief_v2 = {"schema_version": "v2", "universal": uni_new, "negotiation": neg_new}
@@ -483,8 +522,11 @@ def update_belief_state(
             "belief_after_fingerprint": belief_after_fingerprint,
             "belief_merge_changed": belief_merge_changed,
             "belief_patch_after_normalize": _safe_preview(normalized_buckets_patch),
+            "belief_patch_counts": raw_patch_counts,
+            "belief_patch_after_normalize_counts": normalized_patch_counts,
             "belief_validation_issues_out": _issues,
             "belief_dropped_fields": belief_dropped_fields,
+            "belief_confidence_clamps": {"num_clamped": int(confidence_clamps)},
             "belief_updated_fields": sorted(list(belief_state.keys())),
             "belief_final_top_keys": sorted(list(belief_state.keys())),
             "belief_noop_reason": (

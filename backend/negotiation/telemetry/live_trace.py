@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import os
 from typing import Any
 
 from state import SessionState
@@ -53,6 +54,13 @@ def build_trace_event(
     world_changed, world_unchanged = _changed_unchanged(world_prev, world_new)
     belief_changed, belief_unchanged = _changed_unchanged(belief_prev, belief_new)
 
+    build_git_sha = (
+        trace_item.get("build_git_sha")
+        or os.getenv("BUILD_GIT_SHA")
+        or os.getenv("GIT_SHA")
+        or "unknown"
+    )
+
     return {
         "user_id": user_id,
         "session_id": session_id,
@@ -79,6 +87,7 @@ def build_trace_event(
         "belief_new_keys": _json_keys(belief_new),
         "belief_changed_keys": belief_changed,
         "belief_unchanged_keys": belief_unchanged,
+        "build_git_sha": str(build_git_sha),
         "gates_triggered": sorted(
             key for key, value in gate_meta.items() if isinstance(value, bool) and value
         ),
@@ -131,6 +140,9 @@ def build_trace_event(
         "memory_meta": trace_item.get("memory_meta") or {},
         "refresh_meta": trace_item.get("refresh_meta") or {},
         "summary_enqueue_meta": trace_item.get("summary_enqueue_meta") or {},
+        "debug": {
+            "belief": trace_item.get("belief_update_meta") or {},
+        },
         "model_params": {
             key: value
             for key, value in trace_item.items()

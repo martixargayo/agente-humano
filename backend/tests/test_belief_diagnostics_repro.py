@@ -54,8 +54,62 @@ def test_repro_two_turns_world_changes_and_belief_has_trace(monkeypatch):
     )
 
     assert meta.get("belief_llm_used") is True
+    assert meta.get("belief_node_entered", True) is True
     assert meta.get("belief_parse_ok") is True
+    assert isinstance(meta.get("belief_llm_prompt_hash"), str)
+    assert isinstance(meta.get("belief_llm_raw_response_preview"), str)
     assert "belief_buckets_patch" in (meta.get("belief_patch_keys") or [])
+    assert isinstance(meta.get("belief_patch_counts"), dict)
+    assert isinstance(meta.get("belief_patch_after_normalize_counts"), dict)
     assert meta.get("belief_noop_reason", "") in {"", "merge_no_effect", "patch_empty", "parse_error"}
     assert meta.get("belief_merge_changed") is True or meta.get("belief_noop_reason") != ""
     assert "belief_buckets" in b2
+
+
+class _BeliefLLMEmptyPatch:
+    def invoke(self, _messages):
+        return (
+            '{"schema_version":"belief_updater_v2","universal_patch":{},"negotiation_patch":{},'
+            '"belief_buckets_patch":{"hypotheses":[],"strategy_notes":[],"risk_flags":[],"watch_items":[]},"meta":{"schema_valid":true}}'
+        )
+
+
+def test_repro_merge_noop_sets_reason(monkeypatch):
+    monkeypatch.setattr("negotiation.belief_state_updater.get_belief_llm", lambda: _BeliefLLMEmptyPatch())
+    prev = default_belief_state()
+    prev["belief_buckets"] = {"hypotheses": [], "strategy_notes": [], "risk_flags": [], "watch_items": []}
+    world = default_world_state()
+    world["world_buckets"]["offers"] = [
+        {
+            "text": "Intercambio",
+            "confidence": 0.6,
+            "raw_text": "concretamente estoy dispuesto a sacrificar dinero futuro a cambio de mas dinero hoy",
+            "source_turn": 2,
+        }
+    ]
+    belief1, _meta1 = update_belief_state(
+        prev_belief_state=prev,
+        prev_world_state=default_world_state(),
+        world_state=world,
+        world_diff={"domain": {"world_buckets": {"before": {}, "after": world["world_buckets"]}}},
+        last_policy_executed=None,
+        last_assistant_message="",
+        user_message="concretamente estoy dispuesto a sacrificar dinero futuro a cambio de mas dinero hoy",
+        context_snippet="",
+        force_update=True,
+        conversation_mode="negotiation",
+    )
+    _belief, meta = update_belief_state(
+        prev_belief_state=belief1,
+        prev_world_state=world,
+        world_state=world,
+        world_diff={"domain": {}},
+        last_policy_executed=None,
+        last_assistant_message="",
+        user_message="concretamente estoy dispuesto a sacrificar dinero futuro a cambio de mas dinero hoy",
+        context_snippet="",
+        force_update=True,
+        conversation_mode="negotiation",
+    )
+    assert meta.get("belief_merge_changed") is False
+    assert meta.get("belief_noop_reason") in {"patch_empty", "merge_no_effect"}

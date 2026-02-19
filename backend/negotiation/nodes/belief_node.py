@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 
 from ..gate_utils import gate_belief, world_buckets_fingerprint
 from ..schemas import default_belief_state, default_progress_state
 from ..state.deps import DEFAULT_DEPS
+
+
+def _state_fingerprint(value: dict) -> str:
+    payload = json.dumps(value or {}, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def belief_updater_node(state: dict) -> dict:
@@ -16,6 +23,9 @@ def belief_updater_node(state: dict) -> dict:
     )
     turn_count = state.get("turn_count", 0) or 0
     conversation_mode = state.get("conversation_mode", "general") or "general"
+    prev_world_buckets_fp = str(gate_state.get("world_buckets_fingerprint_prev", ""))
+    curr_world_buckets_fp = world_buckets_fingerprint(state.get("world_state", {}))
+    prev_belief_fp = _state_fingerprint(prev_belief)
 
     belief_skipped, skip_reason = gate_belief(
         world_diff=state.get("world_diff", {}),
@@ -58,7 +68,19 @@ def belief_updater_node(state: dict) -> dict:
         belief_meta["belief_updater_invoked"] = True
         belief_meta["belief_gate_skip_reason"] = skip_reason
 
-    gate_state["world_buckets_fingerprint_prev"] = world_buckets_fingerprint(state.get("world_state", {}))
+    curr_belief_fp = _state_fingerprint(belief_state)
+    belief_meta["belief_gate_decision"] = {
+        "skipped": bool(belief_skipped),
+        "reason": str(skip_reason),
+        "prev_world_buckets_fp": prev_world_buckets_fp or None,
+        "curr_world_buckets_fp": curr_world_buckets_fp or None,
+        "prev_belief_fp": prev_belief_fp or None,
+        "curr_belief_fp": curr_belief_fp or None,
+    }
+    if belief_skipped:
+        belief_meta["belief_gate_skip_reason"] = str(skip_reason)
+
+    gate_state["world_buckets_fingerprint_prev"] = curr_world_buckets_fp
     state["belief_state"] = belief_state
     state["belief_update_meta"] = belief_meta
     state["progress_state"]["gate_state"] = gate_state

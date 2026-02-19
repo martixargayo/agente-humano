@@ -597,6 +597,9 @@ def run_negotiation_agent(
             "planner_meta": new_graph_state.get("planner_meta", {}),
             "gates": new_graph_state.get("gate_meta", {}),
             "belief_update_meta": new_graph_state.get("belief_update_meta", {}),
+            "debug": {
+                "belief": new_graph_state.get("belief_update_meta", {}) or {},
+            },
             "phase_state": new_graph_state.get("progress_state", {}).get("phase_state", {}),
             "phase_meta": new_graph_state.get("planner_meta", {}).get("phase_meta", {}),
             "extractor_used": new_graph_state.get("extractor_meta", {}).get(
