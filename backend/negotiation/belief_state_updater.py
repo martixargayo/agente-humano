@@ -1,6 +1,7 @@
 # backend/negotiation/belief_state_updater.py
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -152,23 +153,37 @@ def _pre_patch_from_world(world_state: dict, prev_belief: dict) -> tuple[dict, d
     return uni_patch, neg_patch
 
 
-def _safe_parse_belief_json(raw_text: str) -> dict:
+def _safe_parse_belief_json(raw_text: str) -> tuple[dict, dict]:
     text = (raw_text or "").strip()
+    parse_meta = {
+        "belief_parse_ok": False,
+        "belief_parse_error": "",
+        "belief_json_repair_used": False,
+        "belief_json_repair_type": "",
+    }
     if not text:
+        parse_meta["belief_parse_error"] = "empty_belief_response"
         raise ValueError("empty_belief_response")
     i = text.find("{")
     j = text.rfind("}")
     if i >= 0 and j > i:
         text = text[i : j + 1]
     try:
-        return json.loads(text)
+        data = json.loads(text)
+        parse_meta["belief_parse_ok"] = True
+        return data, parse_meta
     except Exception as first_error:
         repaired = re.sub(r",\s*([}\]])", r"\1", text)
         repaired = repaired.replace("“", '"').replace("”", '"')
         repaired = re.sub(r"\bNaN\b|\bInfinity\b|-Infinity", "null", repaired)
+        parse_meta["belief_json_repair_used"] = True
+        parse_meta["belief_json_repair_type"] = "trailing_comma_quotes_nan"
         try:
-            return json.loads(repaired)
+            data = json.loads(repaired)
+            parse_meta["belief_parse_ok"] = True
+            return data, parse_meta
         except Exception as second_error:
+            parse_meta["belief_parse_error"] = str(second_error)
             raise ValueError(f"parse_error: {second_error}") from first_error
 
 
@@ -197,29 +212,17 @@ def merge_belief_buckets_update_not_rewrite(prev: dict, patch: dict) -> dict:
     return out
 
 
-def merge_belief_buckets_update_not_rewrite(prev: dict, patch: dict) -> dict:
-    limits = {"hypotheses": 6, "strategy_notes": 3, "risk_flags": 3, "watch_items": 3}
-    out = {k: list(v) for k, v in normalize_belief_buckets(prev).items()}
-    incoming = normalize_belief_buckets(patch)
+def _belief_fingerprint(state: dict) -> str:
+    payload = json.dumps(state or {}, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
-    def _key(bucket: str, text: str) -> str:
-        base = str(text or "").strip().lower()
-        if bucket == "hypotheses":
-            base = re.sub(r"\s*\([0-9]+(?:\.[0-9]+)?\)\s*$", "", base)
-        return base
 
-    for bucket, max_items in limits.items():
-        index = {_key(bucket, it.get("text", "")): dict(it) for it in out.get(bucket, []) if isinstance(it, dict)}
-        for item in incoming.get(bucket, []):
-            key = _key(bucket, item.get("text", ""))
-            if not key:
-                continue
-            prev_item = index.get(key)
-            if prev_item is None or float(item.get("confidence", 0.0)) >= float(prev_item.get("confidence", 0.0)):
-                index[key] = dict(item)
-        vals = sorted(index.values(), key=lambda d: float(d.get("confidence", 0.0)), reverse=True)[:max_items]
-        out[bucket] = vals
-    return out
+def _safe_preview(value: object, max_chars: int = 300) -> str:
+    try:
+        txt = json.dumps(value, ensure_ascii=False, sort_keys=True)
+    except Exception:
+        txt = str(value)
+    return txt[:max_chars]
 
 
 def extract_belief_patch_llm_v3(
@@ -249,9 +252,10 @@ def extract_belief_patch_llm_v3(
         {"role": "system", "content": BELIEF_UPDATER_V2_SYSTEM_PROMPT.strip()},
         {"role": "user", "content": user_prompt.strip()},
     ]
-    raw = get_belief_llm().invoke(messages)
+    llm = get_belief_llm()
+    raw = llm.invoke(messages)
     text = raw if isinstance(raw, str) else getattr(raw, "content", "")
-    data = _safe_parse_belief_json(text)
+    data, parse_meta = _safe_parse_belief_json(text)
 
     if data.get("schema_version") != "belief_updater_v2":
         raise ValueError("belief_updater_v2 invalid schema_version")
@@ -261,6 +265,22 @@ def extract_belief_patch_llm_v3(
     belief_buckets_patch = dict(data.get("belief_buckets_patch") or {})
     meta = dict(data.get("meta") or {})
     meta["extractor_version"] = "belief_updater_v3"
+    meta["belief_llm_used"] = True
+    meta["belief_llm_model"] = str(getattr(llm, "model", ""))
+    meta["belief_llm_raw_response_preview"] = (text or "")[:300]
+    meta.update(parse_meta)
+    meta["belief_patch_keys"] = [
+        key
+        for key in ("universal_patch", "negotiation_patch", "belief_buckets_patch", "meta")
+        if key in data
+    ]
+    meta["belief_patch_preview"] = _safe_preview(
+        {
+            "universal_patch": uni_patch,
+            "negotiation_patch": neg_patch,
+            "belief_buckets_patch": belief_buckets_patch,
+        }
+    )
     return uni_patch, neg_patch, belief_buckets_patch, meta
 
 
@@ -351,6 +371,7 @@ def update_belief_state(
         "belief_update_skipped": False,
         "belief_llm_failed": False,
         "belief_updated_via_fallback": False,
+        "belief_node_entered": True,
     }
 
     if not force_update:
@@ -391,6 +412,14 @@ def update_belief_state(
         meta["belief_error"] = str(exc)
         meta["belief_updated_via_fallback"] = True
         uni_patch, neg_patch, belief_buckets_patch = {}, {}, {}
+        meta.setdefault("belief_llm_used", True)
+        meta.setdefault("belief_llm_raw_response_preview", "")
+        meta.setdefault("belief_parse_ok", False)
+        meta.setdefault("belief_parse_error", str(exc))
+        meta.setdefault("belief_json_repair_used", False)
+        meta.setdefault("belief_json_repair_type", "")
+        meta.setdefault("belief_patch_keys", [])
+        meta.setdefault("belief_patch_preview", "")
 
     if pre_uni_patch and not llm_failed:
         uni_patch = _deep_merge_dict_limited(pre_uni_patch, uni_patch, max_depth=3, max_keys=40)
@@ -416,10 +445,15 @@ def update_belief_state(
     if neg_patch:
         neg_new = _deep_merge_dict_limited(neg_new, neg_patch, max_depth=3, max_keys=120)
 
+    belief_before_fingerprint = _belief_fingerprint(previous)
+    raw_bucket_keys = sorted(list((belief_buckets_patch or {}).keys())) if isinstance(belief_buckets_patch, dict) else []
+    normalized_buckets_patch = normalize_belief_buckets(belief_buckets_patch)
+    belief_dropped_fields = [k for k in raw_bucket_keys if k not in normalized_buckets_patch]
+
     belief_v2 = {"schema_version": "v2", "universal": uni_new, "negotiation": neg_new}
     belief_state, _issues = normalize_belief_state_v2(belief_v2)
     prev_buckets = (previous or {}).get("belief_buckets", {}) if isinstance(previous, dict) else {}
-    belief_state["belief_buckets"] = merge_belief_buckets_update_not_rewrite(prev_buckets, belief_buckets_patch)
+    belief_state["belief_buckets"] = merge_belief_buckets_update_not_rewrite(prev_buckets, normalized_buckets_patch)
     if llm_failed:
         belief_state = dict(previous)
         if "belief_buckets" in belief_state or prev_buckets:
@@ -427,6 +461,8 @@ def update_belief_state(
                 prev_buckets,
                 {},
             )
+    belief_after_fingerprint = _belief_fingerprint(belief_state)
+    belief_merge_changed = belief_before_fingerprint != belief_after_fingerprint
 
     if os.getenv("BELIEF_GOVERNOR_ENABLED", "0") == "1":
         world_v2 = world_v1_to_v2(world_state)
@@ -443,6 +479,23 @@ def update_belief_state(
             "belief_bucket_patch_keys": sorted(list((belief_buckets_patch or {}).keys()))[:20],
             "belief_issue": "parse_error" if llm_failed else "",
             "belief_error": parse_error_message if llm_failed else "",
+            "belief_before_fingerprint": belief_before_fingerprint,
+            "belief_after_fingerprint": belief_after_fingerprint,
+            "belief_merge_changed": belief_merge_changed,
+            "belief_patch_after_normalize": _safe_preview(normalized_buckets_patch),
+            "belief_validation_issues_out": _issues,
+            "belief_dropped_fields": belief_dropped_fields,
+            "belief_updated_fields": sorted(list(belief_state.keys())),
+            "belief_final_top_keys": sorted(list(belief_state.keys())),
+            "belief_noop_reason": (
+                "parse_error"
+                if llm_failed
+                else "patch_empty"
+                if not (uni_patch or neg_patch or normalized_buckets_patch)
+                else "merge_no_effect"
+                if not belief_merge_changed
+                else ""
+            ),
         }
     )
 

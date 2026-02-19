@@ -36,6 +36,8 @@ def belief_updater_node(state: dict) -> dict:
             "belief_update_error": "",
             "belief_update_skipped": True,
             "skip_reason": skip_reason,
+            "belief_node_entered": True,
+            "belief_updater_invoked": False,
         }
     else:
         belief_state, belief_meta = deps.update_belief_state(
@@ -52,6 +54,9 @@ def belief_updater_node(state: dict) -> dict:
             conversation_mode=conversation_mode,
         )
         gate_state["last_belief_refresh_turn"] = turn_count
+        belief_meta["belief_node_entered"] = True
+        belief_meta["belief_updater_invoked"] = True
+        belief_meta["belief_gate_skip_reason"] = skip_reason
 
     gate_state["world_buckets_fingerprint_prev"] = world_buckets_fingerprint(state.get("world_state", {}))
     state["belief_state"] = belief_state

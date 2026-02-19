@@ -35,6 +35,11 @@ def diff_belief_state(prev: BeliefState, new: BeliefState) -> dict:
             "before": prev_universal.get("tom"),
             "after": new_universal.get("tom"),
         }
+    if (prev.get("belief_buckets") or {}) != (new.get("belief_buckets") or {}):
+        diff["belief_buckets"] = {
+            "before": prev.get("belief_buckets") or {},
+            "after": new.get("belief_buckets") or {},
+        }
     return diff
 
 
