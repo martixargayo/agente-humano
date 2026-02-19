@@ -197,6 +197,31 @@ def merge_belief_buckets_update_not_rewrite(prev: dict, patch: dict) -> dict:
     return out
 
 
+def merge_belief_buckets_update_not_rewrite(prev: dict, patch: dict) -> dict:
+    limits = {"hypotheses": 6, "strategy_notes": 3, "risk_flags": 3, "watch_items": 3}
+    out = {k: list(v) for k, v in normalize_belief_buckets(prev).items()}
+    incoming = normalize_belief_buckets(patch)
+
+    def _key(bucket: str, text: str) -> str:
+        base = str(text or "").strip().lower()
+        if bucket == "hypotheses":
+            base = re.sub(r"\s*\([0-9]+(?:\.[0-9]+)?\)\s*$", "", base)
+        return base
+
+    for bucket, max_items in limits.items():
+        index = {_key(bucket, it.get("text", "")): dict(it) for it in out.get(bucket, []) if isinstance(it, dict)}
+        for item in incoming.get(bucket, []):
+            key = _key(bucket, item.get("text", ""))
+            if not key:
+                continue
+            prev_item = index.get(key)
+            if prev_item is None or float(item.get("confidence", 0.0)) >= float(prev_item.get("confidence", 0.0)):
+                index[key] = dict(item)
+        vals = sorted(index.values(), key=lambda d: float(d.get("confidence", 0.0)), reverse=True)[:max_items]
+        out[bucket] = vals
+    return out
+
+
 def extract_belief_patch_llm_v3(
     user_message: str,
     world_state: dict,
