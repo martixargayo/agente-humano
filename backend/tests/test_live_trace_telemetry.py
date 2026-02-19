@@ -25,12 +25,12 @@ def test_build_trace_event_shapes_fields():
         "belief_prev": {"stance": "neutral", "trust": "media"},
         "belief_new": {"stance": "cooperative", "trust": "media"},
         "belief_diff": {"stance": {"before": "neutral", "after": "cooperative"}},
-        "gates": {"gate_world": True, "gate_belief": False},
+        "gates": {"world_skipped": False, "belief_skipped": False, "planner_skipped": True},
         "extractor_used": True,
         "extractor_reasons": ["llm_extractor_confident"],
         "extractor_world_patch_keys": ["price"],
         "planner_meta": {"reason": "needed_info"},
-        "belief_update_meta": {"belief_node_entered": True, "belief_updater_invoked": True},
+        "belief_update_meta": {"belief_node_entered": True, "belief_updater_invoked": True, "belief_noop_reason": "merge_no_effect"},
         "build_git_sha": "abc123",
     }
 
@@ -55,10 +55,14 @@ def test_build_trace_event_shapes_fields():
     assert event["world_unchanged_keys"] == ["urgency"]
     assert event["belief_changed_keys"] == ["stance"]
     assert event["belief_unchanged_keys"] == ["trust"]
-    assert event["gates_triggered"] == ["gate_world"]
-    assert event["gate_choices"][0]["gate"] == "gate_belief"
-    assert event["gate_choices"][1]["selected"] == "enabled"
+    assert event["gates_triggered"] == ["planner_skipped"]
+    choices = {c["gate"]: c["selected"] for c in event["gate_choices"]}
+    assert choices["belief_skipped"] == "enabled"
+    assert choices["planner_skipped"] == "skipped"
     assert event["build_git_sha"] == "abc123"
+    assert event["belief_node_entered"] is True
+    assert event["belief_updater_invoked"] is True
+    assert event["belief_noop_reason"] == "merge_no_effect"
     assert event["debug"]["belief"]["belief_node_entered"] is True
 
 

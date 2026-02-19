@@ -27,10 +27,13 @@ def _gate_choices(gates: dict[str, Any]) -> list[dict[str, Any]]:
     for gate_key in sorted(gates.keys()):
         value = gates.get(gate_key)
         if isinstance(value, bool):
+            selected = "enabled" if value else "skipped"
+            if gate_key.endswith("_skipped"):
+                selected = "skipped" if value else "enabled"
             choices.append(
                 {
                     "gate": gate_key,
-                    "selected": "enabled" if value else "skipped",
+                    "selected": selected,
                     "value": value,
                 }
             )
@@ -61,6 +64,8 @@ def build_trace_event(
         or "unknown"
     )
 
+    belief_meta = trace_item.get("belief_update_meta") or {}
+
     return {
         "user_id": user_id,
         "session_id": session_id,
@@ -88,6 +93,9 @@ def build_trace_event(
         "belief_changed_keys": belief_changed,
         "belief_unchanged_keys": belief_unchanged,
         "build_git_sha": str(build_git_sha),
+        "belief_node_entered": bool(belief_meta.get("belief_node_entered", False)),
+        "belief_updater_invoked": bool(belief_meta.get("belief_updater_invoked", False)),
+        "belief_noop_reason": str(belief_meta.get("belief_noop_reason", "")),
         "gates_triggered": sorted(
             key for key, value in gate_meta.items() if isinstance(value, bool) and value
         ),
@@ -141,7 +149,7 @@ def build_trace_event(
         "refresh_meta": trace_item.get("refresh_meta") or {},
         "summary_enqueue_meta": trace_item.get("summary_enqueue_meta") or {},
         "debug": {
-            "belief": trace_item.get("belief_update_meta") or {},
+            "belief": belief_meta,
         },
         "model_params": {
             key: value
