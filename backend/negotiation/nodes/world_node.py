@@ -89,6 +89,22 @@ def world_updater_node(state: dict) -> dict:
         extractor_meta["interaction_updated"] = True
         state["extractor_meta"] = extractor_meta
     progress_state = update_conversation_mode(progress_state, state.get("world_state", {}), turn_count)
+    plan_status = str(progress_state.get("active_plan_status", "none") or "none")
+    judgement = (state.get("world_state") or {}).get("policy_plan_judgement")
+    judge_no_plan_enabled = os.getenv("WORLD_JUDGE_NO_PLAN_AUTOFILL", "0") == "1"
+    if not isinstance(judgement, dict) and plan_status == "none" and judge_no_plan_enabled:
+        judgement = {
+            "schema_version": "v1",
+            "turn_idx": turn_count,
+            "plan_presence": "none",
+            "plan_status": "interrupted_replan",
+            "why": "No hay plan activo; corresponde planificar.",
+            "evidence": [],
+            "confidence": 0.99,
+            "degraded": True,
+            "degrade_reason": "no_active_plan",
+        }
+    state["policy_plan_judgement"] = judgement
     state["progress_state"] = progress_state
     state["conversation_mode"] = progress_state.get("conversation_mode", conversation_mode)
     gate_state["universal_state_fingerprint_prev"] = universal_state_fingerprint(

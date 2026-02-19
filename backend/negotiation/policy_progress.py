@@ -106,6 +106,9 @@ def update_policy_state(
     user_message: str,
     turn_count: int,
     last_policy_executed: dict | None = None,
+    policy_plan_judgement: dict | None = None,
+    active_plan_status: str = "none",
+    judgement_missing_streak: int = 0,
 ) -> tuple[PolicyState, PolicyHint, PolicyMeta]:
     del world_diff, belief_diff, progress_state, user_message, last_policy_executed
     policy_state = default_policy_state()
@@ -121,6 +124,46 @@ def update_policy_state(
         "deltas": {},
         "thresholds": {},
     }
+
+    if isinstance(policy_plan_judgement, dict):
+        plan_status = str(policy_plan_judgement.get("plan_status", "")).strip()
+        if plan_status == "continue_same_step":
+            if policy_state.get("status") == "active":
+                policy_state["planner_request"] = "continue_policy"
+            else:
+                policy_state["planner_request"] = "choose_policy"
+            meta["transition"] = "retry"
+            meta["reasons"].append("world_judge:continue_same_step")
+            return policy_state, _build_policy_hint(policy_state, None), meta
+        if plan_status == "advance_step":
+            policy_state["step_idx"] = int(policy_state.get("step_idx", 0)) + 1
+            policy_state["step_attempts"] = 0
+            policy_state["no_progress_turns"] = 0
+            if policy_state.get("status") != "active":
+                policy_state["planner_request"] = "choose_policy"
+            else:
+                policy_state["planner_request"] = "continue_policy"
+            meta["transition"] = "advance"
+            meta["deltas"] = {"step_idx": policy_state.get("step_idx", 0)}
+            meta["reasons"].append("world_judge:advance_step")
+            return policy_state, _build_policy_hint(policy_state, None), meta
+        if plan_status == "completed":
+            policy_state["status"] = "succeeded"
+            policy_state["planner_request"] = "replan_policy"
+            meta["transition"] = "succeed"
+            meta["reasons"].append("world_judge:completed")
+            return policy_state, _build_policy_hint(policy_state, None), meta
+        if plan_status == "interrupted_replan":
+            policy_state["planner_request"] = "replan_policy"
+            meta["transition"] = "force_planner"
+            meta["reasons"].append("world_judge:interrupted_replan")
+            return policy_state, _build_policy_hint(policy_state, None), meta
+
+    if active_plan_status in {"active", "interrupted", "completed"} and judgement_missing_streak >= 2:
+        policy_state["planner_request"] = "replan_policy"
+        meta["transition"] = "force_planner"
+        meta["reasons"].append("judgement_missing_streak")
+        return policy_state, _build_policy_hint(policy_state, None), meta
 
     if policy_state.get("status") != "active":
         policy_state["planner_request"] = "choose_policy"
