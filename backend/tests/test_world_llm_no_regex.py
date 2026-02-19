@@ -9,7 +9,7 @@ def test_world_llm_failure_does_not_fallback_to_regex(monkeypatch):
         raise RuntimeError("llm failed")
 
     monkeypatch.setattr(
-        "negotiation.world_state_updater.extract_world_patch_llm_v3",
+        "negotiation.world_state_updater.extract_world_patch_llm_v4",
         _boom,
     )
 

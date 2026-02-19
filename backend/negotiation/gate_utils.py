@@ -5,6 +5,7 @@ from .gating.fingerprints import (
     loop_flags_changed,
     stable_allowed_ids_hash,
     universal_state_fingerprint,
+    world_buckets_fingerprint,
 )
 from .gating.gate_belief import gate_belief
 from .gating.gate_planner import gate_phase_policy
@@ -26,6 +27,7 @@ __all__ = [
     "loop_flags_changed",
     "stable_allowed_ids_hash",
     "universal_state_fingerprint",
+    "world_buckets_fingerprint",
     "input_shape_features",
     "input_shape_changed_materially",
     "critical_world_flags",
