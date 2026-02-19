@@ -30,6 +30,8 @@ def test_build_trace_event_shapes_fields():
         "extractor_reasons": ["llm_extractor_confident"],
         "extractor_world_patch_keys": ["price"],
         "planner_meta": {"reason": "needed_info"},
+        "belief_update_meta": {"belief_node_entered": True, "belief_updater_invoked": True},
+        "build_git_sha": "abc123",
     }
 
     event = build_trace_event(
@@ -56,6 +58,8 @@ def test_build_trace_event_shapes_fields():
     assert event["gates_triggered"] == ["gate_world"]
     assert event["gate_choices"][0]["gate"] == "gate_belief"
     assert event["gate_choices"][1]["selected"] == "enabled"
+    assert event["build_git_sha"] == "abc123"
+    assert event["debug"]["belief"]["belief_node_entered"] is True
 
 
 def test_list_recent_trace_events_aggregates_sessions():

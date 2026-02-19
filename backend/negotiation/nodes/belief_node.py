@@ -1,28 +1,17 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 
-from ..gate_utils import gate_belief
+from ..gate_utils import gate_belief, world_buckets_fingerprint
 from ..schemas import default_belief_state, default_progress_state
 from ..state.deps import DEFAULT_DEPS
 
 
-def _should_force_by_stale_urgency(world_state: dict, prev_belief: dict, gate_state: dict, turn_count: int) -> bool:
-    stale_turns = int(os.getenv("BELIEF_FORCE_URGENCY_STALE_TURNS", "2"))
-    cooldown = int(os.getenv("BELIEF_FORCE_COOLDOWN_TURNS", "2"))
-    last_forced = int(gate_state.get("last_belief_forced_turn", 0) or 0)
-
-    wneg = (world_state or {}).get("negotiation", {}) if isinstance(world_state, dict) else {}
-    urgency_claimed = bool(wneg.get("urgency_claimed", False))
-    if not urgency_claimed:
-        return False
-
-    stance = ((prev_belief or {}).get("negotiation", {}) or {}).get("stance", {})
-    tp = float(stance.get("time_pressure", 0.5) or 0.5)
-    last_tp_turn = int(gate_state.get("last_belief_time_pressure_change_turn", 0) or 0)
-    stale = (turn_count - last_tp_turn) >= stale_turns
-    not_recently_forced = (turn_count - last_forced) >= cooldown
-    return stale and not_recently_forced and tp <= 0.55
+def _state_fingerprint(value: dict) -> str:
+    payload = json.dumps(value or {}, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def belief_updater_node(state: dict) -> dict:
@@ -34,33 +23,21 @@ def belief_updater_node(state: dict) -> dict:
     )
     turn_count = state.get("turn_count", 0) or 0
     conversation_mode = state.get("conversation_mode", "general") or "general"
-    extractor_meta = state.get("extractor_meta", {}) or {}
-    backstop_reasons = extractor_meta.get("backstop_reasons", []) if isinstance(extractor_meta, dict) else []
-    cooldown = int(os.getenv("BELIEF_FORCE_COOLDOWN_TURNS", "2"))
-    last_forced = int(gate_state.get("last_belief_forced_turn", 0) or 0)
-    force_by_backstop = bool(backstop_reasons) and (turn_count - last_forced >= cooldown)
-    force_by_stale_urgency = _should_force_by_stale_urgency(
-        state.get("world_state", {}),
-        prev_belief,
-        gate_state,
-        turn_count,
-    )
+    prev_world_buckets_fp = str(gate_state.get("world_buckets_fingerprint_prev", ""))
+    curr_world_buckets_fp = world_buckets_fingerprint(state.get("world_state", {}))
+    prev_belief_fp = _state_fingerprint(prev_belief)
 
-    if force_by_backstop or force_by_stale_urgency:
-        belief_skipped = False
-        skip_reason = "forced_by_backstop" if force_by_backstop else "forced_by_stale_urgency"
-        gate_state["last_belief_forced_turn"] = turn_count
-    else:
-        belief_skipped, skip_reason = gate_belief(
-            world_diff=state.get("world_diff", {}),
-            prev_world=state.get("prev_world_state", {}),
-            world=state.get("world_state", {}),
-            prev_belief=prev_belief,
-            turn_count=turn_count,
-            last_refresh_turn=int(gate_state.get("last_belief_refresh_turn", 0) or 0),
-            interval=int(os.getenv("BELIEF_REFRESH_INTERVAL_TURNS", "3")),
-            prev_universal_fingerprint=str(gate_state.get("universal_state_fingerprint_prev", "")),
-        )
+    belief_skipped, skip_reason = gate_belief(
+        world_diff=state.get("world_diff", {}),
+        prev_world=state.get("prev_world_state", {}),
+        world=state.get("world_state", {}),
+        prev_belief=prev_belief,
+        turn_count=turn_count,
+        last_refresh_turn=int(gate_state.get("last_belief_refresh_turn", 0) or 0),
+        interval=int(os.getenv("BELIEF_REFRESH_INTERVAL_TURNS", "3")),
+        prev_universal_fingerprint=str(gate_state.get("universal_state_fingerprint_prev", "")),
+        prev_world_buckets_fingerprint=str(gate_state.get("world_buckets_fingerprint_prev", "")),
+    )
     if belief_skipped:
         gate_state["belief_skip_count"] = int(gate_state.get("belief_skip_count", 0) or 0) + 1
         belief_state = prev_belief
@@ -69,8 +46,8 @@ def belief_updater_node(state: dict) -> dict:
             "belief_update_error": "",
             "belief_update_skipped": True,
             "skip_reason": skip_reason,
-            "forced_by_backstop": False,
-            "forced_by_stale_urgency": False,
+            "belief_node_entered": True,
+            "belief_updater_invoked": False,
         }
     else:
         belief_state, belief_meta = deps.update_belief_state(
@@ -87,12 +64,23 @@ def belief_updater_node(state: dict) -> dict:
             conversation_mode=conversation_mode,
         )
         gate_state["last_belief_refresh_turn"] = turn_count
-        belief_meta["forced_by_backstop"] = force_by_backstop
-        belief_meta["forced_by_stale_urgency"] = force_by_stale_urgency
-        stance = ((belief_state or {}).get("negotiation", {}) or {}).get("stance", {})
-        prev_stance = ((prev_belief or {}).get("negotiation", {}) or {}).get("stance", {})
-        if float(stance.get("time_pressure", 0.5) or 0.5) != float(prev_stance.get("time_pressure", 0.5) or 0.5):
-            gate_state["last_belief_time_pressure_change_turn"] = turn_count
+        belief_meta["belief_node_entered"] = True
+        belief_meta["belief_updater_invoked"] = True
+        belief_meta["belief_gate_skip_reason"] = skip_reason
+
+    curr_belief_fp = _state_fingerprint(belief_state)
+    belief_meta["belief_gate_decision"] = {
+        "skipped": bool(belief_skipped),
+        "reason": str(skip_reason),
+        "prev_world_buckets_fp": prev_world_buckets_fp or None,
+        "curr_world_buckets_fp": curr_world_buckets_fp or None,
+        "prev_belief_fp": prev_belief_fp or None,
+        "curr_belief_fp": curr_belief_fp or None,
+    }
+    if belief_skipped:
+        belief_meta["belief_gate_skip_reason"] = str(skip_reason)
+
+    gate_state["world_buckets_fingerprint_prev"] = curr_world_buckets_fp
     state["belief_state"] = belief_state
     state["belief_update_meta"] = belief_meta
     state["progress_state"]["gate_state"] = gate_state

@@ -512,6 +512,82 @@ def default_belief_state_v2() -> dict:
     return default_belief_state()
 
 
+
+
+WORLD_BUCKET_KEYS = ("offers", "concessions", "constraints", "interests", "claims", "requests", "context")
+BELIEF_BUCKET_KEYS = ("hypotheses", "strategy_notes", "risk_flags", "watch_items")
+
+
+def _normalize_text_key(value: object) -> str:
+    return " ".join(str(value or "").lower().strip().split())
+
+
+def _normalize_world_bucket_item(raw: object, default_turn: int = 0) -> dict | None:
+    if not isinstance(raw, dict):
+        return None
+    text = trim(raw.get("text", ""), MAX_STR_LEN["text"])
+    raw_text = trim(raw.get("raw_text", ""), MAX_STR_LEN["text"])
+    if not text or not raw_text:
+        return None
+    return {
+        "text": text,
+        "confidence": clamp01(raw.get("confidence", 0.0), 0.0),
+        "raw_text": raw_text,
+        "source_turn": to_int(raw.get("source_turn"), default_turn) or default_turn,
+    }
+
+
+def normalize_world_buckets(raw: object, default_turn: int = 0, max_items: int = 8) -> dict:
+    src = dict(raw or {}) if isinstance(raw, dict) else {}
+    out: dict = {}
+    for bucket in WORLD_BUCKET_KEYS:
+        vals = src.get(bucket, []) if isinstance(src.get(bucket), list) else []
+        dedup: dict[str, dict] = {}
+        for it in vals:
+            item = _normalize_world_bucket_item(it, default_turn=default_turn)
+            if item is None:
+                continue
+            key = _normalize_text_key(item.get("raw_text") or item.get("text"))
+            if not key:
+                continue
+            prev = dedup.get(key)
+            if prev is None or float(item.get("confidence", 0.0)) >= float(prev.get("confidence", 0.0)):
+                dedup[key] = item
+        items = sorted(dedup.values(), key=lambda d: (float(d.get("confidence", 0.0)), int(d.get("source_turn", 0))), reverse=True)
+        out[bucket] = items[:max_items]
+    return out
+
+
+def _normalize_belief_bucket_item(raw: object) -> dict | None:
+    if not isinstance(raw, dict):
+        return None
+    text = trim(raw.get("text", ""), MAX_STR_LEN["text"])
+    if not text:
+        return None
+    status = enum_or(raw.get("status", "active"), {"active", "weakening", "new"}, "active")
+    conf = clamp01(raw.get("confidence", 0.0), 0.0)
+    return {"text": text, "confidence": conf, "status": status}
+
+
+def normalize_belief_buckets(raw: object) -> dict:
+    src = dict(raw or {}) if isinstance(raw, dict) else {}
+    limits = {"hypotheses": 6, "strategy_notes": 3, "risk_flags": 3, "watch_items": 3}
+    out: dict = {}
+    for bucket in BELIEF_BUCKET_KEYS:
+        vals = src.get(bucket, []) if isinstance(src.get(bucket), list) else []
+        dedup: dict[str, dict] = {}
+        for it in vals:
+            item = _normalize_belief_bucket_item(it)
+            if item is None:
+                continue
+            key = _normalize_text_key(item["text"])
+            prev = dedup.get(key)
+            if prev is None or float(item.get("confidence", 0.0)) >= float(prev.get("confidence", 0.0)):
+                dedup[key] = item
+        items = sorted(dedup.values(), key=lambda d: float(d.get("confidence", 0.0)), reverse=True)
+        out[bucket] = items[: limits[bucket]]
+    return out
+
 def _normalize_behavior_guidance(raw: object) -> dict:
     r = dict(raw or {}) if isinstance(raw, dict) else {}
     return {
@@ -677,6 +753,7 @@ def normalize_world_state_v2(raw: object) -> Tuple[dict, List[str]]:
             "confidence": clamp01(agr.get("confidence", 0.0), 0.0),
         },
     }
+    out["world_buckets"] = normalize_world_buckets(raw.get("world_buckets", {}), default_turn=to_int((out.get("world_state_meta") or {}).get("turn_idx"), 0) or 0)
     return out, issues
 
 
@@ -715,6 +792,9 @@ def normalize_belief_state_v2(raw: object, previous: BeliefState | None = None) 
         n_reasons[k] = {"weight": clamp01(item.get("weight", 0.0), 0.0), "confidence": clamp01(item.get("confidence", 0.0), 0.0), "evidence": evidence}
     neg["reasons"] = n_reasons
     out["negotiation"] = neg
+    raw_buckets = (raw.get("belief_buckets") if isinstance(raw, dict) else None)
+    if isinstance(raw_buckets, dict) or isinstance(out.get("belief_buckets"), dict):
+        out["belief_buckets"] = normalize_belief_buckets(raw_buckets or out.get("belief_buckets", {}))
     return out, issues
 def normalize_world_state(raw: object) -> Tuple[WorldState, List[str]]:
     base = default_world_state()
