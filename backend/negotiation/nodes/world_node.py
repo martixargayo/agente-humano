@@ -14,6 +14,101 @@ from ..perception.interaction_signals import _previous_user_message, extract_int
 from ..world_state_updater import apply_world_skip_fallback, diff_world_state, update_world_state
 
 
+def _judge_policy_plan(active_plan: dict | None, user_message: str, turn_count: int) -> dict:
+    text = (user_message or "").strip()
+    if not isinstance(active_plan, dict):
+        return {
+            "schema_version": "v1",
+            "turn_idx": turn_count,
+            "plan_presence": "none",
+            "plan_id": "",
+            "evaluated_step_idx": 0,
+            "plan_status": "interrupted_replan",
+            "why": "No hay plan activo; corresponde planificar.",
+            "evidence": [],
+            "confidence": 0.99,
+            "missing_signals": [],
+            "safety_flags": [],
+            "degraded": True,
+            "degrade_reason": "no_active_plan",
+        }
+
+    steps = list(active_plan.get("steps", []))
+    cur = int(active_plan.get("current_step_idx", 0) or 0)
+    plan_id = str(active_plan.get("plan_id", ""))[:40]
+    cur = max(0, min(cur, len(steps) - 1)) if steps else 0
+    step = steps[cur] if steps and isinstance(steps[cur], dict) else {}
+    success_criteria = [str(x).lower() for x in step.get("success_criteria", []) if str(x).strip()]
+    replan_triggers = [str(x).lower() for x in step.get("replan_triggers", []) if str(x).strip()]
+    lower = text.lower()
+
+    safety_flags = []
+    for token in ("idiota", "imbecil", "amenaza", "matar", "te vas a arrepentir"):
+        if token in lower:
+            safety_flags.append("escalation")
+            break
+
+    if safety_flags:
+        return {
+            "schema_version": "v1",
+            "turn_idx": turn_count,
+            "plan_presence": "active",
+            "plan_id": plan_id,
+            "evaluated_step_idx": cur,
+            "plan_status": "interrupted_replan",
+            "why": "Escalada detectada en el turno; requiere replanteo seguro.",
+            "evidence": [{"quote": text[:180], "span": [0, min(len(text), 180)], "source": "user_message"}] if text else [],
+            "confidence": 0.88,
+            "missing_signals": [],
+            "safety_flags": safety_flags,
+            "degraded": False,
+            "degrade_reason": "",
+        }
+
+    has_replan_trigger = any(trigger and trigger in lower for trigger in replan_triggers)
+    has_success = any(signal and signal in lower for signal in success_criteria)
+    if not has_success and any(k in lower for k in ("evidencia", "detalle", "condicion", "itv", "precio", "oferta", "deadline")):
+        has_success = True
+
+    if has_replan_trigger:
+        status = "interrupted_replan"
+        why = "Se detectó trigger de replanteo en la respuesta del usuario."
+        confidence = 0.78
+    elif has_success:
+        is_last = not steps or cur >= len(steps) - 1
+        status = "completed" if is_last else "advance_step"
+        why = "El usuario aportó señales compatibles con el criterio de éxito del paso."
+        confidence = 0.79
+    else:
+        status = "continue_same_step"
+        why = "Aún no hay evidencia suficiente para completar el paso actual."
+        confidence = 0.7
+
+    evidence = [{"quote": text[:180], "span": [0, min(len(text), 180)], "source": "user_message"}] if text else []
+    degraded = False
+    degrade_reason = ""
+    if status in {"advance_step", "completed"} and not evidence:
+        status = "continue_same_step"
+        degraded = True
+        degrade_reason = "missing_evidence_for_progress"
+
+    return {
+        "schema_version": "v1",
+        "turn_idx": turn_count,
+        "plan_presence": "active",
+        "plan_id": plan_id,
+        "evaluated_step_idx": cur,
+        "plan_status": status,
+        "why": why,
+        "evidence": evidence,
+        "confidence": confidence,
+        "missing_signals": [] if status != "continue_same_step" else success_criteria[:3],
+        "safety_flags": safety_flags,
+        "degraded": degraded,
+        "degrade_reason": degrade_reason,
+    }
+
+
 def world_updater_node(state: dict) -> dict:
     deps = state.get("deps")
     prev_world = state.get("world_state") or default_world_state()
@@ -91,6 +186,15 @@ def world_updater_node(state: dict) -> dict:
     progress_state = update_conversation_mode(progress_state, state.get("world_state", {}), turn_count)
     plan_status = str(progress_state.get("active_plan_status", "none") or "none")
     judgement = (state.get("world_state") or {}).get("policy_plan_judgement")
+    world_judge_enabled = os.getenv("WORLD_JUDGE_ENABLED", "0") == "1"
+    world_judge_shadow = os.getenv("WORLD_JUDGE_SHADOW", "1") == "1"
+    if world_judge_enabled:
+        judgement = _judge_policy_plan(
+            progress_state.get("active_plan") if isinstance(progress_state.get("active_plan"), dict) else None,
+            user_message,
+            turn_count,
+        )
+        state.setdefault("extractor_meta", {})["world_judge_shadow"] = world_judge_shadow
     judge_no_plan_enabled = os.getenv("WORLD_JUDGE_NO_PLAN_AUTOFILL", "0") == "1"
     if not isinstance(judgement, dict) and plan_status == "none" and judge_no_plan_enabled:
         judgement = {
