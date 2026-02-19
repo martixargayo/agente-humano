@@ -27,10 +27,13 @@ def _gate_choices(gates: dict[str, Any]) -> list[dict[str, Any]]:
     for gate_key in sorted(gates.keys()):
         value = gates.get(gate_key)
         if isinstance(value, bool):
+            selected = "enabled" if value else "skipped"
+            if gate_key.endswith("_skipped"):
+                selected = "skipped" if value else "enabled"
             choices.append(
                 {
                     "gate": gate_key,
-                    "selected": "enabled" if value else "skipped",
+                    "selected": selected,
                     "value": value,
                 }
             )
@@ -52,14 +55,40 @@ def build_trace_event(
     belief_prev = trace_item.get("belief_prev") or {}
     belief_new = trace_item.get("belief_new") or {}
     world_changed, world_unchanged = _changed_unchanged(world_prev, world_new)
-    belief_changed, belief_unchanged = _changed_unchanged(belief_prev, belief_new)
+    belief_changed_keys, belief_unchanged = _changed_unchanged(belief_prev, belief_new)
 
-    build_git_sha = (
-        trace_item.get("build_git_sha")
-        or os.getenv("BUILD_GIT_SHA")
-        or os.getenv("GIT_SHA")
-        or "unknown"
+    build_git_sha_source = "unknown"
+    build_git_sha = trace_item.get("build_git_sha")
+    if build_git_sha:
+        build_git_sha_source = "trace_item"
+    elif os.getenv("BUILD_GIT_SHA"):
+        build_git_sha = os.getenv("BUILD_GIT_SHA")
+        build_git_sha_source = "env_BUILD_GIT_SHA"
+    elif os.getenv("GIT_SHA"):
+        build_git_sha = os.getenv("GIT_SHA")
+        build_git_sha_source = "env_GIT_SHA"
+    elif os.getenv("BUILD_ID"):
+        build_git_sha = os.getenv("BUILD_ID")
+        build_git_sha_source = "env_BUILD_ID"
+    else:
+        build_git_sha = "unknown"
+
+    exit_issues = list(trace_item.get("exit_issues") or [])
+    if str(build_git_sha) == "unknown" and "build_sha_unknown" not in exit_issues:
+        exit_issues.append("build_sha_unknown")
+
+    belief_meta = trace_item.get("belief_update_meta") or {}
+    belief_diff_keys = sorted((trace_item.get("belief_diff") or {}).keys())
+    belief_updated_fields = [str(key) for key in (belief_meta.get("belief_updated_fields") or []) if key]
+    belief_changed = bool(
+        belief_diff_keys
+        or belief_changed_keys
+        or belief_meta.get("belief_merge_changed", False)
     )
+    if not belief_diff_keys and belief_changed and belief_updated_fields:
+        belief_diff_keys = sorted(set(belief_updated_fields))
+    if belief_changed and "belief_buckets" in belief_updated_fields and "belief_buckets" not in belief_changed_keys:
+        belief_changed_keys.append("belief_buckets")
 
     return {
         "user_id": user_id,
@@ -78,16 +107,21 @@ def build_trace_event(
         "phase": (trace_item.get("phase_effective") or {}).get("phase", ""),
         "allowed_policy_ids": trace_item.get("allowed_policy_ids") or [],
         "world_diff_keys": sorted((trace_item.get("world_diff") or {}).keys()),
-        "belief_diff_keys": sorted((trace_item.get("belief_diff") or {}).keys()),
+        "belief_diff_keys": belief_diff_keys,
         "world_base_keys": _json_keys(world_prev),
         "world_new_keys": _json_keys(world_new),
         "world_changed_keys": world_changed,
         "world_unchanged_keys": world_unchanged,
         "belief_base_keys": _json_keys(belief_prev),
         "belief_new_keys": _json_keys(belief_new),
-        "belief_changed_keys": belief_changed,
+        "belief_changed_keys": belief_changed_keys,
         "belief_unchanged_keys": belief_unchanged,
         "build_git_sha": str(build_git_sha),
+        "build_git_sha_source": build_git_sha_source,
+        "belief_node_entered": bool(belief_meta.get("belief_node_entered", False)),
+        "belief_updater_invoked": bool(belief_meta.get("belief_updater_invoked", False)),
+        "belief_noop_reason": str(belief_meta.get("belief_noop_reason", "")),
+        "belief_changed": belief_changed,
         "gates_triggered": sorted(
             key for key, value in gate_meta.items() if isinstance(value, bool) and value
         ),
@@ -112,6 +146,7 @@ def build_trace_event(
         "top_evidence_v2": trace_item.get("top_evidence_v2") or [],
         "unknown_claims_count": int(trace_item.get("unknown_claims_count") or 0),
         "validation_issues": trace_item.get("validation_issues") or {},
+        "exit_issues": exit_issues,
         "timing": {
             "t_turn_start": trace_item.get("t_turn_start", 0.0),
             "t_before_graph": trace_item.get("t_before_graph", 0.0),
@@ -141,7 +176,7 @@ def build_trace_event(
         "refresh_meta": trace_item.get("refresh_meta") or {},
         "summary_enqueue_meta": trace_item.get("summary_enqueue_meta") or {},
         "debug": {
-            "belief": trace_item.get("belief_update_meta") or {},
+            "belief": belief_meta,
         },
         "model_params": {
             key: value

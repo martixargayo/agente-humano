@@ -102,6 +102,75 @@ from .state.deps import AgentDeps, DEFAULT_DEPS
 load_dotenv()
 logger = logging.getLogger(__name__)
 
+
+def _jsonable_belief_bucket_item(item: Any, *, max_text: int = 220) -> dict[str, Any] | None:
+    if hasattr(item, "model_dump"):
+        try:
+            item = item.model_dump()
+        except Exception:
+            return None
+    elif hasattr(item, "dict"):
+        try:
+            item = item.dict()
+        except Exception:
+            return None
+
+    if not isinstance(item, dict):
+        return None
+    text = str(item.get("text", "")).strip()[:max_text]
+    if not text:
+        return None
+
+    confidence_raw = item.get("confidence", 0.0)
+    try:
+        confidence = float(confidence_raw)
+    except Exception:
+        confidence = 0.0
+    confidence = max(0.0, min(1.0, confidence))
+
+    status = str(item.get("status", "active")).strip() or "active"
+    return {
+        "text": text,
+        "confidence": confidence,
+        "status": status,
+    }
+
+
+def _compact_belief_buckets(belief_state: dict[str, Any] | None) -> dict[str, Any]:
+    buckets = (belief_state or {}).get("belief_buckets")
+    if not isinstance(buckets, dict):
+        return {}
+    limits = {
+        "hypotheses": 5,
+        "strategy_notes": 5,
+        "risk_flags": 5,
+        "watch_items": 5,
+    }
+    compact: dict[str, Any] = {key: [] for key in limits}
+    for key, limit in limits.items():
+        value = buckets.get(key)
+        if not isinstance(value, list):
+            continue
+        items: list[dict[str, Any]] = []
+        for raw_item in value[:limit]:
+            parsed = _jsonable_belief_bucket_item(raw_item)
+            if parsed is None:
+                continue
+            items.append(parsed)
+        compact[key] = items
+    return compact
+
+
+def _trace_belief_snapshot(
+    normalized_belief_state: dict[str, Any],
+    raw_belief_state: dict[str, Any] | None,
+) -> dict[str, Any]:
+    snapshot = dict(normalized_belief_state or {})
+    compact_buckets = _compact_belief_buckets(raw_belief_state)
+    if compact_buckets:
+        snapshot["belief_buckets"] = compact_buckets
+    return snapshot
+
 def _load_negotiation_rag_index(cfg):
     rag_dir = cfg.rag_dir
     if not os.path.isdir(rag_dir):
@@ -403,6 +472,7 @@ def run_negotiation_agent(
         "max_total_cost_margin": margin,
     }
 
+    prev_belief_state_raw = state.belief_state if isinstance(state.belief_state, dict) else {}
     world_state_input, world_issues_in = normalize_world_state(state.world_state)
     belief_state_input, belief_issues_in = normalize_belief_state(state.belief_state)
     progress_state_input, progress_issues_in = normalize_progress_state(state.progress_state)
@@ -515,6 +585,9 @@ def run_negotiation_agent(
     add_message(state, role="assistant", content=reply_text)
     t_reply_saved = time.perf_counter()
 
+    trace_belief_prev = _trace_belief_snapshot(belief_state_input, prev_belief_state_raw)
+    trace_belief_new = _trace_belief_snapshot(new_belief_state, new_graph_state.get("belief_state"))
+
     summary_enqueue_meta = {"enqueued": False, "source": "none", "hard_trim_applied": False}
     if deferred_summary_enabled():
         hard_trim_turns = DEFAULT_CONTEXT_LIMIT_TURNS + DEFAULT_KEEP_LAST_TURNS
@@ -549,9 +622,9 @@ def run_negotiation_agent(
             "world_prev": graph_state["world_state"],
             "world_new": new_world_state,
             "world_diff": new_graph_state.get("world_diff", {}),
-            "belief_prev": graph_state["belief_state"],
-            "belief_new": new_belief_state,
-            "belief_diff": diff_belief_state(graph_state["belief_state"], new_belief_state),
+            "belief_prev": trace_belief_prev,
+            "belief_new": trace_belief_new,
+            "belief_diff": diff_belief_state(trace_belief_prev, trace_belief_new),
             "allowed_policy_ids": new_graph_state.get("allowed_policy_ids", []),
             "policy_decision": new_policy_state,
             "policy_pre_repair": new_graph_state.get("policy_pre_repair"),
@@ -655,6 +728,11 @@ def run_negotiation_agent(
             "preset_meta": preset_meta,
             "exit_issues": exit_issues,
             "max_total_cost_margin": margin,
+            "build_git_sha": (
+                os.getenv("BUILD_GIT_SHA")
+                or os.getenv("GIT_SHA")
+                or "unknown"
+            ),
             "validation_issues": {
                 "world_in": world_issues_in,
                 "belief_in": belief_issues_in,
