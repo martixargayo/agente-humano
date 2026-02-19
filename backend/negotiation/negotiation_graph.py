@@ -608,6 +608,26 @@ def run_negotiation_agent(
             "extractor_world_patch_keys": new_graph_state.get("extractor_meta", {}).get(
                 "extractor_world_patch_keys", []
             ),
+            "raw_llm_patch_keys": new_graph_state.get("extractor_meta", {}).get(
+                "raw_llm_patch_keys", {}
+            ),
+            "filtered_patch_keys": new_graph_state.get("extractor_meta", {}).get(
+                "filtered_patch_keys", {}
+            ),
+            "open_claims_raw_count": int(
+                new_graph_state.get("extractor_meta", {}).get("open_claims_raw_count", 0) or 0
+            ),
+            "open_claims_kept_count": int(
+                new_graph_state.get("extractor_meta", {}).get("open_claims_kept_count", 0)
+                or 0
+            ),
+            "rejected_claims": new_graph_state.get("extractor_meta", {}).get(
+                "rejected_claims", []
+            ),
+            "merged_changed_paths": new_graph_state.get("extractor_meta", {}).get(
+                "merged_changed_paths", []
+            ),
+            "diff_paths": new_graph_state.get("extractor_meta", {}).get("diff_paths", []),
             "extractor_confidence_summary": new_graph_state.get("extractor_meta", {}).get(
                 "extractor_confidence_summary", {"min": 0.0, "avg": 0.0}
             ),

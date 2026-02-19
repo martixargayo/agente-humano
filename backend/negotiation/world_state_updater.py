@@ -13,6 +13,85 @@ extract_world_patch_llm_v3 = extract_world_patch_llm_v4
 from .world_belief_adapters import world_v1_to_v2
 
 
+def _flatten_paths(value: Any, prefix: str = "") -> set[str]:
+    paths: set[str] = set()
+    if isinstance(value, dict):
+        for key, sub in value.items():
+            key_path = f"{prefix}.{key}" if prefix else str(key)
+            paths.add(key_path)
+            paths.update(_flatten_paths(sub, key_path))
+        return paths
+    if isinstance(value, list):
+        for idx, sub in enumerate(value):
+            item_path = f"{prefix}[{idx}]" if prefix else f"[{idx}]"
+            paths.add(item_path)
+            paths.update(_flatten_paths(sub, item_path))
+    return paths
+
+
+def _normalize_open_claims_with_rejections(claims: list | None, max_total: int = 8) -> tuple[list[dict], list[dict]]:
+    normalized = normalize_open_claims(claims, max_total=max_total)
+    kept = {
+        str(item.get("dedupe_key", ""))
+        for item in normalized
+        if isinstance(item, dict) and item.get("dedupe_key")
+    }
+    rejected: list[dict] = []
+    allowed_scopes = {"universal", "negotiation", "other_domain"}
+    allowed_categories = {
+        "emotion",
+        "social_dynamics",
+        "tactic",
+        "risk",
+        "identity",
+        "preference",
+        "constraint",
+        "context",
+        "quality",
+        "other",
+    }
+    for index, raw in enumerate(claims or []):
+        d = dict(raw or {})
+        scope = str(d.get("scope", "universal"))
+        category = str(d.get("category", "other"))
+        label = str(d.get("label", "") or "").strip()
+        evidence = str(d.get("evidence_text", "") or "").strip()
+        if scope not in allowed_scopes:
+            reason = "invalid_scope"
+        elif category not in allowed_categories:
+            reason = "invalid_category"
+        elif not label:
+            reason = "missing_label"
+        elif not evidence:
+            reason = "missing_evidence_text"
+        else:
+            dk = next(
+                (
+                    str(item.get("dedupe_key", ""))
+                    for item in normalize_open_claims([d], max_total=1)
+                    if isinstance(item, dict)
+                ),
+                "",
+            )
+            if not dk:
+                reason = "invalid_label_or_fields"
+            elif dk not in kept:
+                reason = "deduped_or_trimmed"
+            else:
+                continue
+        rejected.append(
+            {
+                "index": index,
+                "reason": reason,
+                "scope": scope,
+                "category": category,
+                "label": label[:32],
+                "evidence_text": evidence[:120],
+            }
+        )
+    return normalized, rejected
+
+
 def _default_world_llm():
     return get_world_llm()
 
@@ -152,10 +231,14 @@ def update_world_state(
         world["universal_domain"].update(u_dom_patch)
         world["negotiation"].update(n_dom_patch)
 
+        prev_universal_state = world.get("universal_state") or {}
         world["universal_state"] = merge_universal_state(
             world.get("universal_state") or {}, universal_patch
         )
-        world["open_claims"] = normalize_open_claims(open_claims, max_total=8)
+        world["open_claims"], rejected_claims = _normalize_open_claims_with_rejections(
+            open_claims,
+            max_total=8,
+        )
 
         if conversation_mode != "negotiation":
             world.setdefault("negotiation_v2", {})
@@ -168,7 +251,21 @@ def update_world_state(
         world["world_state_meta"]["updated_fields"] = sorted(
             list(u_dom_patch.keys()) + list(n_dom_patch.keys())
         )
-        meta = {**v3_meta, "extractor_version": "world_extractor_v4", "extractor_used": True, "extractor_failed": False, "v2_issues": v2_issues}
+        merged_changed_paths = sorted(
+            _flatten_paths(prev_universal_state) ^ _flatten_paths(world.get("universal_state") or {})
+        )
+        diff_paths = sorted(_flatten_paths(diff_world_state(base, world)))
+        meta = {
+            **v3_meta,
+            "extractor_version": "world_extractor_v4",
+            "extractor_used": True,
+            "extractor_failed": False,
+            "v2_issues": v2_issues,
+            "open_claims_kept_count": len(world.get("open_claims") or []),
+            "rejected_claims": rejected_claims,
+            "merged_changed_paths": merged_changed_paths,
+            "diff_paths": diff_paths,
+        }
         return world, meta
 
     except Exception as exc:
