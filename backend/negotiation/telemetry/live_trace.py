@@ -90,6 +90,19 @@ def build_trace_event(
     if belief_changed and "belief_buckets" in belief_updated_fields and "belief_buckets" not in belief_changed_keys:
         belief_changed_keys.append("belief_buckets")
 
+    belief_meta = trace_item.get("belief_update_meta") or {}
+    belief_diff_keys = sorted((trace_item.get("belief_diff") or {}).keys())
+    belief_updated_fields = [str(key) for key in (belief_meta.get("belief_updated_fields") or []) if key]
+    belief_changed = bool(
+        belief_diff_keys
+        or belief_changed_keys
+        or belief_meta.get("belief_merge_changed", False)
+    )
+    if not belief_diff_keys and belief_changed and belief_updated_fields:
+        belief_diff_keys = sorted(set(belief_updated_fields))
+    if belief_changed and "belief_buckets" in belief_updated_fields and "belief_buckets" not in belief_changed_keys:
+        belief_changed_keys.append("belief_buckets")
+
     return {
         "user_id": user_id,
         "session_id": session_id,
