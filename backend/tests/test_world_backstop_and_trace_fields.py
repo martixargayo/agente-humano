@@ -44,5 +44,26 @@ def test_world_backstop_adds_urgency_and_low_demand_claim_in_general_mode():
     assert "lo antes posible" in world["negotiation"]["urgency_text"].lower()
     labels = [c.get("label") for c in world.get("open_claims", [])]
     assert "market_demand_uncertainty" in labels
-    assert "urgency_regex_backstop" in (meta.get("backstop_reasons") or [])
+    reasons = meta.get("backstop_reasons") or []
+    assert "time_pressure_backstop" in reasons
+    assert "market_demand_concern_backstop" in reasons
 
+
+def test_world_backstop_detects_financial_urgency_with_short_term_phrase():
+    deps = _FakeDeps(
+        '{"schema_version":"world_extractor_v3",'
+        '"universal_domain_patch":{"tone_signal":"neutral"},'
+        '"negotiation_domain_patch":{},'
+        '"universal_patch":{},"open_claims":[]}'
+    )
+    world, meta = update_world_state(
+        default_world_state(),
+        "necesito dinero y liquidez a corto plazo",
+        turn_count=1,
+        conversation_mode="general",
+        deps=deps,
+    )
+    assert world["negotiation"]["urgency_claimed"] is True
+    assert world["negotiation"]["urgency_reason"] == "financial_need"
+    reasons = meta.get("backstop_reasons") or []
+    assert "urgency_financial_backstop" in reasons

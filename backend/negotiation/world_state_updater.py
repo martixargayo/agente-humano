@@ -93,16 +93,42 @@ def _normalize_open_claims_with_rejections(claims: list | None, max_total: int =
     return normalized, rejected
 
 
-_URGENCY_PATTERNS = (
+_URGENCY_FINANCIAL_PATTERNS = (
+    r"\bnecesito dinero\b",
+    r"\bme hace falta dinero\b",
+    r"\bme falta dinero\b",
+    r"\bnecesito liquidez\b",
+    r"\bliquidez\b",
+    r"\bnecesito efectivo\b",
+    r"\burgent[ea]? por dinero\b",
+)
+_TIME_PRESSURE_PATTERNS = (
+    r"\ba corto plazo\b",
     r"\blo antes posible\b",
     r"\bcuanto antes\b",
     r"\burgent[ea]?\b",
     r"\bnecesito vender ya\b",
     r"\bme urge\b",
+    r"\best[ae] semana\b",
+    r"\bhoy\b",
+    r"\byen\s*24h\b",
+    r"\ben\s+\d+\s+d[ií]as\b",
+)
+_TRANSACTION_CONTEXT_PATTERNS = (
+    r"\bvend\w*\b",
+    r"\bcompr\w*\b",
+    r"\bcambi\w*\b",
+    r"\bdinero\b",
+    r"\bm[oó]vil\b",
+    r"\bcoche\b",
 )
 _LOW_DEMAND_PATTERNS = (
+    r"\bestoy preocupad[oa]\b",
     r"\bme preocupa\b",
-    r"\bnadie quiere\b",
+    r"\bme inquieta\b",
+    r"\bno encuentro comprador\b",
+    r"\bnadie me lo compra\b",
+    r"\bnadie quiere comprar\b",
     r"\bno se vende\b",
     r"\bno lo compra nadie\b",
 )
@@ -115,13 +141,20 @@ def _apply_world_backstop(user_message: str, n_dom_patch: dict, open_claims: lis
     patch = dict(n_dom_patch or {})
     claims = list(open_claims or [])
 
-    urgency_hit = any(re.search(pat, lower) for pat in _URGENCY_PATTERNS)
+    financial_hit = any(re.search(pat, lower) for pat in _URGENCY_FINANCIAL_PATTERNS)
+    time_hit = any(re.search(pat, lower) for pat in _TIME_PRESSURE_PATTERNS)
+    transaction_context_hit = any(re.search(pat, lower) for pat in _TRANSACTION_CONTEXT_PATTERNS)
+
+    urgency_hit = financial_hit or (time_hit and transaction_context_hit)
     if urgency_hit and not patch.get("urgency_claimed"):
         patch["urgency_claimed"] = True
         patch["urgency_text"] = text[:120]
         if not patch.get("urgency_reason"):
-            patch["urgency_reason"] = "expresion_urgencia"
-        reasons.append("urgency_regex_backstop")
+            patch["urgency_reason"] = "financial_need" if financial_hit else "time_pressure"
+        if financial_hit:
+            reasons.append("urgency_financial_backstop")
+        if time_hit and transaction_context_hit:
+            reasons.append("time_pressure_backstop")
 
     low_demand_hit = any(re.search(pat, lower) for pat in _LOW_DEMAND_PATTERNS)
     if low_demand_hit:
@@ -143,7 +176,7 @@ def _apply_world_backstop(user_message: str, n_dom_patch: dict, open_claims: lis
                     "source": "heuristic",
                 }
             )
-            reasons.append("low_demand_open_claim_backstop")
+            reasons.append("market_demand_concern_backstop")
 
     return patch, claims, reasons
 
