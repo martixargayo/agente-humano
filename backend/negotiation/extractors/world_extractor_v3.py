@@ -60,19 +60,20 @@ def extract_world_patch_llm_v3(
     n_patch = dict(data.get("negotiation_domain_patch") or {})
     universal_patch = dict(data.get("universal_patch") or {})
     open_claims = list(data.get("open_claims") or [])
+    raw_u_keys = sorted(u_patch.keys())
+    raw_n_keys = sorted(n_patch.keys())
 
     u_allowed = set(ALLOWED_UNIVERSAL_DOMAIN_KEYS)
     for k in list(u_patch.keys()):
         if k not in u_allowed:
             u_patch.pop(k, None)
+    dropped_u_keys = sorted([k for k in raw_u_keys if k not in u_allowed])
 
     n_allowed = set(ALLOWED_NEGOTIATION_DOMAIN_KEYS)
     for k in list(n_patch.keys()):
         if k not in n_allowed:
             n_patch.pop(k, None)
-
-    if conversation_mode != "negotiation":
-        n_patch = {}
+    dropped_n_keys = sorted([k for k in raw_n_keys if k not in n_allowed])
 
     meta = {
         "extractor_version": "world_extractor_v3",
@@ -83,5 +84,19 @@ def extract_world_patch_llm_v3(
         "open_claims_spec": OPEN_CLAIMS_SPEC,
         "universal_domain_spec": UNIVERSAL_DOMAIN_SPEC,
         "negotiation_domain_spec": NEGOTIATION_DOMAIN_SPEC,
+        "raw_llm_patch_keys": {
+            "universal_domain": raw_u_keys,
+            "negotiation_domain": raw_n_keys,
+        },
+        "filtered_patch_keys": {
+            "universal_domain": sorted(u_patch.keys()),
+            "negotiation_domain": sorted(n_patch.keys()),
+            "universal_patch": sorted(universal_patch.keys()),
+        },
+        "dropped_patch_keys": {
+            "universal_domain": dropped_u_keys,
+            "negotiation_domain": dropped_n_keys,
+        },
+        "open_claims_raw_count": len(open_claims),
     }
     return u_patch, n_patch, universal_patch, open_claims, meta

@@ -86,8 +86,35 @@ def _step_clamp(prev: float, new: float, max_step: float) -> float:
 
 
 def _interaction_strong(world: dict, world_diff: dict | None) -> bool:
-    del world, world_diff
+    interaction = (world or {}).get("universal_v2", {}).get("interaction", {}) if isinstance(world, dict) else {}
+    if float(interaction.get("friction", 0.0) or 0.0) >= 0.35:
+        return True
+    if float(interaction.get("commitment_signal", 0.0) or 0.0) >= 0.35:
+        return True
+    if isinstance(world_diff, dict):
+        domain = world_diff.get("domain", {}) if isinstance(world_diff.get("domain"), dict) else {}
+        if "universal_state" in domain or "open_claims" in domain:
+            return True
     return False
+
+
+def _micro_negotiation_patch_from_world(world_state: dict, prev_belief: dict) -> dict:
+    patch: dict = {}
+    neg = (world_state or {}).get("negotiation", {}) if isinstance(world_state, dict) else {}
+    uni = (world_state or {}).get("universal_state", {}) if isinstance(world_state, dict) else {}
+    open_claims = (world_state or {}).get("open_claims", []) if isinstance(world_state, dict) else []
+    prev_stance = ((prev_belief or {}).get("negotiation", {}) or {}).get("stance", {})
+    time_pressure = float(prev_stance.get("time_pressure", 0.5) or 0.5)
+    if neg.get("urgency_claimed"):
+        time_pressure = max(time_pressure, 0.7)
+    goal_txt = str(((uni.get("goal") or {}).get("summary", "")) if isinstance(uni, dict) else "").lower()
+    if "antes posible" in goal_txt or "cuanto antes" in goal_txt or "urg" in goal_txt:
+        time_pressure = max(time_pressure, 0.68)
+    if any((c or {}).get("label") == "market_demand_uncertainty" for c in (open_claims or []) if isinstance(c, dict)):
+        time_pressure = max(time_pressure, 0.65)
+    if time_pressure > float(prev_stance.get("time_pressure", 0.5) or 0.5):
+        patch["stance"] = {"time_pressure": min(time_pressure, 1.0)}
+    return patch
 
 
 def extract_belief_patch_llm_v3(
@@ -257,7 +284,11 @@ def update_belief_state(
 
     neg_new = previous.get("negotiation") or {}
     if conversation_mode != "negotiation":
-        neg_patch = {}
+        micro_patch = _micro_negotiation_patch_from_world(world_state, previous)
+        if micro_patch:
+            neg_patch = _deep_merge_dict_limited(neg_patch, micro_patch, max_depth=2, max_keys=40)
+        else:
+            neg_patch = {}
     if neg_patch:
         neg_new = _deep_merge_dict_limited(neg_new, neg_patch, max_depth=3, max_keys=120)
 
