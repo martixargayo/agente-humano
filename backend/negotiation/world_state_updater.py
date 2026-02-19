@@ -520,6 +520,9 @@ def update_world_state(
         world["world_state_meta"]["error"] = f"{type(exc).__name__}: {exc}"
         world["world_state_meta"]["extractor_failed"] = True
         world = world_v1_to_v2(world)
+        offer_reasons = _merge_negotiation_v2_terms(world, user_message)
+        if offer_reasons:
+            backstop_reasons = sorted(list(set(backstop_reasons + offer_reasons)))
         world, v2_issues = normalize_world_state_v2(world)
         meta = {"extractor_used": True, "extractor_failed": True, "error": str(exc), "v2_issues": v2_issues}
         return world, meta
