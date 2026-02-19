@@ -540,6 +540,7 @@ class GateState(TypedDict):
     last_world_refresh_turn: int
     last_belief_refresh_turn: int
     last_planner_refresh_turn: int
+    world_buckets_fingerprint_prev: str
     world_skip_count: int
     belief_skip_count: int
     planner_skip_count: int
@@ -617,6 +618,15 @@ def default_world_state() -> WorldState:
             "leverage_claims": [],
             "evidence": [],
             "agreement_state": {"state": "none", "next_step": "", "open_points": [], "confidence": 0.0},
+        },
+        "world_buckets": {
+            "offers": [],
+            "concessions": [],
+            "constraints": [],
+            "interests": [],
+            "claims": [],
+            "requests": [],
+            "context": [],
         },
         "universal_state": default_universal_state(),
         "open_claims": [],
@@ -792,6 +802,7 @@ def default_progress_state() -> ProgressState:
             "last_world_refresh_turn": 0,
             "last_belief_refresh_turn": 0,
             "last_planner_refresh_turn": 0,
+            "world_buckets_fingerprint_prev": "",
             "world_skip_count": 0,
             "belief_skip_count": 0,
             "planner_skip_count": 0,

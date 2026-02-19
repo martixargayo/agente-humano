@@ -70,4 +70,4 @@ def test_gate_world_opens_on_interaction_changed():
         modality="voice",
     )
     assert skip is False
-    assert reason == "interaction_changed"
+    assert reason == "always_refresh_user_turn"
