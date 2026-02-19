@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Any, Tuple
 
 from .llm_clients import get_world_llm
@@ -134,9 +135,17 @@ _LOW_DEMAND_PATTERNS = (
 )
 
 
+
+
+def _normalize_text(text: str) -> str:
+    txt = str(text or "").lower()
+    txt = unicodedata.normalize("NFKD", txt)
+    txt = "".join(ch for ch in txt if not unicodedata.combining(ch))
+    txt = re.sub(r"\s+", " ", txt).strip()
+    return txt
 def _apply_world_backstop(user_message: str, n_dom_patch: dict, open_claims: list[dict]) -> tuple[dict, list[dict], list[str]]:
     text = str(user_message or "")
-    lower = text.lower()
+    lower = _normalize_text(text)
     reasons: list[str] = []
     patch = dict(n_dom_patch or {})
     claims = list(open_claims or [])
@@ -185,18 +194,18 @@ def _apply_world_backstop(user_message: str, n_dom_patch: dict, open_claims: lis
 
 def _extract_offer_terms_patch(user_message: str) -> tuple[dict, list[str]]:
     text = str(user_message or "").strip()
-    lower = text.lower()
+    lower = _normalize_text(text)
     reasons: list[str] = []
     patch: dict = {}
 
+    future_axis = r"(futuro|manana|largo plazo|despues)"
+    present_axis = r"(hoy|ahora|corto plazo|inmediat\w*)"
     tradeoff = bool(
         re.search(r"\ba cambio de\b", lower)
         or re.search(r"\bsi me das\b", lower)
-        or (
-            re.search(r"\bm[aá]s\b", lower)
-            and re.search(r"\bmenos\b", lower)
-            and re.search(r"\b(hoy|ma[ñn]ana|futuro)\b", lower)
-        )
+        or re.search(r"\b(sacrific\w*|renunci\w*|ced\w*|cambi\w*)\b.*\b(para|por)\b", lower)
+        or re.search(rf"\b{future_axis}\b.*\b{present_axis}\b", lower)
+        or re.search(rf"\b{present_axis}\b.*\b{future_axis}\b", lower)
     )
     if not tradeoff:
         return patch, reasons
@@ -205,7 +214,11 @@ def _extract_offer_terms_patch(user_message: str) -> tuple[dict, list[str]]:
     offer = {
         "side": "seller",
         "kind": "condition",
-        "value": {"give": "menos_dinero_futuro", "get": "mas_dinero_hoy"},
+        "value": {
+            "give": "coste_futuro",
+            "get": "liquidez_hoy",
+            "unknown_amounts": True,
+        },
         "terms": [
             {"dimension": "price", "timing": "future", "direction": "down"},
             {"dimension": "price", "timing": "today", "direction": "up"},
@@ -216,8 +229,12 @@ def _extract_offer_terms_patch(user_message: str) -> tuple[dict, list[str]]:
         "confidence": 0.7,
     }
     patch = {
-        "subject": {"item": "intercambio_economico", "context": text[:180], "attributes": {"tradeoff": True}},
+        "subject": {"item": "cashflow_tradeoff", "context": text[:180], "attributes": {"tradeoff": True}},
         "offers": [offer],
+        "interests": [
+            {"side": "seller", "category": "time", "text": "liquidez inmediata", "confidence": 0.72},
+            {"side": "seller", "category": "price", "text": "acepta coste futuro", "confidence": 0.62},
+        ],
         "concessions": [
             {
                 "side": "seller",
@@ -284,11 +301,15 @@ def apply_world_skip_fallback(prev_world: WorldState, user_message: str, turn_co
         reasons.extend(offer_reasons)
     world, issues = normalize_world_state_v2(world)
     changed = diff_world_state(base, world)
+    if changed:
+        world.setdefault("world_state_meta", {})["last_update_source"] = "fallback"
+        world.setdefault("world_state_meta", {})["updated_fields"] = sorted(list((world.get("negotiation") or {}).keys()))
     meta = {
         "extractor_used": False,
         "extractor_skipped": True,
         "fallback_applied": bool(changed),
         "fallback_reasons": reasons,
+        "backstop_reasons": reasons,
         "v2_issues": issues,
         "diff_paths": sorted(_flatten_paths(changed)),
     }

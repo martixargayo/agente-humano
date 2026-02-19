@@ -113,8 +113,16 @@ def _micro_negotiation_patch_from_world(world_state: dict, prev_belief: dict) ->
         time_pressure = max(time_pressure, 0.68)
     if any((c or {}).get("label") == "market_demand_uncertainty" for c in (open_claims or []) if isinstance(c, dict)):
         time_pressure = max(time_pressure, 0.65)
+    urgency_text = str(neg.get("urgency_text", "") or "").strip()
+    urgency_reason = str(neg.get("urgency_reason", "") or "").strip()
     if time_pressure > float(prev_stance.get("time_pressure", 0.5) or 0.5):
         patch["stance"] = {"time_pressure": min(time_pressure, 1.0)}
+    if neg.get("urgency_claimed") and urgency_reason:
+        patch.setdefault("reasons", {})["urgency_signal"] = {
+            "weight": min(1.0, max(0.4, time_pressure)),
+            "confidence": 0.7,
+            "evidence": urgency_text[:180],
+        }
     return patch
 
 
@@ -277,6 +285,8 @@ def update_belief_state(
         "belief_update_failed": False,
         "belief_update_error": "",
         "belief_update_skipped": False,
+        "belief_llm_failed": False,
+        "belief_updated_via_fallback": False,
     }
 
     if not force_update:
@@ -306,9 +316,10 @@ def update_belief_state(
         meta.update(meta_patch)
     except Exception as exc:
         logger.warning("belief_state_updater_unexpected_error=%s", exc)
-        meta["belief_update_failed"] = True
+        meta["belief_llm_failed"] = True
         meta["belief_update_error"] = str(exc)
         meta["belief_fallback_used"] = True
+        meta["belief_updated_via_fallback"] = True
         uni_patch, neg_patch = {}, {}
 
     if pre_uni_patch:

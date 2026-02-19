@@ -21,6 +21,21 @@ def test_gate_world_breaks_interval_hold_on_tradeoff_language():
     assert "semantic_tradeoff_trigger" in (meta.get("changed_keys") or [])
 
 
+def test_gate_world_detects_tradeoff_with_typo_sacrficar():
+    skipped, reason, _meta = gate_world(
+        user_message="estoy dispuesto a sacrficar dinero futuro para tener mas dinero hoy",
+        turn_count=2,
+        last_refresh_turn=2,
+        prev_features={"len_bucket": "41_plus"},
+        current_features={"len_bucket": "41_plus"},
+        interval=3,
+        modality="text",
+        conversation_mode="general",
+    )
+    assert skipped is False
+    assert reason == "semantic_tradeoff_trigger"
+
+
 def test_world_skip_fallback_populates_negotiation_v2_terms():
     prev = default_world_state()
     world, meta = apply_world_skip_fallback(
@@ -32,6 +47,7 @@ def test_world_skip_fallback_populates_negotiation_v2_terms():
     assert "offer_tradeoff_backstop" in (meta.get("fallback_reasons") or [])
     assert len(world.get("negotiation_v2", {}).get("offers", [])) >= 1
     assert world.get("negotiation_v2", {}).get("subject", {}).get("item")
+    assert world.get("world_state_meta", {}).get("last_update_source") == "fallback"
 
 
 def test_belief_update_uses_prepatch_when_llm_parse_fails(monkeypatch):
@@ -45,6 +61,8 @@ def test_belief_update_uses_prepatch_when_llm_parse_fails(monkeypatch):
 
     world = default_world_state()
     world["negotiation"]["urgency_claimed"] = True
+    world["negotiation"]["urgency_reason"] = "time_pressure"
+    world["negotiation"]["urgency_text"] = "necesito cerrar hoy"
     belief, meta = update_belief_state(
         prev_belief_state=default_belief_state(),
         prev_world_state=default_world_state(),
@@ -57,8 +75,8 @@ def test_belief_update_uses_prepatch_when_llm_parse_fails(monkeypatch):
         force_update=True,
         conversation_mode="general",
     )
-    assert meta.get("belief_update_failed") is True
-    assert meta.get("belief_fallback_used") is True
+    assert meta.get("belief_llm_failed") is True
+    assert meta.get("belief_updated_via_fallback") is True
     assert belief["negotiation"]["stance"]["time_pressure"] > 0.5
 
 

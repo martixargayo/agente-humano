@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Any, Dict, Tuple
 
 from .shared import input_shape_changed_materially
@@ -27,15 +28,28 @@ def _fingerprint_changed_fields(
     return out
 
 
+def _normalize_text(text: str) -> str:
+    txt = str(text or "").lower()
+    txt = unicodedata.normalize("NFKD", txt)
+    txt = "".join(ch for ch in txt if not unicodedata.combining(ch))
+    txt = re.sub(r"\s+", " ", txt).strip()
+    return txt
+
+
 def _has_tradeoff_signal(user_message: str) -> bool:
-    lower_msg = (user_message or "").lower()
+    msg = _normalize_text(user_message)
+    future_axis = r"(futuro|manana|largo plazo|despues)"
+    present_axis = r"(hoy|ahora|corto plazo|inmediat\\w*)"
     return bool(
-        re.search(r"\ba cambio de\b", lower_msg)
-        or re.search(r"\bsi me das\b", lower_msg)
+        re.search(r"\ba cambio de\b", msg)
+        or re.search(r"\bsi me das\b", msg)
+        or re.search(r"\b(sacr\\w*|renunci\\w*|ced\\w*|cambi\\w*)\b.*\b(para|por)\b", msg)
+        or re.search(rf"\b{future_axis}\b.*\b{present_axis}\b", msg)
+        or re.search(rf"\b{present_axis}\b.*\b{future_axis}\b", msg)
         or (
-            re.search(r"\bm[aá]s\b", lower_msg)
-            and re.search(r"\bmenos\b", lower_msg)
-            and re.search(r"\b(hoy|ma[ñn]ana|futuro)\b", lower_msg)
+            re.search(r"\bmas\b", msg)
+            and (re.search(r"\bmenos\b", msg) or re.search(r"\bsacr\\w*\b", msg))
+            and re.search(rf"\b({present_axis}|{future_axis})\b", msg)
         )
     )
 

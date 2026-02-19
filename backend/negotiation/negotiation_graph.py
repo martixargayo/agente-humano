@@ -634,6 +634,8 @@ def run_negotiation_agent(
             "backstop_reasons": new_graph_state.get("extractor_meta", {}).get(
                 "backstop_reasons", []
             ),
+            "fallback_applied": bool(new_graph_state.get("extractor_meta", {}).get("fallback_applied", False)),
+            "fallback_reasons": new_graph_state.get("extractor_meta", {}).get("fallback_reasons", []),
             "unknown_claims_added_count": int(
                 new_graph_state.get("extractor_meta", {}).get("unknown_claims_added_count", 0)
                 or 0

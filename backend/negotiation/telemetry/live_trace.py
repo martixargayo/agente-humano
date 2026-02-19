@@ -96,6 +96,8 @@ def build_trace_event(
         "merged_changed_paths": trace_item.get("merged_changed_paths") or [],
         "diff_paths": trace_item.get("diff_paths") or [],
         "backstop_reasons": trace_item.get("backstop_reasons") or [],
+        "fallback_applied": bool(trace_item.get("fallback_applied", False)),
+        "fallback_reasons": trace_item.get("fallback_reasons") or [],
         "unknown_claims_added_count": int(trace_item.get("unknown_claims_added_count") or 0),
         "extractor_confidence_summary": trace_item.get("extractor_confidence_summary") or {},
         "top_evidence_v2": trace_item.get("top_evidence_v2") or [],
