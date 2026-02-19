@@ -91,3 +91,63 @@ def test_list_recent_trace_events_aggregates_sessions():
     assert events[-1]["session_id"] == "s-new"
     assert events[-1]["turn"] == 2
     assert events[-1]["final_reply"] == "respuesta"
+
+
+def test_build_trace_event_marks_belief_change_from_meta_backstop_when_diff_empty():
+    session = SessionState(user_id="u1", session_id="s1")
+    session.last_updated = datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+    trace_item = {
+        "turn": 5,
+        "belief_prev": {"schema_version": "v2", "universal": {}, "negotiation": {}},
+        "belief_new": {"schema_version": "v2", "universal": {}, "negotiation": {}},
+        "belief_diff": {},
+        "belief_update_meta": {
+            "belief_merge_changed": True,
+            "belief_updated_fields": ["belief_buckets"],
+        },
+    }
+
+    event = build_trace_event(
+        user_id="u1",
+        session_id="s1",
+        session=session,
+        trace_index=0,
+        trace_item=trace_item,
+    )
+
+    assert event["belief_changed"] is True
+    assert "belief_buckets" in event["belief_changed_keys"]
+    assert "belief_buckets" in event["belief_diff_keys"]
+
+
+def test_build_trace_event_detects_belief_buckets_when_present_in_snapshots():
+    session = SessionState(user_id="u1", session_id="s1")
+    session.last_updated = datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+    trace_item = {
+        "turn": 6,
+        "belief_prev": {
+            "schema_version": "v2",
+            "universal": {},
+            "negotiation": {},
+            "belief_buckets": {"hypotheses": ["A"]},
+        },
+        "belief_new": {
+            "schema_version": "v2",
+            "universal": {},
+            "negotiation": {},
+            "belief_buckets": {"hypotheses": ["A", "B"]},
+        },
+        "belief_diff": {"belief_buckets": {"before": {"hypotheses": ["A"]}, "after": {"hypotheses": ["A", "B"]}}},
+    }
+
+    event = build_trace_event(
+        user_id="u1",
+        session_id="s1",
+        session=session,
+        trace_index=0,
+        trace_item=trace_item,
+    )
+
+    assert event["belief_changed"] is True
+    assert "belief_buckets" in event["belief_changed_keys"]
+    assert "belief_buckets" in event["belief_diff_keys"]
