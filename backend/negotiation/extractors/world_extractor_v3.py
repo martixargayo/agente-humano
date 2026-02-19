@@ -67,14 +67,13 @@ def extract_world_patch_llm_v3(
     for k in list(u_patch.keys()):
         if k not in u_allowed:
             u_patch.pop(k, None)
+    dropped_u_keys = sorted([k for k in raw_u_keys if k not in u_allowed])
 
     n_allowed = set(ALLOWED_NEGOTIATION_DOMAIN_KEYS)
     for k in list(n_patch.keys()):
         if k not in n_allowed:
             n_patch.pop(k, None)
-
-    if conversation_mode != "negotiation":
-        n_patch = {}
+    dropped_n_keys = sorted([k for k in raw_n_keys if k not in n_allowed])
 
     meta = {
         "extractor_version": "world_extractor_v3",
@@ -93,6 +92,10 @@ def extract_world_patch_llm_v3(
             "universal_domain": sorted(u_patch.keys()),
             "negotiation_domain": sorted(n_patch.keys()),
             "universal_patch": sorted(universal_patch.keys()),
+        },
+        "dropped_patch_keys": {
+            "universal_domain": dropped_u_keys,
+            "negotiation_domain": dropped_n_keys,
         },
         "open_claims_raw_count": len(open_claims),
     }

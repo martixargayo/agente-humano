@@ -614,6 +614,9 @@ def run_negotiation_agent(
             "filtered_patch_keys": new_graph_state.get("extractor_meta", {}).get(
                 "filtered_patch_keys", {}
             ),
+            "dropped_patch_keys": new_graph_state.get("extractor_meta", {}).get(
+                "dropped_patch_keys", {}
+            ),
             "open_claims_raw_count": int(
                 new_graph_state.get("extractor_meta", {}).get("open_claims_raw_count", 0) or 0
             ),
@@ -628,6 +631,13 @@ def run_negotiation_agent(
                 "merged_changed_paths", []
             ),
             "diff_paths": new_graph_state.get("extractor_meta", {}).get("diff_paths", []),
+            "backstop_reasons": new_graph_state.get("extractor_meta", {}).get(
+                "backstop_reasons", []
+            ),
+            "unknown_claims_added_count": int(
+                new_graph_state.get("extractor_meta", {}).get("unknown_claims_added_count", 0)
+                or 0
+            ),
             "extractor_confidence_summary": new_graph_state.get("extractor_meta", {}).get(
                 "extractor_confidence_summary", {"min": 0.0, "avg": 0.0}
             ),

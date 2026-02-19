@@ -34,7 +34,7 @@ def test_filters_unknown_negotiation_domain_keys():
     assert n_patch == {"price_mentioned": True}
 
 
-def test_empties_negotiation_patch_when_not_negotiation():
+def test_keeps_negotiation_patch_when_not_negotiation():
     deps = _FakeDeps(
         '{"schema_version":"world_extractor_v3",'
         '"universal_domain_patch":{},'
@@ -44,4 +44,4 @@ def test_empties_negotiation_patch_when_not_negotiation():
     _u_patch, n_patch, _u, _claims, _meta = extract_world_patch_llm_v3(
         deps, "hola", {}, {}, "general", 1
     )
-    assert n_patch == {}
+    assert n_patch == {"price_mentioned": True}

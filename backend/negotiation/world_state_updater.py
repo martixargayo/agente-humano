@@ -1,6 +1,7 @@
 # backend/negotiation/world_state_updater.py
 from __future__ import annotations
 
+import re
 from typing import Any, Tuple
 
 from .llm_clients import get_world_llm
@@ -90,6 +91,61 @@ def _normalize_open_claims_with_rejections(claims: list | None, max_total: int =
             }
         )
     return normalized, rejected
+
+
+_URGENCY_PATTERNS = (
+    r"\blo antes posible\b",
+    r"\bcuanto antes\b",
+    r"\burgent[ea]?\b",
+    r"\bnecesito vender ya\b",
+    r"\bme urge\b",
+)
+_LOW_DEMAND_PATTERNS = (
+    r"\bme preocupa\b",
+    r"\bnadie quiere\b",
+    r"\bno se vende\b",
+    r"\bno lo compra nadie\b",
+)
+
+
+def _apply_world_backstop(user_message: str, n_dom_patch: dict, open_claims: list[dict]) -> tuple[dict, list[dict], list[str]]:
+    text = str(user_message or "")
+    lower = text.lower()
+    reasons: list[str] = []
+    patch = dict(n_dom_patch or {})
+    claims = list(open_claims or [])
+
+    urgency_hit = any(re.search(pat, lower) for pat in _URGENCY_PATTERNS)
+    if urgency_hit and not patch.get("urgency_claimed"):
+        patch["urgency_claimed"] = True
+        patch["urgency_text"] = text[:120]
+        if not patch.get("urgency_reason"):
+            patch["urgency_reason"] = "expresion_urgencia"
+        reasons.append("urgency_regex_backstop")
+
+    low_demand_hit = any(re.search(pat, lower) for pat in _LOW_DEMAND_PATTERNS)
+    if low_demand_hit:
+        exists = any(
+            isinstance(c, dict)
+            and c.get("label") == "market_demand_uncertainty"
+            and str(c.get("evidence_text", "")).strip()
+            for c in claims
+        )
+        if not exists:
+            claims.append(
+                {
+                    "scope": "other_domain",
+                    "category": "risk",
+                    "label": "market_demand_uncertainty",
+                    "value": "preocupacion_baja_demanda",
+                    "confidence": 0.75,
+                    "evidence_text": text[:180],
+                    "source": "heuristic",
+                }
+            )
+            reasons.append("low_demand_open_claim_backstop")
+
+    return patch, claims, reasons
 
 
 def _default_world_llm():
@@ -228,6 +284,11 @@ def update_world_state(
         )
         world["universal_domain"] = dict(world.get("universal_domain") or {})
         world["negotiation"] = dict(world.get("negotiation") or {})
+        n_dom_patch, open_claims, backstop_reasons = _apply_world_backstop(
+            user_message,
+            n_dom_patch,
+            open_claims,
+        )
         world["universal_domain"].update(u_dom_patch)
         world["negotiation"].update(n_dom_patch)
 
@@ -240,9 +301,20 @@ def update_world_state(
             max_total=8,
         )
 
-        if conversation_mode != "negotiation":
-            world.setdefault("negotiation_v2", {})
-            world["negotiation_v2"] = default_world_state().get("negotiation_v2", {})
+        dropped_keys = (v3_meta.get("dropped_patch_keys") or {}) if isinstance(v3_meta, dict) else {}
+        unknown_claims = list((world.get("world_state_meta") or {}).get("unknown_claims") or [])
+        for key in dropped_keys.get("universal_domain", []) + dropped_keys.get("negotiation_domain", []):
+            unknown_claims.append(
+                {
+                    "kind": "unmapped_domain_key",
+                    "key": str(key),
+                    "source": "llm",
+                    "turn_idx": turn_idx,
+                    "evidence_text": str(user_message or "")[:120],
+                }
+            )
+        world["world_state_meta"]["unknown_claims"] = unknown_claims[-50:]
+
         world = world_v1_to_v2(world)
         world, v2_issues = normalize_world_state_v2(world)
         world["world_state_meta"]["last_update_source"] = "llm"
@@ -265,6 +337,8 @@ def update_world_state(
             "rejected_claims": rejected_claims,
             "merged_changed_paths": merged_changed_paths,
             "diff_paths": diff_paths,
+            "backstop_reasons": backstop_reasons,
+            "unknown_claims_added_count": len(dropped_keys.get("universal_domain", [])) + len(dropped_keys.get("negotiation_domain", [])),
         }
         return world, meta
 
