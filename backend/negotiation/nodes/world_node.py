@@ -11,7 +11,7 @@ from ..gate_utils import (
 from ..mode_inference import update_conversation_mode
 from ..schemas import default_progress_state, default_world_state
 from ..perception.interaction_signals import _previous_user_message, extract_interaction_signals
-from ..world_state_updater import diff_world_state, update_world_state
+from ..world_state_updater import apply_world_skip_fallback, diff_world_state, update_world_state
 
 
 def world_updater_node(state: dict) -> dict:
@@ -60,7 +60,7 @@ def world_updater_node(state: dict) -> dict:
     )
     if world_skipped:
         gate_state["world_skip_count"] = int(gate_state.get("world_skip_count", 0) or 0) + 1
-        world_state = dict(prev_world)
+        world_state, fallback_meta = apply_world_skip_fallback(prev_world, user_message, turn_count=turn_count)
         state["world_state"] = world_state
         state["world_diff"] = diff_world_state(prev_world, world_state)
         state["extractor_meta"] = {
@@ -69,6 +69,7 @@ def world_updater_node(state: dict) -> dict:
             "skip_reason": skip_reason,
             "world_gate_features": gate_meta,
             "interaction_updated": True,
+            **fallback_meta,
         }
     else:
         world_state, extractor_meta = update_world_state(
