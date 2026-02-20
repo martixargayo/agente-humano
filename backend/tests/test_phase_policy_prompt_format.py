@@ -63,3 +63,16 @@ def test_phase_policy_prompt_is_minimal_without_policy_catalog_blobs():
     assert "{policy_catalog_with_phases}" not in PHASE_POLICY_USER_PROMPT
     assert "{world_diff}" not in PHASE_POLICY_USER_PROMPT
     assert "{belief_cues}" not in PHASE_POLICY_USER_PROMPT
+
+def test_phase_policy_prompt_is_minimal_without_legacy_blobs():
+    legacy_placeholders = [
+        "{policy_catalog}",
+        "{policy_catalog_with_phases}",
+        "{world_diff}",
+        "{belief_cues}",
+        "{constraints_struct}",
+        "{policy_plan_summary}",
+    ]
+    for placeholder in legacy_placeholders:
+        assert placeholder not in PHASE_POLICY_USER_PROMPT
+
