@@ -26,7 +26,7 @@ def _planner_state(progress_state):
     }
 
 
-def test_planner_not_called_when_continue_policy_with_active_plan():
+def test_planner_called_when_continue_policy_without_advance_step_even_with_active_plan():
     called = {"count": 0}
 
     def fake_plan_phase_policy(**_kwargs):
@@ -40,7 +40,38 @@ def test_planner_not_called_when_continue_policy_with_active_plan():
     progress_state["active_plan"] = {
         "plan_id": "p1",
         "current_step_idx": 0,
-        "steps": [{"what_to_do": "seguir", "safe_mode": "normal", "ask": []}],
+        "steps": [{"what_to_do": "seguir", "safe_mode": "normal", "ask": []}, {"what_to_do": "cerrar", "safe_mode": "normal", "ask": []}],
+        "plan_constraints": {"max_questions_per_turn": 2, "must_avoid": [], "stop_conditions": []},
+    }
+
+    state = _planner_state(progress_state)
+    state["deps"] = SimpleNamespace(plan_phase_policy=fake_plan_phase_policy)
+
+    result = phase_policy_planner_node(state)
+
+    assert called["count"] == 1
+    assert result["planner_meta"]["planner_skipped"] is False
+    assert result["planner_debug"]["llm_call"]["planner_llm_called"] is True
+    assert any(call.get("name") == "planner_llm" for call in (result.get("trace_runtime", {}).get("llm_calls", [])))
+
+
+
+def test_planner_skipped_when_advance_step_true_with_active_plan():
+    called = {"count": 0}
+
+    def fake_plan_phase_policy(**_kwargs):
+        called["count"] += 1
+        return {}, {}, {}
+
+    progress_state = default_progress_state()
+    policy_state = default_policy_state()
+    policy_state.update({"status": "active", "planner_request": "continue_policy"})
+    progress_state["policy_state"] = policy_state
+    progress_state["advance_step"] = True
+    progress_state["active_plan"] = {
+        "plan_id": "p1",
+        "current_step_idx": 0,
+        "steps": [{"what_to_do": "seguir", "safe_mode": "normal", "ask": []}, {"what_to_do": "cerrar", "safe_mode": "normal", "ask": []}],
         "plan_constraints": {"max_questions_per_turn": 2, "must_avoid": [], "stop_conditions": []},
     }
 
@@ -51,6 +82,7 @@ def test_planner_not_called_when_continue_policy_with_active_plan():
 
     assert called["count"] == 0
     assert result["planner_meta"]["planner_skipped"] is True
+    assert result["planner_meta"]["planner_skip_reason"] == "advance_step_without_planner"
 
 
 def test_planner_called_when_replan_policy():

@@ -65,3 +65,48 @@ def test_world_judge_degrades_progress_without_evidence(monkeypatch):
     )
     assert judgement["plan_status"] == "continue_same_step"
     assert judgement["degrade_reason"] == "missing_evidence_for_progress"
+
+
+def test_world_judge_degrades_completed_without_evidence(monkeypatch):
+    content = '{"schema_version":"v1","plan_status":"completed","why":"ok","evidence":[],"confidence":0.9,"missing_signals":[],"safety_flags":[],"degraded":false,"degrade_reason":""}'
+    monkeypatch.setattr("negotiation.nodes.world_node.get_planner_llm", lambda: _FakeModel(content=content))
+    judgement, _meta = world_judge_llm(
+        active_plan={"plan_id": "p1", "current_step_idx": 0, "steps": [{}]},
+        user_message="hola",
+        objective="obj",
+        world_state={},
+        recent_history="",
+        turn_count=1,
+    )
+    assert judgement["plan_status"] == "continue_same_step"
+    assert judgement["degrade_reason"] == "missing_evidence_for_progress"
+
+
+def test_world_judge_payload_includes_context_fields(monkeypatch):
+    captured = {"payload": None}
+
+    class _CaptureModel:
+        def invoke(self, messages):
+            user_payload = messages[1].content
+            captured["payload"] = user_payload
+            return _FakeResp('{"schema_version":"v1","plan_status":"continue_same_step","why":"ok","evidence":[],"confidence":0.5,"missing_signals":[],"safety_flags":[],"degraded":false,"degrade_reason":""}')
+
+    monkeypatch.setattr("negotiation.nodes.world_node.get_planner_llm", lambda: _CaptureModel())
+    world_judge_llm(
+        active_plan={"plan_id": "p1", "current_step_idx": 0, "steps": [{"success_criteria": ["x"]}]},
+        user_message="u",
+        objective="obj",
+        world_state={},
+        recent_history="hist",
+        turn_count=2,
+        assistant_last_message="a",
+        memory_short="ms",
+        memory_long="ml",
+        progress_state={"no_progress_same_step_turns": 3, "loop_flags": ["continue_loop"]},
+    )
+    assert captured["payload"] is not None
+    assert '"assistant_last_message": "a"' in captured["payload"]
+    assert '"memory_short": "ms"' in captured["payload"]
+    assert '"memory_long": "ml"' in captured["payload"]
+    assert '"progress_counters"' in captured["payload"]
+

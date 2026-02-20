@@ -114,6 +114,8 @@ def phase_policy_planner_node(state: dict) -> dict:
     policy_state = progress_state.get("policy_state", {})
     planner_request = str(policy_state.get("planner_request", "replan_policy") or "replan_policy")
     advance_step = bool(progress_state.get("advance_step", False))
+    policy_plan_judgement = state.get("policy_plan_judgement") if isinstance(state.get("policy_plan_judgement"), dict) else {}
+    judgement_skip_planner = bool(policy_plan_judgement.get("skip_planner", False))
     previous_plan = progress_state.get("active_plan") if isinstance(progress_state.get("active_plan"), dict) else None
 
     allowed_all, filtered_reasons = allowed_policy_ids_with_reasons(
@@ -135,12 +137,14 @@ def phase_policy_planner_node(state: dict) -> dict:
         "planner_skip_reason": "",
         "planner_request": planner_request,
         "advance_step": advance_step,
+        "judgement_skip_planner": judgement_skip_planner,
         "allowed_policy_ids": allowed_all,
     }
     planner_debug = {
         "inputs": {
             "planner_request": planner_request,
             "advance_step": advance_step,
+            "judgement_skip_planner": judgement_skip_planner,
             "active_plan_status": str(progress_state.get("active_plan_status", "none") or "none"),
             "active_plan_plan_id": plan_id_before,
             "active_plan_current_step_idx": step_idx_before,
@@ -173,7 +177,8 @@ def phase_policy_planner_node(state: dict) -> dict:
     active_plan_status = "none"
     active_plan = previous_plan
 
-    if planner_request == "continue_policy" and previous_plan:
+    skip_allowed = bool(advance_step or judgement_skip_planner)
+    if planner_request == "continue_policy" and previous_plan and skip_allowed:
         if advance_step:
             advanced_plan, did_advance = _advance_step(previous_plan)
             if did_advance and advanced_plan:
@@ -194,11 +199,11 @@ def phase_policy_planner_node(state: dict) -> dict:
             active_plan["updated_turn"] = turn_count
             active_plan_status = "active"
             planner_skipped = True
-            skip_reason = "continue_policy"
-            planner_debug["gate_decision"]["gate_path"] = "skip_continue_policy"
-            planner_debug["gate_decision"]["gate_reason_codes"] = ["continue_policy"]
+            skip_reason = "judge_skip_planner"
+            planner_debug["gate_decision"]["gate_path"] = "skip_judge_flag"
+            planner_debug["gate_decision"]["gate_reason_codes"] = ["judge_skip_planner_true"]
 
-    if planner_request != "continue_policy" or not active_plan:
+    if not planner_skipped:
         started = time.perf_counter()
         try:
             phase_candidate, policy_decision, planner_call_meta = deps.plan_phase_policy(
