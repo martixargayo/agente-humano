@@ -26,7 +26,7 @@ def progress_updater_node(state: dict) -> dict:
     ]
     frozen_before = {path: _safe_get_path(state, path) for path in frozen_checks}
     prev_progress = state.get("progress_state") or {}
-    progress_state = update_progress_state(
+    progress_state, progress_core_debug = update_progress_state(
         prev_progress=prev_progress,
         policy_decision=state["policy_decision"],
         last_policy_executed=state.get("last_policy_executed"),
@@ -35,6 +35,7 @@ def progress_updater_node(state: dict) -> dict:
         prev_belief_state=state.get("prev_belief_state"),
         belief_state=state["belief_state"],
         turn_count=state.get("turn_count", 0),
+        include_debug=True,
     )
     render_state = progress_state.get("render_state") or default_render_state()
     persona, scene, style = resolve_render_profiles(render_state)
@@ -67,12 +68,7 @@ def progress_updater_node(state: dict) -> dict:
         "frozen_fields_check": frozen_summary,
         "frozen_fields_error": frozen_error,
         "anti_loop_signals": {
-            "continue_loop_detected": "continue_loop" in loop_flags,
-            "continue_loop_counter": int(progress_state.get("no_progress_same_step_turns", 0) or 0),
-            "replan_churn_detected": "replan_churn" in loop_flags,
-            "replan_churn_window": int(progress_state.get("plan_id_changes_window", 0) or 0),
-            "plan_id_changes_count": int(progress_state.get("plan_id_changes_window", 0) or 0),
-            "judgement_missing_streak": int(progress_state.get("judgement_missing_streak", 0) or 0),
+            **(progress_core_debug.get("anti_loop_signals") or {}),
         },
         "telemetry_updates": {
             "counters_incremented": [p for p in persistence_paths if p.endswith("turns_in_same_mode") or p.endswith("plan_id_changes_window") or p.endswith("no_progress_same_step_turns")],

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 
 from langchain_core.prompts import ChatPromptTemplate
 from prompts import PHASE_POLICY_SYSTEM_PROMPT, PHASE_POLICY_USER_PROMPT
@@ -132,6 +133,8 @@ def plan_phase_policy(
         allowed_policy_ids = [safe_neutral_policy_id()]
 
     meta = {
+        "planner_llm_called": False,
+        "planner_latency_ms": 0,
         "planner_failed": False,
         "planner_error": "",
         "planner_error_stage": "",
@@ -141,6 +144,7 @@ def plan_phase_policy(
         "allowed_policy_ids": allowed_policy_ids,
     }
 
+    started = time.perf_counter()
     try:
         messages = _planner_prompt.format_messages(
             world_state=json.dumps(world_state, ensure_ascii=False),
@@ -162,6 +166,7 @@ def plan_phase_policy(
         structured = get_planner_llm().with_structured_output(PhasePolicyDecisionModel)
 
         result = structured.invoke(messages)
+        meta["planner_llm_called"] = True
         payload = result.model_dump()
         phase_candidate = {
             "phase": payload.get("phase", "climate"),
@@ -186,8 +191,11 @@ def plan_phase_policy(
         if normalized.get("policy_id") not in allowed_policy_ids and allowed_policy_ids:
             normalized["policy_id"] = allowed_policy_ids[0]
             meta["policy_normalization_changed"] = True
+        meta["planner_latency_ms"] = int((time.perf_counter() - started) * 1000)
         return phase_candidate, normalized, meta
     except Exception as exc:
+        meta["planner_llm_called"] = True
+        meta["planner_latency_ms"] = int((time.perf_counter() - started) * 1000)
         meta["planner_failed"] = True
         meta["planner_fallback_used"] = True
         meta["planner_error"] = str(exc)

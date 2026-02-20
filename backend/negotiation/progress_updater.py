@@ -41,7 +41,8 @@ def update_progress_state(
     prev_belief_state: BeliefState | None,
     belief_state: BeliefState,
     turn_count: int = 0,
-) -> ProgressState:
+    include_debug: bool = False,
+) -> ProgressState | tuple[ProgressState, dict]:
     progress = default_progress_state()
     if prev_progress:
         progress.update(prev_progress)
@@ -112,4 +113,17 @@ def update_progress_state(
     progress["loop_flags"] = loop_flags
     progress["last_progress_update_turn"] = turn_count
 
-    return progress
+    if not include_debug:
+        return progress
+
+    debug = {
+        "anti_loop_signals": {
+            "continue_loop_detected": "continue_loop" in loop_flags,
+            "continue_loop_counter": int(progress.get("no_progress_same_step_turns", 0) or 0),
+            "replan_churn_detected": "replan_churn" in loop_flags,
+            "replan_churn_window": int(progress.get("plan_id_changes_window", 0) or 0),
+            "plan_id_changes_count": int(progress.get("plan_id_changes_window", 0) or 0),
+            "judgement_missing_streak": int(progress.get("judgement_missing_streak", 0) or 0),
+        },
+    }
+    return progress, debug
