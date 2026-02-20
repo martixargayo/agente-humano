@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 
 from ..context_utils import format_memory_block
 from ..elementos.render import resolve_render_profiles
@@ -17,6 +18,7 @@ from ..schemas import (
 )
 from ..state.deps import DEFAULT_DEPS
 from ..validator import validate_and_repair
+from ..telemetry.trace_runtime import record_llm_call
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +101,7 @@ def executor_node(state: dict) -> dict:
         else:
             constraints_struct = default_constraints_struct()
 
+    llm_started = time.perf_counter()
     executor_output = render_executor_output(
         state,
         deps=deps,
@@ -114,7 +117,14 @@ def executor_node(state: dict) -> dict:
         world_state=state.get("world_state", {}),
         user_message=user_message,
     )
-
+    record_llm_call(
+        state,
+        name="executor_llm",
+        node="executor",
+        started=llm_started,
+        ok=True,
+        model=None,
+    )
     state["executor_output"] = executor_output
     state["assistant_message"] = executor_output.get("response_text", "")
     state["response"] = state["assistant_message"]
@@ -166,6 +176,31 @@ def executor_node(state: dict) -> dict:
     validator_meta = dict(validator_meta)
     validator_meta["executor_instruction_compliance"] = "pass" if not instruction_reasons else "repaired"
     state["executor_validator_meta"] = validator_meta
+
+    state["executor_debug_v2"] = {
+        "policy_context": {
+            "executed_policy_id": policy_id,
+            "micro_goal": str((state.get("policy_decision") or {}).get("micro_goal", ""))[:180],
+            "constraints_struct": constraints_struct,
+            "safety_checks_applied": list((state.get("executor_instruction") or {}).get("must_avoid", []))[:6],
+        },
+        "render_pipeline": {
+            "prompt_template_id": "EXECUTOR_USER_PROMPT_v1",
+            "validators_run": [
+                {"name": "validate_and_repair", "ok": not bool(violations), "issues_count": len(violations)},
+                {"name": "executor_instruction_enforcement", "ok": not bool(instruction_reasons), "issues_count": len(instruction_reasons)},
+            ],
+            "post_repair": {
+                "applied": bool(validator_meta.get("fallback_applied")),
+                "reason": ",".join(instruction_reasons)[:140],
+            },
+        },
+        "output_meta": {
+            "response_length": len(state.get("assistant_message", "")),
+            "constraints_respected": not bool(violations),
+            "sanitizer_flags": list(validator_meta.get("validation_flags", []))[:8],
+        },
+    }
     override_policy_id = validator_meta.get("override_policy_id")
     state["override_policy_id"] = override_policy_id
     if override_policy_id:
