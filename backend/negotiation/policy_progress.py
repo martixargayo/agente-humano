@@ -57,8 +57,8 @@ def update_policy_state(
     progress_state["advance_step"] = status == "advance_step"
 
     if status == "continue_same_step":
-        policy_state["planner_request"] = "continue_policy"
-        meta["transition"] = "retry"
+        policy_state["planner_request"] = "replan_policy"
+        meta["transition"] = "force_planner"
     elif status == "advance_step":
         policy_state["planner_request"] = "continue_policy"
         meta["transition"] = "advance"

@@ -36,10 +36,12 @@ Devuelve SOLO JSON válido con schema v1:
   "missing_signals":[string],
   "safety_flags":[string],
   "degraded":boolean,
-  "degrade_reason":string
+  "degrade_reason":string,
+  "skip_planner":boolean
 }
 Regla dura: si plan_status es advance_step o completed debe existir evidence no vacía.
 Si no hay evidencia suficiente para avanzar/completar, usa continue_same_step.
+Regla de loop: si el mismo paso se repite sin progreso por varios turnos, considera interrupted_replan.
 """.strip()
 
 
@@ -71,6 +73,7 @@ def _fallback_judgement(
             "safety_flags": [],
             "degraded": True,
             "degrade_reason": degrade_reason or "judge_llm_failure_no_plan",
+            "skip_planner": False,
         }
 
     plan_id = str(active_plan.get("plan_id", ""))[:40]
@@ -91,6 +94,7 @@ def _fallback_judgement(
         "safety_flags": [],
         "degraded": True,
         "degrade_reason": degrade_reason or "judge_llm_failure_with_plan",
+        "skip_planner": False,
     }
 
 
@@ -135,6 +139,8 @@ def _normalize_judgement(candidate: object, *, active_plan: dict | None, turn_co
         degraded = True
         degrade_reason = "missing_evidence_for_progress"
 
+    skip_planner = bool(candidate.get("skip_planner", False))
+
     return {
         "schema_version": "v1",
         "turn_idx": turn_count,
@@ -149,6 +155,7 @@ def _normalize_judgement(candidate: object, *, active_plan: dict | None, turn_co
         "safety_flags": safety_flags[:6],
         "degraded": degraded,
         "degrade_reason": degrade_reason[:80],
+        "skip_planner": skip_planner,
     }
 
 
@@ -160,6 +167,10 @@ def world_judge_llm(
     world_state: dict,
     recent_history: str,
     turn_count: int,
+    assistant_last_message: str = "",
+    memory_short: str = "",
+    memory_long: str = "",
+    progress_state: dict | None = None,
 ) -> tuple[dict, dict]:
     current_step = None
     if isinstance(active_plan, dict):
@@ -169,13 +180,24 @@ def world_judge_llm(
             cur = max(0, min(cur, len(steps) - 1))
             if isinstance(steps[cur], dict):
                 current_step = steps[cur]
+    progress_state = progress_state or {}
     payload = {
         "turn_idx": turn_count,
         "objective": str(objective or "")[:240],
         "active_plan": active_plan if isinstance(active_plan, dict) else None,
         "current_step": current_step,
         "user_message": str(user_message or "")[:1000],
+        "assistant_last_message": str(assistant_last_message or "")[:1000],
         "recent_history": str(recent_history or "")[-1200:],
+        "memory_short": str(memory_short or "")[-1200:],
+        "memory_long": str(memory_long or "")[-1200:],
+        "progress_counters": {
+            "judgement_missing_streak": int(progress_state.get("judgement_missing_streak", 0) or 0),
+            "no_progress_same_step_turns": int(progress_state.get("no_progress_same_step_turns", 0) or 0),
+            "turns_in_same_mode": int(progress_state.get("turns_in_same_mode", 0) or 0),
+            "plan_id_changes_window": int(progress_state.get("plan_id_changes_window", 0) or 0),
+            "loop_flags": list(progress_state.get("loop_flags", []) or []),
+        },
         "world_state_summary": {
             "world_buckets": (world_state or {}).get("world_buckets", {}),
             "world_state_meta": (world_state or {}).get("world_state_meta", {}),
@@ -306,6 +328,10 @@ def world_updater_node(state: dict) -> dict:
         world_state=state.get("world_state", {}),
         recent_history=state.get("recent_history_text", ""),
         turn_count=turn_count,
+        assistant_last_message=state.get("last_assistant_message", ""),
+        memory_short=state.get("short_memory", ""),
+        memory_long=state.get("long_memory", ""),
+        progress_state=progress_state,
     )
     record_llm_call_ms(
         state,
