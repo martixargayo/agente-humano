@@ -427,7 +427,7 @@ def negotiation_trace_panel():
         const card = document.createElement('div');
         card.className = 'item';
         const when = new Date(evt.updated_at).toLocaleTimeString();
-        const gateChoices = (evt.gate_choices || []).map(g => `${g.gate}: ${g.selected}`).join(' | ') || 'sin gates booleanos';
+        const gateChoices = (evt.gate_choices || []).map(g => `${g.gate}: enabled=${g.gate_enabled ? 'true' : 'false'} · decision=${g.gate_decision}${g.gate_reason ? ` · reason=${g.gate_reason}` : ''}`).join(' | ') || 'sin gates booleanos';
         card.innerHTML = `
           <div class="head">
             <strong>${plannerFail ? '⚠️' : '✅'} turno ${evt.turn} · ${evt.policy || 'policy:n/a'}</strong>

@@ -24,19 +24,28 @@ def _changed_unchanged(prev: Any, new: Any) -> tuple[list[str], list[str]]:
 
 def _gate_choices(gates: dict[str, Any]) -> list[dict[str, Any]]:
     choices: list[dict[str, Any]] = []
+    skip_reasons = gates.get("skip_reasons") if isinstance(gates.get("skip_reasons"), dict) else {}
     for gate_key in sorted(gates.keys()):
         value = gates.get(gate_key)
-        if isinstance(value, bool):
-            selected = "enabled" if value else "skipped"
-            if gate_key.endswith("_skipped"):
-                selected = "skipped" if value else "enabled"
-            choices.append(
-                {
-                    "gate": gate_key,
-                    "selected": selected,
-                    "value": value,
-                }
-            )
+        if not isinstance(value, bool):
+            continue
+        gate_enabled = True
+        gate_decision = "skipped" if value else "executed"
+        gate_reason = ""
+        logical_gate = gate_key
+        if gate_key.endswith("_skipped"):
+            logical_gate = gate_key.removesuffix("_skipped")
+            gate_reason = str(skip_reasons.get(logical_gate, "") or "")
+        choices.append(
+            {
+                "gate": logical_gate,
+                "gate_enabled": gate_enabled,
+                "gate_decision": gate_decision,
+                "gate_reason": gate_reason,
+                "raw_flag": gate_key,
+                "raw_value": value,
+            }
+        )
     return choices
 
 
@@ -123,7 +132,9 @@ def build_trace_event(
         "belief_noop_reason": str(belief_meta.get("belief_noop_reason", "")),
         "belief_changed": belief_changed,
         "gates_triggered": sorted(
-            key for key, value in gate_meta.items() if isinstance(value, bool) and value
+            key.removesuffix("_skipped")
+            for key, value in gate_meta.items()
+            if isinstance(value, bool) and value
         ),
         "gate_choices": _gate_choices(gate_meta),
         "gates": gate_meta,

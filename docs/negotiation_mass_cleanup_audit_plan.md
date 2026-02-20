@@ -195,7 +195,7 @@ Para negociación específicamente (`/negociar`), no se detectó segundo pipelin
 
 | Candidato | Por qué candidato | Evidencia actual | Cómo demostrar no-uso | Riesgo | Retirada |
 |---|---|---|---|---|---|
-| Prompt legacy world v3 (`elementos/world_extractor_v3_prompts.py`) | Pipeline actual usa extractor v4; v3 aparece como componente heredado | Import en `extractors/world_extractor_v3.py`; runtime principal llama v4 (`world_state_updater.py:16,352`) | contador en `extract_world_patch_llm_v3` y fail test si >0 con flag deprecación | Medio | PR2 shadow + PR3 delete si 0 |
+| Prompt legacy world v3 (`elementos/world_extractor_v3_prompts.py`) | Pipeline actual usa extractor v4; v3 aparece como componente heredado | Import en `extractors/world_extractor_v3.py`; runtime principal llama v4 (`world_state_updater.py:16,352`) | contador de invocaciones legacy y fail test si >0 con flag deprecación | Medio | PR2 shadow + PR3 delete si 0 |
 | `world_observations*` normalización en `validation.py` | parece sostener compat histórica | escritura en `validation.py:953-999`; lectura productiva directa limitada | contadores de lectura por key_path + snapshot de trace minimal | Medio | PR2 stop-read, PR3 delete |
 | `world_derived` normalización | idem | escritura `validation.py:1005-1010`; reader runtime no identificado | mismo método | Medio | PR2/PR3 |
 | `evidence_items` legacy | aparece como write de normalize | `validation.py:945` | contador + rg CI allowlist | Bajo/Medio | PR3 |

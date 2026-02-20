@@ -54,4 +54,45 @@ def test_world_bucket_merge_dedupes_exact_raw_text():
     merged, updated = merge_world_buckets_append_mostly(prev, patch, turn_idx=2)
     assert len(merged["world_buckets"]["offers"]) == 1
     assert merged["world_buckets"]["offers"][0]["confidence"] == 0.9
-    assert updated == []
+    assert updated == ["offers"]
+
+
+def test_world_turn_idx_is_monotonic_even_if_turn_count_repeats():
+    deps = _FakeDeps(
+        '{"schema_version":"world_extractor_v4","world_buckets_patch":{"offers":[{"text":"Nueva oferta","confidence":0.8,"raw_text":"nueva oferta","source_turn":2}],"concessions":[],"constraints":[],"interests":[],"claims":[],"requests":[],"context":[]},"meta":{}}'
+    )
+    prev = default_world_state()
+    prev["world_state_meta"]["turn_idx"] = 3
+    world, _ = update_world_state(prev, "nueva oferta", turn_count=3, conversation_mode="general", deps=deps)
+    assert world["world_state_meta"]["turn_idx"] == 4
+
+
+def test_world_extractor_preserves_low_nonzero_confidence():
+    deps = _FakeDeps(
+        '{"schema_version":"world_extractor_v4","world_buckets_patch":{"offers":[{"text":"Oferta baja","confidence":0.2,"raw_text":"oferta baja","source_turn":1}],"concessions":[],"constraints":[],"interests":[],"claims":[],"requests":[],"context":[]},"meta":{}}'
+    )
+    world, _ = update_world_state(default_world_state(), "oferta baja", turn_count=1, conversation_mode="general", deps=deps)
+    item = world["world_buckets"]["offers"][0]
+    assert item["confidence"] == 0.2
+    assert item["confidence_defaulted"] is False
+
+
+def test_world_extractor_preserves_zero_confidence_without_defaulting():
+    deps = _FakeDeps(
+        '{"schema_version":"world_extractor_v4","world_buckets_patch":{"offers":[{"text":"Oferta cero","confidence":0.0,"raw_text":"oferta cero","source_turn":1}],"concessions":[],"constraints":[],"interests":[],"claims":[],"requests":[],"context":[]},"meta":{}}'
+    )
+    world, _ = update_world_state(default_world_state(), "oferta cero", turn_count=1, conversation_mode="general", deps=deps)
+    item = world["world_buckets"]["offers"][0]
+    assert item["confidence"] == 0.0
+    assert item["confidence_defaulted"] is False
+
+
+def test_world_extractor_missing_confidence_defaults_and_marks_flag():
+    deps = _FakeDeps(
+        '{"schema_version":"world_extractor_v4","world_buckets_patch":{"offers":[{"text":"Oferta sin confidence","raw_text":"oferta sin confidence","source_turn":1}],"concessions":[],"constraints":[],"interests":[],"claims":[],"requests":[],"context":[]},"meta":{}}'
+    )
+    world, meta = update_world_state(default_world_state(), "oferta sin confidence", turn_count=1, conversation_mode="general", deps=deps)
+    item = world["world_buckets"]["offers"][0]
+    assert item["confidence"] == 0.6
+    assert item["confidence_defaulted"] is True
+    assert meta["confidence_defaulted_count"] == 1
