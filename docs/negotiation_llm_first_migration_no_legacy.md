@@ -142,3 +142,23 @@ DoD:
 - trace minimal sin raw legacy;
 - guardrail activo;
 - tests verdes.
+
+## Clarity/Vagueness signals (v3)
+
+- Root cause del 500 detectado: en `phase_state_updater` se usaba `clarity_vague` en el gating de fase sin definirse tras la eliminación de lecturas legacy.
+- Solución v3-only: `compute_clarity_signals(...)` ahora calcula `clarity_vague` únicamente desde `world_buckets`.
+- Regla determinista aplicada:
+  - `clarity_vague=True` cuando no existen señales en `offers|claims|requests|constraints|interests|concessions`.
+  - `clarity_vague=False` cuando hay al menos 1 señal.
+- El resultado se consume en el gating de fase y también se publica en `planner_signals.clarity_vague`.
+
+## Guardrails
+
+- Test unitario de fase/clarity para asegurar:
+  - no hay `NameError`,
+  - comportamiento estable en estado vago,
+  - avance de fase cuando hay señal.
+- Guardrail anti legacy actualizado para prohibir también `world_observations_v2` fuera de la allowlist de migración.
+- Verificación recomendada:
+  - `rg -n "clarity_vague|is_vague|world_observations_v2|universal_v2|negotiation_v2" backend/negotiation backend/tests`
+  - `pytest -q backend/tests/test_clarity_signals_phase.py backend/tests/test_state_migration_v3.py backend/tests/test_no_legacy_keys_in_negotiation_runtime.py`

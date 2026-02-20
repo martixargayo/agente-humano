@@ -17,20 +17,16 @@ def test_phase_state_updater_gates_recovery_on_off():
     progress = default_progress_state()
     prev = progress["phase_state"]
     world = default_world_state()
-    world["universal_v2"] = {"clarity": {"is_vague": False}, "affect": {"confidence": 0.5}}
-    world["negotiation_v2"] = {"interests": ["x"], "constraints": [], "offers": [], "agreement_state": {}}
+    world["world_buckets"]["claims"] = [{"text": "necesito más detalle", "raw_text": "necesito más detalle", "confidence": 0.7, "source_turn": 1}]
 
     belief = default_belief_state()
-    belief["universal"] = {
-        "dynamics": {"interaction_health": "tense"},
-        "behavior_guidance": {"conflict_risk": 0.7},
-    }
+    belief["planner_signals"] = {"interaction_health": "tense", "conflict_risk": 0.7}
     normalized, _meta = postprocess_phase_candidate(prev, {"phase": "interests", "confidence": 0.8}, 1, world, belief, progress)
     assert normalized["recovery_mode"] is True
     assert normalized["phase_effective"] == "climate"
 
-    belief["universal"]["dynamics"]["interaction_health"] = "stable"
-    belief["universal"]["behavior_guidance"]["conflict_risk"] = 0.1
+    belief["planner_signals"]["interaction_health"] = "stable"
+    belief["planner_signals"]["conflict_risk"] = 0.1
     progress["loop_flags"] = []
     normalized2, _meta2 = postprocess_phase_candidate(normalized, {"phase": "interests", "confidence": 0.8}, 2, world, belief, progress)
     normalized3, _meta3 = postprocess_phase_candidate(normalized2, {"phase": "interests", "confidence": 0.8}, 3, world, belief, progress)
@@ -41,7 +37,7 @@ def test_allowed_policy_ids_respects_phase_effective():
     progress = default_progress_state()
     progress["phase_state"].update({"phase": "formalize", "phase_effective": "formalize", "recovery_mode": False})
     world = default_world_state()
-    world["negotiation"]["price_mentioned"] = True
+    world["world_state_meta"]["price_mentioned"] = True
     allowed = allowed_policy_ids(world, default_belief_state(), progress, {})
     assert "formalize_recap_confirm" in allowed
     assert "tradeoff_offer" not in allowed

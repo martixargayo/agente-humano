@@ -85,22 +85,15 @@ def summarize_belief_state_for_executor(belief_state: object) -> dict:
         return {"summary": {}, "truncated": False, "keys": []}
 
     allowlist = [
-        "universal.dynamics.interaction_health",
-        "universal.dynamics.escalation",
-        "universal.dynamics.looping",
-        "universal.dynamics.evasion",
-        "universal.dynamics.commitment",
-        "universal.metrics.trust",
-        "universal.metrics.cooperation",
-        "universal.metrics.clarity",
-        "universal.metrics.engagement",
-        "negotiation.stance",
-        "negotiation.reasons",
-        "universal.behavior_guidance",
-        "negotiation.hypotheses",
-        "negotiation.hypotheses_structural",
-        "negotiation.hypotheses_observational",
-        "negotiation.evaluations",
+        "planner_signals.interaction_health",
+        "planner_signals.conflict_risk",
+        "planner_signals.recommended_move",
+        "planner_signals.recovery_mode",
+        "planner_signals.clarity_vague",
+        "belief_buckets.hypotheses",
+        "belief_buckets.strategy_notes",
+        "belief_buckets.risk_flags",
+        "belief_buckets.watch_items",
     ]
 
     summary: dict = {}
@@ -118,21 +111,13 @@ def summarize_belief_state_for_executor(belief_state: object) -> dict:
     if len(payload) > _BELIEF_SUMMARY_MAX_CHARS:
         truncated = True
         drop_order = [
-            "negotiation.tom",
-            "negotiation.evaluations",
-            "negotiation.hypotheses_observational",
-            "negotiation.hypotheses_structural",
-            "negotiation.hypotheses",
-            "negotiation.reasons",
-            "negotiation.stance",
-            "universal.metrics.engagement",
-            "universal.metrics.clarity",
-            "universal.metrics.cooperation",
-            "universal.metrics.trust",
-            "universal.dynamics.evasion",
-            "universal.dynamics.looping",
-            "universal.dynamics.commitment",
-            "universal.dynamics.escalation",
+            "belief_buckets.watch_items",
+            "belief_buckets.strategy_notes",
+            "belief_buckets.hypotheses",
+            "belief_buckets.risk_flags",
+            "planner_signals.recommended_move",
+            "planner_signals.conflict_risk",
+            "planner_signals.recovery_mode",
         ]
         for drop in drop_order:
             _delete_nested(summary, drop.split("."))
@@ -143,9 +128,9 @@ def summarize_belief_state_for_executor(belief_state: object) -> dict:
     if len(payload) > _BELIEF_SUMMARY_MAX_CHARS:
         truncated = True
         summary = {}
-        health = _get_nested(belief_state, ["universal", "dynamics", "interaction_health"])
+        health = _get_nested(belief_state, ["planner_signals", "interaction_health"])
         if _should_include(health):
-            summary = {"universal": {"dynamics": {"interaction_health": _trim_value(health)}}}
+            summary = {"planner_signals": {"interaction_health": _trim_value(health)}}
         payload = _compact_json(summary)
 
     final_keys = [key for key in included if _get_nested(summary, key.split(".")) is not None]

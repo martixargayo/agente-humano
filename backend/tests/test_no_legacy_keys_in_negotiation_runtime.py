@@ -10,6 +10,7 @@ BANNED = [
     "open_claims",
     "evidence_items",
     "world_observations",
+    "world_observations_v2",
     "world_derived",
     "intent_step",
     "intent_transition",

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from .phase_migration import normalize_phase_candidate
 from .schemas import NegotiationPhase, PhaseState, default_progress_state
+from .perception.clarity_signals import compute_clarity_signals
 from .validation import normalize_phase_state
 
 _PHASE_ORDER: list[NegotiationPhase] = ["climate", "interests", "options", "adjust", "formalize"]
@@ -64,6 +65,8 @@ def _gate_effective_phase(base_phase: NegotiationPhase, world_state: dict, belie
     claims_n = _len_value(buckets.get("claims", [])) if isinstance(buckets, dict) else 0
     if claims_n >= 3 and interests_n == 0:
         return "interests"
+
+    clarity_vague = bool(compute_clarity_signals(world_state, belief_state).get("clarity_vague", False))
 
     phase = base_phase
     affect_conf = 0.5 if claims_n > 0 else 0.0

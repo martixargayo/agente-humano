@@ -9,6 +9,7 @@ from typing import Any
 
 from .schemas import BeliefState, WorldState, default_belief_state
 from .validation import normalize_belief_buckets
+from .perception.clarity_signals import compute_clarity_signals
 
 logger = logging.getLogger(__name__)
 
@@ -66,11 +67,13 @@ def _derive_planner_signals(world_state: dict, belief_buckets: dict, progress_lo
     elif len(constraints) > 0:
         recommended_move = "tradeoff"
 
+    clarity = compute_clarity_signals(world_state)
     return {
         "interaction_health": interaction_health,
         "conflict_risk": round(float(conflict_risk), 3),
         "recommended_move": recommended_move,
         "recovery_mode": bool(interaction_health in {"tense", "stalled"} or looping),
+        "clarity_vague": bool(clarity.get("clarity_vague", False)),
     }
 
 
