@@ -97,6 +97,9 @@ def test_planner_skips_when_continue_policy_and_active_plan_present():
     result = phase_policy_planner_node(dict(state))
     assert called["planner"] == 0
     assert result["planner_meta"]["planner_skipped"] is True
+    assert result["planner_debug"]["gate_decision"]["gate_path"] == "skip_continue_policy"
+    assert result["planner_debug"]["policy_selection"]["allowed_policy_ids_count"] >= 1
+    assert result["planner_debug"]["executor_instruction_contract"]["plan_id"] == "p1"
 
 
 def test_progress_updater_tracks_continue_loop_flag():

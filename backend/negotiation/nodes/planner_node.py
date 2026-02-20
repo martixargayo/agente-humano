@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import time
+
 from ..phase_state_updater import postprocess_phase_candidate
-from ..policy_planner import allowed_policy_ids
+from ..policy_planner import allowed_policy_ids_with_reasons
 from ..schemas import default_policy_decision, default_progress_state
 from ..state.deps import DEFAULT_DEPS
 from ..validation import normalize_policy_decision
@@ -112,12 +114,14 @@ def phase_policy_planner_node(state: dict) -> dict:
     advance_step = bool(progress_state.get("advance_step", False))
     previous_plan = progress_state.get("active_plan") if isinstance(progress_state.get("active_plan"), dict) else None
 
-    allowed_all = allowed_policy_ids(
+    allowed_all, filtered_reasons = allowed_policy_ids_with_reasons(
         state["world_state"],
         state["belief_state"],
         progress_state,
         state.get("hard_constraints_struct"),
     )
+    plan_id_before = str((previous_plan or {}).get("plan_id", ""))
+    step_idx_before = int((previous_plan or {}).get("current_step_idx", 0) or 0)
 
     planner_skipped = False
     skip_reason = ""
@@ -129,6 +133,36 @@ def phase_policy_planner_node(state: dict) -> dict:
         "planner_skip_reason": "",
         "planner_request": planner_request,
         "advance_step": advance_step,
+        "allowed_policy_ids": allowed_all,
+    }
+    planner_debug = {
+        "inputs": {
+            "planner_request": planner_request,
+            "advance_step": advance_step,
+            "active_plan_status": str(progress_state.get("active_plan_status", "none") or "none"),
+            "active_plan_plan_id": plan_id_before,
+            "active_plan_current_step_idx": step_idx_before,
+            "policy_plan_judgement_plan_status": str((state.get("policy_plan_judgement") or {}).get("plan_status", "")),
+            "policy_plan_judgement_degraded": bool((state.get("policy_plan_judgement") or {}).get("degraded", False)),
+        },
+        "gate_decision": {"gate_path": "", "gate_reason_codes": []},
+        "plan_handling": {},
+        "policy_selection": {
+            "allowed_policy_ids_count": len(allowed_all),
+            "filter_reasons": filtered_reasons,
+            "policy_pre_repair": None,
+            "policy_post_repair": None,
+            "repair_meta": {},
+        },
+        "llm_call": {
+            "planner_llm_called": False,
+            "planner_latency_ms": 0,
+            "planner_failed": False,
+            "planner_fallback_used": False,
+            "planner_error_stage": "",
+            "normalization_issues": [],
+        },
+        "executor_instruction_contract": {},
     }
 
     phase_candidate = None
@@ -146,17 +180,24 @@ def phase_policy_planner_node(state: dict) -> dict:
                 active_plan_status = "active"
                 planner_skipped = True
                 skip_reason = "advance_step_without_planner"
+                planner_debug["gate_decision"]["gate_path"] = "advance_step_no_llm"
+                planner_debug["gate_decision"]["gate_reason_codes"] = ["advance_step_true"]
             else:
                 planner_request = "replan_policy"
                 planner_meta["advance_step_out_of_range"] = True
+                planner_debug["gate_decision"]["gate_path"] = "replan_out_of_range"
+                planner_debug["gate_decision"]["gate_reason_codes"] = ["step_out_of_range"]
         else:
             active_plan, _ = _clamp_step(previous_plan)
             active_plan["updated_turn"] = turn_count
             active_plan_status = "active"
             planner_skipped = True
             skip_reason = "continue_policy"
+            planner_debug["gate_decision"]["gate_path"] = "skip_continue_policy"
+            planner_debug["gate_decision"]["gate_reason_codes"] = ["continue_policy"]
 
     if planner_request != "continue_policy" or not active_plan:
+        started = time.perf_counter()
         try:
             phase_candidate, policy_decision, planner_call_meta = deps.plan_phase_policy(
                 world_state=state["world_state"],
@@ -172,6 +213,7 @@ def phase_policy_planner_node(state: dict) -> dict:
                 allowed_policy_ids=allowed_all,
             )
             planner_meta.update(planner_call_meta)
+            planner_debug["llm_call"]["planner_llm_called"] = True
         except Exception as exc:
             planner_meta["planner_failed"] = True
             planner_meta["planner_fallback_used"] = True
@@ -184,6 +226,15 @@ def phase_policy_planner_node(state: dict) -> dict:
                 "signals": [],
                 "alternatives": [],
             }
+        planner_debug["llm_call"]["planner_latency_ms"] = int((time.perf_counter() - started) * 1000)
+        planner_debug["llm_call"]["planner_failed"] = bool(planner_meta.get("planner_failed", False))
+        planner_debug["llm_call"]["planner_fallback_used"] = bool(planner_meta.get("planner_fallback_used", False))
+        planner_debug["llm_call"]["planner_error_stage"] = str(planner_meta.get("planner_error_stage", ""))
+        planner_debug["llm_call"]["normalization_issues"] = list(planner_meta.get("issues", []))[:12]
+
+        if not planner_debug["gate_decision"]["gate_path"]:
+            planner_debug["gate_decision"]["gate_path"] = "replan_call_llm"
+            planner_debug["gate_decision"]["gate_reason_codes"] = ["request_replan"]
 
         phase_effective, phase_meta = postprocess_phase_candidate(
             prev_phase_state=progress_state.get("phase_state"),
@@ -225,6 +276,26 @@ def phase_policy_planner_node(state: dict) -> dict:
     state["policy_decision"] = policy_decision
     state["planner_meta"] = planner_meta
     state["executor_instruction"] = _build_executor_instruction(active_plan)
+    plan_id_after = str((active_plan or {}).get("plan_id", ""))
+    step_idx_after = int((active_plan or {}).get("current_step_idx", 0) or 0)
+    planner_debug["plan_handling"] = {
+        "plan_reused": bool(plan_id_before and plan_id_before == plan_id_after),
+        "plan_id_before": plan_id_before,
+        "plan_id_after": plan_id_after,
+        "step_idx_before": step_idx_before,
+        "step_idx_after": step_idx_after,
+        "executor_instruction_derived_from_step_idx": int((state.get("executor_instruction") or {}).get("step_idx", 0) or 0),
+    }
+    planner_debug["policy_selection"]["policy_post_repair"] = state.get("policy_post_repair")
+    planner_debug["executor_instruction_contract"] = {
+        "plan_id": str((state.get("executor_instruction") or {}).get("plan_id", "")),
+        "step_idx": int((state.get("executor_instruction") or {}).get("step_idx", 0) or 0),
+        "safe_mode": str((state.get("executor_instruction") or {}).get("safe_mode", "normal")),
+        "must_avoid": list((state.get("executor_instruction") or {}).get("must_avoid", []))[:4],
+        "max_questions_per_turn": int((state.get("executor_instruction") or {}).get("max_questions_per_turn", 2) or 2),
+        "stop_conditions": list((state.get("executor_instruction") or {}).get("stop_conditions", []))[:4],
+    }
+    state["planner_debug"] = planner_debug
     state["progress_state"] = progress_state
     state["gate_meta"] = {
         "world_skipped": state.get("extractor_meta", {}).get("extractor_skipped", False),
