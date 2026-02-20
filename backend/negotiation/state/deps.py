@@ -7,12 +7,14 @@ from langchain_core.prompts import ChatPromptTemplate
 from prompts import SUMMARY_SYSTEM_PROMPT, SUMMARY_USER_PROMPT
 
 from ..llm_clients import get_executor_llm, get_summary_llm
+from ..telemetry.llm_usage import extract_llm_usage
 from ..phase_policy_planner import plan_phase_policy
 from ..belief_state_updater import update_belief_state
 from ..schemas import BeliefState, PolicyDecision
 
 
 PlanFn = Callable[..., Tuple[dict, PolicyDecision, dict]]
+_LAST_EXECUTE_META: dict[str, Any] = {}
 BeliefFn = Callable[..., Tuple[BeliefState, dict]]
 ExecuteFn = Callable[..., str]
 SummarizeFn = Callable[[str, str], str]
@@ -36,8 +38,14 @@ class AgentDeps:
 
 
 def _default_execute(messages: Any) -> str:
+    global _LAST_EXECUTE_META
     result = get_executor_llm().invoke(messages)
+    _LAST_EXECUTE_META = extract_llm_usage(result)
     return getattr(result, "content", str(result))
+
+
+def get_last_execute_meta() -> dict[str, Any]:
+    return dict(_LAST_EXECUTE_META)
 
 
 def _default_summarize(existing_summary: str, new_block: str) -> str:

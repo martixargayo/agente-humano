@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import os
 import time
 from typing import Any
@@ -84,8 +84,10 @@ def record_llm_call(
     error_stage: str = "",
     error: str = "",
 ) -> None:
-    end = time.perf_counter()
-    latency_ms = max(1, int((end - started) * 1000))
+    end_perf = time.perf_counter()
+    end_wall = datetime.now(timezone.utc)
+    latency_ms = max(1, int((end_perf - started) * 1000))
+    start_wall = end_wall - timedelta(milliseconds=latency_ms)
     record_llm_call_ms(
         state,
         name=name,
@@ -98,6 +100,8 @@ def record_llm_call(
         retry_count=retry_count,
         error_stage=error_stage,
         error=error,
+        start_ts=start_wall.isoformat(),
+        end_ts=end_wall.isoformat(),
     )
 
 
@@ -114,13 +118,17 @@ def record_llm_call_ms(
     retry_count: int = 0,
     error_stage: str = "",
     error: str = "",
+    start_ts: str | None = None,
+    end_ts: str | None = None,
+    queue_ms: int | None = None,
+    ttfb_ms: int | None = None,
 ) -> None:
     runtime = ensure_trace_runtime(state)
     call = {
         "name": str(name)[:48],
         "node": str(node)[:48],
-        "start_ts": _utc_now_iso(),
-        "end_ts": _utc_now_iso(),
+        "start_ts": str(start_ts or _utc_now_iso()),
+        "end_ts": str(end_ts or _utc_now_iso()),
         "latency_ms": max(1, int(latency_ms or 0)),
         "model": (str(model)[:80] if model else None),
         "tokens_in": tokens_in if isinstance(tokens_in, int) and tokens_in >= 0 else None,
@@ -129,6 +137,8 @@ def record_llm_call_ms(
         "ok": bool(ok),
         "error_stage": str(error_stage or "")[:48],
         "error": str(error or "")[:240],
+        "queue_ms": queue_ms if isinstance(queue_ms, int) and queue_ms >= 0 else None,
+        "ttfb_ms": ttfb_ms if isinstance(ttfb_ms, int) and ttfb_ms >= 0 else None,
     }
     runtime["llm_calls"].append(call)
     runtime["llm_calls"] = runtime["llm_calls"][:12]

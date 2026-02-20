@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import json
+import time
+from datetime import datetime, timezone
 from typing import Tuple
+
+from ..telemetry.llm_usage import extract_llm_usage
 
 WORLD_EXTRACTOR_V4_SYSTEM_PROMPT = """
 You are a strict JSON extractor for negotiation world buckets.
@@ -126,7 +130,9 @@ def extract_world_patch_llm_v4(
     turn_idx: int,
 ) -> Tuple[dict, dict]:
     del belief_state
+    dump_started = time.perf_counter()
     prev_world_state_json = json.dumps(prev_world_state or {}, ensure_ascii=False)
+    json_dump_prev_ms = int((time.perf_counter() - dump_started) * 1000)
     user_prompt = WORLD_EXTRACTOR_V4_USER_PROMPT
     user_prompt = user_prompt.replace("{conversation_mode}", str(conversation_mode))
     user_prompt = user_prompt.replace("{turn_idx}", str(int(turn_idx)))
@@ -137,7 +143,11 @@ def extract_world_patch_llm_v4(
         {"role": "user", "content": user_prompt},
     ]
 
+    invoke_started_perf = time.perf_counter()
+    invoke_started_wall = datetime.now(timezone.utc).isoformat()
     raw = deps.llm.invoke(messages) if hasattr(deps, "llm") else deps.execute(messages)
+    invoke_ended_wall = datetime.now(timezone.utc).isoformat()
+    invoke_latency_ms = int((time.perf_counter() - invoke_started_perf) * 1000)
     text = raw if isinstance(raw, str) else getattr(raw, "content", "")
     data = _safe_json_load(text)
 
@@ -213,4 +223,15 @@ def extract_world_patch_llm_v4(
         "avg": (sum(confidence_values) / len(confidence_values)) if confidence_values else None,
         "per_bucket": per_bucket,
     }
+    llm_usage = extract_llm_usage(raw)
+    meta["extractor_llm_latency_ms"] = int(max(0, invoke_latency_ms))
+    meta["extractor_llm_start_ts"] = invoke_started_wall
+    meta["extractor_llm_end_ts"] = invoke_ended_wall
+    meta["extractor_llm_model"] = llm_usage.get("model")
+    meta["extractor_llm_tokens_in"] = llm_usage.get("tokens_in")
+    meta["extractor_llm_tokens_out"] = llm_usage.get("tokens_out")
+    meta["extractor_llm_queue_ms"] = llm_usage.get("queue_ms")
+    meta["extractor_llm_ttfb_ms"] = llm_usage.get("ttfb_ms")
+    meta["world_json_dump_prev_ms"] = int(max(0, json_dump_prev_ms))
+    meta["prev_world_bytes"] = len(prev_world_state_json.encode("utf-8"))
     return patch, meta

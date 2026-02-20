@@ -673,6 +673,7 @@ def run_negotiation_agent(
             "gates": new_graph_state.get("gate_meta", {}),
             "belief_update_meta": new_graph_state.get("belief_update_meta", {}),
             "progress_debug": new_graph_state.get("progress_debug", {}),
+            "world_debug": new_graph_state.get("world_debug", {}),
             "executor_debug": new_graph_state.get("executor_debug", {}),
             "executor_debug_v2": new_graph_state.get("executor_debug_v2", {}),
             "planner_debug_v2": new_graph_state.get("planner_debug_v2", {}),

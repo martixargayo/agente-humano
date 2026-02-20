@@ -17,7 +17,7 @@ from ..schemas import (
     default_progress_state,
     default_render_state,
 )
-from ..state.deps import DEFAULT_DEPS
+from ..state.deps import DEFAULT_DEPS, get_last_execute_meta
 from ..validator import validate_and_repair
 from ..telemetry.trace_runtime import record_llm_call
 
@@ -171,13 +171,16 @@ def executor_node(state: dict) -> dict:
         world_state=state.get("world_state", {}),
         user_message=user_message,
     )
+    execute_meta = get_last_execute_meta()
     record_llm_call(
         state,
         name="executor_llm",
         node="executor",
         started=llm_started,
         ok=True,
-        model=None,
+        model=execute_meta.get("model"),
+        tokens_in=execute_meta.get("tokens_in"),
+        tokens_out=execute_meta.get("tokens_out"),
     )
     state["executor_output"] = executor_output
     state["assistant_message"] = executor_output.get("response_text", "")

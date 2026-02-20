@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import time
+from datetime import datetime, timezone
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -18,6 +19,7 @@ from ..perception.interaction_signals import _previous_user_message, extract_int
 from ..schemas import default_progress_state, default_world_state
 from ..world_state_updater import apply_world_skip_fallback, diff_world_state, update_world_state
 from ..telemetry.trace_runtime import record_llm_call_ms, record_node_phase_ms
+from ..telemetry.llm_usage import extract_llm_usage
 from ..advisor import build_advisor_recs
 
 
@@ -350,6 +352,7 @@ def world_judge_llm(
     }
 
     started = time.perf_counter()
+    started_wall = datetime.now(timezone.utc).isoformat()
     try:
         model = get_planner_llm()
         messages = [
@@ -357,6 +360,8 @@ def world_judge_llm(
             HumanMessage(content=json.dumps(payload, ensure_ascii=False)),
         ]
         raw = model.invoke(messages)
+        ended_wall = datetime.now(timezone.utc).isoformat()
+        llm_usage = extract_llm_usage(raw)
         text = getattr(raw, "content", str(raw))
         candidate = json.loads(text)
         normalized = _normalize_judgement(candidate, active_plan=active_plan, turn_count=turn_count)
@@ -372,9 +377,17 @@ def world_judge_llm(
             "judge_retry_count": 0,
             "judge_latency_ms": int((time.perf_counter() - started) * 1000),
             "judge_degraded": bool(normalized.get("degraded", False)),
+            "judge_start_ts": started_wall,
+            "judge_end_ts": ended_wall,
+            "judge_model": llm_usage.get("model"),
+            "judge_tokens_in": llm_usage.get("tokens_in"),
+            "judge_tokens_out": llm_usage.get("tokens_out"),
+            "judge_queue_ms": llm_usage.get("queue_ms"),
+            "judge_ttfb_ms": llm_usage.get("ttfb_ms"),
             **evidence_meta,
         }
     except Exception as exc:
+        ended_wall = datetime.now(timezone.utc).isoformat()
         fallback = _fallback_judgement(
             active_plan=active_plan,
             user_message=user_message,
@@ -386,6 +399,8 @@ def world_judge_llm(
             "judge_retry_count": 1,
             "judge_latency_ms": int((time.perf_counter() - started) * 1000),
             "judge_degraded": True,
+            "judge_start_ts": started_wall,
+            "judge_end_ts": ended_wall,
         }
 
 
@@ -437,11 +452,12 @@ def world_updater_node(state: dict) -> dict:
     record_node_phase_ms(state, "world_updater", "gates_ms", int((time.perf_counter() - gate_started) * 1000))
 
     normalize_started = time.perf_counter()
+    world_local_timers: dict[str, int] = {}
     if world_skipped:
         gate_state["world_skip_count"] = int(gate_state.get("world_skip_count", 0) or 0) + 1
         world_state, fallback_meta = apply_world_skip_fallback(prev_world, user_message, turn_count=turn_count)
         state["world_state"] = world_state
-        state["world_diff"] = diff_world_state(prev_world, world_state)
+        state["world_diff"] = {} if prev_world == world_state else diff_world_state(prev_world, world_state)
         state["extractor_meta"] = {
             "extractor_used": False,
             "extractor_skipped": True,
@@ -462,13 +478,41 @@ def world_updater_node(state: dict) -> dict:
         )
         gate_state["last_world_refresh_turn"] = turn_count
         state["world_state"] = world_state
-        state["world_diff"] = diff_world_state(prev_world, state["world_state"])
+        diff_started = time.perf_counter()
+        state["world_diff"] = {} if prev_world == state["world_state"] else diff_world_state(prev_world, state["world_state"])
+        world_local_timers["world_diff_ms"] = int((time.perf_counter() - diff_started) * 1000)
         extractor_meta["world_gate_features"] = gate_meta
         extractor_meta["extractor_skipped"] = False
         extractor_meta["interaction_updated"] = True
         state["extractor_meta"] = extractor_meta
 
-    record_node_phase_ms(state, "world_updater", "normalize_merge_diff_ms", int((time.perf_counter() - normalize_started) * 1000))
+    extractor_meta = state.get("extractor_meta", {}) if isinstance(state.get("extractor_meta"), dict) else {}
+    extractor_latency_ms = int(extractor_meta.get("extractor_llm_latency_ms", 0) or 0)
+    if extractor_latency_ms > 0:
+        record_llm_call_ms(
+            state,
+            name="world_extractor_llm",
+            node="world_updater",
+            latency_ms=extractor_latency_ms,
+            ok=not bool(extractor_meta.get("extractor_failed", False)),
+            model=extractor_meta.get("extractor_llm_model"),
+            tokens_in=extractor_meta.get("extractor_llm_tokens_in"),
+            tokens_out=extractor_meta.get("extractor_llm_tokens_out"),
+            retry_count=0,
+            error_stage="llm_invoke" if extractor_meta.get("extractor_failed", False) else "",
+            error=str(extractor_meta.get("error", "")),
+            start_ts=str(extractor_meta.get("extractor_llm_start_ts", "") or ""),
+            end_ts=str(extractor_meta.get("extractor_llm_end_ts", "") or ""),
+            queue_ms=extractor_meta.get("extractor_llm_queue_ms"),
+            ttfb_ms=extractor_meta.get("extractor_llm_ttfb_ms"),
+        )
+
+    normalize_total_ms = int((time.perf_counter() - normalize_started) * 1000)
+    record_node_phase_ms(state, "world_updater", "normalize_merge_diff_ms", normalize_total_ms)
+    world_local_timers.update((extractor_meta.get("timers") if isinstance(extractor_meta.get("timers"), dict) else {}))
+    world_local_timers["normalize_merge_diff_total_ms"] = normalize_total_ms
+    world_local_timers["prev_world_bytes"] = int(extractor_meta.get("prev_world_bytes", 0) or 0)
+    world_local_timers["world_diff_bytes"] = int(extractor_meta.get("world_diff_bytes", 0) or 0)
 
     progress_state = update_conversation_mode(progress_state, state.get("world_state", {}), turn_count)
     active_plan = progress_state.get("active_plan") if isinstance(progress_state.get("active_plan"), dict) else None
@@ -517,10 +561,16 @@ def world_updater_node(state: dict) -> dict:
         node="world_updater",
         latency_ms=int(judge_meta.get("judge_latency_ms", 0) or 0),
         ok=not bool(judge_meta.get("judge_error_type")),
-        model=None,
+        model=judge_meta.get("judge_model"),
+        tokens_in=judge_meta.get("judge_tokens_in"),
+        tokens_out=judge_meta.get("judge_tokens_out"),
         retry_count=int(judge_meta.get("judge_retry_count", 0) or 0),
         error_stage="llm_invoke" if judge_meta.get("judge_error_type") else "",
         error=str(judge_meta.get("judge_error_type", "")),
+        start_ts=judge_meta.get("judge_start_ts"),
+        end_ts=judge_meta.get("judge_end_ts"),
+        queue_ms=judge_meta.get("judge_queue_ms"),
+        ttfb_ms=judge_meta.get("judge_ttfb_ms"),
     )
     state["policy_plan_judgement"] = judgement
     judge_meta["missing_signals"] = list(judgement.get("missing_signals", []))[:6]
@@ -543,6 +593,7 @@ def world_updater_node(state: dict) -> dict:
     state["world_debug"] = {
         "policy_plan_judgement": judgement,
         "world_judge_meta": judge_meta,
+        "timers": world_local_timers,
         "world_diff_bucket_summary": {
             "changed_buckets": changed[:12],
             "counts_delta": counts_delta,
