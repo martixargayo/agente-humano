@@ -1438,6 +1438,16 @@ def normalize_progress_state(raw: object) -> Tuple[ProgressState, List[str]]:
         issues.append("progress_judgement_missing_streak_invalid")
         base["judgement_missing_streak"] = 0
 
+    base["advance_step"] = bool(raw.get("advance_step", base.get("advance_step", False)))
+    base["last_judgement_status"] = str(raw.get("last_judgement_status", base.get("last_judgement_status", "")) or "")
+    for key in ("no_progress_same_step_turns", "plan_id_changes_window", "last_progress_update_turn"):
+        try:
+            base[key] = max(0, int(raw.get(key, base.get(key, 0))))
+        except (TypeError, ValueError):
+            issues.append(f"progress_{key}_invalid")
+            base[key] = 0
+    base["last_plan_id"] = str(raw.get("last_plan_id", base.get("last_plan_id", "")) or "")
+
     base["phase_state"], phase_issues = normalize_phase_state(raw.get("phase_state", {}))
     issues.extend(phase_issues)
     base["gate_state"], gate_issues = _normalize_gate_state(raw.get("gate_state", {}))

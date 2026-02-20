@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import json
 import os
+import time
+
+from langchain_core.messages import HumanMessage, SystemMessage
 
 from ..gate_utils import (
     gate_world,
@@ -8,14 +12,49 @@ from ..gate_utils import (
     interaction_fingerprint,
     universal_state_fingerprint,
 )
+from ..llm_clients import get_planner_llm
 from ..mode_inference import update_conversation_mode
-from ..schemas import default_progress_state, default_world_state
 from ..perception.interaction_signals import _previous_user_message, extract_interaction_signals
+from ..schemas import default_progress_state, default_world_state
 from ..world_state_updater import apply_world_skip_fallback, diff_world_state, update_world_state
 
 
-def _judge_policy_plan(active_plan: dict | None, user_message: str, turn_count: int) -> dict:
+_WORLD_JUDGE_SYSTEM_PROMPT = """
+Eres world_judge_llm. Evalúas el estado del plan activo y el último mensaje del usuario.
+Devuelve SOLO JSON válido con schema v1:
+{
+  "schema_version":"v1",
+  "turn_idx":int,
+  "plan_presence":"active"|"none",
+  "plan_id":string,
+  "evaluated_step_idx":int,
+  "plan_status":"continue_same_step"|"advance_step"|"completed"|"interrupted_replan",
+  "why":string,
+  "evidence":[{"quote":string,"source":string,"span":[int,int]}],
+  "confidence":number,
+  "missing_signals":[string],
+  "safety_flags":[string],
+  "degraded":boolean,
+  "degrade_reason":string
+}
+Regla dura: si plan_status es advance_step o completed debe existir evidence no vacía.
+Si no hay evidencia suficiente para avanzar/completar, usa continue_same_step.
+""".strip()
+
+
+def _fallback_judgement(
+    *,
+    active_plan: dict | None,
+    user_message: str,
+    turn_count: int,
+    degrade_reason: str,
+) -> dict:
     text = (user_message or "").strip()
+    evidence = (
+        [{"quote": text[:180], "source": "user_message", "span": [0, min(len(text), 180)]}]
+        if text
+        else []
+    )
     if not isinstance(active_plan, dict):
         return {
             "schema_version": "v1",
@@ -25,69 +64,72 @@ def _judge_policy_plan(active_plan: dict | None, user_message: str, turn_count: 
             "evaluated_step_idx": 0,
             "plan_status": "interrupted_replan",
             "why": "No hay plan activo; corresponde planificar.",
-            "evidence": [],
-            "confidence": 0.99,
+            "evidence": evidence,
+            "confidence": 0.2,
             "missing_signals": [],
             "safety_flags": [],
             "degraded": True,
-            "degrade_reason": "no_active_plan",
+            "degrade_reason": degrade_reason or "judge_llm_failure_no_plan",
         }
 
+    plan_id = str(active_plan.get("plan_id", ""))[:40]
     steps = list(active_plan.get("steps", []))
     cur = int(active_plan.get("current_step_idx", 0) or 0)
-    plan_id = str(active_plan.get("plan_id", ""))[:40]
     cur = max(0, min(cur, len(steps) - 1)) if steps else 0
-    step = steps[cur] if steps and isinstance(steps[cur], dict) else {}
-    success_criteria = [str(x).lower() for x in step.get("success_criteria", []) if str(x).strip()]
-    replan_triggers = [str(x).lower() for x in step.get("replan_triggers", []) if str(x).strip()]
-    lower = text.lower()
+    return {
+        "schema_version": "v1",
+        "turn_idx": turn_count,
+        "plan_presence": "active",
+        "plan_id": plan_id,
+        "evaluated_step_idx": cur,
+        "plan_status": "continue_same_step",
+        "why": "Fallback degradado por fallo del world_judge_llm; se conserva el paso activo.",
+        "evidence": evidence,
+        "confidence": 0.2,
+        "missing_signals": [],
+        "safety_flags": [],
+        "degraded": True,
+        "degrade_reason": degrade_reason or "judge_llm_failure_with_plan",
+    }
 
-    safety_flags = []
-    for token in ("idiota", "imbecil", "amenaza", "matar", "te vas a arrepentir"):
-        if token in lower:
-            safety_flags.append("escalation")
-            break
 
-    if safety_flags:
-        return {
-            "schema_version": "v1",
-            "turn_idx": turn_count,
-            "plan_presence": "active",
-            "plan_id": plan_id,
-            "evaluated_step_idx": cur,
-            "plan_status": "interrupted_replan",
-            "why": "Escalada detectada en el turno; requiere replanteo seguro.",
-            "evidence": [{"quote": text[:180], "span": [0, min(len(text), 180)], "source": "user_message"}] if text else [],
-            "confidence": 0.88,
-            "missing_signals": [],
-            "safety_flags": safety_flags,
-            "degraded": False,
-            "degrade_reason": "",
-        }
-
-    has_replan_trigger = any(trigger and trigger in lower for trigger in replan_triggers)
-    has_success = any(signal and signal in lower for signal in success_criteria)
-    if not has_success and any(k in lower for k in ("evidencia", "detalle", "condicion", "itv", "precio", "oferta", "deadline")):
-        has_success = True
-
-    if has_replan_trigger:
-        status = "interrupted_replan"
-        why = "Se detectó trigger de replanteo en la respuesta del usuario."
-        confidence = 0.78
-    elif has_success:
-        is_last = not steps or cur >= len(steps) - 1
-        status = "completed" if is_last else "advance_step"
-        why = "El usuario aportó señales compatibles con el criterio de éxito del paso."
-        confidence = 0.79
-    else:
+def _normalize_judgement(candidate: object, *, active_plan: dict | None, turn_count: int) -> dict | None:
+    if not isinstance(candidate, dict):
+        return None
+    plan_presence = "active" if isinstance(active_plan, dict) else "none"
+    plan_id = str((candidate.get("plan_id") if isinstance(candidate, dict) else "") or "")[:40]
+    if plan_presence == "none":
+        plan_id = ""
+    allowed_status = {"continue_same_step", "advance_step", "completed", "interrupted_replan"}
+    status = str(candidate.get("plan_status", "continue_same_step")).strip()
+    if status not in allowed_status:
         status = "continue_same_step"
-        why = "Aún no hay evidencia suficiente para completar el paso actual."
-        confidence = 0.7
 
-    evidence = [{"quote": text[:180], "span": [0, min(len(text), 180)], "source": "user_message"}] if text else []
-    degraded = False
-    degrade_reason = ""
-    if status in {"advance_step", "completed"} and not evidence:
+    evidence = candidate.get("evidence", [])
+    evidence = evidence if isinstance(evidence, list) else []
+
+    why = str(candidate.get("why", "")).strip() or "Judgement emitido por world_judge_llm."
+    try:
+        confidence = float(candidate.get("confidence", 0.0))
+    except Exception:
+        confidence = 0.0
+    confidence = max(0.0, min(1.0, confidence))
+
+    degraded = bool(candidate.get("degraded", False))
+    degrade_reason = str(candidate.get("degrade_reason", "") or "")
+
+    evaluated_step_idx = candidate.get("evaluated_step_idx", 0)
+    try:
+        evaluated_step_idx = max(0, int(evaluated_step_idx))
+    except Exception:
+        evaluated_step_idx = 0
+
+    missing_signals = candidate.get("missing_signals", [])
+    missing_signals = [str(x)[:120] for x in missing_signals if str(x).strip()] if isinstance(missing_signals, list) else []
+    safety_flags = candidate.get("safety_flags", [])
+    safety_flags = [str(x)[:80] for x in safety_flags if str(x).strip()] if isinstance(safety_flags, list) else []
+
+    if status in {"advance_step", "completed"} and len(evidence) == 0:
         status = "continue_same_step"
         degraded = True
         degrade_reason = "missing_evidence_for_progress"
@@ -95,18 +137,82 @@ def _judge_policy_plan(active_plan: dict | None, user_message: str, turn_count: 
     return {
         "schema_version": "v1",
         "turn_idx": turn_count,
-        "plan_presence": "active",
+        "plan_presence": plan_presence,
         "plan_id": plan_id,
-        "evaluated_step_idx": cur,
+        "evaluated_step_idx": evaluated_step_idx,
         "plan_status": status,
-        "why": why,
-        "evidence": evidence,
+        "why": why[:280],
+        "evidence": evidence[:4],
         "confidence": confidence,
-        "missing_signals": [] if status != "continue_same_step" else success_criteria[:3],
-        "safety_flags": safety_flags,
+        "missing_signals": missing_signals[:6],
+        "safety_flags": safety_flags[:6],
         "degraded": degraded,
-        "degrade_reason": degrade_reason,
+        "degrade_reason": degrade_reason[:80],
     }
+
+
+def world_judge_llm(
+    *,
+    active_plan: dict | None,
+    user_message: str,
+    objective: str,
+    world_state: dict,
+    recent_history: str,
+    turn_count: int,
+) -> tuple[dict, dict]:
+    current_step = None
+    if isinstance(active_plan, dict):
+        steps = list(active_plan.get("steps", []))
+        cur = int(active_plan.get("current_step_idx", 0) or 0)
+        if steps:
+            cur = max(0, min(cur, len(steps) - 1))
+            if isinstance(steps[cur], dict):
+                current_step = steps[cur]
+    payload = {
+        "turn_idx": turn_count,
+        "objective": str(objective or "")[:240],
+        "active_plan": active_plan if isinstance(active_plan, dict) else None,
+        "current_step": current_step,
+        "user_message": str(user_message or "")[:1000],
+        "recent_history": str(recent_history or "")[-1200:],
+        "world_state_summary": {
+            "negotiation": (world_state or {}).get("negotiation", {}),
+            "universal_state": (world_state or {}).get("universal_state", {}),
+        },
+    }
+
+    started = time.perf_counter()
+    try:
+        model = get_planner_llm()
+        messages = [
+            SystemMessage(content=_WORLD_JUDGE_SYSTEM_PROMPT),
+            HumanMessage(content=json.dumps(payload, ensure_ascii=False)),
+        ]
+        raw = model.invoke(messages)
+        text = getattr(raw, "content", str(raw))
+        candidate = json.loads(text)
+        normalized = _normalize_judgement(candidate, active_plan=active_plan, turn_count=turn_count)
+        if normalized is None:
+            raise ValueError("judge_invalid_json_shape")
+        return normalized, {
+            "judge_error_type": "",
+            "judge_retry_count": 0,
+            "judge_latency_ms": int((time.perf_counter() - started) * 1000),
+            "judge_degraded": bool(normalized.get("degraded", False)),
+        }
+    except Exception as exc:
+        fallback = _fallback_judgement(
+            active_plan=active_plan,
+            user_message=user_message,
+            turn_count=turn_count,
+            degrade_reason=str(exc)[:80] or "judge_llm_exception",
+        )
+        return fallback, {
+            "judge_error_type": exc.__class__.__name__,
+            "judge_retry_count": 1,
+            "judge_latency_ms": int((time.perf_counter() - started) * 1000),
+            "judge_degraded": True,
+        }
 
 
 def world_updater_node(state: dict) -> dict:
@@ -183,32 +289,20 @@ def world_updater_node(state: dict) -> dict:
         extractor_meta["extractor_skipped"] = False
         extractor_meta["interaction_updated"] = True
         state["extractor_meta"] = extractor_meta
+
     progress_state = update_conversation_mode(progress_state, state.get("world_state", {}), turn_count)
-    plan_status = str(progress_state.get("active_plan_status", "none") or "none")
-    judgement = (state.get("world_state") or {}).get("policy_plan_judgement")
-    world_judge_enabled = os.getenv("WORLD_JUDGE_ENABLED", "0") == "1"
-    world_judge_shadow = os.getenv("WORLD_JUDGE_SHADOW", "1") == "1"
-    if world_judge_enabled:
-        judgement = _judge_policy_plan(
-            progress_state.get("active_plan") if isinstance(progress_state.get("active_plan"), dict) else None,
-            user_message,
-            turn_count,
-        )
-        state.setdefault("extractor_meta", {})["world_judge_shadow"] = world_judge_shadow
-    judge_no_plan_enabled = os.getenv("WORLD_JUDGE_NO_PLAN_AUTOFILL", "0") == "1"
-    if not isinstance(judgement, dict) and plan_status == "none" and judge_no_plan_enabled:
-        judgement = {
-            "schema_version": "v1",
-            "turn_idx": turn_count,
-            "plan_presence": "none",
-            "plan_status": "interrupted_replan",
-            "why": "No hay plan activo; corresponde planificar.",
-            "evidence": [],
-            "confidence": 0.99,
-            "degraded": True,
-            "degrade_reason": "no_active_plan",
-        }
+    active_plan = progress_state.get("active_plan") if isinstance(progress_state.get("active_plan"), dict) else None
+    judgement, judge_meta = world_judge_llm(
+        active_plan=active_plan,
+        user_message=user_message,
+        objective=state.get("objective", ""),
+        world_state=state.get("world_state", {}),
+        recent_history=state.get("recent_history_text", ""),
+        turn_count=turn_count,
+    )
     state["policy_plan_judgement"] = judgement
+    state.setdefault("extractor_meta", {})["world_judge_meta"] = judge_meta
+
     state["progress_state"] = progress_state
     state["conversation_mode"] = progress_state.get("conversation_mode", conversation_mode)
     gate_state["universal_state_fingerprint_prev"] = universal_state_fingerprint(

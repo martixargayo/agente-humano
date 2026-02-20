@@ -26,6 +26,7 @@ Rules:
 - If epistemic_contract.verify_first is true, prioritize one concise verification question before conclusions.
 - requested_info_slots max 6.
 - If constraints_struct.disallow_numbers == true, do not output any explicit numbers/currencies.
+- Obey executor_instruction.safe_mode, executor_instruction.must_avoid and executor_instruction.max_questions_per_turn when present.
 """
 
 EXECUTOR_USER_PROMPT = """
@@ -44,7 +45,7 @@ phase_effective: {phase_effective}
 policy_next_hint: {policy_next_hint}
 intent_next_hint: {intent_next_hint}
 
-EXECUTOR INSTRUCTION (authoritative when provided):
+EXECUTOR INSTRUCTION (HIGHEST PRIORITY, authoritative when provided):
 {executor_instruction_json}
 
 belief_state_summary: {belief_state_summary}

@@ -3,10 +3,18 @@ from __future__ import annotations
 import logging
 
 from ..context_utils import format_memory_block
-from ..elementos.render.carlos_buyer_preset import get_carlos_constraints_struct, is_carlos_buyer_render_ids
 from ..elementos.render import resolve_render_profiles
+from ..elementos.render.carlos_buyer_preset import (
+    get_carlos_constraints_struct,
+    is_carlos_buyer_render_ids,
+)
 from ..executor import build_strategy_summary, normalize_executor_output, render_executor_output
-from ..schemas import default_constraints_struct, default_policy_decision, default_progress_state, default_render_state
+from ..schemas import (
+    default_constraints_struct,
+    default_policy_decision,
+    default_progress_state,
+    default_render_state,
+)
 from ..state.deps import DEFAULT_DEPS
 from ..validator import validate_and_repair
 
@@ -16,6 +24,42 @@ logger = logging.getLogger(__name__)
 def _ensure_objective(state: dict) -> None:
     if not state.get("objective"):
         state["objective"] = ""
+
+
+def _enforce_executor_instruction(response_text: str, executor_instruction: dict) -> tuple[str, list[str]]:
+    if not isinstance(executor_instruction, dict):
+        return response_text, []
+    repaired = response_text
+    reasons: list[str] = []
+
+    must_avoid = [str(x).lower() for x in executor_instruction.get("must_avoid", []) if str(x).strip()]
+    lowered = repaired.lower()
+    for token in must_avoid:
+        if token and token in lowered:
+            repaired = "Prefiero mantener una conversación constructiva para seguir avanzando."
+            reasons.append(f"must_avoid:{token}")
+            lowered = repaired.lower()
+
+    max_q = executor_instruction.get("max_questions_per_turn", 2)
+    try:
+        max_q_int = max(0, int(max_q))
+    except Exception:
+        max_q_int = 2
+    q_count = repaired.count("?")
+    if q_count > max_q_int:
+        parts = repaired.split("?")
+        repaired = "?".join(parts[: max_q_int + 1]).strip()
+        if not repaired.endswith("?") and max_q_int > 0:
+            repaired = repaired.rstrip(" .") + "?"
+        reasons.append("max_questions")
+
+    safe_mode = str(executor_instruction.get("safe_mode", "normal") or "normal")
+    if safe_mode == "deescalate":
+        if any(token in lowered for token in ["idiota", "amenaza", "matar"]):
+            repaired = "Entiendo la tensión; propongo bajar el tono y centrarnos en hechos verificables."
+            reasons.append("safe_mode_deescalate")
+
+    return repaired, reasons
 
 
 def executor_node(state: dict) -> dict:
@@ -97,6 +141,17 @@ def executor_node(state: dict) -> dict:
         scene_profile=scene_profile,
         style_contract=style_contract,
     )
+
+    instruction_repaired, instruction_reasons = _enforce_executor_instruction(
+        repaired_response, state.get("executor_instruction", {})
+    )
+    if instruction_reasons and instruction_repaired != repaired_response:
+        repaired_response = instruction_repaired
+        violations = list(violations) + instruction_reasons
+        validator_meta = dict(validator_meta)
+        validator_meta["instruction_enforcement"] = instruction_reasons
+        validator_meta["fallback_applied"] = True
+
     if validator_meta.get("fallback_applied"):
         executor_output = dict(executor_output)
         executor_output["response_text"] = repaired_response
@@ -108,6 +163,8 @@ def executor_node(state: dict) -> dict:
     if violations:
         logger.info("executor_response_validated=%s violations=%s", repaired_response, violations)
 
+    validator_meta = dict(validator_meta)
+    validator_meta["executor_instruction_compliance"] = "pass" if not instruction_reasons else "repaired"
     state["executor_validator_meta"] = validator_meta
     override_policy_id = validator_meta.get("override_policy_id")
     state["override_policy_id"] = override_policy_id
