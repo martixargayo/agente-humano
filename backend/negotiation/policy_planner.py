@@ -223,3 +223,57 @@ def allowed_policy_ids(
         return base
     filtered = [pid for pid in base if _required_beliefs_met(pid, belief_state)]
     return filtered or [safe_neutral_policy_id()]
+
+
+def allowed_policy_ids_with_reasons(
+    world_state: WorldState,
+    belief_state: BeliefState,
+    progress_state: ProgressState,
+    constraints_struct: dict | None = None,
+) -> tuple[list[str], dict[str, list[str]]]:
+    policy_ids = list_policy_ids()
+    if not policy_ids:
+        return [safe_neutral_policy_id()], {}
+
+    phase_state = progress_state.get("phase_state") or {}
+    phase = phase_state.get("phase_effective") or phase_state.get("phase") or "climate"
+    recovery_mode = bool(phase_state.get("recovery_mode", False))
+    phase_catalog = policy_phase_catalog()
+
+    allowed: list[str] = []
+    filtered: dict[str, list[str]] = {}
+    require_beliefs = os.getenv("POLICY_REQUIRED_BELIEFS_ENABLED", "0") == "1"
+
+    for policy_id in policy_ids:
+        reasons: list[str] = []
+        policy_phases = phase_catalog.get(policy_id, [])
+        if phase not in policy_phases:
+            reasons.append("phase_mismatch")
+        if not _required_inputs_met(policy_id, world_state):
+            reasons.append("missing_required_inputs")
+        if _violates_hard_constraints(policy_id, world_state, constraints_struct):
+            reasons.append("safety")
+        if require_beliefs and not _required_beliefs_met(policy_id, belief_state):
+            reasons.append("missing_required_beliefs")
+
+        if reasons:
+            filtered[policy_id] = reasons
+            continue
+        allowed.append(policy_id)
+
+    if recovery_mode:
+        scoped: list[str] = []
+        for policy_id in allowed:
+            policy = _POLICY_BY_ID.get(policy_id)
+            tags = set(getattr(policy, "tags", set()) or set()) if policy else set()
+            guards = set(getattr(policy, "guards", set()) or set()) if policy else set()
+            if policy_id == safe_neutral_policy_id() or "recovery_ok" in tags or "safe_when_tense" in guards or "safe_when_tense" in tags:
+                if "aggressive" not in tags:
+                    scoped.append(policy_id)
+                    continue
+            filtered.setdefault(policy_id, []).append("recovery_mode_filter")
+        allowed = scoped or [safe_neutral_policy_id()]
+
+    if not allowed:
+        allowed = [safe_neutral_policy_id()]
+    return allowed, filtered

@@ -5,8 +5,8 @@ import hashlib
 import json
 import logging
 import os
-import re
 import time
+import re
 
 from .llm_clients import get_belief_llm
 from .gate_utils import _split_world_diff
@@ -400,6 +400,7 @@ def update_belief_state(
     force_update: bool = False,
     conversation_mode: str | None = None,
 ) -> tuple[BeliefState, dict]:
+    started = time.perf_counter()
     previous = prev_belief_state or default_belief_state()
     meta = {
         "belief_update_failed": False,
@@ -418,6 +419,7 @@ def update_belief_state(
             extractor_meta=extractor_meta,
         ):
             meta["belief_update_skipped"] = True
+            meta["belief_latency_ms"] = int((time.perf_counter() - started) * 1000)
             return previous, meta
 
 
@@ -541,4 +543,5 @@ def update_belief_state(
         }
     )
 
+    meta["belief_latency_ms"] = int((time.perf_counter() - started) * 1000)
     return belief_state, meta

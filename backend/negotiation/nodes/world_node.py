@@ -301,7 +301,31 @@ def world_updater_node(state: dict) -> dict:
         turn_count=turn_count,
     )
     state["policy_plan_judgement"] = judgement
+    judge_meta["missing_signals"] = list(judgement.get("missing_signals", []))[:6]
+    judge_meta["safety_flags"] = list(judgement.get("safety_flags", []))[:6]
     state.setdefault("extractor_meta", {})["world_judge_meta"] = judge_meta
+
+    prev_buckets = ((state.get("prev_world_state") or {}).get("world_buckets") or {}) if isinstance(state.get("prev_world_state"), dict) else {}
+    curr_buckets = ((state.get("world_state") or {}).get("world_buckets") or {}) if isinstance(state.get("world_state"), dict) else {}
+    bucket_names = sorted(set(prev_buckets.keys()) | set(curr_buckets.keys()))
+    changed: list[str] = []
+    counts_delta: dict[str, dict] = {}
+    for bucket in bucket_names:
+        b = prev_buckets.get(bucket, [])
+        a = curr_buckets.get(bucket, [])
+        b_count = len(b) if isinstance(b, list) else 0
+        a_count = len(a) if isinstance(a, list) else 0
+        if b_count != a_count or b != a:
+            changed.append(bucket)
+            counts_delta[bucket] = {"before": b_count, "after": a_count, "delta": a_count - b_count}
+    state["world_debug"] = {
+        "policy_plan_judgement": judgement,
+        "world_judge_meta": judge_meta,
+        "world_diff_bucket_summary": {
+            "changed_buckets": changed[:12],
+            "counts_delta": counts_delta,
+        },
+    }
 
     state["progress_state"] = progress_state
     state["conversation_mode"] = progress_state.get("conversation_mode", conversation_mode)

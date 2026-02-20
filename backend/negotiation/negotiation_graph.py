@@ -631,6 +631,7 @@ def run_negotiation_agent(
             "belief_diff": diff_belief_state(trace_belief_prev, trace_belief_new),
             "allowed_policy_ids": new_graph_state.get("allowed_policy_ids", []),
             "policy_decision": new_policy_state,
+            "policy_plan_judgement": new_graph_state.get("policy_plan_judgement") or {},
             "policy_pre_repair": new_graph_state.get("policy_pre_repair"),
             "policy_post_repair": new_graph_state.get("policy_post_repair"),
             "phase_candidate": new_graph_state.get("phase_candidate"),
@@ -672,8 +673,12 @@ def run_negotiation_agent(
                 "intent_meta", {}
             ).get("commitment_level", ""),
             "planner_meta": new_graph_state.get("planner_meta", {}),
+            "planner_debug": new_graph_state.get("planner_debug", {}),
             "gates": new_graph_state.get("gate_meta", {}),
             "belief_update_meta": new_graph_state.get("belief_update_meta", {}),
+            "belief_debug": new_graph_state.get("belief_debug", {}),
+            "world_debug": new_graph_state.get("world_debug", {}),
+            "progress_debug": new_graph_state.get("progress_debug", {}),
             "debug": {
                 "belief": new_graph_state.get("belief_update_meta", {}) or {},
             },

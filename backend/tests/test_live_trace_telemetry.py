@@ -30,6 +30,11 @@ def test_build_trace_event_shapes_fields():
         "extractor_reasons": ["llm_extractor_confident"],
         "extractor_world_patch_keys": ["price"],
         "planner_meta": {"reason": "needed_info"},
+        "policy_plan_judgement": {"plan_status": "continue_same_step", "degraded": False},
+        "world_debug": {"world_judge_meta": {"judge_latency_ms": 123}},
+        "belief_debug": {"planner_relevant": {"interaction_health": "stable"}},
+        "planner_debug": {"gate_decision": {"gate_path": "skip_continue_policy"}},
+        "progress_debug": {"anti_loop_signals": {"continue_loop_detected": False}},
         "belief_update_meta": {"belief_node_entered": True, "belief_updater_invoked": True, "belief_noop_reason": "merge_no_effect"},
         "build_git_sha": "abc123",
     }
@@ -64,6 +69,9 @@ def test_build_trace_event_shapes_fields():
     assert event["belief_updater_invoked"] is True
     assert event["belief_noop_reason"] == "merge_no_effect"
     assert event["debug"]["belief"]["belief_node_entered"] is True
+    assert event["policy_plan_judgement"]["plan_status"] == "continue_same_step"
+    assert event["planner_debug"]["gate_decision"]["gate_path"] == "skip_continue_policy"
+    assert event["world_debug"]["world_judge_meta"]["judge_latency_ms"] == 123
 
 
 def test_list_recent_trace_events_aggregates_sessions():
