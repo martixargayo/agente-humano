@@ -26,7 +26,19 @@ def _planner_state(progress_state):
     }
 
 
-def test_planner_called_when_continue_policy_without_advance_step_even_with_active_plan():
+def _minimal_active_plan():
+    return {
+        "plan_id": "p1",
+        "current_step_idx": 0,
+        "steps": [
+            {"what_to_do": "seguir", "safe_mode": "normal", "ask": []},
+            {"what_to_do": "cerrar", "safe_mode": "normal", "ask": []},
+        ],
+        "plan_constraints": {"max_questions_per_turn": 2, "must_avoid": [], "stop_conditions": []},
+    }
+
+
+def test_planner_skips_on_continue_same_step_when_reusable_policy_exists():
     called = {"count": 0}
 
     def fake_plan_phase_policy(**_kwargs):
@@ -35,25 +47,19 @@ def test_planner_called_when_continue_policy_without_advance_step_even_with_acti
 
     progress_state = default_progress_state()
     policy_state = default_policy_state()
-    policy_state.update({"status": "active", "planner_request": "continue_policy"})
+    policy_state.update({"status": "active", "planner_request": "continue_policy", "policy_id": "safe_neutral"})
     progress_state["policy_state"] = policy_state
-    progress_state["active_plan"] = {
-        "plan_id": "p1",
-        "current_step_idx": 0,
-        "steps": [{"what_to_do": "seguir", "safe_mode": "normal", "ask": []}, {"what_to_do": "cerrar", "safe_mode": "normal", "ask": []}],
-        "plan_constraints": {"max_questions_per_turn": 2, "must_avoid": [], "stop_conditions": []},
-    }
+    progress_state["active_plan"] = _minimal_active_plan()
 
     state = _planner_state(progress_state)
     state["deps"] = SimpleNamespace(plan_phase_policy=fake_plan_phase_policy)
 
     result = phase_policy_planner_node(state)
 
-    assert called["count"] == 1
-    assert result["planner_meta"]["planner_skipped"] is False
-    assert result["planner_debug"]["llm_call"]["planner_llm_called"] is True
-    assert any(call.get("name") == "planner_llm" for call in (result.get("trace_runtime", {}).get("llm_calls", [])))
-
+    assert called["count"] == 0
+    assert result["planner_meta"]["planner_skipped"] is True
+    assert result["planner_meta"]["planner_skip_reason"] == "continue_same_step_without_planner"
+    assert result["planner_meta"].get("planner_llm_called", False) is False
 
 
 def test_planner_skipped_when_advance_step_true_with_active_plan():
@@ -65,15 +71,10 @@ def test_planner_skipped_when_advance_step_true_with_active_plan():
 
     progress_state = default_progress_state()
     policy_state = default_policy_state()
-    policy_state.update({"status": "active", "planner_request": "continue_policy"})
+    policy_state.update({"status": "active", "planner_request": "continue_policy", "policy_id": "safe_neutral"})
     progress_state["policy_state"] = policy_state
     progress_state["advance_step"] = True
-    progress_state["active_plan"] = {
-        "plan_id": "p1",
-        "current_step_idx": 0,
-        "steps": [{"what_to_do": "seguir", "safe_mode": "normal", "ask": []}, {"what_to_do": "cerrar", "safe_mode": "normal", "ask": []}],
-        "plan_constraints": {"max_questions_per_turn": 2, "must_avoid": [], "stop_conditions": []},
-    }
+    progress_state["active_plan"] = _minimal_active_plan()
 
     state = _planner_state(progress_state)
     state["deps"] = SimpleNamespace(plan_phase_policy=fake_plan_phase_policy)
@@ -83,6 +84,8 @@ def test_planner_skipped_when_advance_step_true_with_active_plan():
     assert called["count"] == 0
     assert result["planner_meta"]["planner_skipped"] is True
     assert result["planner_meta"]["planner_skip_reason"] == "advance_step_without_planner"
+    assert result["planner_meta"].get("planner_llm_called", False) is False
+    assert result["progress_state"]["active_plan"]["current_step_idx"] == 1
 
 
 def test_planner_called_when_replan_policy():
@@ -137,6 +140,40 @@ def test_policy_progress_completed_maps_to_replan():
         user_message="",
         turn_count=1,
         policy_plan_judgement={"plan_status": "completed"},
+    )
+
+    assert updated["planner_request"] == "replan_policy"
+
+
+def test_policy_progress_continue_same_step_defaults_to_continue_policy(monkeypatch):
+    monkeypatch.delenv("PLANNER_FORCE_REPLAN_ON_CONTINUE_SAME_STEP", raising=False)
+    updated, _hint, _meta = update_policy_state(
+        prev_policy_state=default_policy_state(),
+        world_state=default_world_state(),
+        world_diff={},
+        belief_state=default_belief_state(),
+        belief_diff={},
+        progress_state=default_progress_state(),
+        user_message="",
+        turn_count=1,
+        policy_plan_judgement={"plan_status": "continue_same_step"},
+    )
+
+    assert updated["planner_request"] == "continue_policy"
+
+
+def test_policy_progress_continue_same_step_can_force_replan_with_flag(monkeypatch):
+    monkeypatch.setenv("PLANNER_FORCE_REPLAN_ON_CONTINUE_SAME_STEP", "1")
+    updated, _hint, _meta = update_policy_state(
+        prev_policy_state=default_policy_state(),
+        world_state=default_world_state(),
+        world_diff={},
+        belief_state=default_belief_state(),
+        belief_diff={},
+        progress_state=default_progress_state(),
+        user_message="",
+        turn_count=1,
+        policy_plan_judgement={"plan_status": "continue_same_step"},
     )
 
     assert updated["planner_request"] == "replan_policy"

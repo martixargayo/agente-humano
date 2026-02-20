@@ -177,8 +177,7 @@ def phase_policy_planner_node(state: dict) -> dict:
     active_plan_status = "none"
     active_plan = previous_plan
 
-    skip_allowed = bool(advance_step or judgement_skip_planner)
-    if planner_request == "continue_policy" and previous_plan and skip_allowed:
+    if planner_request == "continue_policy" and previous_plan:
         if advance_step:
             advanced_plan, did_advance = _advance_step(previous_plan)
             if did_advance and advanced_plan:
@@ -194,7 +193,7 @@ def phase_policy_planner_node(state: dict) -> dict:
                 planner_meta["advance_step_out_of_range"] = True
                 planner_debug["gate_decision"]["gate_path"] = "replan_out_of_range"
                 planner_debug["gate_decision"]["gate_reason_codes"] = ["step_out_of_range"]
-        else:
+        elif judgement_skip_planner:
             active_plan, _ = _clamp_step(previous_plan)
             active_plan["updated_turn"] = turn_count
             active_plan_status = "active"
@@ -202,6 +201,30 @@ def phase_policy_planner_node(state: dict) -> dict:
             skip_reason = "judge_skip_planner"
             planner_debug["gate_decision"]["gate_path"] = "skip_judge_flag"
             planner_debug["gate_decision"]["gate_reason_codes"] = ["judge_skip_planner_true"]
+        else:
+            active_plan, _ = _clamp_step(previous_plan)
+            active_plan["updated_turn"] = turn_count
+            active_plan_status = "active"
+            reusable_policy_id = str(
+                policy_state.get("policy_id")
+                or progress_state.get("last_chosen_policy_id")
+                or progress_state.get("last_executed_policy_id")
+                or ""
+            )
+            if reusable_policy_id and reusable_policy_id in allowed_all:
+                policy_decision = default_policy_decision()
+                policy_decision["policy_id"] = reusable_policy_id
+                policy_decision["reason"] = "Se mantiene la policy activa sin replan."
+                policy_decision["why_short"] = "continue_same_step"
+                planner_skipped = True
+                skip_reason = "continue_same_step_without_planner"
+                planner_debug["gate_decision"]["gate_path"] = "continue_same_step_no_llm"
+                planner_debug["gate_decision"]["gate_reason_codes"] = ["continue_policy_reuse"]
+            else:
+                planner_request = "replan_policy"
+                planner_meta["continue_policy_missing_reusable_policy"] = True
+                planner_debug["gate_decision"]["gate_path"] = "replan_missing_policy"
+                planner_debug["gate_decision"]["gate_reason_codes"] = ["missing_reusable_policy"]
 
     if not planner_skipped:
         started = time.perf_counter()
@@ -272,6 +295,7 @@ def phase_policy_planner_node(state: dict) -> dict:
         active_plan = _build_active_plan_from_replan(policy_decision, phase_effective, turn_count)
         active_plan_status = "active"
 
+    planner_meta["planner_request"] = planner_request
     planner_meta["planner_skipped"] = planner_skipped
     planner_meta["planner_skip_reason"] = skip_reason
 

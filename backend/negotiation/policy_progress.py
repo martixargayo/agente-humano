@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from .schemas import PolicyHint, PolicyMeta, PolicyState, default_policy_state
 
 
@@ -56,9 +58,13 @@ def update_policy_state(
 
     progress_state["advance_step"] = status == "advance_step"
 
+    force_replan_on_continue = os.getenv("PLANNER_FORCE_REPLAN_ON_CONTINUE_SAME_STEP", "0") == "1"
+
     if status == "continue_same_step":
-        policy_state["planner_request"] = "replan_policy"
-        meta["transition"] = "force_planner"
+        policy_state["planner_request"] = "replan_policy" if force_replan_on_continue else "continue_policy"
+        meta["transition"] = "force_planner" if force_replan_on_continue else "retry"
+        if force_replan_on_continue:
+            meta["reasons"].append("config:force_replan_on_continue_same_step")
     elif status == "advance_step":
         policy_state["planner_request"] = "continue_policy"
         meta["transition"] = "advance"
