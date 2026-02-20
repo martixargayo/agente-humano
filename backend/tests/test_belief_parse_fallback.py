@@ -1,19 +1,14 @@
-from negotiation.belief_state_updater import update_belief_state
-from negotiation.schemas import default_belief_state, default_world_state
+from negotiation.nodes.belief_node import belief_updater_node
+from negotiation.schemas import default_belief_state, default_progress_state, default_world_state
+from negotiation.telemetry.trace_runtime import init_trace_runtime
 
 
-class _BrokenBeliefLLM:
-    def invoke(self, _messages):
-        # Missing comma between "status" and "meta" (JSON inválido)
-        return '{"schema_version":"belief_updater_v2","universal_patch":{},"negotiation_patch":{},"belief_buckets_patch":{"hypotheses":[{"text":"Alta urgencia por liquidez hoy. (0.85)","confidence":0.85,"status":"active"}] "meta":{"schema_valid":true}}'
+class _BrokenDeps:
+    def execute(self, _messages):
+        return '{"schema_version":"v3", "belief_buckets": {"hypotheses": [}'
 
 
-def test_belief_parse_error_fallback_is_safe_and_traceable(monkeypatch):
-    monkeypatch.setattr(
-        "negotiation.belief_state_updater.get_belief_llm",
-        lambda: _BrokenBeliefLLM(),
-    )
-
+def test_belief_parse_error_fallback_reuses_previous_state():
     prev_belief = default_belief_state()
     world = default_world_state()
     world["world_buckets"]["offers"] = [
@@ -25,20 +20,22 @@ def test_belief_parse_error_fallback_is_safe_and_traceable(monkeypatch):
         }
     ]
 
-    belief, meta = update_belief_state(
-        prev_belief_state=prev_belief,
-        prev_world_state=default_world_state(),
-        world_state=world,
-        world_diff={"domain": {"world_buckets": {"before": {}, "after": world["world_buckets"]}}},
-        last_policy_executed=None,
-        last_assistant_message="",
-        user_message="concretamente estoy dispuesto a sacrificar dinero futuro a cambio de tener dinero hoy",
-        context_snippet="",
-        force_update=True,
-        conversation_mode="negotiation",
+    out = belief_updater_node(
+        {
+            "deps": _BrokenDeps(),
+            "trace_runtime": init_trace_runtime(),
+            "belief_state": prev_belief,
+            "prev_world_state": default_world_state(),
+            "world_state": world,
+            "world_diff": {"domain": {"world_buckets": {"before": {}, "after": world["world_buckets"]}}},
+            "progress_state": default_progress_state(),
+            "turn_count": 5,
+            "user_message": "concretamente estoy dispuesto a sacrificar dinero futuro a cambio de tener dinero hoy",
+        }
     )
 
-    assert belief == prev_belief
-    assert meta.get("belief_fallback_used") is True
-    assert meta.get("belief_fallback_reason") == "parse_error"
-    assert "Expecting ',' delimiter" in meta.get("belief_error", "")
+    assert out["belief_state"] == prev_belief
+    assert out["belief_update_meta"].get("belief_update_skipped") is True
+    assert out["belief_update_meta"].get("skip_reason") == "belief_llm_error"
+    assert out["trace_runtime"]["llm_calls"][0]["name"] == "belief_llm"
+    assert out["trace_runtime"]["llm_calls"][0]["ok"] is False

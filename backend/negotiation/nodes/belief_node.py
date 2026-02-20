@@ -2,16 +2,32 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
+import time
 
-from ..gate_utils import gate_belief, world_buckets_fingerprint
+from ..extractors.belief_extractor_v1 import extract_belief_state_llm_v1
 from ..schemas import default_belief_state, default_progress_state
 from ..state.deps import DEFAULT_DEPS
+from ..telemetry.trace_runtime import record_llm_call
 
 
 def _state_fingerprint(value: dict) -> str:
     payload = json.dumps(value or {}, ensure_ascii=False, sort_keys=True)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _world_changed_meaningfully(*, world_diff: dict, prev_world: dict, world: dict) -> bool:
+    domain = world_diff.get("domain") if isinstance(world_diff, dict) else None
+    if isinstance(domain, dict):
+        world_buckets_delta = domain.get("world_buckets")
+        if world_buckets_delta not in (None, {}, []):
+            return True
+    if isinstance(world_diff, dict):
+        world_buckets_delta = world_diff.get("world_buckets")
+        if world_buckets_delta not in (None, {}, []):
+            return True
+    prev_buckets = (prev_world.get("world_buckets") or {}) if isinstance(prev_world, dict) else {}
+    new_buckets = (world.get("world_buckets") or {}) if isinstance(world, dict) else {}
+    return prev_buckets != new_buckets
 
 
 def belief_updater_node(state: dict) -> dict:
@@ -21,68 +37,89 @@ def belief_updater_node(state: dict) -> dict:
     gate_state = (state.get("progress_state") or {}).get(
         "gate_state", default_progress_state()["gate_state"]
     )
-    turn_count = state.get("turn_count", 0) or 0
-    conversation_mode = state.get("conversation_mode", "general") or "general"
-    prev_world_buckets_fp = str(gate_state.get("world_buckets_fingerprint_prev", ""))
-    curr_world_buckets_fp = world_buckets_fingerprint(state.get("world_state", {}))
-    prev_belief_fp = _state_fingerprint(prev_belief)
-
-    belief_skipped, skip_reason = gate_belief(
+    world_changed = _world_changed_meaningfully(
         world_diff=state.get("world_diff", {}),
         prev_world=state.get("prev_world_state", {}),
         world=state.get("world_state", {}),
-        prev_belief=prev_belief,
-        turn_count=turn_count,
-        last_refresh_turn=int(gate_state.get("last_belief_refresh_turn", 0) or 0),
-        interval=int(os.getenv("BELIEF_REFRESH_INTERVAL_TURNS", "3")),
-        prev_universal_fingerprint=str(gate_state.get("world_meta_fingerprint_prev", "")),
-        prev_world_buckets_fingerprint=str(gate_state.get("world_buckets_fingerprint_prev", "")),
     )
-    if belief_skipped:
-        gate_state["belief_skip_count"] = int(gate_state.get("belief_skip_count", 0) or 0) + 1
+
+    prev_belief_fp = _state_fingerprint(prev_belief)
+    if not world_changed:
         belief_state = prev_belief
         belief_meta = {
             "belief_update_failed": False,
             "belief_update_error": "",
             "belief_update_skipped": True,
-            "skip_reason": skip_reason,
+            "skip_reason": "no_world_delta",
             "belief_node_entered": True,
             "belief_updater_invoked": False,
             "belief_noop_reason": "gate_skipped",
+            "belief_engine": "llm_belief_extractor_v1",
+            "belief_llm_used": False,
         }
     else:
-        belief_state, belief_meta = deps.update_belief_state(
-            prev_belief_state=prev_belief,
-            prev_world_state=state["prev_world_state"],
-            world_state=state["world_state"],
-            world_diff=state.get("world_diff", {}),
-            last_policy_executed=state.get("last_policy_executed"),
-            last_assistant_message=state.get("last_assistant_message", ""),
-            user_message=state.get("user_message", ""),
-            context_snippet=state.get("recent_history_text", ""),
-            extractor_meta=state.get("extractor_meta", {}),
-            force_update=True,
-            conversation_mode=conversation_mode,
-        )
-        gate_state["last_belief_refresh_turn"] = turn_count
-        belief_meta["belief_node_entered"] = True
-        belief_meta["belief_updater_invoked"] = True
-        belief_meta["belief_gate_skip_reason"] = skip_reason
-        belief_meta.setdefault("belief_noop_reason", "")
+        llm_started = time.perf_counter()
+        try:
+            belief_state, llm_meta = extract_belief_state_llm_v1(
+                deps=deps,
+                user_message=state.get("user_message", ""),
+                world_state=state.get("world_state", {}),
+                prev_belief_state=prev_belief,
+                turn_idx=int(state.get("turn_count", 0) or 0),
+            )
+            record_llm_call(
+                state,
+                name="belief_llm",
+                node="belief_updater",
+                started=llm_started,
+                ok=True,
+                error_stage="",
+                error="",
+            )
+            belief_meta = {
+                "belief_update_failed": False,
+                "belief_update_error": "",
+                "belief_update_skipped": False,
+                "skip_reason": "",
+                "belief_node_entered": True,
+                "belief_updater_invoked": True,
+                "belief_noop_reason": "",
+                "belief_engine": "llm_belief_extractor_v1",
+                "belief_llm_used": True,
+                "belief_latency_ms": int(llm_meta.get("belief_latency_ms", 0) or 0),
+            }
+        except Exception as exc:
+            record_llm_call(
+                state,
+                name="belief_llm",
+                node="belief_updater",
+                started=llm_started,
+                ok=False,
+                error_stage="belief_extract",
+                error=str(exc),
+            )
+            belief_state = prev_belief
+            belief_meta = {
+                "belief_update_failed": True,
+                "belief_update_error": str(exc),
+                "belief_update_skipped": True,
+                "skip_reason": "belief_llm_error",
+                "belief_node_entered": True,
+                "belief_updater_invoked": True,
+                "belief_noop_reason": "llm_error_reuse_prev",
+                "belief_engine": "llm_belief_extractor_v1",
+                "belief_llm_used": True,
+            }
 
     curr_belief_fp = _state_fingerprint(belief_state)
     belief_meta["belief_gate_decision"] = {
-        "skipped": bool(belief_skipped),
-        "reason": str(skip_reason),
-        "prev_world_buckets_fp": prev_world_buckets_fp or None,
-        "curr_world_buckets_fp": curr_world_buckets_fp or None,
+        "skipped": bool(belief_meta.get("belief_update_skipped", False)),
+        "reason": str(belief_meta.get("skip_reason", "")),
+        "world_changed_meaningfully": bool(world_changed),
         "prev_belief_fp": prev_belief_fp or None,
         "curr_belief_fp": curr_belief_fp or None,
     }
-    if belief_skipped:
-        belief_meta["belief_gate_skip_reason"] = str(skip_reason)
 
-    gate_state["world_buckets_fingerprint_prev"] = curr_world_buckets_fp
     prev_buckets = (prev_belief.get("belief_buckets") or {}) if isinstance(prev_belief, dict) else {}
     curr_buckets = (belief_state.get("belief_buckets") or {}) if isinstance(belief_state, dict) else {}
     bucket_names = sorted(set(prev_buckets.keys()) | set(curr_buckets.keys()))
@@ -104,8 +141,8 @@ def belief_updater_node(state: dict) -> dict:
         },
         "belief_update_meta": {
             "belief_update_skipped": bool(belief_meta.get("belief_update_skipped", False)),
-            "belief_llm_failed": bool(belief_meta.get("belief_llm_failed", False)),
-            "belief_fallback_used": bool(belief_meta.get("belief_fallback_used", False)),
+            "belief_llm_failed": bool(belief_meta.get("belief_update_failed", False)),
+            "belief_fallback_used": bool(belief_meta.get("belief_noop_reason", "") == "llm_error_reuse_prev"),
             "belief_latency_ms": int(belief_meta.get("belief_latency_ms", 0) or 0),
         },
         "planner_relevant": {

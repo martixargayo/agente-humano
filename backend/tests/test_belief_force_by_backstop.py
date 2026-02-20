@@ -1,15 +1,23 @@
-from negotiation.gating.fingerprints import world_buckets_fingerprint
 from negotiation.nodes.belief_node import belief_updater_node
 from negotiation.schemas import default_belief_state, default_progress_state, default_world_state
+from negotiation.telemetry.trace_runtime import init_trace_runtime
 
 
-def test_belief_node_refreshes_when_world_buckets_fingerprint_changes():
-    called = {"n": 0}
+class _Deps:
+    def __init__(self):
+        self.calls = 0
 
-    def _fake_update_belief_state(**_kwargs):
-        called["n"] += 1
-        return default_belief_state(), {"belief_update_failed": False, "belief_update_skipped": False}
+    def execute(self, _messages):
+        self.calls += 1
+        return (
+            '{"schema_version":"v3","belief_buckets":{"hypotheses":[{"text":"Detecta concesión","confidence":0.8,"status":"new"}],'
+            '"strategy_notes":[],"risk_flags":[],"watch_items":[]},'
+            '"planner_signals":{"interaction_health":"tense","conflict_risk":0.55,"recommended_move":"tradeoff","recovery_mode":false}}'
+        )
 
+
+def test_belief_node_runs_llm_when_world_buckets_change():
+    deps = _Deps()
     prev_world = default_world_state()
     curr_world = default_world_state()
     curr_world["world_buckets"]["concessions"] = [
@@ -20,26 +28,20 @@ def test_belief_node_refreshes_when_world_buckets_fingerprint_changes():
             "source_turn": 2,
         }
     ]
-    progress = default_progress_state()
-    progress["gate_state"]["last_belief_refresh_turn"] = 1
-    progress["gate_state"]["world_buckets_fingerprint_prev"] = world_buckets_fingerprint(prev_world)
-
     state = {
-        "deps": type("Deps", (), {"update_belief_state": staticmethod(_fake_update_belief_state)})(),
+        "deps": deps,
+        "trace_runtime": init_trace_runtime(),
         "belief_state": default_belief_state(),
         "prev_world_state": prev_world,
         "world_state": curr_world,
         "world_diff": {},
-        "progress_state": progress,
+        "progress_state": default_progress_state(),
         "turn_count": 2,
-        "conversation_mode": "general",
-        "extractor_meta": {},
-        "last_policy_executed": None,
-        "last_assistant_message": "",
         "user_message": "si me pagas más hoy, te hago el papeleo gratis",
-        "recent_history_text": "",
     }
 
     out = belief_updater_node(state)
-    assert called["n"] == 1
+    assert deps.calls == 1
     assert out["belief_update_meta"].get("belief_update_skipped") is False
+    llm_names = [item.get("name") for item in out["trace_runtime"]["llm_calls"]]
+    assert "belief_llm" in llm_names

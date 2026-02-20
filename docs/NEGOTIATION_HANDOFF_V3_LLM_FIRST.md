@@ -453,35 +453,41 @@ Archivos:
 - `backend/negotiation/belief_state_updater.py`
 - `backend/negotiation/nodes/belief_node.py`
 
-## 5.1 Flujo
+## 5.1 Flujo (LLM-first + gate por delta real de world)
 
-1. `belief_updater_node` evalúa gate (`gate_belief`).
-2. Si no skip, llama `deps.update_belief_state(...)` (default `update_belief_state`).
-3. `update_belief_state` deriva patch desde `world_buckets`:
-   - `offers` → `hypotheses`.
-   - `constraints` → `risk_flags`.
-   - `requests` → `strategy_notes`.
-4. merge conservador `merge_belief_buckets_update_not_rewrite`.
-5. calcula `planner_signals` con `_derive_planner_signals`.
+1. `belief_updater_node` evalúa si hubo cambio significativo en `world_state.world_buckets`.
+   - Preferencia 1: revisa `world_diff.domain.world_buckets` o `world_diff.world_buckets`.
+   - Preferencia 2: compara `prev_world_state.world_buckets != world_state.world_buckets`.
+   - Cambios solo de `world_state_meta` no abren gate.
+2. Si NO hay delta real:
+   - `belief_update_skipped = true`
+   - `skip_reason = "no_world_delta"`
+   - no se llama LLM y se reutiliza `belief_state` previo sin mutación.
+3. Si SÍ hay delta real:
+   - llama `extract_belief_state_llm_v1(...)`.
+   - `belief_engine = "llm_belief_extractor_v1"`
+   - `belief_llm_used = true`
+4. El extractor normaliza salida estricta v3:
+   - `schema_version = "v3"`
+   - buckets `hypotheses/strategy_notes/risk_flags/watch_items`
+   - `planner_signals` (`interaction_health`, `conflict_risk`, `recommended_move`, `recovery_mode`).
 
-## 5.2 `planner_signals` y uso
+## 5.2 Telemetría y LiveTrace
 
-Campos generados:
-- `interaction_health`: stable|tense|stalled.
-- `conflict_risk`: float [0..1].
-- `recommended_move`: hold|deescalate|tradeoff.
-- `recovery_mode`: bool.
-- `clarity_vague`: bool.
+Cuando corre belief LLM:
+- `timing.llm_calls[]` incluye `{"name":"belief_llm","node":"belief_updater", ...}`.
+- `timing.nodes.belief_updater.llm_ms > 0`.
 
-Uso directo:
-- `phase_state_updater._compute_recovery_mode` consume `interaction_health/conflict_risk`.
-- Planner y LiveTrace usan `planner_signals` para explicar decisiones.
-- Recovery afecta `allowed_policy_ids` (filtro a políticas seguras).
+Cuando se salta belief:
+- no aparece `belief_llm` en `timing.llm_calls`.
+- gate/meta exponen `belief_update_skipped=true`, `skip_reason="no_world_delta"`.
 
-## 5.3 Reglas/prompts
+## 5.3 Reglas de normalización del extractor
 
-En la implementación actual de `update_belief_state` no se llama LLM; es derivación determinística desde world.
-(Existen prompts históricos en `backend/prompts.py`, pero este path v3 LLM-first usa updater programático para belief.)
+- `conflict_risk` clamp a `[0,1]`.
+- `status` forzado a `{active, weakening, new}`.
+- límites de tamaño en texto y arrays.
+- se ignoran keys legacy que no pertenezcan al contrato v3.
 
 ---
 
