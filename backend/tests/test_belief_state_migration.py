@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from negotiation.elementos.belief.belief_contracts import UNIVERSAL_REASON_KEYS
+from tests.legacy_fixtures.belief_contracts_legacy import UNIVERSAL_REASON_KEYS
 from state import SessionState, get_session_state, save_session_state
 
 

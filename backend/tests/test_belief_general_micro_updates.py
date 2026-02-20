@@ -1,11 +1,11 @@
-from negotiation.belief_state_updater import update_belief_state
+from negotiation.belief_compat import update_belief_state
 from negotiation.schemas import default_belief_state, default_world_state
 from negotiation.world_state_updater import diff_world_state
 
 
 def test_belief_allows_micro_negotiation_time_pressure_in_general_mode(monkeypatch):
     monkeypatch.setattr(
-        "negotiation.belief_state_updater.extract_belief_patch_llm_v3",
+        "negotiation.belief_compat.extract_belief_patch_llm_v3",
         lambda **_kwargs: ({"metrics": {}, "dynamics": {}, "tom": {}, "reasons": {}}, {}, {}),
     )
     prev_world = default_world_state()

@@ -112,7 +112,7 @@ def test_update_progress_state_tracks_policy_last_outcome():
 
 
 def test_has_belief_evidence_delta_triggers_on_critical_flag_change():
-    from negotiation.belief_state_updater import has_belief_evidence_delta
+    from negotiation.belief_compat import has_belief_evidence_delta
 
     prev = default_world_state()
     cur = default_world_state()
@@ -123,7 +123,7 @@ def test_has_belief_evidence_delta_triggers_on_critical_flag_change():
 
 
 def test_has_belief_evidence_delta_triggers_on_tone_change():
-    from negotiation.belief_state_updater import has_belief_evidence_delta
+    from negotiation.belief_compat import has_belief_evidence_delta
 
     prev = default_world_state()
     cur = default_world_state()
@@ -133,7 +133,7 @@ def test_has_belief_evidence_delta_triggers_on_tone_change():
 
 
 def test_has_belief_evidence_delta_does_not_use_user_text():
-    from negotiation.belief_state_updater import has_belief_evidence_delta
+    from negotiation.belief_compat import has_belief_evidence_delta
 
     prev = default_world_state()
     cur = default_world_state()
@@ -143,7 +143,7 @@ def test_has_belief_evidence_delta_does_not_use_user_text():
 
 
 def test_has_belief_evidence_delta_respects_decision_flag():
-    from negotiation.belief_state_updater import has_belief_evidence_delta
+    from negotiation.belief_compat import has_belief_evidence_delta
 
     prev = default_world_state()
     cur = default_world_state()
@@ -153,7 +153,7 @@ def test_has_belief_evidence_delta_respects_decision_flag():
 
 
 def test_belief_reasons_tiebreak_is_deterministic_with_real_keys():
-    from negotiation.belief_state_updater import _limit_reasons
+    from negotiation.belief_compat import _limit_reasons
 
     reasons = {
         "tone_signal": {"weight": 0.5, "confidence": 0.5, "evidence": "x"},
@@ -166,7 +166,7 @@ def test_belief_reasons_tiebreak_is_deterministic_with_real_keys():
 
 
 def test_belief_reasons_limit_to_top_six():
-    from negotiation.belief_state_updater import _limit_reasons
+    from negotiation.belief_compat import _limit_reasons
 
     reasons = {
         "price_signal": {"weight": 0.9, "confidence": 0.9, "evidence": "x"},

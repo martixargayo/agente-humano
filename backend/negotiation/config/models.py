@@ -275,7 +275,7 @@ def get_negotiation_model_config(
         )
     )
 
-    default_rag_dir = str(Path(__file__).resolve().parents[1] / "policy_docs")
+    default_rag_dir = ""
     rag_dir = _read_env(
         "NEGOTIATION_RAG_DIR",
         default_rag_dir,

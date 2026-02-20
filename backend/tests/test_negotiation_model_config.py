@@ -45,6 +45,14 @@ def test_negotiation_model_config_defaults(monkeypatch):
     assert cfg.executor.model == "gpt-5-nano"
 
 
+
+
+def test_default_rag_dir_is_disabled(monkeypatch):
+    _clear_model_env(monkeypatch)
+
+    cfg = get_negotiation_model_config()
+
+    assert cfg.rag_dir == ""
 def test_env_override_changes_only_target_component(monkeypatch):
     _clear_model_env(monkeypatch)
     monkeypatch.setenv("NEGOTIATION_PLANNER_MODEL", "planner-test-model")
