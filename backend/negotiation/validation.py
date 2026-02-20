@@ -90,15 +90,22 @@ def normalize_world_buckets(raw: object, default_turn: int = 0, max_items: int =
             raw_conf = item.get("confidence", None)
             explicit_defaulted = item.get("confidence_defaulted", None)
             confidence_defaulted = bool(explicit_defaulted) if isinstance(explicit_defaulted, bool) else False
+            confidence_source = "emitted_by_llm"
             if raw_conf is None:
                 conf = DEFAULT_WORLD_ITEM_CONFIDENCE
                 confidence_defaulted = True
+                confidence_source = "defaulted_by_normalizer"
             else:
                 try:
                     conf = float(raw_conf)
+                    if conf <= 0.0:
+                        conf = DEFAULT_WORLD_ITEM_CONFIDENCE
+                        confidence_defaulted = True
+                        confidence_source = "defaulted_by_normalizer"
                 except (TypeError, ValueError):
                     conf = DEFAULT_WORLD_ITEM_CONFIDENCE
                     confidence_defaulted = True
+                    confidence_source = "defaulted_by_normalizer"
             conf = clamp01(conf, DEFAULT_WORLD_ITEM_CONFIDENCE)
             turn = to_int(item.get("source_turn"), default_turn) or default_turn
             cand = {
@@ -107,6 +114,7 @@ def normalize_world_buckets(raw: object, default_turn: int = 0, max_items: int =
                 "confidence": conf,
                 "confidence_defaulted": confidence_defaulted,
                 "source_turn": int(turn),
+                "confidence_source": confidence_source,
             }
             prev = dedup.get(key)
             if prev is None or float(cand["confidence"]) >= float(prev.get("confidence", 0.0)):

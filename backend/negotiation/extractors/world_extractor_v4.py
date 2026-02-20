@@ -44,7 +44,7 @@ RULES:
 item format:
 {
   "text": "short human sentence useful for a planner",
-  "confidence": 0.0,
+  "confidence": 0.85,
   "raw_text": "literal quote from user message",
   "source_turn": {turn_idx}
 }
@@ -54,6 +54,9 @@ item format:
 - If user expresses a conditional/implicit exchange, add at least one item in offers or concessions.
 - Keep text simple and concise.
 - raw_text is mandatory for every emitted item.
+- confidence is mandatory and must be numeric in [0,1].
+- Use confidence >= 0.60 for emitted items; if confidence would be < 0.60, do not emit that item.
+- Never emit confidence=0 unless the quote explicitly states total uncertainty.
 - If no new information for a bucket, return empty list for that bucket.
 """.strip()
 
@@ -81,15 +84,22 @@ def _normalize_item(raw: object, turn_idx: int) -> dict | None:
 
     raw_conf = raw.get("confidence", None)
     confidence_defaulted = False
+    confidence_source = "emitted_by_llm"
     if raw_conf is None:
         confidence = DEFAULT_ITEM_CONFIDENCE
         confidence_defaulted = True
+        confidence_source = "defaulted_by_parser"
     else:
         try:
             confidence = float(raw_conf)
+            if confidence <= 0.0:
+                confidence = DEFAULT_ITEM_CONFIDENCE
+                confidence_defaulted = True
+                confidence_source = "defaulted_by_parser"
         except Exception:
             confidence = DEFAULT_ITEM_CONFIDENCE
             confidence_defaulted = True
+            confidence_source = "defaulted_by_parser"
     confidence = max(0.0, min(1.0, confidence))
 
     source_turn = raw.get("source_turn", turn_idx)
@@ -101,6 +111,7 @@ def _normalize_item(raw: object, turn_idx: int) -> dict | None:
         "text": text,
         "confidence": confidence,
         "confidence_defaulted": confidence_defaulted,
+        "confidence_source": confidence_source,
         "raw_text": raw_text,
         "source_turn": source_turn,
     }
@@ -157,4 +168,49 @@ def extract_world_patch_llm_v4(
     )
     meta["confidence_defaulted_count"] = int(defaulted_items)
     meta["confidence_item_count"] = int(total_items)
+    confidence_values = [
+        float(item.get("confidence", 0.0) or 0.0)
+        for items in patch.values()
+        for item in items
+        if isinstance(item, dict)
+    ]
+    missing_count = sum(
+        1
+        for items in patch_raw.values()
+        if isinstance(items, list)
+        for item in items
+        if isinstance(item, dict) and item.get("confidence", None) is None
+    )
+    zeros_count = sum(1 for value in confidence_values if float(value) == 0.0)
+    per_bucket = {}
+    for bucket in _BUCKETS:
+        bucket_values = [float(item.get("confidence", 0.0) or 0.0) for item in patch.get(bucket, []) if isinstance(item, dict)]
+        per_bucket[bucket] = {
+            "count": len(bucket_values),
+            "missing_count": sum(
+                1
+                for item in (patch_raw.get(bucket, []) if isinstance(patch_raw.get(bucket), list) else [])
+                if isinstance(item, dict) and item.get("confidence", None) is None
+            ),
+            "zeros_count": sum(1 for v in bucket_values if v == 0.0),
+            "min": min(bucket_values) if bucket_values else None,
+            "max": max(bucket_values) if bucket_values else None,
+            "avg": (sum(bucket_values) / len(bucket_values)) if bucket_values else None,
+        }
+    meta["confidence_values_emitted"] = {
+        "count": len(confidence_values),
+        "min": min(confidence_values) if confidence_values else None,
+        "max": max(confidence_values) if confidence_values else None,
+        "zeros": zeros_count,
+        "missing": missing_count,
+    }
+    meta["extractor_confidence_summary"] = {
+        "emitted_count": len(confidence_values),
+        "missing_count": int(missing_count),
+        "zeros_count": int(zeros_count),
+        "min": min(confidence_values) if confidence_values else None,
+        "max": max(confidence_values) if confidence_values else None,
+        "avg": (sum(confidence_values) / len(confidence_values)) if confidence_values else None,
+        "per_bucket": per_bucket,
+    }
     return patch, meta

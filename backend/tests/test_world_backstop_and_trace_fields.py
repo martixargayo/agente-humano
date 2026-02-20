@@ -77,14 +77,14 @@ def test_world_extractor_preserves_low_nonzero_confidence():
     assert item["confidence_defaulted"] is False
 
 
-def test_world_extractor_preserves_zero_confidence_without_defaulting():
+def test_world_extractor_zero_confidence_defaults_and_marks_flag():
     deps = _FakeDeps(
         '{"schema_version":"world_extractor_v4","world_buckets_patch":{"offers":[{"text":"Oferta cero","confidence":0.0,"raw_text":"oferta cero","source_turn":1}],"concessions":[],"constraints":[],"interests":[],"claims":[],"requests":[],"context":[]},"meta":{}}'
     )
     world, _ = update_world_state(default_world_state(), "oferta cero", turn_count=1, conversation_mode="general", deps=deps)
     item = world["world_buckets"]["offers"][0]
-    assert item["confidence"] == 0.0
-    assert item["confidence_defaulted"] is False
+    assert item["confidence"] == 0.6
+    assert item["confidence_defaulted"] is True
 
 
 def test_world_extractor_missing_confidence_defaults_and_marks_flag():
@@ -96,3 +96,18 @@ def test_world_extractor_missing_confidence_defaults_and_marks_flag():
     assert item["confidence"] == 0.6
     assert item["confidence_defaulted"] is True
     assert meta["confidence_defaulted_count"] == 1
+
+
+def test_world_extractor_confidence_summary_and_guardrail_no_zero_non_defaulted():
+    deps = _FakeDeps(
+        '{"schema_version":"world_extractor_v4","world_buckets_patch":{"offers":[{"text":"Oferta cero","confidence":0.0,"raw_text":"oferta cero","source_turn":1},{"text":"Oferta sin confidence","raw_text":"oferta sin confidence","source_turn":1}],"concessions":[],"constraints":[],"interests":[],"claims":[],"requests":[],"context":[]},"meta":{}}'
+    )
+    world, meta = update_world_state(default_world_state(), "oferta cero", turn_count=1, conversation_mode="general", deps=deps)
+    items = world["world_buckets"]["offers"]
+    assert all(not (it["confidence"] == 0.0 and it["confidence_defaulted"] is False) for it in items)
+    summary = meta["extractor_confidence_summary"]
+    assert summary["emitted_count"] == 2
+    assert summary["missing_count"] == 1
+    assert summary["zeros_count"] == 0
+    assert summary["per_bucket"]["offers"]["count"] == 2
+
