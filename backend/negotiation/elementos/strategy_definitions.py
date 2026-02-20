@@ -53,20 +53,34 @@ class PhaseSignal(BaseModel):
     value: str = Field(max_length=120)
 
 
+class PlannerStepModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    step_idx: int = Field(default=0, ge=0)
+    goal: str = Field(default="", max_length=160)
+    success_criteria: conlist(str, max_length=4) = Field(default_factory=list)
+    instruction: str = Field(default="", max_length=260)
+
+
+class PlannerActivePlanModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    plan_id: str = Field(default="", max_length=40)
+    current_step_idx: int = Field(default=0, ge=0)
+    context_digest: str = Field(default="", max_length=220)
+    steps: conlist(PlannerStepModel, min_length=2, max_length=5)
+
+
 class PhasePolicyDecisionModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
     phase: PHASE_LITERAL | LEGACY_PHASE_LITERAL
     confidence: confloat(ge=0.0, le=1.0) = 0.6
     recovery_mode: bool = False
-    reasons: conlist(str, max_length=8) = Field(default_factory=list)
-    signals: conlist(PhaseSignal, max_length=8) = Field(default_factory=list)
-    alternatives: conlist(PHASE_LITERAL | LEGACY_PHASE_LITERAL, max_length=3) = Field(default_factory=list)
+    reasons: conlist(str, max_length=6) = Field(default_factory=list)
     policy_id: str = ""
     reason: str = Field(default="", max_length=180)
     micro_goal: str = Field(default="", max_length=140)
     risk_posture: Literal["low", "mid", "high"] = Field(default="low")
     why_short: str = Field(default="", max_length=140)
-    inputs_used: list[str] = Field(default_factory=list, max_length=8)
+    active_plan: PlannerActivePlanModel
 
 
 INTENT_TYPES = (

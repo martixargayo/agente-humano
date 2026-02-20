@@ -227,6 +227,7 @@ def phase_policy_planner_node(state: dict) -> dict:
                 planner_debug["gate_decision"]["gate_reason_codes"] = ["missing_reusable_policy"]
 
     if not planner_skipped:
+        planner_call_meta: dict = {}
         started = time.perf_counter()
         try:
             phase_candidate, policy_decision, planner_call_meta = deps.plan_phase_policy(
@@ -241,6 +242,7 @@ def phase_policy_planner_node(state: dict) -> dict:
                 constraints_struct=state.get("hard_constraints_struct", {}),
                 recent_context=state.get("recent_history_text", ""),
                 allowed_policy_ids=allowed_all,
+                advisor_recs=state.get("advisor_recs") if isinstance(state.get("advisor_recs"), dict) else {},
             )
             planner_meta.update(planner_call_meta)
             planner_debug["llm_call"]["planner_llm_called"] = True
@@ -292,7 +294,8 @@ def phase_policy_planner_node(state: dict) -> dict:
             planner_meta["policy_normalization_changed"] = True
             planner_meta["issues"] = issues
         policy_decision = normalized_policy
-        active_plan = _build_active_plan_from_replan(policy_decision, phase_effective, turn_count)
+        active_plan_from_llm = planner_call_meta.get("active_plan") if isinstance(planner_call_meta.get("active_plan"), dict) else None
+        active_plan = active_plan_from_llm or _build_active_plan_from_replan(policy_decision, phase_effective, turn_count)
         active_plan_status = "active"
 
     planner_meta["planner_request"] = planner_request
