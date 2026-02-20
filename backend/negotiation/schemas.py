@@ -235,33 +235,13 @@ class OpenClaim(TypedDict, total=False):
 
 
 class WorldState(TypedDict):
-    universal_domain: Dict[str, Any]
-    negotiation: Dict[str, Any]
-    universal_state: "UniversalState"
-    open_claims: List["OpenClaim"]
-    evidence_items: List["EvidenceItem"]
-    world_observations: "WorldObservations"
-    world_observations_v2: "WorldObservationsV2"
-    world_derived: "WorldDerived"
+    schema_version: str
+    world_buckets: Dict[str, List[Dict[str, Any]]]
     world_state_meta: "WorldStateMeta"
-
-
-class EvidenceItem(TypedDict):
-    type: EvidenceType
-    field: str
-    polarity: EvidencePolarity
-    text: str
-    value: Any | None
-    source: EvidenceSource
-    confidence: float
-    turn_idx: int | None
-    span: tuple[int, int] | None
-    raw: Dict[str, Any] | None
 
 
 class WorldObservations(TypedDict):
     raw_fields: Dict[str, Any]
-    evidence_items: List["EvidenceItem"]
 
 
 class EvidenceV2Claim(TypedDict):
@@ -381,19 +361,9 @@ class BeliefNegotiationState(TypedDict, total=False):
 
 # ============ BeliefState principal v2 ============
 class BeliefState(TypedDict, total=False):
-    # v2
-    universal: BeliefUniversalState
-    negotiation: BeliefNegotiationState
-
-    # mirrors legacy (compat)
-    dynamics: BeliefUniversalDynamics
-    tom: BeliefUniversalToM
-    stance: Dict[str, Any]
-    reasons: Dict[str, Any]
-    hypotheses: List[str]
-    hypotheses_structural: List[str]
-    hypotheses_observational: List[str]
-    evaluations: Dict[str, Any]
+    schema_version: str
+    belief_buckets: Dict[str, List[Dict[str, Any]]]
+    planner_signals: Dict[str, Any]
 
 
 class RequiredBelief(TypedDict):
@@ -530,7 +500,6 @@ class ProgressState(TypedDict):
     policy_attempts: Dict[str, int]
     loop_flags: List[str]
     turns_in_same_mode: int
-    intent_state: IntentState
     policy_state: PolicyState
     phase_state: PhaseState
     gate_state: "GateState"
@@ -561,73 +530,12 @@ class GateState(TypedDict):
     interaction_fingerprint_prev: Dict[str, object]
     interaction_fingerprint_version: int
     prev_user_message: str
-    universal_state_fingerprint_prev: str
-
-
-def default_universal_state() -> UniversalState:
-    return {
-        "goal": {},
-        "constraints": [],
-        "preferences": [],
-        "commitments": [],
-        "entities": [],
-        "speech_acts": [],
-    }
+    world_meta_fingerprint_prev: str
 
 
 def default_world_state() -> WorldState:
     return {
-        "schema_version": "v1",
-        "universal_domain": {
-            "message_is_vague": False,
-            "tone_signal": "neutral",
-            "tone_confidence": 0.0,
-        },
-        "negotiation": {
-            "price_mentioned": False,
-            "price_value": None,
-            "price_firm": False,
-            "price_firm_text": "",
-            "deadline_claimed": False,
-            "deadline_text": "",
-            "deadline_days": None,
-            "deadline_kind": "",
-            "urgency_claimed": False,
-            "urgency_text": "",
-            "urgency_reason": "",
-            "other_buyer_claimed": False,
-            "other_buyer_text": "",
-            "other_buyer_offer_price": None,
-            "other_buyer_timing_text": "",
-            "concession_made": False,
-            "concession_text": "",
-            "batna_claimed": False,
-            "batna_text": "",
-            "min_price_claimed": False,
-            "min_price_text": "",
-            "docs_claimed": False,
-            "docs_types": [],
-            "evidence_offered": False,
-            "evidence_text": "",
-        },
-        "universal_v2": {
-            "clarity": {"is_vague": False, "missing_info": [], "ambiguity_types": [], "confidence": 0.0},
-            "affect": {"tone": "neutral", "confidence": 0.0, "sentiment": "neutral", "arousal": "medium"},
-            "interaction": {"cooperation": 0.5, "friction": 0.0, "boundary": False, "loop": False, "commitment_signal": 0.0},
-            "intent": {"act": "inform", "confidence": 0.0},
-            "commitments": [],
-        },
-        "negotiation_v2": {
-            "subject": {"item": "", "context": "", "attributes": {}},
-            "offers": [],
-            "constraints": [],
-            "interests": [],
-            "concessions": [],
-            "time_pressure": {"deadline_text": "", "deadline_date": None, "window_days": None, "urgency": 0.0, "reason": "", "status": "unverified", "confidence": 0.0},
-            "leverage_claims": [],
-            "evidence": [],
-            "agreement_state": {"state": "none", "next_step": "", "open_points": [], "confidence": 0.0},
-        },
+        "schema_version": "v3",
         "world_buckets": {
             "offers": [],
             "concessions": [],
@@ -637,22 +545,6 @@ def default_world_state() -> WorldState:
             "requests": [],
             "context": [],
         },
-        "universal_state": default_universal_state(),
-        "open_claims": [],
-        "evidence_items": [],
-        "world_observations": {
-            "raw_fields": {},
-            "evidence_items": [],
-        },
-        "world_observations_v2": {
-            "claims": [],
-            "index": {
-                "latest_by_path": {},
-                "best_by_path": {},
-                "recent_by_path": {},
-            },
-        },
-        "world_derived": {"fields": {}},
         "world_state_meta": {
             "last_update_source": "llm",
             "evidence_confidence_min": 0.6,
@@ -666,41 +558,20 @@ def default_world_state() -> WorldState:
 
 
 def default_belief_state() -> BeliefState:
-    uni: BeliefUniversalState = {
-        "metrics": {"trust": 0.5, "cooperation": 0.5, "clarity": 0.5, "engagement": 0.5},
-        "dynamics": {
-            "interaction_health": "stable",
-            "escalation": "none",
-            "looping": False,
-            "evasion": False,
-            "commitment": "none",
-        },
-        "tom": {"other_goals": [], "other_tactics": [], "other_belief_about_me": [], "confidence": 0.0},
-        "reasons": {},
-    }
-    neg: BeliefNegotiationState = {
-        "stance": {},
-        "reasons": {},
-        "hypotheses": [],
-        "hypotheses_structural": [],
-        "hypotheses_observational": [],
-        "evaluations": {},
-        "tom": {},
-    }
-    uni["behavior_guidance"] = {
-        "assertiveness": 0.5,
-        "verification_need": 0.5,
-        "trust_estimate": 0.5,
-        "conflict_risk": 0.0,
-        "pace_preference": 0.5,
-        "recommended_move": "hold",
-        "epistemic_style": "neutral",
-    }
-    uni["tom"]["hypotheses"] = []
     return {
-        "schema_version": "v2",
-        "universal": uni,
-        "negotiation": neg,
+        "schema_version": "v3",
+        "belief_buckets": {
+            "hypotheses": [],
+            "strategy_notes": [],
+            "risk_flags": [],
+            "watch_items": [],
+        },
+        "planner_signals": {
+            "interaction_health": "stable",
+            "conflict_risk": 0.0,
+            "recommended_move": "hold",
+            "recovery_mode": False,
+        },
     }
 
 
@@ -795,7 +666,6 @@ def default_progress_state() -> ProgressState:
         "policy_attempts": {},
         "loop_flags": [],
         "turns_in_same_mode": 0,
-        "intent_state": default_intent_state(),
         "policy_state": default_policy_state(),
         "active_plan_status": "none",
         "active_plan": None,
@@ -832,38 +702,22 @@ def default_progress_state() -> ProgressState:
             "interaction_fingerprint_prev": {},
             "interaction_fingerprint_version": 1,
             "prev_user_message": "",
-            "universal_state_fingerprint_prev": "",
+            "world_meta_fingerprint_prev": "",
         },
     }
 
 
-def default_intent_state() -> IntentState:
+
+
+def default_intent_state() -> dict:
     return {
         "status": "inactive",
-        "intent_goal": "",
-        "intent_type": "info_extract",
         "steps": [],
         "step_idx": 0,
         "step_attempts": 0,
-        "max_attempts_per_step": 2,
-        "success_criteria": [],
-        "slots": {
-            "slots_required": [],
-            "slots_optional": [],
-            "slots_filled": {},
-        },
-        "confidence": 0.0,
-        "no_progress_turns": 0,
-        "slot_fill_count": 0,
-        "slot_fill_count_recent": 0,
-        "created_turn": 0,
-        "last_turn": 0,
-        "continue_until": "",
-        "abandon_reasons": [],
-        "last_observation": "",
-        "next_action_hint": "",
+        "max_attempts_per_step": 0,
+        "slots": {"slots_required": [], "slots_optional": [], "slots_filled": {}},
     }
-
 
 def default_policy_decision() -> PolicyDecision:
     return {

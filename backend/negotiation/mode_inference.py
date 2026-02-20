@@ -3,15 +3,16 @@ from __future__ import annotations
 
 def compute_mode_score(world: dict) -> float:
     score = 0.0
-    negotiation = world.get("negotiation", {}) if isinstance(world, dict) else {}
-    if negotiation.get("price_mentioned"):
+    buckets = world.get("world_buckets", {}) if isinstance(world, dict) else {}
+    offers = buckets.get("offers", []) if isinstance(buckets, dict) else []
+    constraints = buckets.get("constraints", []) if isinstance(buckets, dict) else []
+    requests = buckets.get("requests", []) if isinstance(buckets, dict) else []
+    if isinstance(offers, list) and offers:
         score += 0.35
-    if negotiation.get("deadline_claimed"):
+    if isinstance(requests, list) and requests:
         score += 0.20
-    if negotiation.get("other_buyer_claimed"):
-        score += 0.20
-    if negotiation.get("min_price_claimed"):
-        score += 0.25
+    if isinstance(constraints, list) and constraints:
+        score += 0.45
     return min(score, 1.0)
 
 

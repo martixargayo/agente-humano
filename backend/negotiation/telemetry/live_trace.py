@@ -90,19 +90,6 @@ def build_trace_event(
     if belief_changed and "belief_buckets" in belief_updated_fields and "belief_buckets" not in belief_changed_keys:
         belief_changed_keys.append("belief_buckets")
 
-    belief_meta = trace_item.get("belief_update_meta") or {}
-    belief_diff_keys = sorted((trace_item.get("belief_diff") or {}).keys())
-    belief_updated_fields = [str(key) for key in (belief_meta.get("belief_updated_fields") or []) if key]
-    belief_changed = bool(
-        belief_diff_keys
-        or belief_changed_keys
-        or belief_meta.get("belief_merge_changed", False)
-    )
-    if not belief_diff_keys and belief_changed and belief_updated_fields:
-        belief_diff_keys = sorted(set(belief_updated_fields))
-    if belief_changed and "belief_buckets" in belief_updated_fields and "belief_buckets" not in belief_changed_keys:
-        belief_changed_keys.append("belief_buckets")
-
     return {
         "user_id": user_id,
         "session_id": session_id,
@@ -143,21 +130,13 @@ def build_trace_event(
         "extractor_used": bool(trace_item.get("extractor_used", False)),
         "extractor_reasons": trace_item.get("extractor_reasons") or [],
         "extractor_world_patch_keys": trace_item.get("extractor_world_patch_keys") or [],
-        "raw_llm_patch_keys": trace_item.get("raw_llm_patch_keys") or {},
-        "filtered_patch_keys": trace_item.get("filtered_patch_keys") or {},
-        "dropped_patch_keys": trace_item.get("dropped_patch_keys") or {},
-        "open_claims_raw_count": int(trace_item.get("open_claims_raw_count") or 0),
-        "open_claims_kept_count": int(trace_item.get("open_claims_kept_count") or 0),
-        "rejected_claims": trace_item.get("rejected_claims") or [],
         "merged_changed_paths": trace_item.get("merged_changed_paths") or [],
         "diff_paths": trace_item.get("diff_paths") or [],
         "backstop_reasons": trace_item.get("backstop_reasons") or [],
         "fallback_applied": bool(trace_item.get("fallback_applied", False)),
         "fallback_reasons": trace_item.get("fallback_reasons") or [],
-        "unknown_claims_added_count": int(trace_item.get("unknown_claims_added_count") or 0),
         "extractor_confidence_summary": trace_item.get("extractor_confidence_summary") or {},
         "top_evidence_v2": trace_item.get("top_evidence_v2") or [],
-        "unknown_claims_count": int(trace_item.get("unknown_claims_count") or 0),
         "validation_issues": trace_item.get("validation_issues") or {},
         "exit_issues": exit_issues,
         "timing": {
@@ -175,21 +154,15 @@ def build_trace_event(
         "policy_pre_repair": trace_item.get("policy_pre_repair") or {},
         "policy_post_repair": trace_item.get("policy_post_repair") or {},
         "executed_policy": trace_item.get("executed_policy_normalized") or {},
-        "world_debug": trace_item.get("world_debug") or {},
-        "belief_debug": trace_item.get("belief_debug") or {},
+        "planner_meta": planner_meta,
+        "world_base": world_prev,
+        "world_new": world_new,
+        "world_diff": trace_item.get("world_diff") or {},
+        "belief_base": belief_prev,
+        "belief_new": belief_new,
+        "belief_diff": trace_item.get("belief_diff") or {},
         "planner_debug": trace_item.get("planner_debug") or {},
         "progress_debug": trace_item.get("progress_debug") or {},
-        "intent": {
-            "step_kind": trace_item.get("intent_step_kind", ""),
-            "target_slot": trace_item.get("intent_target_slot", ""),
-            "decision": trace_item.get("intent_decision", ""),
-            "transition": trace_item.get("intent_transition", ""),
-            "pivot_reason": trace_item.get("intent_pivot_reason", ""),
-            "pivot_strategy": trace_item.get("intent_pivot_strategy", ""),
-            "commitment_level": trace_item.get("intent_commitment_level", ""),
-            "slots_delta": trace_item.get("intent_slots_delta") or {},
-            "success_reasons": trace_item.get("intent_success_reasons") or [],
-        },
         "memory_meta": trace_item.get("memory_meta") or {},
         "refresh_meta": trace_item.get("refresh_meta") or {},
         "summary_enqueue_meta": trace_item.get("summary_enqueue_meta") or {},
@@ -201,7 +174,6 @@ def build_trace_event(
             for key, value in trace_item.items()
             if key.startswith("negotiation_") or key.endswith("_model") or key.endswith("_temperature")
         },
-        "raw": trace_item,
     }
 
 
