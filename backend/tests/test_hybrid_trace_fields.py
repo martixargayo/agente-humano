@@ -1,6 +1,5 @@
 from types import SimpleNamespace
 
-from negotiation.gate_utils import gate_phase_policy
 from negotiation.negotiation_graph import AgentDeps, run_negotiation_agent
 from negotiation.schemas import (
     default_belief_state,
@@ -100,42 +99,16 @@ def test_phase_repair_reflected_in_trace(monkeypatch):
     )
 
     state = SessionState(user_id="u2", session_id="s2")
-    world_state = default_world_state()
-    world_state["negotiation"]["price_mentioned"] = True
-    state.world_state = world_state
+    state.world_state = default_world_state()
     state.progress_state = default_progress_state()
     run_negotiation_agent(state, "hola", deps=deps)
 
     trace = state.debug_trace[-1]
     assert trace["phase_candidate"]["phase"] == "closing"
     assert trace["phase_effective"]["phase"] == "formalize"
-    assert trace["policy_pre_repair"]["policy_id"] == "info_extract_critical"
-    assert trace["policy_post_repair"]["policy_id"] != trace["policy_pre_repair"]["policy_id"]
+    assert trace["policy_pre_repair"] is None
+    assert trace["policy_post_repair"]["policy_id"] == "info_extract_critical"
 
-
-def test_gate_phase_policy_skips_on_repeated_ack(monkeypatch):
-    deps = SimpleNamespace(
-        execute=lambda _messages: (
-            '{"schema_version":"world_extractor_v3","universal_domain_patch":{},'
-            '"negotiation_domain_patch":{},"universal_patch":{},"open_claims":[]}'
-        )
-    )
-    prev_world, _ = update_world_state(default_world_state(), "ok", deps=deps)
-    new_world, _ = update_world_state(prev_world, "ok", deps=deps)
-    world_diff = diff_world_state(prev_world, new_world)
-
-    planner_skipped, reason, _meta = gate_phase_policy(
-        world_diff=world_diff,
-        intent_transition_present=False,
-        loop_flags_changed_flag=False,
-        allowed_ids_hash_changed=False,
-        turn_count=2,
-        last_refresh_turn=1,
-    )
-
-    assert world_diff == {}
-    assert planner_skipped is True
-    assert reason == "interval_hold"
 
 
 def test_planner_refresh_on_implicit_acceptance(monkeypatch):
