@@ -17,6 +17,7 @@ from ..mode_inference import update_conversation_mode
 from ..perception.interaction_signals import _previous_user_message, extract_interaction_signals
 from ..schemas import default_progress_state, default_world_state
 from ..world_state_updater import apply_world_skip_fallback, diff_world_state, update_world_state
+from ..telemetry.trace_runtime import record_llm_call_ms, record_node_phase_ms
 
 
 _WORLD_JUDGE_SYSTEM_PROMPT = """
@@ -244,6 +245,7 @@ def world_updater_node(state: dict) -> dict:
         prev_interaction=gate_state.get("last_interaction_signals", {}),
     )
     interaction_fingerprint_current = interaction_fingerprint(interaction_current)
+    gate_started = time.perf_counter()
     world_skipped, skip_reason, gate_meta = gate_world(
         user_message=user_message,
         turn_count=turn_count,
@@ -259,6 +261,9 @@ def world_updater_node(state: dict) -> dict:
         modality=modality,
         conversation_mode=conversation_mode,
     )
+    record_node_phase_ms(state, "world_updater", "gates_ms", int((time.perf_counter() - gate_started) * 1000))
+
+    normalize_started = time.perf_counter()
     if world_skipped:
         gate_state["world_skip_count"] = int(gate_state.get("world_skip_count", 0) or 0) + 1
         world_state, fallback_meta = apply_world_skip_fallback(prev_world, user_message, turn_count=turn_count)
@@ -290,6 +295,8 @@ def world_updater_node(state: dict) -> dict:
         extractor_meta["interaction_updated"] = True
         state["extractor_meta"] = extractor_meta
 
+    record_node_phase_ms(state, "world_updater", "normalize_merge_diff_ms", int((time.perf_counter() - normalize_started) * 1000))
+
     progress_state = update_conversation_mode(progress_state, state.get("world_state", {}), turn_count)
     active_plan = progress_state.get("active_plan") if isinstance(progress_state.get("active_plan"), dict) else None
     judgement, judge_meta = world_judge_llm(
@@ -299,6 +306,17 @@ def world_updater_node(state: dict) -> dict:
         world_state=state.get("world_state", {}),
         recent_history=state.get("recent_history_text", ""),
         turn_count=turn_count,
+    )
+    record_llm_call_ms(
+        state,
+        name="world_judge_llm",
+        node="world_updater",
+        latency_ms=int(judge_meta.get("judge_latency_ms", 0) or 0),
+        ok=not bool(judge_meta.get("judge_error_type")),
+        model=None,
+        retry_count=int(judge_meta.get("judge_retry_count", 0) or 0),
+        error_stage="llm_invoke" if judge_meta.get("judge_error_type") else "",
+        error=str(judge_meta.get("judge_error_type", "")),
     )
     state["policy_plan_judgement"] = judgement
     judge_meta["missing_signals"] = list(judgement.get("missing_signals", []))[:6]

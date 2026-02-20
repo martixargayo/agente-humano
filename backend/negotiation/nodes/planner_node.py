@@ -3,10 +3,12 @@ from __future__ import annotations
 import time
 
 from ..phase_state_updater import postprocess_phase_candidate
-from ..policy_planner import allowed_policy_ids_with_reasons
+from ..policy_planner import allowed_policy_ids, allowed_policy_ids_with_reasons, repair_policy_by_phase
+from ..policies import policy_phase_catalog
 from ..schemas import default_policy_decision, default_progress_state
 from ..state.deps import DEFAULT_DEPS
 from ..validation import normalize_policy_decision
+from ..telemetry.trace_runtime import record_llm_call, record_node_phase_ms
 
 
 def _ensure_objective(state: dict) -> None:
@@ -231,6 +233,17 @@ def phase_policy_planner_node(state: dict) -> dict:
         planner_debug["llm_call"]["planner_fallback_used"] = bool(planner_meta.get("planner_fallback_used", False))
         planner_debug["llm_call"]["planner_error_stage"] = str(planner_meta.get("planner_error_stage", ""))
         planner_debug["llm_call"]["normalization_issues"] = list(planner_meta.get("issues", []))[:12]
+        record_llm_call(
+            state,
+            name="planner_llm",
+            node="phase_policy_planner",
+            started=started,
+            ok=not bool(planner_meta.get("planner_failed", False)),
+            model=None,
+            retry_count=1 if bool(planner_meta.get("planner_fallback_used", False)) else 0,
+            error_stage=str(planner_meta.get("planner_error_stage", "")),
+            error=str(planner_meta.get("planner_error", "")),
+        )
 
         if not planner_debug["gate_decision"]["gate_path"]:
             planner_debug["gate_decision"]["gate_path"] = "replan_call_llm"
@@ -295,7 +308,38 @@ def phase_policy_planner_node(state: dict) -> dict:
         "max_questions_per_turn": int((state.get("executor_instruction") or {}).get("max_questions_per_turn", 2) or 2),
         "stop_conditions": list((state.get("executor_instruction") or {}).get("stop_conditions", []))[:4],
     }
+    planner_debug_v2 = {
+        "input_compact": {
+            "phase_effective": state.get("phase_effective") or {},
+            "allowed_policy_ids": allowed_all[:12],
+            "planner_request": planner_request,
+            "gate_decisions_influential": planner_debug.get("gate_decision", {}),
+        },
+        "output": {
+            "selected_policy": (state.get("policy_decision") or {}).get("policy_id", ""),
+            "policy_ranking_top5": list((phase_candidate or {}).get("alternatives", []))[:5],
+            "normalization": {
+                "changed": bool(planner_meta.get("policy_normalization_changed", False)),
+                "issues": list(planner_meta.get("issues", []))[:8],
+            },
+            "fallback": {
+                "used": bool(planner_meta.get("planner_fallback_used", False)),
+                "reason": str(planner_meta.get("planner_error", ""))[:140],
+            },
+        },
+        "reasoning_trace": {
+            "selected_policy": (state.get("policy_decision") or {}).get("policy_id", ""),
+            "why_short": str((state.get("policy_decision") or {}).get("why_short", ""))[:140],
+            "key_factors": list((phase_candidate or {}).get("reasons", []))[:6],
+            "rejected_alternatives": [
+                {"policy": str(item.get("policy_id", "")), "reason_short": str(item.get("reason", ""))[:100]}
+                for item in list((phase_candidate or {}).get("alternatives", []))[:4]
+                if isinstance(item, dict)
+            ],
+        },
+    }
     state["planner_debug"] = planner_debug
+    state["planner_debug_v2"] = planner_debug_v2
     state["progress_state"] = progress_state
     state["gate_meta"] = {
         "world_skipped": state.get("extractor_meta", {}).get("extractor_skipped", False),

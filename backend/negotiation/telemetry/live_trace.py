@@ -5,6 +5,7 @@ import os
 from typing import Any
 
 from state import SessionState
+from .trace_runtime import init_trace_runtime, trace_include_internals, trace_level
 
 
 def _json_keys(value: Any) -> list[str]:
@@ -48,6 +49,82 @@ def _gate_choices(gates: dict[str, Any]) -> list[dict[str, Any]]:
         )
     return choices
 
+
+
+
+def _duration_ms(start: Any, end: Any) -> int:
+    try:
+        return max(0, int((float(end) - float(start)) * 1000))
+    except Exception:
+        return 0
+
+
+def _safe_text(value: Any, max_chars: int = 240) -> str:
+    return str(value or "")[:max(1, max_chars)]
+
+
+def _timing_payload(trace_item: dict[str, Any]) -> dict[str, Any]:
+    timing_prev = trace_item.get("timing") if isinstance(trace_item.get("timing"), dict) else {}
+    runtime = trace_item.get("trace_runtime") if isinstance(trace_item.get("trace_runtime"), dict) else init_trace_runtime()
+    timeline = {
+        "t_turn_start": trace_item.get("t_turn_start", 0.0),
+        "t_before_graph": trace_item.get("t_before_graph", 0.0),
+        "t_after_graph": trace_item.get("t_after_graph", 0.0),
+        "t_reply_saved": trace_item.get("t_reply_saved", 0.0),
+        "t_summary_enqueued": trace_item.get("t_summary_enqueued", 0.0),
+    }
+    return {
+        **timing_prev,
+        "turn_total_ms": _duration_ms(timeline["t_turn_start"], timeline["t_summary_enqueued"]),
+        "timeline": timeline,
+        "nodes": runtime.get("nodes", {}),
+        "llm_calls": runtime.get("llm_calls", [])[:12],
+    }
+
+
+def _internal_payload(trace_item: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    if not trace_include_internals():
+        return {}, {}
+    planner_v2 = trace_item.get("planner_debug_v2") or {}
+    if not planner_v2:
+        planner = trace_item.get("planner_debug") or {}
+        planner_v2 = {
+            "input_compact": {
+                "planner_request": (planner.get("inputs") or {}).get("planner_request"),
+                "allowed_policy_ids": trace_item.get("allowed_policy_ids") or [],
+                "gate_decisions_influential": planner.get("gate_decision") or {},
+                "phase_effective": trace_item.get("phase_effective") or {},
+            },
+            "output": {
+                "selected_policy": (trace_item.get("policy_decision") or {}).get("policy_id", ""),
+                "policy_ranking_top5": list((trace_item.get("phase_candidate") or {}).get("alternatives", []))[:5],
+                "normalization": {
+                    "changed": bool((trace_item.get("planner_meta") or {}).get("policy_normalization_changed", False)),
+                    "issues": list((trace_item.get("planner_meta") or {}).get("issues", []))[:8],
+                },
+                "fallback": {
+                    "used": bool((trace_item.get("planner_meta") or {}).get("planner_fallback_used", False)),
+                    "reason": _safe_text((trace_item.get("planner_meta") or {}).get("planner_error", ""), 140),
+                },
+            },
+            "reasoning_trace": {
+                "selected_policy": (trace_item.get("policy_decision") or {}).get("policy_id", ""),
+                "why_short": _safe_text((trace_item.get("policy_decision") or {}).get("why_short", ""), 140),
+                "key_factors": list((trace_item.get("phase_candidate") or {}).get("reasons", []))[:6],
+                "rejected_alternatives": list((trace_item.get("phase_candidate") or {}).get("alternatives", []))[:4],
+            },
+        }
+    executor_v2 = trace_item.get("executor_debug_v2") or {}
+    if not executor_v2:
+        val_meta = trace_item.get("executor_validator_meta") or {}
+        executor_v2 = {
+            "output_meta": {
+                "response_length": len(str(trace_item.get("assistant_reply", "") or "")),
+                "constraints_respected": not bool(val_meta.get("fallback_applied", False)),
+                "sanitizer_flags": list(val_meta.get("validation_flags", []))[:8],
+            }
+        }
+    return planner_v2, executor_v2
 
 def build_trace_event(
     *,
@@ -99,9 +176,12 @@ def build_trace_event(
     if belief_changed and "belief_buckets" in belief_updated_fields and "belief_buckets" not in belief_changed_keys:
         belief_changed_keys.append("belief_buckets")
 
+    planner_internal, executor_internal = _internal_payload(trace_item)
+
     return {
         "user_id": user_id,
         "session_id": session_id,
+        "trace_schema_version": "vNext-1" if trace_level() >= 1 else "v1",
         "trace_index": trace_index,
         "turn": trace_item.get("turn", 0),
         "updated_at": session.last_updated.isoformat(),
@@ -150,13 +230,7 @@ def build_trace_event(
         "top_evidence_v2": trace_item.get("top_evidence_v2") or [],
         "validation_issues": trace_item.get("validation_issues") or {},
         "exit_issues": exit_issues,
-        "timing": {
-            "t_turn_start": trace_item.get("t_turn_start", 0.0),
-            "t_before_graph": trace_item.get("t_before_graph", 0.0),
-            "t_after_graph": trace_item.get("t_after_graph", 0.0),
-            "t_reply_saved": trace_item.get("t_reply_saved", 0.0),
-            "t_summary_enqueued": trace_item.get("t_summary_enqueued", 0.0),
-        },
+        "timing": _timing_payload(trace_item),
         "planner_reason": planner_meta.get("reason", ""),
         "phase_candidate": trace_item.get("phase_candidate") or {},
         "phase_effective": trace_item.get("phase_effective") or {},
@@ -174,6 +248,8 @@ def build_trace_event(
         "belief_diff": trace_item.get("belief_diff") or {},
         "planner_debug": trace_item.get("planner_debug") or {},
         "progress_debug": trace_item.get("progress_debug") or {},
+        "planner_debug_v2": planner_internal,
+        "executor_debug_v2": executor_internal,
         "memory_meta": trace_item.get("memory_meta") or {},
         "refresh_meta": trace_item.get("refresh_meta") or {},
         "summary_enqueue_meta": trace_item.get("summary_enqueue_meta") or {},
