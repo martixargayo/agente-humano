@@ -15,6 +15,9 @@ from .schemas import (
 )
 
 
+DEFAULT_WORLD_ITEM_CONFIDENCE = 0.6
+
+
 def clamp01(value: Any, default: float = 0.0) -> float:
     try:
         out = float(value)
@@ -84,12 +87,27 @@ def normalize_world_buckets(raw: object, default_turn: int = 0, max_items: int =
             key = _normalize_text_key(raw_text)
             if not key:
                 continue
-            try:
-                conf = clamp01(item.get("confidence", 0.0), 0.0)
-            except Exception:
-                conf = 0.0
+            raw_conf = item.get("confidence", None)
+            explicit_defaulted = item.get("confidence_defaulted", None)
+            confidence_defaulted = bool(explicit_defaulted) if isinstance(explicit_defaulted, bool) else False
+            if raw_conf is None:
+                conf = DEFAULT_WORLD_ITEM_CONFIDENCE
+                confidence_defaulted = True
+            else:
+                try:
+                    conf = float(raw_conf)
+                except (TypeError, ValueError):
+                    conf = DEFAULT_WORLD_ITEM_CONFIDENCE
+                    confidence_defaulted = True
+            conf = clamp01(conf, DEFAULT_WORLD_ITEM_CONFIDENCE)
             turn = to_int(item.get("source_turn"), default_turn) or default_turn
-            cand = {"text": text, "raw_text": raw_text, "confidence": conf, "source_turn": int(turn)}
+            cand = {
+                "text": text,
+                "raw_text": raw_text,
+                "confidence": conf,
+                "confidence_defaulted": confidence_defaulted,
+                "source_turn": int(turn),
+            }
             prev = dedup.get(key)
             if prev is None or float(cand["confidence"]) >= float(prev.get("confidence", 0.0)):
                 dedup[key] = cand

@@ -60,10 +60,12 @@ def test_build_trace_event_shapes_fields():
     assert event["world_unchanged_keys"] == ["urgency"]
     assert event["belief_changed_keys"] == ["stance"]
     assert event["belief_unchanged_keys"] == ["trust"]
-    assert event["gates_triggered"] == ["planner_skipped"]
-    choices = {c["gate"]: c["selected"] for c in event["gate_choices"]}
-    assert choices["belief_skipped"] == "enabled"
-    assert choices["planner_skipped"] == "skipped"
+    assert event["gates_triggered"] == ["planner"]
+    choices = {c["gate"]: c for c in event["gate_choices"]}
+    assert choices["belief"]["gate_enabled"] is True
+    assert choices["belief"]["gate_decision"] == "executed"
+    assert choices["planner"]["gate_enabled"] is True
+    assert choices["planner"]["gate_decision"] == "skipped"
     assert event["build_git_sha"] == "abc123"
     assert event["belief_node_entered"] is True
     assert event["belief_updater_invoked"] is True
@@ -200,3 +202,48 @@ def test_build_trace_event_build_git_sha_unknown_adds_issue(monkeypatch):
     assert event["build_git_sha"] == "unknown"
     assert event["build_git_sha_source"] == "unknown"
     assert "build_sha_unknown" in event["exit_issues"]
+
+
+def test_build_trace_event_gate_semantics_enabled_vs_skipped_are_separate():
+    session = SessionState(user_id="u1", session_id="s1")
+    session.last_updated = datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+    trace_item = {
+        "turn": 2,
+        "gates": {
+            "world_skipped": False,
+            "belief_skipped": True,
+            "planner_skipped": False,
+            "skip_reasons": {"belief": "world_unchanged"},
+        },
+    }
+    event = build_trace_event(user_id="u1", session_id="s1", session=session, trace_index=0, trace_item=trace_item)
+    choices = {c["gate"]: c for c in event["gate_choices"]}
+    assert choices["belief"]["gate_enabled"] is True
+    assert choices["belief"]["gate_decision"] == "skipped"
+    assert choices["belief"]["gate_reason"] == "world_unchanged"
+    assert choices["world"]["gate_decision"] == "executed"
+
+
+def test_build_trace_event_marks_world_state_meta_changed_when_turn_advances():
+    session = SessionState(user_id="u1", session_id="s1")
+    session.last_updated = datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+    trace_item = {
+        "turn": 4,
+        "world_prev": {
+            "schema_version": "v3",
+            "world_buckets": {"offers": []},
+            "world_state_meta": {"turn_idx": 3, "updated_fields": []},
+        },
+        "world_new": {
+            "schema_version": "v3",
+            "world_buckets": {"offers": [{"text": "Nueva", "confidence": 0.4, "raw_text": "nueva", "source_turn": 4}]},
+            "world_state_meta": {"turn_idx": 4, "updated_fields": ["world_buckets.offers"]},
+        },
+    }
+
+    event = build_trace_event(user_id="u1", session_id="s1", session=session, trace_index=0, trace_item=trace_item)
+
+    assert event["world_base"]["world_state_meta"]["turn_idx"] == 3
+    assert event["world_new"]["world_state_meta"]["turn_idx"] == 4
+    assert "world_state_meta" in event["world_changed_keys"]
+    assert "world_state_meta" not in event["world_unchanged_keys"]

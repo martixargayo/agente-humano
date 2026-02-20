@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+import copy
 from typing import Any, Tuple
 
 from .llm_clients import get_world_llm
@@ -10,8 +11,8 @@ from .schemas import WorldState, default_world_state
 from .validation import normalize_world_buckets
 from .extractors.world_extractor_v4 import extract_world_patch_llm_v4
 
-# Backward-compat alias for tests and legacy monkeypatch hooks.
-extract_world_patch_llm_v3 = extract_world_patch_llm_v4
+
+DEFAULT_ITEM_CONFIDENCE = 0.6
 
 WORLD_BUCKET_KEYS = (
     "offers",
@@ -62,11 +63,21 @@ def _normalize_bucket_item(raw: object, turn_idx: int) -> dict | None:
     raw_text = str(raw.get("raw_text", "") or "").strip()
     if not text or not raw_text:
         return None
-    try:
-        confidence = float(raw.get("confidence", 0.0) or 0.0)
-    except Exception:
-        confidence = 0.0
+
+    raw_conf = raw.get("confidence", None)
+    explicit_defaulted = raw.get("confidence_defaulted", None)
+    confidence_defaulted = bool(explicit_defaulted) if isinstance(explicit_defaulted, bool) else False
+    if raw_conf is None:
+        confidence = DEFAULT_ITEM_CONFIDENCE
+        confidence_defaulted = True
+    else:
+        try:
+            confidence = float(raw_conf)
+        except Exception:
+            confidence = DEFAULT_ITEM_CONFIDENCE
+            confidence_defaulted = True
     confidence = max(0.0, min(1.0, confidence))
+
     try:
         source_turn = int(raw.get("source_turn", turn_idx) or turn_idx)
     except Exception:
@@ -74,6 +85,7 @@ def _normalize_bucket_item(raw: object, turn_idx: int) -> dict | None:
     return {
         "text": text,
         "confidence": confidence,
+        "confidence_defaulted": confidence_defaulted,
         "raw_text": raw_text,
         "source_turn": source_turn,
     }
@@ -101,7 +113,7 @@ def ensure_world_buckets(world: dict) -> dict:
 
 
 def merge_world_buckets_append_mostly(prev_world: dict, patch: dict, turn_idx: int, max_items: int = 8) -> tuple[dict, list[str]]:
-    world = dict(prev_world)
+    world = copy.deepcopy(prev_world)
     buckets = ensure_world_buckets(world)
     updated: list[str] = []
 
@@ -113,8 +125,8 @@ def merge_world_buckets_append_mostly(prev_world: dict, patch: dict, turn_idx: i
             for it in buckets.get(bucket, [])
         ]
         existing = [it for it in existing if it is not None]
+        before_items = _sort_bucket_items(list(existing))[:max_items]
         index = {_bucket_dedupe_key(it): it for it in existing if _bucket_dedupe_key(it)}
-        before_size = len(index)
 
         for raw_item in incoming_raw:
             item = _normalize_bucket_item(raw_item, turn_idx)
@@ -132,7 +144,7 @@ def merge_world_buckets_append_mostly(prev_world: dict, patch: dict, turn_idx: i
 
         after = _sort_bucket_items(list(index.values()))[:max_items]
         buckets[bucket] = after
-        if len(index) != before_size:
+        if after != before_items:
             updated.append(bucket)
 
     world["world_buckets"] = buckets
@@ -204,11 +216,16 @@ def update_world_state(
 ) -> Tuple[WorldState, dict]:
     del recent_history, force_llm, extractor_mode
 
-    base = dict(prev_world or default_world_state())
+    base = copy.deepcopy(prev_world or default_world_state())
     ensure_world_buckets(base)
     base["world_buckets"] = normalize_world_buckets(base.get("world_buckets", {}), default_turn=int((base.get("world_state_meta") or {}).get("turn_idx") or 0), max_items=8)
 
-    turn_idx = int(turn_count or 0) or int((base.get("world_state_meta") or {}).get("turn_idx") or 0) + 1
+    prev_turn_idx = int((base.get("world_state_meta") or {}).get("turn_idx") or 0)
+    turn_idx = int(turn_count or 0) if turn_count is not None else 0
+    if turn_idx <= 0:
+        turn_idx = prev_turn_idx + 1
+    elif turn_idx <= prev_turn_idx:
+        turn_idx = prev_turn_idx + 1
     base.setdefault("world_state_meta", {})
     base["world_state_meta"]["turn_idx"] = turn_idx
     base["world_state_meta"].setdefault("unknown_claims", [])
@@ -223,7 +240,7 @@ def update_world_state(
             llm = _default_world_llm()
         llm_deps = type("Deps", (), {"llm": llm})()
 
-    world = dict(base)
+    world = copy.deepcopy(base)
     ensure_world_buckets(world)
 
     try:

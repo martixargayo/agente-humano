@@ -59,6 +59,7 @@ item format:
 
 
 _BUCKETS = ("offers", "concessions", "constraints", "interests", "claims", "requests", "context")
+DEFAULT_ITEM_CONFIDENCE = 0.6
 
 
 def _safe_json_load(text: str) -> dict:
@@ -77,11 +78,20 @@ def _normalize_item(raw: object, turn_idx: int) -> dict | None:
     raw_text = str(raw.get("raw_text", "") or "").strip()
     if not text or not raw_text:
         return None
-    try:
-        confidence = float(raw.get("confidence", 0.0) or 0.0)
-    except Exception:
-        confidence = 0.0
+
+    raw_conf = raw.get("confidence", None)
+    confidence_defaulted = False
+    if raw_conf is None:
+        confidence = DEFAULT_ITEM_CONFIDENCE
+        confidence_defaulted = True
+    else:
+        try:
+            confidence = float(raw_conf)
+        except Exception:
+            confidence = DEFAULT_ITEM_CONFIDENCE
+            confidence_defaulted = True
     confidence = max(0.0, min(1.0, confidence))
+
     source_turn = raw.get("source_turn", turn_idx)
     try:
         source_turn = int(source_turn)
@@ -90,6 +100,7 @@ def _normalize_item(raw: object, turn_idx: int) -> dict | None:
     return {
         "text": text,
         "confidence": confidence,
+        "confidence_defaulted": confidence_defaulted,
         "raw_text": raw_text,
         "source_turn": source_turn,
     }
@@ -137,4 +148,13 @@ def extract_world_patch_llm_v4(
     meta.setdefault("extraction_quality", "medium")
     meta["extractor_version"] = "world_extractor_v4"
     meta["schema_version"] = str(data.get("schema_version", ""))
+    total_items = sum(len(items) for items in patch.values())
+    defaulted_items = sum(
+        1
+        for items in patch.values()
+        for item in items
+        if isinstance(item, dict) and bool(item.get("confidence_defaulted", False))
+    )
+    meta["confidence_defaulted_count"] = int(defaulted_items)
+    meta["confidence_item_count"] = int(total_items)
     return patch, meta
