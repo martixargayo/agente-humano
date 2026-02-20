@@ -39,7 +39,13 @@ Devuelve SOLO JSON válido con schema v1:
   "degrade_reason":string,
   "skip_planner":boolean
 }
-Regla dura: si plan_status es advance_step o completed debe existir evidence no vacía.
+Reglas de auditabilidad de evidence:
+- Si user_message o assistant_last_message tiene texto no vacío, evidence NO es opcional: devuelve al menos 1 evidencia literal.
+- Selecciona 1 a 3 citas máximas; prioriza user_message y usa assistant_last_message/recent_history si justifican la decisión.
+- Cada evidence debe justificar plan_status y, si hay missing_signals, debe mostrar por qué aún falta esa señal.
+- continue_same_step también debe incluir evidence, salvo cuando no haya texto útil en user_message ni assistant_last_message.
+- Para topic shift o interrupted_replan, cita explícitamente el fragmento que evidencia el cambio o bloqueo.
+Regla dura: si plan_status es advance_step o completed debe existir evidence no vacía con confirmación explícita.
 Si no hay evidencia suficiente para avanzar/completar, usa continue_same_step.
 Regla de loop: si el mismo paso se repite sin progreso por varios turnos, considera interrupted_replan.
 """.strip()
@@ -159,6 +165,139 @@ def _normalize_judgement(candidate: object, *, active_plan: dict | None, turn_co
     }
 
 
+_ALLOWED_EVIDENCE_SOURCES = {"user_message", "assistant_last_message", "recent_history", "world_state"}
+
+
+def _build_evidence_item(text: str, source: str, max_len: int = 180) -> dict | None:
+    raw = str(text or "").strip()
+    if not raw:
+        return None
+    quote = raw[:max_len]
+    item = {"quote": quote, "source": source}
+    if source in {"user_message", "assistant_last_message"}:
+        item["span"] = [0, min(len(raw), max_len)]
+    return item
+
+
+def _build_evidence_candidates(user_message: str, assistant_last_message: str, recent_history: str) -> list[dict]:
+    candidates: list[dict] = []
+    user_item = _build_evidence_item(user_message, "user_message")
+    if user_item:
+        candidates.append(user_item)
+    assistant_item = _build_evidence_item(assistant_last_message, "assistant_last_message")
+    if assistant_item:
+        candidates.append(assistant_item)
+    recent_item = _build_evidence_item(str(recent_history or "")[:180], "recent_history")
+    if recent_item:
+        candidates.append(recent_item)
+    return candidates[:3]
+
+
+def _normalize_evidence_items(evidence: object) -> list[dict]:
+    if not isinstance(evidence, list):
+        return []
+    normalized: list[dict] = []
+    for item in evidence[:4]:
+        if not isinstance(item, dict):
+            continue
+        quote = str(item.get("quote", "") or "").strip()
+        if not quote:
+            continue
+        source = str(item.get("source", "") or "").strip()
+        if source not in _ALLOWED_EVIDENCE_SOURCES:
+            source = "user_message"
+        normalized_item = {"quote": quote[:180], "source": source}
+        if source in {"user_message", "assistant_last_message"}:
+            span = item.get("span")
+            if isinstance(span, list) and len(span) == 2:
+                try:
+                    a = max(0, int(span[0]))
+                    b = max(a, int(span[1]))
+                    normalized_item["span"] = [a, min(180, b)]
+                except Exception:
+                    pass
+        normalized.append(normalized_item)
+    return normalized
+
+
+def _has_text_for_audit(payload: dict) -> bool:
+    return bool(str(payload.get("user_message", "") or "").strip() or str(payload.get("assistant_last_message", "") or "").strip())
+
+
+def _evidence_shows_new_information(evidence: list[dict]) -> bool:
+    return any(bool(str((it or {}).get("quote", "") or "").strip()) for it in evidence if isinstance(it, dict))
+
+
+def _post_normalize_evidence_guardrails(
+    judgement: dict,
+    *,
+    payload: dict,
+    progress_state: dict | None,
+) -> tuple[dict, dict]:
+    normalized = dict(judgement)
+    evidence = _normalize_evidence_items(normalized.get("evidence", []))
+    missing_signals = normalized.get("missing_signals", [])
+    missing_signals = missing_signals if isinstance(missing_signals, list) else []
+
+    has_text = _has_text_for_audit(payload)
+    needs_evidence = bool(has_text or missing_signals)
+    injected = False
+
+    if len(evidence) == 0 and needs_evidence:
+        evidence = _build_evidence_candidates(
+            str(payload.get("user_message", "") or ""),
+            str(payload.get("assistant_last_message", "") or ""),
+            str(payload.get("recent_history", "") or ""),
+        )[:1]
+        injected = len(evidence) > 0
+        if injected:
+            normalized["degraded"] = True
+            if not str(normalized.get("degrade_reason", "") or "").strip():
+                normalized["degrade_reason"] = "missing_evidence_required"
+
+    status = str(normalized.get("plan_status", ""))
+    if status in {"advance_step", "completed"} and len(evidence) == 0:
+        evidence = _build_evidence_candidates(
+            str(payload.get("user_message", "") or ""),
+            str(payload.get("assistant_last_message", "") or ""),
+            str(payload.get("recent_history", "") or ""),
+        )[:1]
+        injected = injected or len(evidence) > 0
+        normalized["degraded"] = True
+        normalized["degrade_reason"] = "missing_evidence_for_progress"
+
+    if len(missing_signals) > 0 and len(evidence) == 0:
+        evidence = _build_evidence_candidates(
+            str(payload.get("user_message", "") or ""),
+            str(payload.get("assistant_last_message", "") or ""),
+            str(payload.get("recent_history", "") or ""),
+        )[:1]
+        injected = injected or len(evidence) > 0
+        if len(evidence) > 0 and not str(normalized.get("degrade_reason", "") or "").strip():
+            normalized["degraded"] = True
+            normalized["degrade_reason"] = "missing_evidence_required"
+
+    if "nueva_informacion_verificable" in missing_signals and _evidence_shows_new_information(evidence):
+        missing_signals = [x for x in missing_signals if str(x) != "nueva_informacion_verificable"]
+
+    normalized["evidence"] = evidence[:4]
+    normalized["missing_signals"] = [str(x)[:120] for x in missing_signals if str(x).strip()][:6]
+
+    no_progress_same_step_turns = int((progress_state or {}).get("no_progress_same_step_turns", 0) or 0)
+    if normalized.get("plan_status") == "continue_same_step" and no_progress_same_step_turns >= 3:
+        normalized["plan_status"] = "interrupted_replan"
+        normalized["degraded"] = True
+        normalized["degrade_reason"] = "loop_same_step_threshold"
+
+    meta_flags = {
+        "judge_evidence_missing": len(normalized.get("evidence", [])) == 0,
+        "judge_evidence_injected": injected,
+        "judge_evidence_sources": sorted({str((it or {}).get("source", "")) for it in normalized.get("evidence", []) if isinstance(it, dict) and str((it or {}).get("source", ""))}),
+        "judge_missing_signals_without_evidence": bool(normalized.get("missing_signals")) and len(normalized.get("evidence", [])) == 0,
+    }
+    return normalized, meta_flags
+
+
 def world_judge_llm(
     *,
     active_plan: dict | None,
@@ -198,6 +337,11 @@ def world_judge_llm(
             "plan_id_changes_window": int(progress_state.get("plan_id_changes_window", 0) or 0),
             "loop_flags": list(progress_state.get("loop_flags", []) or []),
         },
+        "evidence_candidates": _build_evidence_candidates(
+            str(user_message or ""),
+            str(assistant_last_message or ""),
+            str(recent_history or ""),
+        ),
         "world_state_summary": {
             "world_buckets": (world_state or {}).get("world_buckets", {}),
             "world_state_meta": (world_state or {}).get("world_state_meta", {}),
@@ -217,11 +361,17 @@ def world_judge_llm(
         normalized = _normalize_judgement(candidate, active_plan=active_plan, turn_count=turn_count)
         if normalized is None:
             raise ValueError("judge_invalid_json_shape")
+        normalized, evidence_meta = _post_normalize_evidence_guardrails(
+            normalized,
+            payload=payload,
+            progress_state=progress_state,
+        )
         return normalized, {
             "judge_error_type": "",
             "judge_retry_count": 0,
             "judge_latency_ms": int((time.perf_counter() - started) * 1000),
             "judge_degraded": bool(normalized.get("degraded", False)),
+            **evidence_meta,
         }
     except Exception as exc:
         fallback = _fallback_judgement(
