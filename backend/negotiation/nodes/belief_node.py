@@ -83,6 +83,39 @@ def belief_updater_node(state: dict) -> dict:
         belief_meta["belief_gate_skip_reason"] = str(skip_reason)
 
     gate_state["world_buckets_fingerprint_prev"] = curr_world_buckets_fp
+    prev_buckets = (prev_belief.get("belief_buckets") or {}) if isinstance(prev_belief, dict) else {}
+    curr_buckets = (belief_state.get("belief_buckets") or {}) if isinstance(belief_state, dict) else {}
+    bucket_names = sorted(set(prev_buckets.keys()) | set(curr_buckets.keys()))
+    changed: list[str] = []
+    counts_delta: dict[str, dict] = {}
+    for bucket in bucket_names:
+        b = prev_buckets.get(bucket, [])
+        a = curr_buckets.get(bucket, [])
+        b_count = len(b) if isinstance(b, list) else 0
+        a_count = len(a) if isinstance(a, list) else 0
+        if b != a:
+            changed.append(bucket)
+            counts_delta[bucket] = {"before": b_count, "after": a_count, "delta": a_count - b_count}
+    dynamics = (((belief_state or {}).get("universal") or {}).get("dynamics") or {}) if isinstance(belief_state, dict) else {}
+    behavior = (((belief_state or {}).get("universal") or {}).get("behavior_guidance") or {}) if isinstance(belief_state, dict) else {}
+    state["belief_debug"] = {
+        "belief_diff_bucket_summary": {
+            "changed_buckets": changed[:12],
+            "counts_delta": counts_delta,
+        },
+        "belief_update_meta": {
+            "belief_update_skipped": bool(belief_meta.get("belief_update_skipped", False)),
+            "belief_llm_failed": bool(belief_meta.get("belief_llm_failed", False)),
+            "belief_fallback_used": bool(belief_meta.get("belief_fallback_used", False)),
+            "belief_latency_ms": int(belief_meta.get("belief_latency_ms", 0) or 0),
+        },
+        "planner_relevant": {
+            "interaction_health": str(dynamics.get("interaction_health", "stable")),
+            "escalation": str(dynamics.get("escalation", "none")),
+            "looping": bool(dynamics.get("looping", False)),
+            "recommended_move": str(behavior.get("recommended_move", "")),
+        },
+    }
     state["belief_state"] = belief_state
     state["belief_update_meta"] = belief_meta
     state["progress_state"]["gate_state"] = gate_state
