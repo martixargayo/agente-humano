@@ -291,6 +291,12 @@ def _trace_sse_generator():
     }
 
     for event in list_recent_trace_events(SESSIONS):
+        if os.getenv("TRACE_PERF_DIAGNOSTICS", "0") == "1":
+            ser_started = time.perf_counter()
+            event_json = json.dumps(event, ensure_ascii=False)
+            ser_ms = int((time.perf_counter() - ser_started) * 1000)
+            event.setdefault("timing", {}).setdefault("trace_perf", {})["trace_event_json_ms"] = ser_ms
+            event["timing"]["trace_perf"]["trace_event_bytes"] = len(event_json.encode("utf-8"))
         yield f"event: trace\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
 
     while True:
@@ -312,6 +318,12 @@ def _trace_sse_generator():
                     trace_index=trace_index,
                     trace_item=trace[trace_index],
                 )
+                if os.getenv("TRACE_PERF_DIAGNOSTICS", "0") == "1":
+                    ser_started = time.perf_counter()
+                    event_json = json.dumps(event, ensure_ascii=False)
+                    ser_ms = int((time.perf_counter() - ser_started) * 1000)
+                    event.setdefault("timing", {}).setdefault("trace_perf", {})["trace_event_json_ms"] = ser_ms
+                    event["timing"]["trace_perf"]["trace_event_bytes"] = len(event_json.encode("utf-8"))
                 yield f"event: trace\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
             seen_counts[(user_id, session_id)] = len(trace)
             sent = True

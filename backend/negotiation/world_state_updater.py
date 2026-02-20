@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 import unicodedata
 import copy
+import time
 from typing import Any, Tuple
 
 from .llm_clients import get_world_llm
@@ -224,7 +225,9 @@ def update_world_state(
 ) -> Tuple[WorldState, dict]:
     del recent_history, force_llm, extractor_mode
 
+    base_deepcopy_started = time.perf_counter()
     base = copy.deepcopy(prev_world or default_world_state())
+    base_deepcopy_ms = int((time.perf_counter() - base_deepcopy_started) * 1000)
     ensure_world_buckets(base)
     base["world_buckets"] = normalize_world_buckets(base.get("world_buckets", {}), default_turn=int((base.get("world_state_meta") or {}).get("turn_idx") or 0), max_items=8)
 
@@ -248,10 +251,21 @@ def update_world_state(
             llm = _default_world_llm()
         llm_deps = type("Deps", (), {"llm": llm})()
 
+    world_deepcopy_started = time.perf_counter()
     world = copy.deepcopy(base)
+    world_deepcopy_ms = int((time.perf_counter() - world_deepcopy_started) * 1000)
     ensure_world_buckets(world)
 
+    timers: dict[str, int] = {
+        "world_deepcopy_ms": int(base_deepcopy_ms + world_deepcopy_ms),
+        "world_merge_ms": 0,
+        "world_normalize_ms": 0,
+        "world_diff_paths_ms": 0,
+        "world_json_dump_prev_ms": 0,
+    }
+
     try:
+        extractor_started = time.perf_counter()
         buckets_patch, extractor_meta = extract_world_patch_llm_v4(
             llm_deps,
             user_message,
@@ -260,9 +274,17 @@ def update_world_state(
             conversation_mode,
             turn_idx,
         )
-        world, updated_buckets = merge_world_buckets_append_mostly(world, buckets_patch, turn_idx=turn_idx, max_items=8)
+        timers["world_json_dump_prev_ms"] = int((extractor_meta or {}).get("world_json_dump_prev_ms", 0) or 0)
+        timers["world_extractor_llm_ms"] = int((extractor_meta or {}).get("extractor_llm_latency_ms", 0) or 0)
+        timers["world_extractor_total_ms"] = int((time.perf_counter() - extractor_started) * 1000)
 
+        merge_started = time.perf_counter()
+        world, updated_buckets = merge_world_buckets_append_mostly(world, buckets_patch, turn_idx=turn_idx, max_items=8)
+        timers["world_merge_ms"] = int((time.perf_counter() - merge_started) * 1000)
+
+        normalize_started = time.perf_counter()
         world["world_buckets"] = normalize_world_buckets(world.get("world_buckets", {}), default_turn=turn_idx, max_items=8)
+        timers["world_normalize_ms"] = int((time.perf_counter() - normalize_started) * 1000)
         v2_issues: list[str] = []
         world.setdefault("world_state_meta", {})["last_update_source"] = "llm"
         world["world_state_meta"]["error"] = ""
@@ -270,7 +292,13 @@ def update_world_state(
         world["world_state_meta"]["updated_fields"] = [f"world_buckets.{bucket}" for bucket in updated_buckets]
         world["world_state_meta"]["updated_buckets"] = updated_buckets
 
-        diff_paths = sorted(_flatten_paths(diff_world_state(base, world)))
+        diff_paths_started = time.perf_counter()
+        base_vs_new_diff = diff_world_state(base, world)
+        if base_vs_new_diff:
+            diff_paths = sorted(_flatten_paths(base_vs_new_diff))
+        else:
+            diff_paths = []
+        timers["world_diff_paths_ms"] = int((time.perf_counter() - diff_paths_started) * 1000)
         meta = {
             **(extractor_meta if isinstance(extractor_meta, dict) else {}),
             "extractor_used": True,
@@ -280,6 +308,16 @@ def update_world_state(
             "diff_paths": diff_paths,
             "backstop_reasons": [],
             "rejected_claims": [],
+            "timers": timers,
+            "prev_world_bytes": int((extractor_meta or {}).get("prev_world_bytes", 0) or 0),
+            "world_diff_bytes": len(str(base_vs_new_diff)),
+            "extractor_llm_start_ts": (extractor_meta or {}).get("extractor_llm_start_ts", ""),
+            "extractor_llm_end_ts": (extractor_meta or {}).get("extractor_llm_end_ts", ""),
+            "extractor_llm_model": (extractor_meta or {}).get("extractor_llm_model"),
+            "extractor_llm_tokens_in": (extractor_meta or {}).get("extractor_llm_tokens_in"),
+            "extractor_llm_tokens_out": (extractor_meta or {}).get("extractor_llm_tokens_out"),
+            "extractor_llm_queue_ms": (extractor_meta or {}).get("extractor_llm_queue_ms"),
+            "extractor_llm_ttfb_ms": (extractor_meta or {}).get("extractor_llm_ttfb_ms"),
         }
         return world, meta
 
@@ -297,6 +335,7 @@ def update_world_state(
             "v2_issues": v2_issues,
             "updated_buckets": [],
             "backstop_reasons": [],
+            "timers": timers,
         }
         return world, meta
 

@@ -96,13 +96,17 @@ def _timing_payload(trace_item: dict[str, Any]) -> dict[str, Any]:
                 "error": _safe_text(planner_meta.get("planner_error", ""), 240),
             }
         )
-    return {
+    payload = {
         **timing_prev,
         "turn_total_ms": _duration_ms(timeline["t_turn_start"], timeline["t_summary_enqueued"]),
         "timeline": timeline,
         "nodes": runtime.get("nodes", {}),
         "llm_calls": llm_calls[:12],
     }
+    trace_perf = trace_item.get("trace_perf") if isinstance(trace_item.get("trace_perf"), dict) else {}
+    if trace_perf:
+        payload["trace_perf"] = trace_perf
+    return payload
 
 
 def _internal_payload(trace_item: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -274,6 +278,7 @@ def build_trace_event(
         "belief_diff": trace_item.get("belief_diff") or {},
         "planner_debug": trace_item.get("planner_debug") or {},
         "progress_debug": trace_item.get("progress_debug") or {},
+        "world_timers": ((trace_item.get("world_debug") or {}).get("timers") or {}),
         "planner_debug_v2": planner_internal,
         "executor_debug_v2": executor_internal,
         "memory_meta": trace_item.get("memory_meta") or {},

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from datetime import datetime, timezone
 
 from langchain_core.prompts import ChatPromptTemplate
 
@@ -13,6 +14,7 @@ from .llm_clients import get_planner_llm
 from .policies import safe_neutral_policy_id
 from .schemas import BeliefState, PolicyDecision, ProgressState, WorldState, default_policy_decision
 from .validation import normalize_policy_decision
+from .telemetry.llm_usage import extract_llm_usage
 
 logger = logging.getLogger(__name__)
 
@@ -172,6 +174,7 @@ def plan_phase_policy(
     }
 
     started = time.perf_counter()
+    started_wall = datetime.now(timezone.utc).isoformat()
     try:
         messages = _planner_prompt.format_messages(
             objective=objective,
@@ -188,6 +191,8 @@ def plan_phase_policy(
         structured = get_planner_llm().with_structured_output(PhasePolicyDecisionModel)
 
         result = structured.invoke(messages)
+        ended_wall = datetime.now(timezone.utc).isoformat()
+        usage = extract_llm_usage(result)
         meta["planner_llm_called"] = True
         payload = result.model_dump()
         phase_candidate = {
@@ -216,10 +221,20 @@ def plan_phase_policy(
         payload_plan = payload.get("active_plan") if isinstance(payload.get("active_plan"), dict) else {}
         meta["active_plan"] = _to_active_plan(payload_plan, int(progress_state.get("last_progress_update_turn", 0) or 0) + 1)
         meta["planner_latency_ms"] = int((time.perf_counter() - started) * 1000)
+        meta["planner_start_ts"] = started_wall
+        meta["planner_end_ts"] = ended_wall
+        meta["planner_model"] = usage.get("model")
+        meta["planner_tokens_in"] = usage.get("tokens_in")
+        meta["planner_tokens_out"] = usage.get("tokens_out")
+        meta["planner_queue_ms"] = usage.get("queue_ms")
+        meta["planner_ttfb_ms"] = usage.get("ttfb_ms")
         return phase_candidate, normalized, meta
     except Exception as exc:
+        ended_wall = datetime.now(timezone.utc).isoformat()
         meta["planner_llm_called"] = True
         meta["planner_latency_ms"] = int((time.perf_counter() - started) * 1000)
+        meta["planner_start_ts"] = started_wall
+        meta["planner_end_ts"] = ended_wall
         meta["planner_failed"] = True
         meta["planner_fallback_used"] = True
         meta["planner_error"] = str(exc)
