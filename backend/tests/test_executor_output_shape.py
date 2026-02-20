@@ -71,5 +71,5 @@ def test_executor_prompt_includes_instruction_when_present(monkeypatch):
         },
     }
     executor_node(state)
-    assert "EXECUTOR INSTRUCTION (authoritative when provided):" in captured["prompt"]
+    assert "EXECUTOR INSTRUCTION (HIGHEST PRIORITY, authoritative when provided):" in captured["prompt"]
     assert '"plan_id": "plan_t1"' in captured["prompt"]
