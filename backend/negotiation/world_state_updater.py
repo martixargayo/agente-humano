@@ -67,15 +67,22 @@ def _normalize_bucket_item(raw: object, turn_idx: int) -> dict | None:
     raw_conf = raw.get("confidence", None)
     explicit_defaulted = raw.get("confidence_defaulted", None)
     confidence_defaulted = bool(explicit_defaulted) if isinstance(explicit_defaulted, bool) else False
+    confidence_source = "emitted_by_llm"
     if raw_conf is None:
         confidence = DEFAULT_ITEM_CONFIDENCE
         confidence_defaulted = True
+        confidence_source = "defaulted_by_normalizer"
     else:
         try:
             confidence = float(raw_conf)
+            if confidence <= 0.0:
+                confidence = DEFAULT_ITEM_CONFIDENCE
+                confidence_defaulted = True
+                confidence_source = "defaulted_by_normalizer"
         except Exception:
             confidence = DEFAULT_ITEM_CONFIDENCE
             confidence_defaulted = True
+            confidence_source = "defaulted_by_normalizer"
     confidence = max(0.0, min(1.0, confidence))
 
     try:
@@ -88,6 +95,7 @@ def _normalize_bucket_item(raw: object, turn_idx: int) -> dict | None:
         "confidence_defaulted": confidence_defaulted,
         "raw_text": raw_text,
         "source_turn": source_turn,
+        "confidence_source": confidence_source,
     }
 
 
