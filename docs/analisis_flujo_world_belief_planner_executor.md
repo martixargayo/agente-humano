@@ -1,0 +1,110 @@
+# Auditoría completa de uso por archivo/carpeta (`backend/negotiation`)
+
+## Leyenda
+- **USO**: participa en el sistema actual (runtime principal o integración directa).
+- **A MEDIAS**: útil pero parcial/condicional/estructural, o mezcla activo+legado.
+- **SIN USO**: no tiene papel operativo en el flujo actual (puede servir para tests o referencia).
+
+> Criterio aplicado: inspección de imports/llamadas reales del flujo (`negotiation_graph` + `nodes/*`), más búsquedas de referencias en `backend/`.
+
+## Resultado uno a uno (en el mismo orden que pediste)
+
+- `backend/negotiation` → **A MEDIAS** (contiene núcleo activo y también módulos legado).
+- `backend/negotiation/__init__.py` → **A MEDIAS** (archivo de export/entrada de paquete, rol estructural).
+- `backend/negotiation/advisor.py` → **USO** (se usa en `world_node` cuando `ADVISOR_ENABLED=1`).
+- `backend/negotiation/belief_state_updater.py` → **A MEDIAS** (existe vía `deps`, pero el nodo belief actual no lo usa directamente).
+- `backend/negotiation/config` → **USO** (configuración de modelos/rag).
+- `backend/negotiation/config/README.md` → **SIN USO** (documentación, no runtime).
+- `backend/negotiation/config/__init__.py` → **USO** (exporta API de config usada por otros módulos).
+- `backend/negotiation/config/models.py` → **USO** (origen de config efectiva).
+- `backend/negotiation/context_utils.py` → **USO** (memoria/contexto de turno).
+- `backend/negotiation/contracts_v2.py` → **SIN USO** (sin referencias activas detectadas).
+- `backend/negotiation/elementos` → **A MEDIAS** (base de contratos/definiciones; parte activa, parte legado).
+- `backend/negotiation/elementos/__init__.py` → **SIN USO** (vacío/estructural).
+- `backend/negotiation/elementos/belief` → **A MEDIAS** (más orientado a legado/tests que al flujo v3 actual).
+- `backend/negotiation/elementos/belief_definitions.py` → **SIN USO** (sin referencias activas detectadas).
+- `backend/negotiation/elementos/execution_definitions.py` → **USO** (usado por `progress_updater`).
+- `backend/negotiation/elementos/render` → **USO** (pipeline de render/executor).
+- `backend/negotiation/elementos/strategy_definitions.py` → **USO** (catálogo de policies/modelos planner).
+- `backend/negotiation/elementos/world_definitions.py` → **USO** (patrones/señales usadas por percepción).
+- `backend/negotiation/executor` → **USO**.
+- `backend/negotiation/executor/__init__.py` → **USO** (re-export consumido por `negotiation_graph`).
+- `backend/negotiation/executor/render_executor.py` → **USO** (core de generación de salida).
+- `backend/negotiation/extractors` → **USO**.
+- `backend/negotiation/extractors/__init__.py` → **SIN USO** (vacío/estructural).
+- `backend/negotiation/extractors/belief_extractor_v1.py` → **USO** (belief extractor actual).
+- `backend/negotiation/extractors/world_extractor_v4.py` → **USO** (world extractor actual).
+- `backend/negotiation/gate_utils.py` → **USO** (fachada de gating usada por nodos).
+- `backend/negotiation/gating` → **A MEDIAS** (partes activas + `gate_belief` hoy fuera del runtime principal).
+- `backend/negotiation/gating/__init__.py` → **SIN USO** (vacío/estructural).
+- `backend/negotiation/gating/fingerprints.py` → **USO**.
+- `backend/negotiation/gating/gate_belief.py` → **SIN USO** (en runtime principal actual; sí aparece en tests).
+- `backend/negotiation/gating/gate_world.py` → **USO**.
+- `backend/negotiation/gating/shared.py` → **USO**.
+- `backend/negotiation/graph` → **SIN USO** (namespace sin implementación activa).
+- `backend/negotiation/graph/__init__.py` → **SIN USO** (vacío).
+- `backend/negotiation/llm_clients.py` → **USO** (factories/cache de LLMs).
+- `backend/negotiation/mode_inference.py` → **USO** (actualiza `conversation_mode`).
+- `backend/negotiation/negotiation_graph.py` → **USO** (orquestador principal).
+- `backend/negotiation/nodes` → **USO**.
+- `backend/negotiation/nodes/__init__.py` → **SIN USO** (vacío/estructural).
+- `backend/negotiation/nodes/belief_node.py` → **USO**.
+- `backend/negotiation/nodes/executor_node.py` → **USO**.
+- `backend/negotiation/nodes/planner_node.py` → **USO** (con deuda de imports sin uso).
+- `backend/negotiation/nodes/policy_progress_node.py` → **USO**.
+- `backend/negotiation/nodes/progress_node.py` → **USO**.
+- `backend/negotiation/nodes/world_node.py` → **USO**.
+- `backend/negotiation/perception` → **USO**.
+- `backend/negotiation/perception/__init__.py` → **SIN USO** (vacío/estructural).
+- `backend/negotiation/perception/clarity_signals.py` → **USO**.
+- `backend/negotiation/perception/input_shape.py` → **USO**.
+- `backend/negotiation/perception/interaction_signals.py` → **USO**.
+- `backend/negotiation/phase_docs` → **SIN USO** (runtime principal actual).
+- `backend/negotiation/phase_docs/fase_1_clima.md` → **SIN USO**.
+- `backend/negotiation/phase_docs/fase_2_descubrir.md` → **SIN USO**.
+- `backend/negotiation/phase_docs/fase_3_creatividad.md` → **SIN USO**.
+- `backend/negotiation/phase_docs/fase_4_concesiones.md` → **SIN USO**.
+- `backend/negotiation/phase_docs/fase_5_recapitulacion.md` → **SIN USO**.
+- `backend/negotiation/phase_migration.py` → **USO**.
+- `backend/negotiation/phase_policy_planner.py` → **USO** (planner LLM actual).
+- `backend/negotiation/phase_state_updater.py` → **USO**.
+- `backend/negotiation/planner` → **SIN USO** (namespace vacío).
+- `backend/negotiation/planner/__init__.py` → **SIN USO** (vacío).
+- `backend/negotiation/policies` → **USO**.
+- `backend/negotiation/policies/__init__.py` → **USO**.
+- `backend/negotiation/policies/registry.py` → **USO**.
+- `backend/negotiation/policy_docs` → **A MEDIAS** (RAG por defecto apunta aquí, pero su consumo depende de llamadas de tácticas).
+- `backend/negotiation/policy_docs/challenge_anchor_indirect.md` → **A MEDIAS** (contenido RAG potencial).
+- `backend/negotiation/policy_docs/close_with_conditions.md` → **A MEDIAS**.
+- `backend/negotiation/policy_docs/deescalate_tension.md` → **A MEDIAS**.
+- `backend/negotiation/policy_docs/delay_price_discussion.md` → **A MEDIAS**.
+- `backend/negotiation/policy_docs/hold_position.md` → **A MEDIAS**.
+- `backend/negotiation/policy_docs/info_extract_critical.md` → **A MEDIAS**.
+- `backend/negotiation/policy_docs/rapport_build.md` → **A MEDIAS**.
+- `backend/negotiation/policy_docs/test_credibility.md` → **A MEDIAS**.
+- `backend/negotiation/policy_docs/tradeoff_offer.md` → **A MEDIAS**.
+- `backend/negotiation/policy_planner.py` → **USO**.
+- `backend/negotiation/policy_progress.py` → **USO**.
+- `backend/negotiation/progress` → **SIN USO** (namespace vacío).
+- `backend/negotiation/progress/__init__.py` → **SIN USO** (vacío).
+- `backend/negotiation/progress_updater.py` → **USO**.
+- `backend/negotiation/schemas.py` → **USO**.
+- `backend/negotiation/state` → **USO**.
+- `backend/negotiation/state/__init__.py` → **SIN USO** (vacío/estructural).
+- `backend/negotiation/state/deps.py` → **USO** (inyección de dependencias del agente).
+- `backend/negotiation/state_migration_v3.py` → **USO** (migración aplicada desde `backend/state.py`).
+- `backend/negotiation/summary_jobs.py` → **USO** (cola/trim de resumen diferido).
+- `backend/negotiation/telemetry` → **USO**.
+- `backend/negotiation/telemetry/__init__.py` → **SIN USO** (vacío/estructural).
+- `backend/negotiation/telemetry/live_trace.py` → **USO** (API/app/tests/scripts).
+- `backend/negotiation/telemetry/llm_usage.py` → **USO**.
+- `backend/negotiation/telemetry/trace.py` → **USO**.
+- `backend/negotiation/telemetry/trace_runtime.py` → **USO**.
+- `backend/negotiation/validation.py` → **USO**.
+- `backend/negotiation/validator.py` → **USO**.
+- `backend/negotiation/world_state_updater.py` → **USO** (contiene helper legado `_merge_list_by_key` sin uso).
+
+## Resumen ejecutivo
+- **USO**: núcleo grande del sistema (nodos, updater, extractors, planner, executor, schemas, validation, telemetry).
+- **A MEDIAS**: principalmente piezas condicionales (`advisor`, `policy_docs`) o transicionales (`belief_state_updater`, partes de `gating`, raíz del paquete).
+- **SIN USO**: sobre todo `__init__.py` vacíos, namespaces vacíos y documentación no conectada al runtime.

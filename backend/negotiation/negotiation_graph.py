@@ -27,7 +27,6 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
 
-from .belief_state_updater import update_belief_state
 from .context_utils import (
     build_context_snippet,
     build_memory_context,
@@ -42,7 +41,6 @@ from .summary_jobs import (
 )
 from .config import get_negotiation_model_config, negotiation_effective_model_params
 from .gate_utils import (
-    gate_belief,
     gate_world,
     input_shape_features,
     interaction_fingerprint,
