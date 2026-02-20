@@ -94,6 +94,7 @@ from .nodes.planner_node import phase_policy_planner_node
 from .nodes.progress_node import progress_updater_node
 from .nodes.executor_node import executor_node
 from .telemetry.trace import diff_belief_state, top_evidence_v2
+from .telemetry.trace_runtime import finish_node_timer, init_trace_runtime, start_node_timer
 from .state.deps import AgentDeps, DEFAULT_DEPS
 
 
@@ -291,6 +292,10 @@ class NegotiationTurn(TypedDict):
     override_policy_id: str | None
     override_reason: str | None
 
+    trace_runtime: dict
+    planner_debug_v2: dict
+    executor_debug_v2: dict
+    executor_validator_meta: dict
 
 # ---- Utilidades internas ----
 
@@ -388,14 +393,27 @@ Objetivo: recuperar tácticas concretas para ejecutar esta policy.
 
 # ---- Construcción del grafo LangGraph ----
 
+
+def _instrumented_node(node_name: str, node_fn):
+    def _wrapped(state: dict):
+        started = start_node_timer(state, node_name)
+        next_state = node_fn(state)
+        skip_key = f"{node_name.split('_')[0]}_skipped"
+        skipped = bool((next_state.get("gate_meta") or {}).get(skip_key, False))
+        finish_node_timer(next_state, node_name, started, skipped=skipped)
+        return next_state
+
+    return _wrapped
+
+
 workflow = StateGraph(NegotiationTurn)
 
-workflow.add_node("world_updater", world_updater_node)
-workflow.add_node("belief_updater", belief_updater_node)
-workflow.add_node("policy_progress", policy_progress_node)
-workflow.add_node("phase_policy_planner", phase_policy_planner_node)
-workflow.add_node("progress_updater", progress_updater_node)
-workflow.add_node("executor", executor_node)
+workflow.add_node("world_updater", _instrumented_node("world_updater", world_updater_node))
+workflow.add_node("belief_updater", _instrumented_node("belief_updater", belief_updater_node))
+workflow.add_node("policy_progress", _instrumented_node("policy_progress", policy_progress_node))
+workflow.add_node("phase_policy_planner", _instrumented_node("phase_policy_planner", phase_policy_planner_node))
+workflow.add_node("progress_updater", _instrumented_node("progress_updater", progress_updater_node))
+workflow.add_node("executor", _instrumented_node("executor", executor_node))
 
 workflow.add_edge(START, "world_updater")
 
@@ -552,6 +570,7 @@ def run_negotiation_agent(
         "strategy_summary": {},
         "override_policy_id": None,
         "override_reason": None,
+        "trace_runtime": init_trace_runtime(),
     }
 
     t_before_graph = time.perf_counter()
@@ -642,6 +661,11 @@ def run_negotiation_agent(
             "gates": new_graph_state.get("gate_meta", {}),
             "belief_update_meta": new_graph_state.get("belief_update_meta", {}),
             "progress_debug": new_graph_state.get("progress_debug", {}),
+            "executor_debug": new_graph_state.get("executor_debug", {}),
+            "executor_debug_v2": new_graph_state.get("executor_debug_v2", {}),
+            "planner_debug_v2": new_graph_state.get("planner_debug_v2", {}),
+            "executor_validator_meta": new_graph_state.get("executor_validator_meta", {}),
+            "trace_runtime": new_graph_state.get("trace_runtime", init_trace_runtime()),
             "phase_state": new_graph_state.get("progress_state", {}).get("phase_state", {}),
             "phase_meta": new_graph_state.get("planner_meta", {}).get("phase_meta", {}),
             "extractor_used": new_graph_state.get("extractor_meta", {}).get("extractor_used", False),

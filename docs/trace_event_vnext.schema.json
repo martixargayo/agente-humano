@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agente-humano.local/schemas/trace_event_vnext.schema.json",
+  "title": "TraceEvent vNext",
+  "type": "object",
+  "required": [
+    "trace_schema_version",
+    "turn",
+    "updated_at",
+    "timing"
+  ],
+  "properties": {
+    "trace_schema_version": {
+      "type": "string",
+      "const": "vNext-1"
+    },
+    "turn": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "policy": {
+      "type": "string"
+    },
+    "phase": {
+      "type": "string"
+    },
+    "fallback_used": {
+      "type": "boolean"
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 140
+      },
+      "maxItems": 8
+    },
+    "timing": {
+      "type": "object",
+      "required": ["turn_total_ms", "nodes", "llm_calls"],
+      "properties": {
+        "turn_total_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "timeline": {
+          "type": "object",
+          "properties": {
+            "t_turn_start": {"type": "number"},
+            "t_before_graph": {"type": "number"},
+            "t_after_graph": {"type": "number"},
+            "t_reply_saved": {"type": "number"},
+            "t_summary_enqueued": {"type": "number"}
+          },
+          "additionalProperties": false
+        },
+        "nodes": {
+          "type": "object",
+          "required": [
+            "world_updater",
+            "belief_updater",
+            "policy_progress",
+            "phase_policy_planner",
+            "progress_updater",
+            "executor"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "world_updater": {"$ref": "#/$defs/nodeTiming"},
+            "belief_updater": {"$ref": "#/$defs/nodeTiming"},
+            "policy_progress": {"$ref": "#/$defs/nodeTiming"},
+            "phase_policy_planner": {"$ref": "#/$defs/nodeTiming"},
+            "progress_updater": {"$ref": "#/$defs/nodeTiming"},
+            "executor": {"$ref": "#/$defs/nodeTiming"}
+          }
+        },
+        "llm_calls": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/llmCall"},
+          "maxItems": 12
+        }
+      },
+      "additionalProperties": false
+    },
+    "planner_debug_v2": {
+      "$ref": "#/$defs/plannerDebug"
+    },
+    "executor_debug_v2": {
+      "$ref": "#/$defs/executorDebug"
+    }
+  },
+  "$defs": {
+    "nodeTiming": {
+      "type": "object",
+      "required": ["total_ms", "gates_ms", "normalize_merge_diff_ms", "llm_ms", "entered", "skipped"],
+      "properties": {
+        "total_ms": {"type": "number", "minimum": 0},
+        "gates_ms": {"type": "number", "minimum": 0},
+        "normalize_merge_diff_ms": {"type": "number", "minimum": 0},
+        "llm_ms": {"type": "number", "minimum": 0},
+        "entered": {"type": "boolean"},
+        "skipped": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
+    "llmCall": {
+      "type": "object",
+      "required": ["name", "node", "latency_ms", "ok"],
+      "properties": {
+        "id": {"type": "string", "maxLength": 64},
+        "name": {"type": "string", "maxLength": 48},
+        "node": {"type": "string", "maxLength": 48},
+        "start_ts": {"type": "string", "format": "date-time"},
+        "end_ts": {"type": "string", "format": "date-time"},
+        "latency_ms": {"type": "number", "minimum": 0},
+        "model": {"type": ["string", "null"], "maxLength": 80},
+        "tokens_in": {"type": ["integer", "null"], "minimum": 0},
+        "tokens_out": {"type": ["integer", "null"], "minimum": 0},
+        "retry_count": {"type": "integer", "minimum": 0, "maximum": 5},
+        "ok": {"type": "boolean"},
+        "error_stage": {"type": "string", "maxLength": 48},
+        "error": {"type": "string", "maxLength": 240},
+        "fallback_model_used": {"type": "boolean"},
+        "fallback_model": {"type": "string", "maxLength": 80}
+      },
+      "additionalProperties": false
+    },
+    "plannerDebug": {
+      "type": "object",
+      "properties": {
+        "input_compact": {"type": "object"},
+        "output": {"type": "object"},
+        "reasoning_trace": {"type": "object"}
+      },
+      "additionalProperties": true
+    },
+    "executorDebug": {
+      "type": "object",
+      "properties": {
+        "policy_context": {"type": "object"},
+        "render_pipeline": {"type": "object"},
+        "llm": {"type": "object"},
+        "output_meta": {"type": "object"}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}
