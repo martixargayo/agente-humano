@@ -53,7 +53,7 @@ def start_node_timer(state: dict[str, Any], node: str) -> float:
 
 
 def finish_node_timer(state: dict[str, Any], node: str, started: float, *, skipped: bool = False) -> None:
-    elapsed_ms = max(0, int((time.perf_counter() - started) * 1000))
+    elapsed_ms = max(1, int((time.perf_counter() - started) * 1000))
     runtime = ensure_trace_runtime(state)
     node_data = runtime["nodes"].setdefault(node, _default_node_timing())
     node_data["total_ms"] = elapsed_ms
@@ -85,7 +85,7 @@ def record_llm_call(
     error: str = "",
 ) -> None:
     end = time.perf_counter()
-    latency_ms = max(0, int((end - started) * 1000))
+    latency_ms = max(1, int((end - started) * 1000))
     record_llm_call_ms(
         state,
         name=name,
@@ -121,7 +121,7 @@ def record_llm_call_ms(
         "node": str(node)[:48],
         "start_ts": _utc_now_iso(),
         "end_ts": _utc_now_iso(),
-        "latency_ms": max(0, int(latency_ms or 0)),
+        "latency_ms": max(1, int(latency_ms or 0)),
         "model": (str(model)[:80] if model else None),
         "tokens_in": tokens_in if isinstance(tokens_in, int) and tokens_in >= 0 else None,
         "tokens_out": tokens_out if isinstance(tokens_out, int) and tokens_out >= 0 else None,

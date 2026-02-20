@@ -73,12 +73,35 @@ def _timing_payload(trace_item: dict[str, Any]) -> dict[str, Any]:
         "t_reply_saved": trace_item.get("t_reply_saved", 0.0),
         "t_summary_enqueued": trace_item.get("t_summary_enqueued", 0.0),
     }
+    llm_calls = list(runtime.get("llm_calls", [])[:12])
+    planner_meta = trace_item.get("planner_meta") or {}
+    planner_debug_llm = ((trace_item.get("planner_debug") or {}).get("llm_call") or {})
+    planner_llm_called = bool(planner_meta.get("planner_llm_called", False) or planner_debug_llm.get("planner_llm_called", False))
+    has_planner_call = any(str(item.get("node", "")) == "phase_policy_planner" for item in llm_calls if isinstance(item, dict))
+    if planner_llm_called and not has_planner_call:
+        planner_latency = int(planner_meta.get("planner_latency_ms", planner_debug_llm.get("planner_latency_ms", 0)) or 0)
+        llm_calls.append(
+            {
+                "name": "planner_llm",
+                "node": "phase_policy_planner",
+                "start_ts": "",
+                "end_ts": "",
+                "latency_ms": max(1, planner_latency),
+                "model": None,
+                "tokens_in": None,
+                "tokens_out": None,
+                "retry_count": 1 if bool(planner_meta.get("planner_fallback_used", False)) else 0,
+                "ok": not bool(planner_meta.get("planner_failed", False)),
+                "error_stage": str(planner_meta.get("planner_error_stage", "")),
+                "error": _safe_text(planner_meta.get("planner_error", ""), 240),
+            }
+        )
     return {
         **timing_prev,
         "turn_total_ms": _duration_ms(timeline["t_turn_start"], timeline["t_summary_enqueued"]),
         "timeline": timeline,
         "nodes": runtime.get("nodes", {}),
-        "llm_calls": runtime.get("llm_calls", [])[:12],
+        "llm_calls": llm_calls[:12],
     }
 
 

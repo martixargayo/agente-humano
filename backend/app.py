@@ -413,10 +413,15 @@ def negotiation_trace_panel():
     }
 
     function durationMs(timing) {
-      const start = Number(timing?.t_turn_start || 0);
-      const end = Number(timing?.t_after_graph || 0);
+      const total = timing?.turn_total_ms;
+      if (typeof total === 'number' && Number.isFinite(total) && total >= 0) {
+        return Number.isInteger(total) ? `${total} ms` : `${total.toFixed(1)} ms`;
+      }
+      const start = Number(timing?.timeline?.t_turn_start || 0);
+      const end = Number(timing?.timeline?.t_after_graph || 0);
       if (!start || !end || end < start) return 'n/a';
-      return `${((end - start) * 1000).toFixed(1)} ms`;
+      const ms = (end - start) * 1000;
+      return Number.isInteger(ms) ? `${ms} ms` : `${ms.toFixed(1)} ms`;
     }
 
     function renderAll() {

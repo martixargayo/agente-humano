@@ -292,6 +292,10 @@ class NegotiationTurn(TypedDict):
     override_policy_id: str | None
     override_reason: str | None
 
+    trace_runtime: dict
+    planner_debug_v2: dict
+    executor_debug_v2: dict
+    executor_validator_meta: dict
 
 # ---- Utilidades internas ----
 
