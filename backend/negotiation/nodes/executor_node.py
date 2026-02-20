@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 
 from ..context_utils import format_memory_block
@@ -62,6 +63,59 @@ def _enforce_executor_instruction(response_text: str, executor_instruction: dict
             reasons.append("safe_mode_deescalate")
 
     return repaired, reasons
+
+
+def _enforce_constraints_struct(response_text: str, constraints_struct: dict) -> tuple[str, list[str]]:
+    repaired = response_text
+    reasons: list[str] = []
+    if not isinstance(constraints_struct, dict):
+        return repaired, reasons
+
+    max_q = constraints_struct.get("max_questions")
+    if isinstance(max_q, int) and max_q >= 0:
+        q_count = repaired.count("?")
+        if q_count > max_q:
+            parts = repaired.split("?")
+            repaired = "?".join(parts[: max_q + 1]).strip()
+            if max_q > 0 and not repaired.endswith("?"):
+                repaired = repaired.rstrip(" .") + "?"
+            reasons.append("constraints:max_questions")
+
+    if bool(constraints_struct.get("disallow_numbers", False)):
+        if re.search(r"\d", repaired):
+            repaired = re.sub(r"\d+[\d.,€$%]*", "", repaired)
+            repaired = re.sub(r"\s{2,}", " ", repaired).strip()
+            if not repaired:
+                repaired = "Prefiero no dar cifras exactas en este punto; ¿te parece si revisamos condiciones?"
+            reasons.append("constraints:disallow_numbers")
+
+    return repaired, reasons
+
+
+def _instruction_followed(response_text: str, executor_instruction: dict) -> tuple[bool, str]:
+    if not isinstance(executor_instruction, dict):
+        return True, ""
+
+    instruction = str(executor_instruction.get("instruction", "") or "").strip()
+    if not instruction:
+        return True, ""
+
+    asks = executor_instruction.get("ask", [])
+    ask_tokens = [str(x).strip().lower() for x in asks if str(x).strip()]
+    text_lower = response_text.lower()
+    missing_ask = bool(ask_tokens) and not any(token in text_lower for token in ask_tokens)
+
+    expects_question = any(
+        marker in instruction.lower()
+        for marker in ["pregunta", "preguntar", "indagar", "consultar", "ask"]
+    )
+    missing_question = expects_question and "?" not in response_text
+
+    if missing_question:
+        return False, "missing_question_for_instruction"
+    if missing_ask:
+        return False, "missing_required_ask_slot"
+    return True, ""
 
 
 def executor_node(state: dict) -> dict:
@@ -162,6 +216,31 @@ def executor_node(state: dict) -> dict:
         validator_meta["instruction_enforcement"] = instruction_reasons
         validator_meta["fallback_applied"] = True
 
+    constraints_repaired, constraints_reasons = _enforce_constraints_struct(
+        repaired_response, constraints_struct
+    )
+    if constraints_reasons and constraints_repaired != repaired_response:
+        repaired_response = constraints_repaired
+        violations = list(violations) + constraints_reasons
+        validator_meta = dict(validator_meta)
+        validator_meta["constraints_enforcement"] = constraints_reasons
+        validator_meta["fallback_applied"] = True
+
+    followed_instruction, deviation_reason = _instruction_followed(
+        repaired_response, state.get("executor_instruction", {})
+    )
+    if not followed_instruction and "?" not in repaired_response:
+        repaired_response = repaired_response.rstrip(" .") + "?"
+        validator_meta = dict(validator_meta)
+        validator_meta["fallback_applied"] = True
+        followed_instruction, deviation_reason = _instruction_followed(
+            repaired_response, state.get("executor_instruction", {})
+        )
+        if followed_instruction:
+            validator_meta["instruction_enforcement"] = list(validator_meta.get("instruction_enforcement", [])) + [
+                "instruction_autorepair_question",
+            ]
+
     if validator_meta.get("fallback_applied"):
         executor_output = dict(executor_output)
         executor_output["response_text"] = repaired_response
@@ -175,6 +254,8 @@ def executor_node(state: dict) -> dict:
 
     validator_meta = dict(validator_meta)
     validator_meta["executor_instruction_compliance"] = "pass" if not instruction_reasons else "repaired"
+    validator_meta["executor_followed_instruction"] = followed_instruction
+    validator_meta["deviation_reason"] = deviation_reason
     state["executor_validator_meta"] = validator_meta
 
     state["executor_debug_v2"] = {
@@ -199,6 +280,8 @@ def executor_node(state: dict) -> dict:
             "response_length": len(state.get("assistant_message", "")),
             "constraints_respected": not bool(violations),
             "sanitizer_flags": list(validator_meta.get("validation_flags", []))[:8],
+            "executor_followed_instruction": bool(followed_instruction),
+            "deviation_reason": deviation_reason,
         },
     }
     override_policy_id = validator_meta.get("override_policy_id")
