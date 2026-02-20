@@ -4,7 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field, confloat, conlist, field_vali
 
 from ..config import get_negotiation_model_config
 from ..schemas import ReasonKey
-from ..specs.world_keys import ALLOWED_NEGOTIATION_DOMAIN_KEYS
+ALLOWED_NEGOTIATION_DOMAIN_KEYS = set()
 
 NEGOTIATION_CONFIG = get_negotiation_model_config()
 BELIEF_MODEL = NEGOTIATION_CONFIG.belief.model

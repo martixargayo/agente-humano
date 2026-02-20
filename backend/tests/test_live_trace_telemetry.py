@@ -71,7 +71,8 @@ def test_build_trace_event_shapes_fields():
     assert event["debug"]["belief"]["belief_node_entered"] is True
     assert event["policy_plan_judgement"]["plan_status"] == "continue_same_step"
     assert event["planner_debug"]["gate_decision"]["gate_path"] == "skip_continue_policy"
-    assert event["world_debug"]["world_judge_meta"]["judge_latency_ms"] == 123
+    assert event["world_base"]["price"] == 10000
+    assert event["world_new"]["price"] == 9500
 
 
 def test_list_recent_trace_events_aggregates_sessions():

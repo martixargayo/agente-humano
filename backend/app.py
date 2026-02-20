@@ -448,15 +448,12 @@ def negotiation_trace_panel():
 
           <div class="kv"><span class="k">extractor</span><span class="v">used=${evt.extractor_used ? 'sí' : 'no'} · reasons=${joinOrDash(evt.extractor_reasons)} · patch_keys=${joinOrDash(evt.extractor_world_patch_keys)}</span></div>
           <div class="kv"><span class="k">evidencia top</span><span class="v">${(evt.top_evidence_v2 || []).map(r => `${r.path}=${r.value}(${r.confidence})`).join(' | ') || '—'}</span></div>
-          <div class="kv"><span class="k">intención</span><span class="v">step=${evt.intent?.step_kind || '—'} · target=${evt.intent?.target_slot || '—'} · decision=${evt.intent?.decision || '—'} · transition=${evt.intent?.transition || '—'}</span></div>
           <div class="kv"><span class="k">errores</span><span class="v ${plannerFail ? 'err' : ''}">planner=${evt.planner_error || '—'} · belief=${evt.belief_update_error || '—'}</span></div>
 
-          <details><summary>Estado base vs nuevo (world)</summary><pre>${pretty({base: evt.raw?.world_prev, new: evt.raw?.world_new, diff: evt.raw?.world_diff})}</pre></details>
-          <details><summary>Estado base vs nuevo (belief)</summary><pre>${pretty({base: evt.raw?.belief_prev, new: evt.raw?.belief_new, diff: evt.raw?.belief_diff})}</pre></details>
-          <details><summary>Decisión y planificación</summary><pre>${pretty({policy_plan_judgement: evt.policy_plan_judgement, policy_decision: evt.policy_decision, policy_pre_repair: evt.policy_pre_repair, policy_post_repair: evt.policy_post_repair, executed_policy: evt.executed_policy, phase_candidate: evt.phase_candidate, phase_effective: evt.phase_effective, planner_reason: evt.planner_reason, planner_meta: evt.raw?.planner_meta, planner_debug: evt.planner_debug, progress_debug: evt.progress_debug, gates: evt.gates})}</pre></details>
-          <details><summary>World/Belief debug</summary><pre>${pretty({world_debug: evt.world_debug, belief_debug: evt.belief_debug})}</pre></details>
+          <details><summary>Estado base vs nuevo (world)</summary><pre>${pretty({base: evt.world_base, new: evt.world_new, diff: evt.world_diff})}</pre></details>
+          <details><summary>Estado base vs nuevo (belief)</summary><pre>${pretty({base: evt.belief_base, new: evt.belief_new, diff: evt.belief_diff})}</pre></details>
+          <details><summary>Decisión y planificación</summary><pre>${pretty({policy_plan_judgement: evt.policy_plan_judgement, policy_decision: evt.policy_decision, policy_pre_repair: evt.policy_pre_repair, policy_post_repair: evt.policy_post_repair, executed_policy: evt.executed_policy, phase_candidate: evt.phase_candidate, phase_effective: evt.phase_effective, planner_reason: evt.planner_reason, planner_meta: evt.planner_meta, planner_debug: evt.planner_debug, progress_debug: evt.progress_debug, gates: evt.gates})}</pre></details>
           <details><summary>Validación, memoria y modelo</summary><pre>${pretty({validation_issues: evt.validation_issues, memory_meta: evt.memory_meta, refresh_meta: evt.refresh_meta, summary_enqueue_meta: evt.summary_enqueue_meta, model_params: evt.model_params, timing: evt.timing})}</pre></details>
-          <details><summary>Evento completo (raw)</summary><pre>${pretty(evt.raw)}</pre></details>
         `;
         eventsEl.appendChild(card);
       }

@@ -2,21 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import json
-import warnings
 from typing import Any, Dict, Iterable
-
-from ..validation import normalize_universal_state
 
 
 def stable_allowed_ids_hash(allowed_ids: Iterable[str]) -> str:
-    warnings.warn(
-        "gating.fingerprints.stable_allowed_ids_hash is deprecated; use legacy.gating_deprecated.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    from ..legacy.gating_deprecated import stable_allowed_ids_hash as legacy_hash
-
-    return legacy_hash(allowed_ids)
+    canon = sorted({str(x).strip() for x in allowed_ids if str(x).strip()})
+    payload = json.dumps(canon, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def loop_flags_changed(prev_flags: Iterable[str], current_flags: Iterable[str]) -> bool:
@@ -34,11 +26,9 @@ def interaction_fingerprint(interaction: Dict[str, Any] | None) -> Dict[str, Any
     }
 
 
-def universal_state_fingerprint(universal_state: dict) -> str:
-    norm = normalize_universal_state(universal_state)
-    payload = json.dumps(norm, ensure_ascii=False, sort_keys=True)
+def state_meta_fingerprint(payload_data: dict) -> str:
+    payload = json.dumps(payload_data or {}, ensure_ascii=False, sort_keys=True)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
-
 
 
 def world_buckets_fingerprint(world_state: dict | None) -> str:

@@ -34,8 +34,8 @@ def _len_value(value: object) -> int:
 
 
 def _compute_recovery_mode(prev: PhaseState, world_state: dict, belief_state: dict, progress_state: dict | None) -> tuple[bool, int]:
-    health = str(_nested_get(belief_state, "universal", "dynamics", "interaction_health") or "stable")
-    conflict_risk = float(_nested_get(belief_state, "universal", "behavior_guidance", "conflict_risk") or 0.0)
+    health = str(_nested_get(belief_state, "planner_signals", "interaction_health") or "stable")
+    conflict_risk = float(_nested_get(belief_state, "planner_signals", "conflict_risk") or 0.0)
     loop_flags = list((progress_state or {}).get("loop_flags", [])) if isinstance(progress_state, dict) else []
     has_loop = bool(loop_flags)
 
@@ -57,18 +57,18 @@ def _gate_effective_phase(base_phase: NegotiationPhase, world_state: dict, belie
     if recovery_mode:
         return "climate"
 
-    clarity_vague = bool(_nested_get(world_state, "universal_v2", "clarity", "is_vague"))
-    missing_info = _len_value(_nested_get(world_state, "universal_v2", "clarity", "missing_info"))
-    if clarity_vague or missing_info >= 3:
+    buckets = (world_state or {}).get("world_buckets", {}) if isinstance(world_state, dict) else {}
+    interests_n = _len_value(buckets.get("interests", [])) if isinstance(buckets, dict) else 0
+    constraints_n = _len_value(buckets.get("constraints", [])) if isinstance(buckets, dict) else 0
+    offers_n = _len_value(buckets.get("offers", [])) if isinstance(buckets, dict) else 0
+    claims_n = _len_value(buckets.get("claims", [])) if isinstance(buckets, dict) else 0
+    if claims_n >= 3 and interests_n == 0:
         return "interests"
 
     phase = base_phase
-    affect_conf = float(_nested_get(world_state, "universal_v2", "affect", "confidence") or 0.0)
-    interests_n = _len_value(_nested_get(world_state, "negotiation_v2", "interests"))
-    constraints_n = _len_value(_nested_get(world_state, "negotiation_v2", "constraints"))
-    offers_n = _len_value(_nested_get(world_state, "negotiation_v2", "offers"))
-    agree_state = str(_nested_get(world_state, "negotiation_v2", "agreement_state", "state") or "")
-    agree_conf = float(_nested_get(world_state, "negotiation_v2", "agreement_state", "confidence") or 0.0)
+    affect_conf = 0.5 if claims_n > 0 else 0.0
+    agree_state = "near" if offers_n > 1 and constraints_n > 0 else "none"
+    agree_conf = 0.7 if agree_state == "near" else 0.0
 
     if phase == "climate":
         if affect_conf >= 0.3 or (turn_count >= 1 and not clarity_vague):

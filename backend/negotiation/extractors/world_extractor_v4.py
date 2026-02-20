@@ -120,32 +120,6 @@ def extract_world_patch_llm_v4(
     data = _safe_json_load(text)
 
     patch_raw = dict(data.get("world_buckets_patch") or {})
-    # compatibility: map legacy schema fields into simple buckets when possible
-    if not patch_raw:
-        legacy_neg = dict(data.get("negotiation_domain_patch") or {})
-        legacy_open_claims = list(data.get("open_claims") or [])
-        inferred_context = []
-        if legacy_neg.get("urgency_claimed"):
-            inferred_context.append(
-                {
-                    "text": "Declara urgencia o necesidad inmediata.",
-                    "confidence": 0.6,
-                    "raw_text": user_message or "",
-                    "source_turn": turn_idx,
-                }
-            )
-        for claim in legacy_open_claims:
-            if isinstance(claim, dict) and str(claim.get("evidence_text", "")).strip():
-                inferred_context.append(
-                    {
-                        "text": str(claim.get("label", "claim")).replace("_", " "),
-                        "confidence": float(claim.get("confidence", 0.5) or 0.5),
-                        "raw_text": str(claim.get("evidence_text", ""))[:180],
-                        "source_turn": turn_idx,
-                    }
-                )
-        if inferred_context:
-            patch_raw = {"context": inferred_context}
 
     patch: dict = {bucket: [] for bucket in _BUCKETS}
     for bucket in _BUCKETS:
@@ -159,10 +133,6 @@ def extract_world_patch_llm_v4(
         patch[bucket] = normalized
 
     meta = dict(data.get("meta") or {})
-    meta["legacy_universal_domain_patch"] = dict(data.get("universal_domain_patch") or {})
-    meta["legacy_negotiation_domain_patch"] = dict(data.get("negotiation_domain_patch") or {})
-    meta["legacy_universal_patch"] = dict(data.get("universal_patch") or {})
-    meta["legacy_open_claims"] = list(data.get("open_claims") or [])
     meta.setdefault("negotiation_signal_detected", False)
     meta.setdefault("extraction_quality", "medium")
     meta["extractor_version"] = "world_extractor_v4"

@@ -10,7 +10,7 @@ from ..gate_utils import (
     gate_world,
     input_shape_features,
     interaction_fingerprint,
-    universal_state_fingerprint,
+    state_meta_fingerprint,
 )
 from ..llm_clients import get_planner_llm
 from ..mode_inference import update_conversation_mode
@@ -176,8 +176,8 @@ def world_judge_llm(
         "user_message": str(user_message or "")[:1000],
         "recent_history": str(recent_history or "")[-1200:],
         "world_state_summary": {
-            "negotiation": (world_state or {}).get("negotiation", {}),
-            "universal_state": (world_state or {}).get("universal_state", {}),
+            "world_buckets": (world_state or {}).get("world_buckets", {}),
+            "world_state_meta": (world_state or {}).get("world_state_meta", {}),
         },
     }
 
@@ -329,8 +329,8 @@ def world_updater_node(state: dict) -> dict:
 
     state["progress_state"] = progress_state
     state["conversation_mode"] = progress_state.get("conversation_mode", conversation_mode)
-    gate_state["universal_state_fingerprint_prev"] = universal_state_fingerprint(
-        state.get("world_state", {}).get("universal_state")
+    gate_state["world_meta_fingerprint_prev"] = state_meta_fingerprint(
+        state.get("world_state", {}).get("world_state_meta")
     )
     gate_state["input_shape_prev"] = current_features
     gate_state["last_interaction_signals"] = interaction_current
