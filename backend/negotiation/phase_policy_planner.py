@@ -105,15 +105,22 @@ def _policy_plan_summary(progress_state: ProgressState) -> dict:
 
 
 def _belief_cues_governed(belief_state: BeliefState) -> dict:
-    uni = belief_state.get("universal", {}) if isinstance(belief_state, dict) else {}
-    guidance = uni.get("behavior_guidance", {}) if isinstance(uni, dict) else {}
-    dynamics = uni.get("dynamics", {}) if isinstance(uni, dict) else {}
-    negotiation = belief_state.get("negotiation", {}) if isinstance(belief_state, dict) else {}
+    if not isinstance(belief_state, dict):
+        return {
+            "behavior_guidance": {},
+            "interaction_health": "stable",
+            "risk_flags": [],
+            "strategy_notes": [],
+        }
+    planner = belief_state.get("planner_signals", {}) if isinstance(belief_state.get("planner_signals"), dict) else {}
+    buckets = belief_state.get("belief_buckets", {}) if isinstance(belief_state.get("belief_buckets"), dict) else {}
+    risk_flags = buckets.get("risk_flags", []) if isinstance(buckets.get("risk_flags"), list) else []
+    strategy_notes = buckets.get("strategy_notes", []) if isinstance(buckets.get("strategy_notes"), list) else []
     return {
-        "behavior_guidance": guidance if isinstance(guidance, dict) else {},
-        "interaction_health": (dynamics or {}).get("interaction_health", "stable"),
-        "negotiation_stance": (negotiation or {}).get("stance", {}),
-        "negotiation_reasons": (negotiation or {}).get("reasons", {}),
+        "behavior_guidance": {},
+        "interaction_health": planner.get("interaction_health", "stable"),
+        "risk_flags": risk_flags[:3],
+        "strategy_notes": strategy_notes[:3],
     }
 def plan_phase_policy(
     world_state: WorldState,

@@ -35,7 +35,7 @@ def belief_updater_node(state: dict) -> dict:
         turn_count=turn_count,
         last_refresh_turn=int(gate_state.get("last_belief_refresh_turn", 0) or 0),
         interval=int(os.getenv("BELIEF_REFRESH_INTERVAL_TURNS", "3")),
-        prev_universal_fingerprint=str(gate_state.get("universal_state_fingerprint_prev", "")),
+        prev_universal_fingerprint=str(gate_state.get("world_meta_fingerprint_prev", "")),
         prev_world_buckets_fingerprint=str(gate_state.get("world_buckets_fingerprint_prev", "")),
     )
     if belief_skipped:
@@ -96,8 +96,7 @@ def belief_updater_node(state: dict) -> dict:
         if b != a:
             changed.append(bucket)
             counts_delta[bucket] = {"before": b_count, "after": a_count, "delta": a_count - b_count}
-    dynamics = (((belief_state or {}).get("universal") or {}).get("dynamics") or {}) if isinstance(belief_state, dict) else {}
-    behavior = (((belief_state or {}).get("universal") or {}).get("behavior_guidance") or {}) if isinstance(belief_state, dict) else {}
+    planner_signals = ((belief_state or {}).get("planner_signals") or {}) if isinstance(belief_state, dict) else {}
     state["belief_debug"] = {
         "belief_diff_bucket_summary": {
             "changed_buckets": changed[:12],
@@ -110,10 +109,10 @@ def belief_updater_node(state: dict) -> dict:
             "belief_latency_ms": int(belief_meta.get("belief_latency_ms", 0) or 0),
         },
         "planner_relevant": {
-            "interaction_health": str(dynamics.get("interaction_health", "stable")),
-            "escalation": str(dynamics.get("escalation", "none")),
-            "looping": bool(dynamics.get("looping", False)),
-            "recommended_move": str(behavior.get("recommended_move", "")),
+            "interaction_health": str(planner_signals.get("interaction_health", "stable")),
+            "conflict_risk": float(planner_signals.get("conflict_risk", 0.0) or 0.0),
+            "recovery_mode": bool(planner_signals.get("recovery_mode", False)),
+            "recommended_move": str(planner_signals.get("recommended_move", "hold")),
         },
     }
     state["belief_state"] = belief_state

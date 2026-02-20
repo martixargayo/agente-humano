@@ -47,7 +47,6 @@ from .gate_utils import (
     input_shape_features,
     interaction_fingerprint,
     loop_flags_changed,
-    universal_state_fingerprint,
 )
 from .phase_policy_planner import plan_phase_policy
 from .phase_state_updater import postprocess_phase_candidate
@@ -264,8 +263,6 @@ class NegotiationTurn(TypedDict):
     belief_state: BeliefState
     prev_belief_state: BeliefState
     progress_state: ProgressState
-    intent_hint: dict
-    intent_meta: dict
     policy_hint: dict
     policy_meta: dict
     policy_decision: PolicyDecision
@@ -528,8 +525,6 @@ def run_negotiation_agent(
         "belief_state": belief_state_input,
         "prev_belief_state": belief_state_input,
         "progress_state": progress_state_input,
-        "intent_hint": {},
-        "intent_meta": {},
         "policy_hint": {},
         "policy_meta": {},
         "policy_decision": default_policy_decision(),
@@ -642,106 +637,29 @@ def run_negotiation_agent(
             "override_policy_id": new_graph_state.get("override_policy_id"),
             "override_reason": new_graph_state.get("override_reason"),
             "progress_state": new_progress_state,
-            # Legacy intent fields retained for backward compatibility with older traces.
-            "intent_prev": new_graph_state.get("planner_meta", {}).get("intent_meta", {}).get(
-                "intent_prev", {}
-            ),
-            "intent_new": new_graph_state.get("planner_meta", {}).get("intent_meta", {}).get(
-                "intent_new", {}
-            ),
-            "intent_decision": new_graph_state.get("planner_meta", {}).get(
-                "intent_meta", {}
-            ).get("intent_decision", ""),
-            "intent_transition": new_graph_state.get("planner_meta", {}).get(
-                "intent_meta", {}
-            ).get("intent_transition", ""),
-            "intent_slots_delta": new_graph_state.get("planner_meta", {}).get(
-                "intent_meta", {}
-            ).get("slots_filled_delta", {}),
-            "intent_step_kind": new_graph_state.get("intent_hint", {}).get("step_kind", ""),
-            "intent_target_slot": new_graph_state.get("intent_hint", {}).get("target_slot", ""),
-            "intent_pivot_reason": new_graph_state.get("planner_meta", {}).get(
-                "intent_meta", {}
-            ).get("pivot_reason", ""),
-            "intent_pivot_strategy": new_graph_state.get("planner_meta", {}).get(
-                "intent_meta", {}
-            ).get("pivot_strategy", ""),
-            "intent_success_reasons": new_graph_state.get("planner_meta", {}).get(
-                "intent_meta", {}
-            ).get("success_reasons", []),
-            "intent_commitment_level": new_graph_state.get("planner_meta", {}).get(
-                "intent_meta", {}
-            ).get("commitment_level", ""),
             "planner_meta": new_graph_state.get("planner_meta", {}),
             "planner_debug": new_graph_state.get("planner_debug", {}),
             "gates": new_graph_state.get("gate_meta", {}),
             "belief_update_meta": new_graph_state.get("belief_update_meta", {}),
-            "belief_debug": new_graph_state.get("belief_debug", {}),
-            "world_debug": new_graph_state.get("world_debug", {}),
             "progress_debug": new_graph_state.get("progress_debug", {}),
-            "debug": {
-                "belief": new_graph_state.get("belief_update_meta", {}) or {},
-            },
             "phase_state": new_graph_state.get("progress_state", {}).get("phase_state", {}),
             "phase_meta": new_graph_state.get("planner_meta", {}).get("phase_meta", {}),
-            "extractor_used": new_graph_state.get("extractor_meta", {}).get(
-                "extractor_used", False
-            ),
-            "extractor_reasons": new_graph_state.get("extractor_meta", {}).get(
-                "extractor_reasons", []
-            ),
-            "extractor_world_patch_keys": new_graph_state.get("extractor_meta", {}).get(
-                "extractor_world_patch_keys", []
-            ),
-            "raw_llm_patch_keys": new_graph_state.get("extractor_meta", {}).get(
-                "raw_llm_patch_keys", {}
-            ),
-            "filtered_patch_keys": new_graph_state.get("extractor_meta", {}).get(
-                "filtered_patch_keys", {}
-            ),
-            "dropped_patch_keys": new_graph_state.get("extractor_meta", {}).get(
-                "dropped_patch_keys", {}
-            ),
-            "open_claims_raw_count": int(
-                new_graph_state.get("extractor_meta", {}).get("open_claims_raw_count", 0) or 0
-            ),
-            "open_claims_kept_count": int(
-                new_graph_state.get("extractor_meta", {}).get("open_claims_kept_count", 0)
-                or 0
-            ),
-            "rejected_claims": new_graph_state.get("extractor_meta", {}).get(
-                "rejected_claims", []
-            ),
-            "merged_changed_paths": new_graph_state.get("extractor_meta", {}).get(
-                "merged_changed_paths", []
-            ),
+            "extractor_used": new_graph_state.get("extractor_meta", {}).get("extractor_used", False),
+            "extractor_reasons": new_graph_state.get("extractor_meta", {}).get("extractor_reasons", []),
+            "extractor_world_patch_keys": new_graph_state.get("extractor_meta", {}).get("extractor_world_patch_keys", []),
+            "merged_changed_paths": new_graph_state.get("extractor_meta", {}).get("merged_changed_paths", []),
             "diff_paths": new_graph_state.get("extractor_meta", {}).get("diff_paths", []),
-            "backstop_reasons": new_graph_state.get("extractor_meta", {}).get(
-                "backstop_reasons", []
-            ),
+            "backstop_reasons": new_graph_state.get("extractor_meta", {}).get("backstop_reasons", []),
             "fallback_applied": bool(new_graph_state.get("extractor_meta", {}).get("fallback_applied", False)),
             "fallback_reasons": new_graph_state.get("extractor_meta", {}).get("fallback_reasons", []),
-            "unknown_claims_added_count": int(
-                new_graph_state.get("extractor_meta", {}).get("unknown_claims_added_count", 0)
-                or 0
-            ),
-            "extractor_confidence_summary": new_graph_state.get("extractor_meta", {}).get(
-                "extractor_confidence_summary", {"min": 0.0, "avg": 0.0}
-            ),
+            "extractor_confidence_summary": new_graph_state.get("extractor_meta", {}).get("extractor_confidence_summary", {"min": 0.0, "avg": 0.0}),
             "top_evidence_v2": top_evidence_v2(new_world_state),
-            "unknown_claims_count": len(
-                (new_world_state.get("world_state_meta") or {}).get("unknown_claims", [])
-            ),
             "memory_meta": new_graph_state.get("memory_meta", {}),
             "refresh_meta": new_graph_state.get("refresh_meta", {}),
             "preset_meta": preset_meta,
             "exit_issues": exit_issues,
             "max_total_cost_margin": margin,
-            "build_git_sha": (
-                os.getenv("BUILD_GIT_SHA")
-                or os.getenv("GIT_SHA")
-                or "unknown"
-            ),
+            "build_git_sha": (os.getenv("BUILD_GIT_SHA") or os.getenv("GIT_SHA") or "unknown"),
             "validation_issues": {
                 "world_in": world_issues_in,
                 "belief_in": belief_issues_in,
@@ -755,18 +673,10 @@ def run_negotiation_agent(
             **negotiation_effective_model_params(cfg),
             "planner_failed": new_graph_state.get("planner_meta", {}).get("planner_failed", False),
             "planner_error": new_graph_state.get("planner_meta", {}).get("planner_error", ""),
-            "planner_fallback_used": new_graph_state.get("planner_meta", {}).get(
-                "planner_fallback_used", False
-            ),
-            "policy_normalization_changed": new_graph_state.get("planner_meta", {}).get(
-                "policy_normalization_changed", False
-            ),
-            "belief_update_failed": new_graph_state.get("belief_update_meta", {}).get(
-                "belief_update_failed", False
-            ),
-            "belief_update_error": new_graph_state.get("belief_update_meta", {}).get(
-                "belief_update_error", ""
-            ),
+            "planner_fallback_used": new_graph_state.get("planner_meta", {}).get("planner_fallback_used", False),
+            "policy_normalization_changed": new_graph_state.get("planner_meta", {}).get("policy_normalization_changed", False),
+            "belief_update_failed": new_graph_state.get("belief_update_meta", {}).get("belief_update_failed", False),
+            "belief_update_error": new_graph_state.get("belief_update_meta", {}).get("belief_update_error", ""),
         }
     )
     save_session_state(state)

@@ -4,7 +4,7 @@ from .gating.fingerprints import (
     interaction_fingerprint,
     loop_flags_changed,
     stable_allowed_ids_hash,
-    universal_state_fingerprint,
+    state_meta_fingerprint,
     world_buckets_fingerprint,
 )
 from .gating.gate_belief import gate_belief
@@ -26,7 +26,7 @@ __all__ = [
     "interaction_fingerprint",
     "loop_flags_changed",
     "stable_allowed_ids_hash",
-    "universal_state_fingerprint",
+    "state_meta_fingerprint",
     "world_buckets_fingerprint",
     "input_shape_features",
     "input_shape_changed_materially",

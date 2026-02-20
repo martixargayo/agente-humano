@@ -107,8 +107,7 @@ def extract_interaction_signals(
     recent_history = _coerce_recent_history(recent_history)
     prev_world = prev_world or default_world_state()
     prev_interaction = prev_interaction or {}
-    prev_domain = (prev_world.get("universal_domain") or {}) if isinstance(prev_world, dict) else {}
-    prev_tone = prev_domain.get("tone_signal", "neutral")
+    prev_tone = str((prev_interaction or {}).get("tone_signal", "neutral") or "neutral")
     if tone_signal is None:
         tone_hits = _tone_hits_from_message(text)
         tone_signal = _derive_tone_signal(tone_hits)

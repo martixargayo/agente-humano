@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from typing import Any, Dict, Iterable, Tuple
-import warnings
 
 from ..perception.input_shape import (
     ConversationMode,
@@ -9,11 +8,10 @@ from ..perception.input_shape import (
     input_shape_changed_materially,
     input_shape_features,
 )
-from ..specs.world_keys import ALLOWED_NEGOTIATION_DOMAIN_KEYS
 
 
 def critical_world_flags() -> set[str]:
-    return set(ALLOWED_NEGOTIATION_DOMAIN_KEYS) | {"message_is_vague"}
+    return set()
 
 
 def _split_world_diff(world_diff: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -30,10 +28,6 @@ def interaction_strong_delta_from_diff(
     if not interaction_diff:
         return False, {}
     meta: Dict[str, Any] = {}
-    ia = interaction_diff.get("implicit_acceptance")
-    if ia and ia.get("before") is False and ia.get("after") is True:
-        meta["implicit_acceptance_rise"] = True
-        return True, meta
     esc = interaction_diff.get("escalation_signal")
     if esc and esc.get("before") != esc.get("after") and esc.get("after") in {"up", "down"}:
         meta["escalation_change"] = {"before": esc.get("before"), "after": esc.get("after")}
@@ -53,18 +47,12 @@ def select_policy_id_on_skip(
     safe_neutral_policy_id: str,
     max_attempts: int = 3,
 ) -> Tuple[str, str]:
-    warnings.warn(
-        "gating.shared.select_policy_id_on_skip is deprecated; use legacy.gating_deprecated.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    from ..legacy.gating_deprecated import select_policy_id_on_skip as legacy_select_policy_id
-
-    return legacy_select_policy_id(
-        last_policy_chosen,
-        allowed_policy_ids,
-        policy_attempts,
-        loop_flags,
-        safe_neutral_policy_id,
-        max_attempts=max_attempts,
-    )
+    if not allowed_policy_ids:
+        return safe_neutral_policy_id, "no_allowed"
+    attempts = dict(policy_attempts or {})
+    for policy_id in allowed_policy_ids:
+        if attempts.get(policy_id, 0) < max_attempts:
+            return policy_id, "first_under_cap"
+    if safe_neutral_policy_id in allowed_policy_ids:
+        return safe_neutral_policy_id, "fallback_safe_neutral"
+    return allowed_policy_ids[0], "fallback_first"

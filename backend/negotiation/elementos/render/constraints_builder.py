@@ -33,14 +33,13 @@ def build_constraints_struct(
     if not bool(style.get("markdown_allowed", False)):
         out["forbid_formats"].append("markdown")
 
-    universal = (belief.get("universal") or {}) if isinstance(belief, dict) else {}
-    dynamics = universal.get("dynamics", {}) if isinstance(universal.get("dynamics"), dict) else {}
-    guidance = universal.get("behavior_guidance", {}) if isinstance(universal.get("behavior_guidance"), dict) else {}
-    verification_need = float(guidance.get("verification_need", 0.0) or 0.0)
-    conflict_risk = float(guidance.get("conflict_risk", 0.0) or 0.0)
-    epistemic_style = str(guidance.get("epistemic_style", "neutral") or "neutral")
+    planner = (belief.get("planner_signals") or {}) if isinstance(belief, dict) else {}
+    interaction_health = str(planner.get("interaction_health", "stable") or "stable")
+    conflict_risk = float(planner.get("conflict_risk", 0.0) or 0.0)
+    verification_need = 0.0
+    epistemic_style = "neutral"
 
-    if dynamics.get("interaction_health") in ("tense", "stalled") or conflict_risk >= 0.6:
+    if interaction_health in ("tense", "stalled") or conflict_risk >= 0.6:
         out["max_questions"] = 1
     elif verification_need >= 0.6:
         out["max_questions"] = min(int(style.get("max_questions", 2)), max(2, int(out.get("max_questions", 2))))
@@ -56,8 +55,8 @@ def build_constraints_struct(
         out["disallow_numbers"] = True
 
     if progress.get("conversation_mode") == "negotiation":
-        negotiation = world.get("negotiation", {}) if isinstance(world, dict) else {}
-        if not negotiation.get("price_mentioned"):
+        world_meta = world.get("world_state_meta", {}) if isinstance(world, dict) else {}
+        if not bool(world_meta.get("price_mentioned", False)):
             out["require_ask_if_missing"].append("price")
 
     out["forbid_formats"] = sorted(set(out["forbid_formats"]))

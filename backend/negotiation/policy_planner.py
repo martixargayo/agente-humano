@@ -15,25 +15,19 @@ _POLICY_BY_ID = {policy.policy_id: policy for policy in POLICIES}
 def _world_value(world_state: WorldState, key: str) -> object:
     if not isinstance(world_state, dict):
         return None
-    universal = world_state.get("universal_domain", {})
-    if isinstance(universal, dict) and key in universal:
-        return universal.get(key)
-    negotiation = world_state.get("negotiation", {})
-    if isinstance(negotiation, dict) and key in negotiation:
-        return negotiation.get(key)
+    if key.startswith("world_buckets."):
+        parts = key.split(".")
+        if len(parts) == 2:
+            return ((world_state.get("world_buckets") or {}) if isinstance(world_state.get("world_buckets"), dict) else {}).get(parts[1])
+    if key.startswith("world_state_meta."):
+        parts = key.split(".")
+        if len(parts) == 2:
+            return ((world_state.get("world_state_meta") or {}) if isinstance(world_state.get("world_state_meta"), dict) else {}).get(parts[1])
     return world_state.get(key)
 
 
 def _world_has_key(world_state: WorldState, key: str) -> bool:
-    if not isinstance(world_state, dict):
-        return False
-    universal = world_state.get("universal_domain", {})
-    if isinstance(universal, dict) and key in universal:
-        return True
-    negotiation = world_state.get("negotiation", {})
-    if isinstance(negotiation, dict) and key in negotiation:
-        return True
-    return key in world_state
+    return _world_value(world_state, key) is not None
 
 
 
@@ -108,7 +102,7 @@ def repair_policy_by_phase(
         "phase_repair_attempts_blocked": [],
     }
     if commitment_level == "hard":
-        meta["phase_repair_mode"] = "disabled_intent_hard"
+        meta["phase_repair_mode"] = "disabled_hard_commit"
         return chosen_id, meta
 
     scope = allowed_ids
