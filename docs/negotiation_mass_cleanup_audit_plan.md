@@ -199,8 +199,8 @@ Para negociación específicamente (`/negociar`), no se detectó segundo pipelin
 | `world_observations*` normalización en `validation.py` | parece sostener compat histórica | escritura en `validation.py:953-999`; lectura productiva directa limitada | contadores de lectura por key_path + snapshot de trace minimal | Medio | PR2 stop-read, PR3 delete |
 | `world_derived` normalización | idem | escritura `validation.py:1005-1010`; reader runtime no identificado | mismo método | Medio | PR2/PR3 |
 | `evidence_items` legacy | aparece como write de normalize | `validation.py:945` | contador + rg CI allowlist | Bajo/Medio | PR3 |
-| `gating/gate_planner.py` y `gating/shared.py` wrappers deprecados | puente a `legacy/gating_deprecated` | `gate_utils.py:11-13` importa wrappers; uso funcional en tests para `gate_phase_policy` | contador de llamadas runtime por endpoint `/negociar`; si 0 fuera tests -> delete | Medio | PR2 aislado + PR3 delete |
-| `legacy/gating_deprecated.py` | explícitamente legacy | usado vía wrappers deprecados (`gating/gate_planner.py`, `gating/shared.py`) | eliminar dependencia interna en gate_utils | Medio | PR2 migrar, PR3 borrar |
+| `gating/shared.py` wrapper deprecado | puente a `legacy/gating_deprecated` | `gate_utils.py` ya no expone `gate_phase_policy`; queda sólo wrapper `shared` | contador de llamadas runtime por endpoint `/negociar`; si 0 fuera tests -> delete | Medio | PR2 aislado + PR3 delete |
+| `legacy/gating_deprecated.py` | explícitamente legacy | usado vía wrapper deprecado (`gating/shared.py`) | eliminar dependencia interna en gate_utils | Medio | PR2 migrar, PR3 borrar |
 
 ---
 
@@ -334,7 +334,7 @@ Opción B (sin universal, todo bucketizado):
    - Evidencia: writer activo; readers críticos directos limitados.
    - Test seguridad: contador de lectura + parity tests planner/progress/executor.
 
-4. `gating/gate_planner.py`, `gating/shared.py`, `legacy/gating_deprecated.py`.
+4. `gating/shared.py`, `legacy/gating_deprecated.py`.
    - Evidencia: wrappers deprecados aún encadenados por `gate_utils.py`.
    - Test seguridad: ejecución `/negociar` + tests de gate sin wrappers.
 

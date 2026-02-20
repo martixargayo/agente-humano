@@ -70,7 +70,7 @@ A esto se le llama **“hybrid pipeline”** porque combina reglas deterministas
   - `planner_meta`: errores, fallback, allowed_ids, intent/precedence
   - `phase_meta`: reasons/threshold/hysteresis
   - `gate_meta`: contadores de skips y razones por nodo
-- **Gating**: usa `gate_phase_policy` con señales críticas (world_diff, precedence, intent transición, loop_flags, cambio de allowed hash) + intervalo.
+- **Gating**: el skip/replan del planner se decide directamente en `phase_policy_planner_node` (sin wrapper `gate_phase_policy`).
 - **Reparación**: `repair_policy_by_phase` asegura compatibilidad con fase/intención.
 
 #### (6) `progress_updater_node`
@@ -113,7 +113,7 @@ Invariantes/clamps:
 
 - **gate_world**: refresca si cambia la “shape” del input o si expira el intervalo.
 - **gate_belief**: refresca si hay cambios críticos del mundo, cambio de tono o expiración.
-- **gate_phase_policy**: refresca si hay señales fuertes (world_diff crítico, intent_transition, precedence change, loop_flags o cambio de allowed hash) o expiración.
+- **Planner skip/replan**: se determina por `planner_request`, `advance_step`, `judgement_skip_planner` y estado del plan activo en `phase_policy_planner_node`.
 
 **Barato vs caro**
 

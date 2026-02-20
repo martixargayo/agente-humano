@@ -8,7 +8,6 @@ from .gating.fingerprints import (
     world_buckets_fingerprint,
 )
 from .gating.gate_belief import gate_belief
-from .gating.gate_planner import gate_phase_policy
 from .gating.gate_world import gate_world
 from .gating.shared import (
     _split_world_diff,
@@ -22,7 +21,6 @@ from .gating.shared import (
 __all__ = [
     "gate_world",
     "gate_belief",
-    "gate_phase_policy",
     "interaction_fingerprint",
     "loop_flags_changed",
     "stable_allowed_ids_hash",

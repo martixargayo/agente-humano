@@ -395,10 +395,16 @@ Objetivo: recuperar tácticas concretas para ejecutar esta policy.
 
 
 def _instrumented_node(node_name: str, node_fn):
+    skip_keys = {
+        "world_updater": "world_skipped",
+        "belief_updater": "belief_skipped",
+        "phase_policy_planner": "planner_skipped",
+    }
+
     def _wrapped(state: dict):
         started = start_node_timer(state, node_name)
         next_state = node_fn(state)
-        skip_key = f"{node_name.split('_')[0]}_skipped"
+        skip_key = skip_keys.get(node_name, f"{node_name.split('_')[0]}_skipped")
         skipped = bool((next_state.get("gate_meta") or {}).get(skip_key, False))
         finish_node_timer(next_state, node_name, started, skipped=skipped)
         return next_state
