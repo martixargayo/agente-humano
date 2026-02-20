@@ -536,7 +536,13 @@ class ProgressState(TypedDict):
     gate_state: "GateState"
     active_plan_status: Literal["none", "active", "completed", "interrupted"]
     active_plan: Dict[str, Any] | None
+    advance_step: bool
     judgement_missing_streak: int
+    last_judgement_status: str
+    no_progress_same_step_turns: int
+    last_plan_id: str
+    plan_id_changes_window: int
+    last_progress_update_turn: int
 
 
 class GateState(TypedDict):
@@ -793,7 +799,13 @@ def default_progress_state() -> ProgressState:
         "policy_state": default_policy_state(),
         "active_plan_status": "none",
         "active_plan": None,
+        "advance_step": False,
         "judgement_missing_streak": 0,
+        "last_judgement_status": "",
+        "no_progress_same_step_turns": 0,
+        "last_plan_id": "",
+        "plan_id_changes_window": 0,
+        "last_progress_update_turn": 0,
         "phase_state": {
             "phase": "climate",
             "phase_proposed": "",
