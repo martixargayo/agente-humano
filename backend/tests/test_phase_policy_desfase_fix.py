@@ -159,10 +159,7 @@ def test_no_regression_continue_policy_skips_planner():
 
     progress_state = default_progress_state()
     policy_state = default_policy_state()
-    policy_id = "test_credibility"
-    policy = get_policy(policy_id)
-    if not policy or not policy.plan or not policy.plan.steps:
-        pytest.skip("Policy without plan steps; cannot validate continue_policy skip.")
+    policy_id = "safe_neutral"
 
     policy_state.update(
         {
@@ -173,6 +170,12 @@ def test_no_regression_continue_policy_skips_planner():
         }
     )
     progress_state["policy_state"] = policy_state
+    progress_state["active_plan"] = {
+        "plan_id": "p1",
+        "current_step_idx": 0,
+        "steps": [{"what_to_do": "seguir", "safe_mode": "normal", "ask": []}],
+        "plan_constraints": {"max_questions_per_turn": 2, "must_avoid": [], "stop_conditions": []},
+    }
 
     state = _planner_state(progress_state)
     state["deps"] = SimpleNamespace(plan_phase_policy=fake_plan_phase_policy)
