@@ -107,3 +107,18 @@ def test_planner_llm_called_implies_planner_entry_in_llm_calls(monkeypatch):
     planner_calls = [x for x in event["timing"]["llm_calls"] if x.get("node") == "phase_policy_planner"]
     assert planner_calls
     assert planner_calls[0]["latency_ms"] > 0
+
+
+def test_live_trace_includes_advisor_payload(monkeypatch):
+    monkeypatch.setenv("TRACE_LEVEL", "2")
+    session = SessionState(user_id="u", session_id="s")
+    session.last_updated = datetime(2026, 1, 2, tzinfo=timezone.utc)
+    trace_item = {
+        "turn": 1,
+        "advisor_meta": {"advisor_ok": True, "advisor_latency_ms": 11},
+        "advisor_recs": {"recommended_moves": [{"title": "t", "why": "w", "how": "h"}]},
+        "trace_runtime": {"nodes": {}, "llm_calls": [{"name": "advisor_llm", "node": "world_updater", "latency_ms": 11, "ok": True}]},
+    }
+    event = build_trace_event(user_id="u", session_id="s", session=session, trace_index=0, trace_item=trace_item)
+    assert event["advisor_meta"]["advisor_ok"] is True
+    assert event["advisor_top_moves"]

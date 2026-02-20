@@ -18,6 +18,7 @@ from ..perception.interaction_signals import _previous_user_message, extract_int
 from ..schemas import default_progress_state, default_world_state
 from ..world_state_updater import apply_world_skip_fallback, diff_world_state, update_world_state
 from ..telemetry.trace_runtime import record_llm_call_ms, record_node_phase_ms
+from ..advisor import build_advisor_recs
 
 
 _WORLD_JUDGE_SYSTEM_PROMPT = """
@@ -321,6 +322,33 @@ def world_updater_node(state: dict) -> dict:
 
     progress_state = update_conversation_mode(progress_state, state.get("world_state", {}), turn_count)
     active_plan = progress_state.get("active_plan") if isinstance(progress_state.get("active_plan"), dict) else None
+    if os.getenv("ADVISOR_ENABLED", "0") == "1":
+        advisor_recs, advisor_meta = build_advisor_recs(
+            objective=state.get("objective", ""),
+            recent_history=state.get("recent_history_text", ""),
+            memory_short=state.get("short_memory", ""),
+            memory_long=state.get("long_memory", ""),
+            active_plan=active_plan,
+            progress_state=progress_state,
+            world_state=state.get("world_state", {}),
+            belief_state=state.get("belief_state", {}),
+        )
+        if bool(advisor_meta.get("advisor_llm_called", False)):
+            record_llm_call_ms(
+                state,
+                name="advisor_llm",
+                node="world_updater",
+                latency_ms=int(advisor_meta.get("advisor_latency_ms", 0) or 0),
+                ok=bool(advisor_meta.get("advisor_ok", False)),
+                model=None,
+                retry_count=0,
+                error_stage="llm_invoke" if advisor_meta.get("advisor_error") else "",
+                error=str(advisor_meta.get("advisor_error", "")),
+            )
+    else:
+        advisor_recs, advisor_meta = {}, {"advisor_ok": False, "advisor_latency_ms": 0, "advisor_error": "disabled", "advisor_llm_called": False}
+    state["advisor_recs"] = advisor_recs
+    state["advisor_meta"] = advisor_meta
     judgement, judge_meta = world_judge_llm(
         active_plan=active_plan,
         user_message=user_message,

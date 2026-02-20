@@ -211,52 +211,19 @@ El estilo queda totalmente fuera del JSON.
 # --- Prompt unificado Phase+Policy planner ---
 
 PHASE_POLICY_SYSTEM_PROMPT = """
-Eres un planificador de fase y policy en una negociación.
-Devuelve SOLO JSON válido que cumpla el schema solicitado.
+Eres planner de negociación y debes producir un plan accionable mínimo para el executor.
+Devuelve SOLO JSON válido con: phase, policy, active_plan.
 
 Reglas:
-- phase debe ser uno de: climate, interests, options, adjust, formalize (temporalmente también se acepta legacy: opening, discovery, bargaining, closing, recovery)
-- reasons: etiquetas normalizadas (world:<flag> | belief:<flag> | intent:<flag> | history:<flag>)
-- signals: señales observables y cortas.
+- phase: climate|interests|options|adjust|formalize (legacy permitido temporalmente).
 - policy_id debe estar en allowed_policy_ids.
-- No usar hipótesis crudas como hechos; usa solo belief cues gobernantes.
-- recovery_mode debe ser true o false. Si hay tensión/loop, puedes activar recovery_mode sin cambiar phase base.
-- Después de elegir phase, SOLO puedes elegir una policy cuyas phases incluyan esa phase.
-- micro_goal breve y accionable.
+- active_plan debe tener 2-5 steps con instruction concreta y success_criteria verificable.
+- current_step_idx debe apuntar a un step existente.
+- context_digest breve (1-2 líneas) con el foco del turno.
 - NO texto fuera del JSON, NO markdown.
 """.strip()
 
 PHASE_POLICY_USER_PROMPT = """
-[WorldState]
-{world_state}
-
-[World diff]
-{world_diff}
-
-[BeliefState]
-{belief_state}
-
-[Belief cues governantes]
-{belief_cues}
-
-[PolicyState]
-{policy_state}
-
-[PolicyPlan summary]
-{policy_plan_summary}
-
-[PhaseState prev]
-{phase_state}
-
-[Allowed policy ids]
-{allowed_policy_ids}
-
-[Policy catalog]
-{policy_catalog}
-
-[Policy catalog with phases]
-{policy_catalog_with_phases}
-
 [Objective]
 {objective}
 
@@ -266,7 +233,71 @@ PHASE_POLICY_USER_PROMPT = """
 [Recent context]
 {recent_context}
 
-Devuelve SOLO JSON con phase + recovery_mode + policy.
+[PhaseState prev]
+{phase_state}
+
+[Active plan prev]
+{active_plan}
+
+[PolicyState]
+{policy_state}
+
+[Allowed policy ids]
+{allowed_policy_ids}
+
+[World summary]
+{world_summary}
+
+[Belief summary]
+{belief_summary}
+
+[Advisor recs]
+{advisor_recs}
+
+Devuelve SOLO JSON con phase + recovery_mode + policy + active_plan.
+""".strip()
+
+ADVISOR_SYSTEM_PROMPT = """
+Eres advisor estratégico de negociación. Entregas recomendaciones globales compactas.
+Devuelve SOLO JSON válido con schema:
+{
+  "diagnosis": [str],
+  "loop_or_waste_flags": [str],
+  "recommended_moves": [{"title":str,"why":str,"how":str}],
+  "guardrails": [{"if":str,"then":str}],
+  "do_not_do": [str],
+  "suggested_utterances": [str]
+}
+Reglas:
+- Máximo 4 items por lista.
+- No contradigas constraints explícitos.
+- No inventes hechos fuera de payload.
+""".strip()
+
+ADVISOR_USER_PROMPT = """
+[Objective]
+{objective}
+
+[Recent history]
+{recent_history}
+
+[Memory short]
+{memory_short}
+
+[Memory long]
+{memory_long}
+
+[Active plan]
+{active_plan}
+
+[Progress counters]
+{progress_counters}
+
+[World summary]
+{world_summary}
+
+[Belief summary]
+{belief_summary}
 """.strip()
 
 # --- Prompt de conversación principal (contexto + mensaje actual) ---

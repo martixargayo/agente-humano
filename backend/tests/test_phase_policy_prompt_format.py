@@ -18,6 +18,7 @@ def _planner_inputs():
         constraints_struct={},
         recent_context="",
         allowed_policy_ids=["safe_neutral"],
+        advisor_recs={},
     )
 
 
@@ -27,19 +28,16 @@ def test_phase_policy_prompt_template_renders_without_keyerror():
     )
 
     messages = prompt.format_messages(
-        world_state="{}",
-        world_diff="{}",
-        belief_state="{}",
-        belief_cues="{}",
-        policy_state="{}",
-        policy_plan_summary="{}",
-        phase_state="{}",
-        allowed_policy_ids="[]",
-        policy_catalog="",
-        policy_catalog_with_phases="",
         objective="",
         constraints="",
         recent_context="",
+        phase_state="{}",
+        active_plan="{}",
+        policy_state="{}",
+        allowed_policy_ids="[]",
+        world_summary="{}",
+        belief_summary="{}",
+        advisor_recs="{}",
     )
 
     assert messages
@@ -58,3 +56,10 @@ def test_plan_phase_policy_reports_prompt_format_stage_on_template_error(monkeyp
     assert meta["planner_failed"] is True
     assert meta["planner_fallback_used"] is True
     assert meta["planner_error_stage"] == "prompt_format"
+
+
+def test_phase_policy_prompt_is_minimal_without_policy_catalog_blobs():
+    assert "{policy_catalog}" not in PHASE_POLICY_USER_PROMPT
+    assert "{policy_catalog_with_phases}" not in PHASE_POLICY_USER_PROMPT
+    assert "{world_diff}" not in PHASE_POLICY_USER_PROMPT
+    assert "{belief_cues}" not in PHASE_POLICY_USER_PROMPT
