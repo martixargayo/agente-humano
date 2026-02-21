@@ -43,7 +43,19 @@ def _default_execute(messages: Any) -> str:
     global _LAST_EXECUTE_META
     result = get_executor_llm().invoke(messages)
     _LAST_EXECUTE_META = extract_llm_usage(result)
-    return getattr(result, "content", str(result))
+    rendered_messages: list[dict[str, str]] = []
+    if isinstance(messages, list):
+        for message in messages:
+            role = getattr(message, "type", None) or getattr(message, "role", None) or "user"
+            content = getattr(message, "content", "")
+            rendered_messages.append({"role": str(role), "content": str(content)})
+    _LAST_EXECUTE_META["rendered_messages"] = rendered_messages
+    _LAST_EXECUTE_META["input_prompt_rendered"] = "\n\n".join(
+        f"[{item['role']}]\n{item['content']}" for item in rendered_messages
+    )
+    output_text = getattr(result, "content", str(result))
+    _LAST_EXECUTE_META["output_text_rendered"] = str(output_text)
+    return output_text
 
 
 def get_last_execute_meta() -> dict[str, Any]:
