@@ -11,6 +11,7 @@ def test_livetrace2_ui_contains_grid_and_expand_controls():
     assert "timelineGrid" in html
     assert "Desplegar todo" in html
     assert "Collapse all" in html
+    assert "Show skipped/not captured" in html
 
 
 def test_livetrace2_ui_wide_layout_and_three_columns():

@@ -443,6 +443,7 @@ def negotiation_livetrace2_panel():
     <span id="kLatency" class="pill">Latencia total: -</span>
     <span id="kPar" class="pill">Paralelismo: -</span>
     <span id="kOverlap" class="pill">Overlap: -</span>
+    <label class="pill" style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input id="toggleSkipped" type="checkbox" checked /> Show skipped/not captured</label>
   </div>
   <div class="layout">
     <div class="panel timeline-scroll"><div id="timelineGrid"></div></div>
@@ -459,6 +460,7 @@ const kTurn = document.getElementById('kTurn');
 const kLatency = document.getElementById('kLatency');
 const kPar = document.getElementById('kPar');
 const kOverlap = document.getElementById('kOverlap');
+const toggleSkipped = document.getElementById('toggleSkipped');
 const expandBtn = document.getElementById('expandBtn');
 let latest = null;
 let selected = null;
@@ -526,7 +528,14 @@ function renderExpanded(nodes){
 
 function render(){
   if(!latest){ grid.innerHTML = '<div class="meta-small">Esperando trazas...</div>'; return; }
-  const nodes = layoutNodes(latest.nodes || []);
+  const allNodes = latest.nodes || [];
+  const visibleNodes = allNodes.filter((n)=>{
+    if(toggleSkipped.checked) return true;
+    const skipped = String(n.status||'') === 'skipped';
+    const notCaptured = String(n.input_capture_state||'') === 'not_captured' && String(n.output_capture_state||'') === 'not_captured';
+    return !(skipped || notCaptured);
+  });
+  const nodes = layoutNodes(visibleNodes);
   total.textContent = `evento #${latest.trace_index}`;
   kTurn.textContent = `Turno: ${latest.turn_idx}`;
   kLatency.textContent = `Latencia total: ${latest.total_latency_ms} ms`;
@@ -535,6 +544,13 @@ function render(){
   kOverlap.textContent = `sum=${wp.sum_ms ?? '-'} · critical=${wp.critical_path_ms ?? '-'} · overlap=${wp.overlap_ms ?? '-'}`;
 
   grid.innerHTML = '';
+  if(nodes.length !== allNodes.length){
+    const warn = document.createElement('div');
+    warn.className = 'meta-small';
+    warn.style.gridColumn = '1 / span 3';
+    warn.textContent = `⚠️ Se ocultaron ${allNodes.length - nodes.length} nodos en layout. Revisa filtros/tipos.`;
+    grid.appendChild(warn);
+  }
   for(const node of nodes){
     const el = document.createElement('div');
     el.className = 'node' + ((selected && selected.node_id===node.node_id) ? ' active' : '');
@@ -559,6 +575,7 @@ const es = new EventSource('/negociacion/livetrace2/stream');
 es.addEventListener('open', () => { conn.textContent='conectado'; conn.className='badge ok'; });
 es.addEventListener('error', () => { conn.textContent='reconectando'; conn.className='badge'; });
 es.addEventListener('trace2', (event) => { latest = JSON.parse(event.data); selected = null; render(); });
+toggleSkipped.onchange = () => render();
 </script>
 </body>
 </html>

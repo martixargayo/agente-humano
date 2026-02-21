@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 from concurrent.futures import Future, ThreadPoolExecutor
 import os
+import threading
 import time
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -22,6 +24,22 @@ from ..world_state_updater import apply_world_skip_fallback, diff_world_state, u
 from ..telemetry.trace_runtime import record_gate_event, record_llm_call_ms, record_node_phase_ms
 from ..telemetry.llm_usage import extract_llm_usage
 from ..advisor import build_advisor_recs
+
+
+_PENDING_PARALLEL_LOCK = threading.Lock()
+_PENDING_PARALLEL: dict[str, dict] = {}
+
+
+def _store_pending_parallel(payload: dict) -> str:
+    key = f"wp-{uuid4()}"
+    with _PENDING_PARALLEL_LOCK:
+        _PENDING_PARALLEL[key] = payload
+    return key
+
+
+def _pop_pending_parallel(key: str) -> dict | None:
+    with _PENDING_PARALLEL_LOCK:
+        return _PENDING_PARALLEL.pop(key, None)
 
 
 def _compute_parallelism_metrics(state: dict, parallel_meta: dict) -> None:
@@ -149,6 +167,9 @@ def _apply_judge_advisor_results(
 
 def flush_world_parallel_pending(state: dict) -> dict:
     pending = state.pop("_pending_world_parallel", None)
+    pending_key = str(state.pop("world_parallel_pending_key", "") or "")
+    if not isinstance(pending, dict) and pending_key:
+        pending = _pop_pending_parallel(pending_key)
     if not isinstance(pending, dict):
         return state
 
@@ -749,13 +770,15 @@ def world_updater_node(state: dict) -> dict:
             judge_future = executor.submit(_run_judge)
             advisor_future = executor.submit(_run_advisor) if advisor_enabled else None
             world_state, world_diff, extractor_meta = _run_extractor()
-            state["_pending_world_parallel"] = {
+            pending_payload = {
                 "executor": executor,
                 "judge_future": judge_future,
                 "advisor_future": advisor_future,
                 "advisor_enabled": advisor_enabled,
                 "parallel_meta": parallel_meta,
             }
+            state["_pending_world_parallel"] = pending_payload
+            state["world_parallel_pending_key"] = _store_pending_parallel(pending_payload)
             if not advisor_enabled:
                 advisor_recs, advisor_meta = _run_advisor()
         except Exception:

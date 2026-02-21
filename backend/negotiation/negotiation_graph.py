@@ -293,6 +293,7 @@ class NegotiationTurn(TypedDict):
     override_reason: str | None
 
     trace_runtime: dict
+    world_parallel_pending_key: str | None
     planner_debug_v2: dict
     executor_debug_v2: dict
     executor_validator_meta: dict
@@ -579,6 +580,7 @@ def run_negotiation_agent(
         "override_policy_id": None,
         "override_reason": None,
         "trace_runtime": init_trace_runtime(),
+        "world_parallel_pending_key": None,
     }
 
     t_before_graph = time.perf_counter()

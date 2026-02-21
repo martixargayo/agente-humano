@@ -365,6 +365,7 @@ def test_belief_can_start_before_judge_finishes(monkeypatch):
     calls = {x.get("name"): x for x in out["trace_runtime"]["llm_calls"]}
     assert "belief_llm" in calls and "world_judge_llm" in calls
     assert calls["belief_llm"]["start_ts"] < calls["world_judge_llm"]["end_ts"]
+    assert out.get("advisor_recs") is not None
 
 
 def test_world_gate_always_recorded():
@@ -394,6 +395,7 @@ def test_chronological_order_world_belief_planner_executor():
     event = build_livetrace2_event(user_id="u", session_id="s", session=session, trace_index=0, trace_item=trace_item)
     names = [node["node_name"] for node in event["nodes"]]
     assert names[:7] == ["world_gate", "world_extractor_llm", "belief_gate", "belief_llm", "planner_gate", "planner_llm", "executor_llm"]
+    assert [node["sequence_index"] for node in event["nodes"]] == list(range(len(event["nodes"])))
 
 
 def test_planner_gate_present_when_skipped_and_gate_payload_mapped(monkeypatch):
