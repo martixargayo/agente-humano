@@ -38,6 +38,7 @@ def test_record_llm_call_start_end_are_coherent():
 
 
 def test_world_updater_records_extractor_llm_and_fastpath_no_change(monkeypatch):
+    monkeypatch.setenv("WORLD_PARALLELISM_ENABLED", "0")
     world = default_world_state()
 
     def fake_gate_world(**_kwargs):

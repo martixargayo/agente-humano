@@ -672,6 +672,7 @@ def run_negotiation_agent(
             "belief_update_meta": new_graph_state.get("belief_update_meta", {}),
             "progress_debug": new_graph_state.get("progress_debug", {}),
             "world_debug": new_graph_state.get("world_debug", {}),
+            "world_parallelism": new_graph_state.get("world_parallelism", {}),
             "executor_debug": new_graph_state.get("executor_debug", {}),
             "executor_debug_v2": new_graph_state.get("executor_debug_v2", {}),
             "planner_debug_v2": new_graph_state.get("planner_debug_v2", {}),

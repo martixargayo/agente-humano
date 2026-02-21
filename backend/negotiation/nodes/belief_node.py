@@ -3,11 +3,12 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from datetime import datetime, timezone
 
 from ..extractors.belief_extractor_v1 import extract_belief_state_llm_v1
 from ..schemas import default_belief_state, default_progress_state
 from ..state.deps import DEFAULT_DEPS
-from ..telemetry.trace_runtime import record_llm_call
+from ..telemetry.trace_runtime import record_gate_event, record_llm_call
 
 
 def _state_fingerprint(value: dict) -> str:
@@ -44,6 +45,25 @@ def belief_updater_node(state: dict) -> dict:
     )
 
     prev_belief_fp = _state_fingerprint(prev_belief)
+    gate_started = time.perf_counter()
+    gate_started_ts = datetime.now(timezone.utc).isoformat()
+    record_gate_event(
+        state,
+        name="belief_gate",
+        node="belief_updater",
+        decision="executed" if world_changed else "skipped",
+        reason="" if world_changed else "no_world_delta",
+        reason_codes=[] if world_changed else ["no_world_delta"],
+        gate_inputs={
+            "world_changed_meaningfully": bool(world_changed),
+            "world_diff_keys": sorted((state.get("world_diff") or {}).keys()) if isinstance(state.get("world_diff"), dict) else [],
+        },
+        gate_rule_id="belief_world_delta",
+        gate_version="v1",
+        started=gate_started,
+        started_ts=gate_started_ts,
+    )
+
     if not world_changed:
         belief_state = prev_belief
         belief_meta = {
@@ -75,6 +95,10 @@ def belief_updater_node(state: dict) -> dict:
                 ok=True,
                 error_stage="",
                 error="",
+                input_prompt_rendered=str(llm_meta.get("belief_input_prompt_rendered", "")),
+                output_text_rendered=str(llm_meta.get("belief_output_text_rendered", "")),
+                input_payload_raw=llm_meta.get("belief_input_payload_raw"),
+                output_payload_raw=llm_meta.get("belief_output_payload_raw"),
             )
             belief_meta = {
                 "belief_update_failed": False,
@@ -119,7 +143,6 @@ def belief_updater_node(state: dict) -> dict:
         "prev_belief_fp": prev_belief_fp or None,
         "curr_belief_fp": curr_belief_fp or None,
     }
-
     prev_buckets = (prev_belief.get("belief_buckets") or {}) if isinstance(prev_belief, dict) else {}
     curr_buckets = (belief_state.get("belief_buckets") or {}) if isinstance(belief_state, dict) else {}
     bucket_names = sorted(set(prev_buckets.keys()) | set(curr_buckets.keys()))
