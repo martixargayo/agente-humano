@@ -8,7 +8,7 @@
 - `LIVETRACE2_MODE=public|internal` (default: `public`)
 - `LIVETRACE2_REDACT_FIELDS=field1,field2,...`
 - `WORLD_PARALLELISM_ENABLED=0|1` (default: `1`)
-- `ADVISOR_ENABLED=0|1` (default: `0`)
+- `ADVISOR_ENABLED=0|1` (default: `1`)
 
 ## Notes
 - En `public`, payloads raw se redaccionan por defecto.

@@ -45,6 +45,25 @@ def belief_updater_node(state: dict) -> dict:
     )
 
     prev_belief_fp = _state_fingerprint(prev_belief)
+    gate_started = time.perf_counter()
+    gate_started_ts = datetime.now(timezone.utc).isoformat()
+    record_gate_event(
+        state,
+        name="belief_gate",
+        node="belief_updater",
+        decision="executed" if world_changed else "skipped",
+        reason="" if world_changed else "no_world_delta",
+        reason_codes=[] if world_changed else ["no_world_delta"],
+        gate_inputs={
+            "world_changed_meaningfully": bool(world_changed),
+            "world_diff_keys": sorted((state.get("world_diff") or {}).keys()) if isinstance(state.get("world_diff"), dict) else [],
+        },
+        gate_rule_id="belief_world_delta",
+        gate_version="v1",
+        started=gate_started,
+        started_ts=gate_started_ts,
+    )
+
     if not world_changed:
         belief_state = prev_belief
         belief_meta = {
@@ -124,24 +143,6 @@ def belief_updater_node(state: dict) -> dict:
         "prev_belief_fp": prev_belief_fp or None,
         "curr_belief_fp": curr_belief_fp or None,
     }
-    now_iso = datetime.now(timezone.utc).isoformat()
-    record_gate_event(
-        state,
-        name="belief_gate",
-        node="belief_updater",
-        decision="skipped" if bool(belief_meta.get("belief_update_skipped", False)) else "executed",
-        reason=str(belief_meta.get("skip_reason", "")),
-        reason_codes=[str(belief_meta.get("skip_reason", ""))] if str(belief_meta.get("skip_reason", "")) else [],
-        gate_inputs={
-            "world_changed_meaningfully": bool(world_changed),
-            "world_diff_keys": sorted((state.get("world_diff") or {}).keys()) if isinstance(state.get("world_diff"), dict) else [],
-        },
-        gate_rule_id="belief_world_delta",
-        gate_version="v1",
-        started_ts=now_iso,
-        ended_ts=now_iso,
-    )
-
     prev_buckets = (prev_belief.get("belief_buckets") or {}) if isinstance(prev_belief, dict) else {}
     curr_buckets = (belief_state.get("belief_buckets") or {}) if isinstance(belief_state, dict) else {}
     bucket_names = sorted(set(prev_buckets.keys()) | set(curr_buckets.keys()))

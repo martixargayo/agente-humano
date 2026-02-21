@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from ..policy_progress import update_policy_state
+from .world_node import flush_world_parallel_pending
 
 
 
 def policy_progress_node(state: dict) -> dict:
+    flush_world_parallel_pending(state)
     progress_state = state.get("progress_state", {})
     policy_plan_judgement = state.get("policy_plan_judgement")
     if not isinstance(policy_plan_judgement, dict):

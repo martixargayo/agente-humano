@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from datetime import datetime, timezone
 
 from ..phase_state_updater import postprocess_phase_candidate
 from ..policy_planner import allowed_policy_ids, allowed_policy_ids_with_reasons, repair_policy_by_phase
@@ -225,6 +226,31 @@ def phase_policy_planner_node(state: dict) -> dict:
                 planner_meta["continue_policy_missing_reusable_policy"] = True
                 planner_debug["gate_decision"]["gate_path"] = "replan_missing_policy"
                 planner_debug["gate_decision"]["gate_reason_codes"] = ["missing_reusable_policy"]
+
+    gate_reason_codes = list((planner_debug.get("gate_decision") or {}).get("gate_reason_codes", []))
+    gate_reason = skip_reason or str((planner_debug.get("gate_decision") or {}).get("gate_path", ""))
+    gate_started = time.perf_counter()
+    gate_started_ts = datetime.now(timezone.utc).isoformat()
+    record_gate_event(
+        state,
+        name="planner_gate",
+        node="phase_policy_planner",
+        decision="skipped" if planner_skipped else "executed",
+        reason=gate_reason,
+        reason_codes=gate_reason_codes,
+        gate_inputs={
+            "planner_request": planner_request,
+            "active_plan_present": bool(previous_plan),
+            "advance_step": advance_step,
+            "judgement_skip_planner": judgement_skip_planner,
+            "reusable_policy_id": str((policy_state or {}).get("policy_id", "")),
+            "allowed_policy_ids_count": len(allowed_all),
+        },
+        gate_rule_id="planner_skip_gate",
+        gate_version="v1",
+        started=gate_started,
+        started_ts=gate_started_ts,
+    )
 
     if not planner_skipped:
         planner_call_meta: dict = {}
