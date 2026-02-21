@@ -142,6 +142,9 @@ def extract_world_patch_llm_v4(
         {"role": "system", "content": WORLD_EXTRACTOR_V4_SYSTEM_PROMPT},
         {"role": "user", "content": user_prompt},
     ]
+    input_prompt_rendered = "\n\n".join(
+        f"[{item.get('role', 'user')}]\n{str(item.get('content', ''))}" for item in messages
+    )
 
     invoke_started_perf = time.perf_counter()
     invoke_started_wall = datetime.now(timezone.utc).isoformat()
@@ -234,4 +237,8 @@ def extract_world_patch_llm_v4(
     meta["extractor_llm_ttfb_ms"] = llm_usage.get("ttfb_ms")
     meta["world_json_dump_prev_ms"] = int(max(0, json_dump_prev_ms))
     meta["prev_world_bytes"] = len(prev_world_state_json.encode("utf-8"))
+    meta["extractor_input_payload_raw"] = messages
+    meta["extractor_input_prompt_rendered"] = input_prompt_rendered
+    meta["extractor_output_text_rendered"] = str(text)
+    meta["extractor_output_payload_raw"] = data
     return patch, meta

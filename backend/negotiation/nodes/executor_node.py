@@ -181,6 +181,10 @@ def executor_node(state: dict) -> dict:
         model=execute_meta.get("model"),
         tokens_in=execute_meta.get("tokens_in"),
         tokens_out=execute_meta.get("tokens_out"),
+        input_prompt_rendered=str(execute_meta.get("input_prompt_rendered", "")),
+        output_text_rendered=str(execute_meta.get("output_text_rendered", "")),
+        input_payload_raw=execute_meta.get("rendered_messages"),
+        output_payload_raw=executor_output,
     )
     state["executor_output"] = executor_output
     state["assistant_message"] = executor_output.get("response_text", "")

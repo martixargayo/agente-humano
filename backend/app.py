@@ -61,6 +61,7 @@ from negotiation.negotiation_graph import run_negotiation_agent
 from negotiation.summary_jobs import SUMMARY_JOBS, deferred_summary_enabled, make_turn_job
 from negotiation.state.deps import DEFAULT_DEPS
 from negotiation.telemetry.live_trace import build_trace_event, list_recent_trace_events
+from negotiation.telemetry.live_trace2 import build_livetrace2_event, list_recent_livetrace2_events
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -345,6 +346,204 @@ def negotiation_trace_stream():
         },
     )
 
+
+
+
+def _livetrace2_sse_generator():
+    seen_counts: dict[tuple[str, str], int] = {
+        (event["user_id"], event["session_id"]): int(event["trace_index"]) + 1
+        for event in list_recent_livetrace2_events()
+    }
+
+    for event in list_recent_livetrace2_events():
+        yield f"event: trace2\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+    while True:
+        sent = False
+        for (user_id, session_id), session in sorted(SESSIONS.items(), key=lambda item: item[1].last_updated):
+            trace = session.debug_trace or []
+            last_seen = seen_counts.get((user_id, session_id), 0)
+            if last_seen >= len(trace):
+                continue
+            for trace_index in range(last_seen, len(trace)):
+                event = build_livetrace2_event(
+                    user_id=user_id,
+                    session_id=session_id,
+                    session=session,
+                    trace_index=trace_index,
+                    trace_item=trace[trace_index],
+                )
+                yield f"event: trace2\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
+            seen_counts[(user_id, session_id)] = len(trace)
+            sent = True
+        if not sent:
+            yield "event: ping\ndata: {}\n\n"
+        time.sleep(1.0)
+
+
+@app.get("/negociacion/livetrace2/stream")
+def negotiation_livetrace2_stream():
+    return StreamingResponse(
+        _livetrace2_sse_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@app.get("/negociacion/livetrace2", response_class=HTMLResponse)
+def negotiation_livetrace2_panel():
+    return """
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LiveTrace2 v1</title>
+  <style>
+    body { margin:0; font-family: Inter, system-ui, sans-serif; background:#020617; color:#e2e8f0; }
+    .wrap { width:96vw; max-width:none; margin:0 auto; padding:14px; }
+    .top { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+    .badge { padding:4px 10px; border-radius:999px; font-size:12px; background:#334155; }
+    .ok { background:#14532d; }
+    .layout { display:grid; grid-template-columns: minmax(980px, 2.2fr) minmax(700px, 1.4fr); gap:14px; margin-top:12px; }
+    .panel { background:#0b1326; border:1px solid #1e293b; border-radius:12px; padding:10px; min-height:78vh; overflow:auto; }
+    #timelineGrid { display:grid; grid-template-columns: repeat(3, minmax(280px, 1fr)); gap:10px; min-width:980px; }
+    .node { border:1px solid #1e293b; border-radius:10px; padding:8px; cursor:pointer; background:#0f172a; }
+    .node.active { border-color:#38bdf8; }
+    .row { display:flex; justify-content:space-between; font-size:12px; color:#93c5fd; gap:8px; }
+    .kpi { display:flex; gap:8px; flex-wrap:wrap; font-size:12px; margin-top:8px; }
+    .pill { background:#1e293b; border-radius:8px; padding:5px 8px; }
+    .io { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .box { border:1px solid #334155; border-radius:10px; background:#020617; }
+    .box h4 { margin:0; padding:8px; border-bottom:1px solid #1e293b; font-size:12px; color:#93c5fd; }
+    pre { margin:0; padding:10px; white-space:pre-wrap; word-break:break-word; max-height:38vh; overflow:auto; font-size:12px; }
+    .fixed-btn { position:fixed; right:18px; bottom:18px; z-index:99; border:1px solid #334155; background:#0f172a; color:#e2e8f0; padding:10px 12px; border-radius:10px; cursor:pointer; }
+    .meta-small { color:#94a3b8; font-size:11px; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div>
+      <h2 style="margin:0">LiveTrace2 v1</h2>
+      <div class="meta-small">Timeline real con ramas por solape temporal, gates y LLMs.</div>
+    </div>
+    <div>
+      <span id="conn" class="badge">conectando...</span>
+      <span id="total" class="badge">0 eventos</span>
+    </div>
+  </div>
+  <div class="kpi">
+    <span id="kTurn" class="pill">Turno: -</span>
+    <span id="kLatency" class="pill">Latencia total: -</span>
+    <span id="kPar" class="pill">Paralelismo: -</span>
+    <span id="kOverlap" class="pill">Overlap: -</span>
+  </div>
+  <div class="layout">
+    <div class="panel"><div id="timelineGrid"></div></div>
+    <div class="panel" id="right"><div class="meta-small">Selecciona un nodo.</div></div>
+  </div>
+</div>
+<button id="expandBtn" class="fixed-btn">Desplegar todo</button>
+<script>
+const grid = document.getElementById('timelineGrid');
+const right = document.getElementById('right');
+const conn = document.getElementById('conn');
+const total = document.getElementById('total');
+const kTurn = document.getElementById('kTurn');
+const kLatency = document.getElementById('kLatency');
+const kPar = document.getElementById('kPar');
+const kOverlap = document.getElementById('kOverlap');
+const expandBtn = document.getElementById('expandBtn');
+let latest = null;
+let selected = null;
+let expanded = false;
+
+function pretty(v){ try{return JSON.stringify(v ?? {}, null, 2);}catch{return String(v ?? '');} }
+function ts(v){ return v ? new Date(v).toISOString() : 'NO TIMESTAMPS'; }
+
+function layoutNodes(nodes){
+  const sorted = [...(nodes||[])].sort((a,b)=>{
+    const sa = Date.parse(a.started_at || '') || Number.MAX_SAFE_INTEGER;
+    const sb = Date.parse(b.started_at || '') || Number.MAX_SAFE_INTEGER;
+    if (sa !== sb) return sa - sb;
+    const ea = Date.parse(a.ended_at || '') || Number.MAX_SAFE_INTEGER;
+    const eb = Date.parse(b.ended_at || '') || Number.MAX_SAFE_INTEGER;
+    return ea - eb;
+  });
+  const lanesEnd = [0,0,0];
+  let row = 1;
+  return sorted.map((n)=>{
+    const start = Date.parse(n.started_at || '') || Number.MAX_SAFE_INTEGER;
+    const end = Date.parse(n.ended_at || '') || start;
+    let lane = 0;
+    for(let i=0;i<3;i++){ if(start >= lanesEnd[i]) { lane=i; break; } }
+    if(lane===0 && start < lanesEnd[0] && start < lanesEnd[1] && start < lanesEnd[2]){ lane=0; row += 1; }
+    lanesEnd[lane] = Math.max(lanesEnd[lane], end);
+    const span = Math.max(1, Math.min(4, Math.round((Number(n.latency_ms||0) || 0) / 150)));
+    const withPos = {...n, _lane: lane+1, _row: row, _span: span};
+    row += 1;
+    return withPos;
+  });
+}
+
+function detail(node){
+  const input = node.input_prompt_rendered || (node.input_payload_raw == null ? 'NOT_CAPTURED' : pretty(node.input_payload_raw));
+  const output = node.output_text_raw || node.output_text_rendered || (node.output_payload_parsed == null && node.output_payload_raw == null ? 'NOT_CAPTURED' : pretty(node.output_payload_parsed ?? node.output_payload_raw));
+  const gateExtra = node.node_type === 'gate' ? `<div class="io" style="margin-top:10px"><div class="box"><h4>Gate inputs</h4><pre>${pretty(node.gate_inputs)}</pre></div><div class="box"><h4>Gate decision</h4><pre>${node.gate_decision || '—'}
+${(node.gate_reason_codes||[]).join(', ') || node.gate_reason || '—'}</pre></div></div>` : '';
+  return `<div class="row"><strong>${node.node_name}</strong><span>${node.node_type} · ${node.status}</span></div>
+  <div class="kpi"><span class="pill">${node.latency_ms||0} ms</span><span class="pill">${ts(node.started_at)} → ${ts(node.ended_at)}</span><span class="pill">capture: in=${node.input_capture_state} out=${node.output_capture_state}</span></div>
+  <div class="io" style="margin-top:10px"><div class="box"><h4>Entrada real</h4><pre>${input}</pre></div><div class="box"><h4>Salida real (raw/parsed)</h4><pre>${output}</pre></div></div>${gateExtra}`;
+}
+
+function renderExpanded(nodes){
+  right.innerHTML = nodes.map((node)=>`<div class="node" style="margin-bottom:10px"><div class="row"><strong>${node.sequence_index}. ${node.node_name}</strong><span>${node.latency_ms||0} ms</span></div>${detail(node)}</div>`).join('');
+}
+
+function render(){
+  if(!latest){ grid.innerHTML = '<div class="meta-small">Esperando trazas...</div>'; return; }
+  const nodes = layoutNodes(latest.nodes || []);
+  total.textContent = `evento #${latest.trace_index}`;
+  kTurn.textContent = `Turno: ${latest.turn_idx}`;
+  kLatency.textContent = `Latencia total: ${latest.total_latency_ms} ms`;
+  const wp = latest.world_parallelism || {};
+  kPar.textContent = `Parallel: ${wp.enabled ? 'on' : 'off'} · ${wp.mode || 'n/a'}`;
+  kOverlap.textContent = `sum=${wp.sum_ms ?? '-'} · critical=${wp.critical_path_ms ?? '-'} · overlap=${wp.overlap_ms ?? '-'}`;
+
+  grid.innerHTML = '';
+  for(const node of nodes){
+    const el = document.createElement('div');
+    el.className = 'node' + ((selected && selected.node_id===node.node_id) ? ' active' : '');
+    el.style.gridColumn = String(node._lane);
+    el.style.gridRow = `${node._row} / span ${node._span}`;
+    el.innerHTML = `<div class="row"><strong>${node.sequence_index}. ${node.node_name}</strong><span>${node.latency_ms||0} ms</span></div><div class="meta-small">${node.node_type} · ${node.status}</div><div class="meta-small">${ts(node.started_at)}</div>`;
+    el.onclick = () => { selected = node; if(!expanded) right.innerHTML = detail(node); };
+    grid.appendChild(el);
+  }
+  if(expanded){ renderExpanded(nodes); }
+  else if(selected){ right.innerHTML = detail(selected); }
+  else if(nodes.length){ selected = nodes[0]; right.innerHTML = detail(selected); }
+}
+
+expandBtn.onclick = () => {
+  expanded = !expanded;
+  expandBtn.textContent = expanded ? 'Collapse all' : 'Desplegar todo';
+  render();
+};
+
+const es = new EventSource('/negociacion/livetrace2/stream');
+es.addEventListener('open', () => { conn.textContent='conectado'; conn.className='badge ok'; });
+es.addEventListener('error', () => { conn.textContent='reconectando'; conn.className='badge'; });
+es.addEventListener('trace2', (event) => { latest = JSON.parse(event.data); selected = null; render(); });
+</script>
+</body>
+</html>
+"""
 
 @app.get("/negociacion/trazas", response_class=HTMLResponse)
 def negotiation_trace_panel():
