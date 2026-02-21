@@ -83,6 +83,10 @@ def record_llm_call(
     retry_count: int = 0,
     error_stage: str = "",
     error: str = "",
+    input_prompt_rendered: str = "",
+    output_text_rendered: str = "",
+    input_payload_raw: Any | None = None,
+    output_payload_raw: Any | None = None,
 ) -> None:
     end_perf = time.perf_counter()
     end_wall = datetime.now(timezone.utc)
@@ -100,6 +104,10 @@ def record_llm_call(
         retry_count=retry_count,
         error_stage=error_stage,
         error=error,
+        input_prompt_rendered=input_prompt_rendered,
+        output_text_rendered=output_text_rendered,
+        input_payload_raw=input_payload_raw,
+        output_payload_raw=output_payload_raw,
         start_ts=start_wall.isoformat(),
         end_ts=end_wall.isoformat(),
     )
@@ -122,6 +130,10 @@ def record_llm_call_ms(
     end_ts: str | None = None,
     queue_ms: int | None = None,
     ttfb_ms: int | None = None,
+    input_prompt_rendered: str = "",
+    output_text_rendered: str = "",
+    input_payload_raw: Any | None = None,
+    output_payload_raw: Any | None = None,
 ) -> None:
     runtime = ensure_trace_runtime(state)
     call = {
@@ -139,6 +151,10 @@ def record_llm_call_ms(
         "error": str(error or "")[:240],
         "queue_ms": queue_ms if isinstance(queue_ms, int) and queue_ms >= 0 else None,
         "ttfb_ms": ttfb_ms if isinstance(ttfb_ms, int) and ttfb_ms >= 0 else None,
+        "input_prompt_rendered": str(input_prompt_rendered or "")[:12000],
+        "output_text_rendered": str(output_text_rendered or "")[:12000],
+        "input_payload_raw": input_payload_raw,
+        "output_payload_raw": output_payload_raw,
     }
     runtime["llm_calls"].append(call)
     runtime["llm_calls"] = runtime["llm_calls"][:12]

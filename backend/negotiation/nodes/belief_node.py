@@ -75,6 +75,10 @@ def belief_updater_node(state: dict) -> dict:
                 ok=True,
                 error_stage="",
                 error="",
+                input_prompt_rendered=str(llm_meta.get("belief_input_prompt_rendered", "")),
+                output_text_rendered=str(llm_meta.get("belief_output_text_rendered", "")),
+                input_payload_raw=llm_meta.get("belief_input_payload_raw"),
+                output_payload_raw=llm_meta.get("belief_output_payload_raw"),
             )
             belief_meta = {
                 "belief_update_failed": False,
