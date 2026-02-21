@@ -409,9 +409,10 @@ def negotiation_livetrace2_panel():
     .top { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
     .badge { padding:4px 10px; border-radius:999px; font-size:12px; background:#334155; }
     .ok { background:#14532d; }
-    .layout { display:grid; grid-template-columns: minmax(980px, 2.2fr) minmax(700px, 1.4fr); gap:14px; margin-top:12px; }
+    .layout { display:grid; grid-template-columns: minmax(860px, 1.6fr) minmax(900px, 2.9fr); gap:14px; margin-top:12px; }
     .panel { background:#0b1326; border:1px solid #1e293b; border-radius:12px; padding:10px; min-height:78vh; overflow:auto; }
-    #timelineGrid { display:grid; grid-template-columns: repeat(3, minmax(280px, 1fr)); gap:10px; min-width:980px; }
+    .timeline-scroll { overflow-x:auto; }
+    #timelineGrid { display:grid; grid-template-columns: minmax(420px, 2fr) minmax(210px, 1fr) minmax(210px, 1fr); gap:10px; min-width:860px; align-items:stretch; }
     .node { border:1px solid #1e293b; border-radius:10px; padding:8px; cursor:pointer; background:#0f172a; }
     .node.active { border-color:#38bdf8; }
     .row { display:flex; justify-content:space-between; font-size:12px; color:#93c5fd; gap:8px; }
@@ -444,7 +445,7 @@ def negotiation_livetrace2_panel():
     <span id="kOverlap" class="pill">Overlap: -</span>
   </div>
   <div class="layout">
-    <div class="panel"><div id="timelineGrid"></div></div>
+    <div class="panel timeline-scroll"><div id="timelineGrid"></div></div>
     <div class="panel" id="right"><div class="meta-small">Selecciona un nodo.</div></div>
   </div>
 </div>
@@ -466,8 +467,8 @@ let expanded = false;
 function pretty(v){ try{return JSON.stringify(v ?? {}, null, 2);}catch{return String(v ?? '');} }
 function ts(v){ return v ? new Date(v).toISOString() : 'NO TIMESTAMPS'; }
 
-function layoutNodes(nodes){
-  const sorted = [...(nodes||[])].sort((a,b)=>{
+function sortByTime(nodes){
+  return [...(nodes||[])].sort((a,b)=>{
     const sa = Date.parse(a.started_at || '') || Number.MAX_SAFE_INTEGER;
     const sb = Date.parse(b.started_at || '') || Number.MAX_SAFE_INTEGER;
     if (sa !== sb) return sa - sb;
@@ -475,20 +476,38 @@ function layoutNodes(nodes){
     const eb = Date.parse(b.ended_at || '') || Number.MAX_SAFE_INTEGER;
     return ea - eb;
   });
-  const lanesEnd = [0,0,0];
+}
+
+function layoutNodes(nodes){
+  const sorted = sortByTime(nodes);
+  const byName = new Map(sorted.map((n)=>[n.node_name, n]));
+  const col1Order = [
+    'world_gate', 'world_extractor_llm', 'belief_gate', 'belief_llm', 'planner_gate', 'planner_llm', 'executor_llm'
+  ];
+
+  const col1 = [];
+  for(const name of col1Order){ if(byName.has(name)) col1.push(byName.get(name)); }
+  const leftovers = sorted.filter((n)=>!col1Order.includes(n.node_name) && !['world_judge_llm','advisor_llm'].includes(n.node_name));
+  col1.push(...leftovers);
+
+  const positioned = [];
   let row = 1;
-  return sorted.map((n)=>{
-    const start = Date.parse(n.started_at || '') || Number.MAX_SAFE_INTEGER;
-    const end = Date.parse(n.ended_at || '') || start;
-    let lane = 0;
-    for(let i=0;i<3;i++){ if(start >= lanesEnd[i]) { lane=i; break; } }
-    if(lane===0 && start < lanesEnd[0] && start < lanesEnd[1] && start < lanesEnd[2]){ lane=0; row += 1; }
-    lanesEnd[lane] = Math.max(lanesEnd[lane], end);
-    const span = Math.max(1, Math.min(4, Math.round((Number(n.latency_ms||0) || 0) / 150)));
-    const withPos = {...n, _lane: lane+1, _row: row, _span: span};
+  for(const node of col1){
+    positioned.push({...node, _lane: 1, _row: row, _span: 1});
     row += 1;
-    return withPos;
-  });
+  }
+
+  const plannerAnchor = positioned.find((n)=>n.node_name === 'planner_gate' || n.node_name === 'planner_llm');
+  const plannerStartRow = plannerAnchor ? plannerAnchor._row : Math.max(2, row);
+  const parallelSpan = Math.max(1, plannerStartRow);
+
+  const judge = byName.get('world_judge_llm');
+  if(judge){ positioned.push({...judge, _lane: 2, _row: 1, _span: parallelSpan}); }
+
+  const advisor = byName.get('advisor_llm');
+  if(advisor){ positioned.push({...advisor, _lane: 3, _row: 1, _span: parallelSpan}); }
+
+  return positioned.sort((a,b)=>a.sequence_index-b.sequence_index);
 }
 
 function detail(node){

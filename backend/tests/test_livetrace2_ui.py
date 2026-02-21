@@ -16,4 +16,5 @@ def test_livetrace2_ui_contains_grid_and_expand_controls():
 def test_livetrace2_ui_wide_layout_and_three_columns():
     html = negotiation_livetrace2_panel()
     assert "width:96vw" in html
-    assert "grid-template-columns: repeat(3" in html
+    assert "grid-template-columns: minmax(420px, 2fr) minmax(210px, 1fr) minmax(210px, 1fr)" in html
+    assert "timeline-scroll" in html
