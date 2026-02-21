@@ -8,7 +8,7 @@ from ..policies import policy_phase_catalog
 from ..schemas import default_policy_decision, default_progress_state
 from ..state.deps import DEFAULT_DEPS
 from ..validation import normalize_policy_decision
-from ..telemetry.trace_runtime import record_llm_call, record_node_phase_ms
+from ..telemetry.trace_runtime import record_gate_event, record_llm_call, record_node_phase_ms
 
 
 def _ensure_objective(state: dict) -> None:
@@ -389,4 +389,24 @@ def phase_policy_planner_node(state: dict) -> dict:
             "planner": skip_reason,
         },
     }
+    gate_reason_codes = list((planner_debug.get("gate_decision") or {}).get("gate_reason_codes", []))
+    gate_reason = skip_reason or str((planner_debug.get("gate_decision") or {}).get("gate_path", ""))
+    record_gate_event(
+        state,
+        name="planner_gate",
+        node="phase_policy_planner",
+        decision="skipped" if planner_skipped else "executed",
+        reason=gate_reason,
+        reason_codes=gate_reason_codes,
+        gate_inputs={
+            "planner_request": planner_request,
+            "active_plan_present": bool(previous_plan),
+            "advance_step": advance_step,
+            "judgement_skip_planner": judgement_skip_planner,
+            "reusable_policy_id": str((policy_state or {}).get("policy_id", "")),
+            "allowed_policy_ids_count": len(allowed_all),
+        },
+        gate_rule_id="planner_skip_gate",
+        gate_version="v1",
+    )
     return state

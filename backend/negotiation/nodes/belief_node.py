@@ -3,11 +3,12 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from datetime import datetime, timezone
 
 from ..extractors.belief_extractor_v1 import extract_belief_state_llm_v1
 from ..schemas import default_belief_state, default_progress_state
 from ..state.deps import DEFAULT_DEPS
-from ..telemetry.trace_runtime import record_llm_call
+from ..telemetry.trace_runtime import record_gate_event, record_llm_call
 
 
 def _state_fingerprint(value: dict) -> str:
@@ -123,6 +124,23 @@ def belief_updater_node(state: dict) -> dict:
         "prev_belief_fp": prev_belief_fp or None,
         "curr_belief_fp": curr_belief_fp or None,
     }
+    now_iso = datetime.now(timezone.utc).isoformat()
+    record_gate_event(
+        state,
+        name="belief_gate",
+        node="belief_updater",
+        decision="skipped" if bool(belief_meta.get("belief_update_skipped", False)) else "executed",
+        reason=str(belief_meta.get("skip_reason", "")),
+        reason_codes=[str(belief_meta.get("skip_reason", ""))] if str(belief_meta.get("skip_reason", "")) else [],
+        gate_inputs={
+            "world_changed_meaningfully": bool(world_changed),
+            "world_diff_keys": sorted((state.get("world_diff") or {}).keys()) if isinstance(state.get("world_diff"), dict) else [],
+        },
+        gate_rule_id="belief_world_delta",
+        gate_version="v1",
+        started_ts=now_iso,
+        ended_ts=now_iso,
+    )
 
     prev_buckets = (prev_belief.get("belief_buckets") or {}) if isinstance(prev_belief, dict) else {}
     curr_buckets = (belief_state.get("belief_buckets") or {}) if isinstance(belief_state, dict) else {}

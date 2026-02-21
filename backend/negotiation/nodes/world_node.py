@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 import os
 import time
 from datetime import datetime, timezone
@@ -18,7 +19,7 @@ from ..mode_inference import update_conversation_mode
 from ..perception.interaction_signals import _previous_user_message, extract_interaction_signals
 from ..schemas import default_progress_state, default_world_state
 from ..world_state_updater import apply_world_skip_fallback, diff_world_state, update_world_state
-from ..telemetry.trace_runtime import record_llm_call_ms, record_node_phase_ms
+from ..telemetry.trace_runtime import record_gate_event, record_llm_call_ms, record_node_phase_ms
 from ..telemetry.llm_usage import extract_llm_usage
 from ..advisor import build_advisor_recs
 
@@ -384,6 +385,15 @@ def world_judge_llm(
             "judge_tokens_out": llm_usage.get("tokens_out"),
             "judge_queue_ms": llm_usage.get("queue_ms"),
             "judge_ttfb_ms": llm_usage.get("ttfb_ms"),
+            "judge_input_payload_raw": [
+                {"role": getattr(msg, "type", "user"), "content": str(getattr(msg, "content", ""))}
+                for msg in messages
+            ],
+            "judge_input_prompt_rendered": "\n\n".join(
+                f"[{getattr(msg, 'type', 'user')}]\n{str(getattr(msg, 'content', ''))}" for msg in messages
+            ),
+            "judge_output_text_rendered": str(text),
+            "judge_output_payload_raw": candidate,
             **evidence_meta,
         }
     except Exception as exc:
@@ -433,7 +443,9 @@ def world_updater_node(state: dict) -> dict:
         prev_interaction=gate_state.get("last_interaction_signals", {}),
     )
     interaction_fingerprint_current = interaction_fingerprint(interaction_current)
+
     gate_started = time.perf_counter()
+    gate_started_ts = datetime.now(timezone.utc).isoformat()
     world_skipped, skip_reason, gate_meta = gate_world(
         user_message=user_message,
         turn_count=turn_count,
@@ -442,32 +454,62 @@ def world_updater_node(state: dict) -> dict:
         current_features=current_features,
         interaction_fingerprint_prev=gate_state.get("interaction_fingerprint_prev"),
         interaction_fingerprint_current=interaction_fingerprint_current,
-        interaction_fingerprint_version=int(
-            gate_state.get("interaction_fingerprint_version", 1) or 1
-        ),
+        interaction_fingerprint_version=int(gate_state.get("interaction_fingerprint_version", 1) or 1),
         interval=int(os.getenv("WORLD_REFRESH_INTERVAL_TURNS", "3")),
         modality=modality,
         conversation_mode=conversation_mode,
     )
+    gate_ended_ts = datetime.now(timezone.utc).isoformat()
     record_node_phase_ms(state, "world_updater", "gates_ms", int((time.perf_counter() - gate_started) * 1000))
+    record_gate_event(
+        state,
+        name="world_gate",
+        node="world_updater",
+        decision="skipped" if world_skipped else "executed",
+        reason=skip_reason,
+        reason_codes=[skip_reason] if skip_reason else [],
+        gate_inputs={
+            "modality": modality,
+            "conversation_mode": conversation_mode,
+            "user_message_empty": not bool((user_message or "").strip()),
+            "interaction_fingerprint_version": int(gate_state.get("interaction_fingerprint_version", 1) or 1),
+            "prev_features": gate_state.get("input_shape_prev") or {},
+            "current_features": current_features,
+        },
+        gate_rule_id="gate_world",
+        gate_version="v1",
+        started=gate_started,
+        started_ts=gate_started_ts,
+        ended_ts=gate_ended_ts,
+    )
 
     normalize_started = time.perf_counter()
     world_local_timers: dict[str, int] = {}
-    if world_skipped:
-        gate_state["world_skip_count"] = int(gate_state.get("world_skip_count", 0) or 0) + 1
-        world_state, fallback_meta = apply_world_skip_fallback(prev_world, user_message, turn_count=turn_count)
-        state["world_state"] = world_state
-        state["world_diff"] = {} if prev_world == world_state else diff_world_state(prev_world, world_state)
-        state["extractor_meta"] = {
-            "extractor_used": False,
-            "extractor_skipped": True,
-            "skip_reason": skip_reason,
-            "world_gate_features": gate_meta,
-            "interaction_updated": True,
-            **fallback_meta,
-        }
-    else:
-        world_state, extractor_meta = update_world_state(
+
+    parallel_enabled = os.getenv("WORLD_PARALLELISM_ENABLED", "1") == "1"
+    advisor_enabled = os.getenv("ADVISOR_ENABLED", "0") == "1"
+    parallel_meta = {
+        "enabled": bool(parallel_enabled),
+        "mode": "threads",
+        "tasks": {},
+        "fallback_to_sequential": False,
+        "fallback_reason_codes": [],
+    }
+
+    def _run_extractor() -> tuple[dict, dict, dict]:
+        if world_skipped:
+            ws, fallback_meta = apply_world_skip_fallback(prev_world, user_message, turn_count=turn_count)
+            extractor_meta_local = {
+                "extractor_used": False,
+                "extractor_skipped": True,
+                "skip_reason": skip_reason,
+                "world_gate_features": gate_meta,
+                "interaction_updated": True,
+                **fallback_meta,
+            }
+            wd = {} if prev_world == ws else diff_world_state(prev_world, ws)
+            return ws, wd, extractor_meta_local
+        ws, extractor_meta_local = update_world_state(
             prev_world,
             user_message,
             recent_history=state.get("recent_history_text", ""),
@@ -476,17 +518,77 @@ def world_updater_node(state: dict) -> dict:
             conversation_mode=conversation_mode,
             deps=deps,
         )
-        gate_state["last_world_refresh_turn"] = turn_count
-        state["world_state"] = world_state
-        diff_started = time.perf_counter()
-        state["world_diff"] = {} if prev_world == state["world_state"] else diff_world_state(prev_world, state["world_state"])
-        world_local_timers["world_diff_ms"] = int((time.perf_counter() - diff_started) * 1000)
-        extractor_meta["world_gate_features"] = gate_meta
-        extractor_meta["extractor_skipped"] = False
-        extractor_meta["interaction_updated"] = True
-        state["extractor_meta"] = extractor_meta
+        extractor_meta_local["world_gate_features"] = gate_meta
+        extractor_meta_local["extractor_skipped"] = False
+        extractor_meta_local["interaction_updated"] = True
+        wd = {} if prev_world == ws else diff_world_state(prev_world, ws)
+        return ws, wd, extractor_meta_local
 
-    extractor_meta = state.get("extractor_meta", {}) if isinstance(state.get("extractor_meta"), dict) else {}
+    # Design choice (Option A): judge/advisor use previous world snapshot to enable parallelism.
+    def _run_judge() -> tuple[dict, dict]:
+        return world_judge_llm(
+            active_plan=progress_state.get("active_plan") if isinstance(progress_state.get("active_plan"), dict) else None,
+            user_message=user_message,
+            objective=state.get("objective", ""),
+            world_state=prev_world,
+            recent_history=state.get("recent_history_text", ""),
+            turn_count=turn_count,
+            assistant_last_message=state.get("last_assistant_message", ""),
+            memory_short=state.get("short_memory", ""),
+            memory_long=state.get("long_memory", ""),
+            progress_state=progress_state,
+        )
+
+    def _run_advisor() -> tuple[dict, dict]:
+        if not advisor_enabled:
+            return {}, {
+                "advisor_ok": False,
+                "advisor_latency_ms": 0,
+                "advisor_error": "disabled",
+                "advisor_llm_called": False,
+            }
+        return build_advisor_recs(
+            objective=state.get("objective", ""),
+            recent_history=state.get("recent_history_text", ""),
+            memory_short=state.get("short_memory", ""),
+            memory_long=state.get("long_memory", ""),
+            active_plan=progress_state.get("active_plan") if isinstance(progress_state.get("active_plan"), dict) else None,
+            progress_state=progress_state,
+            world_state=prev_world,
+            belief_state=state.get("belief_state", {}),
+        )
+
+    if parallel_enabled:
+        try:
+            with ThreadPoolExecutor(max_workers=3 if advisor_enabled else 2) as executor:
+                extractor_future = executor.submit(_run_extractor)
+                judge_future = executor.submit(_run_judge)
+                advisor_future = executor.submit(_run_advisor)
+                world_state, world_diff, extractor_meta = extractor_future.result()
+                judgement, judge_meta = judge_future.result()
+                advisor_recs, advisor_meta = advisor_future.result()
+        except Exception:
+            parallel_meta["fallback_to_sequential"] = True
+            parallel_meta["fallback_reason_codes"] = ["parallel_executor_error"]
+            world_state, world_diff, extractor_meta = _run_extractor()
+            advisor_recs, advisor_meta = _run_advisor()
+            judgement, judge_meta = _run_judge()
+    else:
+        parallel_meta["fallback_to_sequential"] = True
+        parallel_meta["fallback_reason_codes"] = ["parallel_disabled"]
+        world_state, world_diff, extractor_meta = _run_extractor()
+        advisor_recs, advisor_meta = _run_advisor()
+        judgement, judge_meta = _run_judge()
+
+    if world_skipped:
+        gate_state["world_skip_count"] = int(gate_state.get("world_skip_count", 0) or 0) + 1
+    else:
+        gate_state["last_world_refresh_turn"] = turn_count
+
+    state["world_state"] = world_state
+    state["world_diff"] = world_diff
+    state["extractor_meta"] = extractor_meta
+
     extractor_latency_ms = int(extractor_meta.get("extractor_llm_latency_ms", 0) or 0)
     if extractor_latency_ms > 0:
         record_llm_call_ms(
@@ -505,56 +607,50 @@ def world_updater_node(state: dict) -> dict:
             end_ts=str(extractor_meta.get("extractor_llm_end_ts", "") or ""),
             queue_ms=extractor_meta.get("extractor_llm_queue_ms"),
             ttfb_ms=extractor_meta.get("extractor_llm_ttfb_ms"),
+            input_prompt_rendered=str(extractor_meta.get("extractor_input_prompt_rendered", "")),
+            output_text_rendered=str(extractor_meta.get("extractor_output_text_rendered", "")),
+            input_payload_raw=extractor_meta.get("extractor_input_payload_raw"),
+            output_payload_raw=extractor_meta.get("extractor_output_payload_raw"),
         )
-
-    normalize_total_ms = int((time.perf_counter() - normalize_started) * 1000)
-    record_node_phase_ms(state, "world_updater", "normalize_merge_diff_ms", normalize_total_ms)
-    world_local_timers.update((extractor_meta.get("timers") if isinstance(extractor_meta.get("timers"), dict) else {}))
-    world_local_timers["normalize_merge_diff_total_ms"] = normalize_total_ms
-    world_local_timers["prev_world_bytes"] = int(extractor_meta.get("prev_world_bytes", 0) or 0)
-    world_local_timers["world_diff_bytes"] = int(extractor_meta.get("world_diff_bytes", 0) or 0)
 
     progress_state = update_conversation_mode(progress_state, state.get("world_state", {}), turn_count)
-    active_plan = progress_state.get("active_plan") if isinstance(progress_state.get("active_plan"), dict) else None
-    if os.getenv("ADVISOR_ENABLED", "0") == "1":
-        advisor_recs, advisor_meta = build_advisor_recs(
-            objective=state.get("objective", ""),
-            recent_history=state.get("recent_history_text", ""),
-            memory_short=state.get("short_memory", ""),
-            memory_long=state.get("long_memory", ""),
-            active_plan=active_plan,
-            progress_state=progress_state,
-            world_state=state.get("world_state", {}),
-            belief_state=state.get("belief_state", {}),
+
+    if bool(advisor_meta.get("advisor_llm_called", False)):
+        record_llm_call_ms(
+            state,
+            name="advisor_llm",
+            node="world_updater",
+            latency_ms=int(advisor_meta.get("advisor_latency_ms", 0) or 0),
+            ok=bool(advisor_meta.get("advisor_ok", False)),
+            model=None,
+            retry_count=0,
+            error_stage="llm_invoke" if advisor_meta.get("advisor_error") else "",
+            error=str(advisor_meta.get("advisor_error", "")),
+            start_ts=advisor_meta.get("advisor_start_ts"),
+            end_ts=advisor_meta.get("advisor_end_ts"),
+            input_prompt_rendered=str(advisor_meta.get("advisor_input_prompt_rendered", "")),
+            output_text_rendered=str(advisor_meta.get("advisor_output_text_rendered", "")),
+            input_payload_raw=advisor_meta.get("advisor_input_payload_raw"),
+            output_payload_raw=advisor_meta.get("advisor_output_payload_raw"),
         )
-        if bool(advisor_meta.get("advisor_llm_called", False)):
-            record_llm_call_ms(
-                state,
-                name="advisor_llm",
-                node="world_updater",
-                latency_ms=int(advisor_meta.get("advisor_latency_ms", 0) or 0),
-                ok=bool(advisor_meta.get("advisor_ok", False)),
-                model=None,
-                retry_count=0,
-                error_stage="llm_invoke" if advisor_meta.get("advisor_error") else "",
-                error=str(advisor_meta.get("advisor_error", "")),
-            )
     else:
-        advisor_recs, advisor_meta = {}, {"advisor_ok": False, "advisor_latency_ms": 0, "advisor_error": "disabled", "advisor_llm_called": False}
+        now_iso = datetime.now(timezone.utc).isoformat()
+        record_llm_call_ms(
+            state,
+            name="advisor_llm",
+            node="world_updater",
+            latency_ms=0,
+            ok=False,
+            status="skipped",
+            error_stage="disabled",
+            error=str(advisor_meta.get("advisor_error", "disabled")),
+            start_ts=now_iso,
+            end_ts=now_iso,
+        )
+
     state["advisor_recs"] = advisor_recs
     state["advisor_meta"] = advisor_meta
-    judgement, judge_meta = world_judge_llm(
-        active_plan=active_plan,
-        user_message=user_message,
-        objective=state.get("objective", ""),
-        world_state=state.get("world_state", {}),
-        recent_history=state.get("recent_history_text", ""),
-        turn_count=turn_count,
-        assistant_last_message=state.get("last_assistant_message", ""),
-        memory_short=state.get("short_memory", ""),
-        memory_long=state.get("long_memory", ""),
-        progress_state=progress_state,
-    )
+
     record_llm_call_ms(
         state,
         name="world_judge_llm",
@@ -571,11 +667,57 @@ def world_updater_node(state: dict) -> dict:
         end_ts=judge_meta.get("judge_end_ts"),
         queue_ms=judge_meta.get("judge_queue_ms"),
         ttfb_ms=judge_meta.get("judge_ttfb_ms"),
+        input_prompt_rendered=str(judge_meta.get("judge_input_prompt_rendered", "")),
+        output_text_rendered=str(judge_meta.get("judge_output_text_rendered", "")),
+        input_payload_raw=judge_meta.get("judge_input_payload_raw"),
+        output_payload_raw=judge_meta.get("judge_output_payload_raw"),
     )
+    extractor_reason_codes = []
+    for bucket in list(extractor_meta.get("updated_buckets", []) if isinstance(extractor_meta, dict) else []):
+        if str(bucket) in {"offers", "requests", "constraints", "interests"}:
+            extractor_reason_codes.append(f"world_updated:{bucket}")
+    judge_meta["inputs_world_version"] = "prev_world"
+    advisor_meta["inputs_world_version"] = "prev_world"
+    judge_meta["judge_may_be_stale_due_to_world_update"] = bool(extractor_reason_codes)
+    advisor_meta["advisor_may_be_stale_due_to_world_update"] = bool(extractor_reason_codes)
+    judge_meta["staleness_reason_codes"] = extractor_reason_codes
+    advisor_meta["staleness_reason_codes"] = extractor_reason_codes
+
+    calls_by_name = {item.get("name"): item for item in (state.get("trace_runtime", {}).get("llm_calls", []) if isinstance(state.get("trace_runtime"), dict) else []) if isinstance(item, dict)}
+    task_names = ["world_extractor_llm", "world_judge_llm", "advisor_llm"]
+    latencies = []
+    for task in task_names:
+        call = calls_by_name.get(task, {})
+        task_latency = int(call.get("latency_ms", 0) or 0)
+        if task == "advisor_llm" and str(call.get("status", "")) == "skipped":
+            task_latency = 0
+        parallel_meta["tasks"][task] = {
+            "started_at": str(call.get("start_ts", "") or ""),
+            "ended_at": str(call.get("end_ts", "") or ""),
+            "latency_ms": task_latency,
+            "status": str(call.get("status", "") or ""),
+        }
+        latencies.append(task_latency)
+    sum_ms = sum(latencies)
+    critical_path_ms = max(latencies) if latencies else 0
+    overlap_ms = max(0, sum_ms - critical_path_ms)
+    parallel_meta["sum_ms"] = sum_ms
+    parallel_meta["critical_path_ms"] = critical_path_ms
+    parallel_meta["overlap_ms"] = overlap_ms
+    parallel_meta["saved_ms_estimate"] = overlap_ms
+    state["world_parallelism"] = parallel_meta
+
     state["policy_plan_judgement"] = judgement
     judge_meta["missing_signals"] = list(judgement.get("missing_signals", []))[:6]
     judge_meta["safety_flags"] = list(judgement.get("safety_flags", []))[:6]
     state.setdefault("extractor_meta", {})["world_judge_meta"] = judge_meta
+
+    normalize_total_ms = int((time.perf_counter() - normalize_started) * 1000)
+    record_node_phase_ms(state, "world_updater", "normalize_merge_diff_ms", normalize_total_ms)
+    world_local_timers.update((extractor_meta.get("timers") if isinstance(extractor_meta.get("timers"), dict) else {}))
+    world_local_timers["normalize_merge_diff_total_ms"] = normalize_total_ms
+    world_local_timers["prev_world_bytes"] = int(extractor_meta.get("prev_world_bytes", 0) or 0)
+    world_local_timers["world_diff_bytes"] = int(extractor_meta.get("world_diff_bytes", 0) or 0)
 
     prev_buckets = ((state.get("prev_world_state") or {}).get("world_buckets") or {}) if isinstance(state.get("prev_world_state"), dict) else {}
     curr_buckets = ((state.get("world_state") or {}).get("world_buckets") or {}) if isinstance(state.get("world_state"), dict) else {}
@@ -602,15 +744,11 @@ def world_updater_node(state: dict) -> dict:
 
     state["progress_state"] = progress_state
     state["conversation_mode"] = progress_state.get("conversation_mode", conversation_mode)
-    gate_state["world_meta_fingerprint_prev"] = state_meta_fingerprint(
-        state.get("world_state", {}).get("world_state_meta")
-    )
+    gate_state["world_meta_fingerprint_prev"] = state_meta_fingerprint(state.get("world_state", {}).get("world_state_meta"))
     gate_state["input_shape_prev"] = current_features
     gate_state["last_interaction_signals"] = interaction_current
     gate_state["interaction_fingerprint_prev"] = interaction_fingerprint(interaction_current)
-    gate_state["interaction_fingerprint_version"] = int(
-        gate_state.get("interaction_fingerprint_version", 1) or 1
-    )
+    gate_state["interaction_fingerprint_version"] = int(gate_state.get("interaction_fingerprint_version", 1) or 1)
     gate_state["prev_user_message"] = user_message
     state["progress_state"]["gate_state"] = gate_state
     return state
