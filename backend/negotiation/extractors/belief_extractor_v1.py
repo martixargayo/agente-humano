@@ -160,10 +160,20 @@ def extract_belief_state_llm_v1(
     text = raw if isinstance(raw, str) else getattr(raw, "content", "")
     data = _safe_json_load(text)
     belief_state = _normalize_belief_output(data)
+    input_payload_raw = [
+        {"role": item.get("role", "user"), "content": str(item.get("content", ""))}
+        for item in messages
+    ]
     meta = {
         "belief_engine": "llm_belief_extractor_v1",
         "belief_latency_ms": latency_ms,
         "belief_llm_used": True,
+        "belief_input_payload_raw": input_payload_raw,
+        "belief_input_prompt_rendered": "\n\n".join(
+            f"[{item['role']}]\n{item['content']}" for item in input_payload_raw
+        ),
+        "belief_output_text_rendered": str(text),
+        "belief_output_payload_raw": data,
     }
     return belief_state, meta
 

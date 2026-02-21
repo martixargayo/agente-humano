@@ -171,6 +171,10 @@ def plan_phase_policy(
         "issues": [],
         "allowed_policy_ids": allowed_policy_ids,
         "active_plan": None,
+        "planner_input_prompt_rendered": "",
+        "planner_input_payload_raw": None,
+        "planner_output_text_rendered": "",
+        "planner_output_payload_raw": None,
     }
 
     started = time.perf_counter()
@@ -189,12 +193,21 @@ def plan_phase_policy(
             advisor_recs=json.dumps(advisor_recs or {}, ensure_ascii=False),
         )
         structured = get_planner_llm().with_structured_output(PhasePolicyDecisionModel)
+        meta["planner_input_payload_raw"] = [
+            {"role": getattr(msg, "type", "user"), "content": str(getattr(msg, "content", ""))}
+            for msg in messages
+        ]
+        meta["planner_input_prompt_rendered"] = "\n\n".join(
+            f"[{item['role']}]\n{item['content']}" for item in meta["planner_input_payload_raw"]
+        )
 
         result = structured.invoke(messages)
         ended_wall = datetime.now(timezone.utc).isoformat()
         usage = extract_llm_usage(result)
         meta["planner_llm_called"] = True
         payload = result.model_dump()
+        meta["planner_output_payload_raw"] = payload
+        meta["planner_output_text_rendered"] = json.dumps(payload, ensure_ascii=False)
         phase_candidate = {
             "phase": payload.get("phase", "climate"),
             "confidence": float(payload.get("confidence", 0.6) or 0.6),

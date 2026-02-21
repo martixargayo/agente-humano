@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import time
+from datetime import datetime, timezone
 
 from langchain_core.prompts import ChatPromptTemplate
 
@@ -83,6 +84,7 @@ def build_advisor_recs(
     belief_state: dict,
 ) -> tuple[dict, dict]:
     started = time.perf_counter()
+    started_wall = datetime.now(timezone.utc).isoformat()
     meta = {"advisor_ok": False, "advisor_latency_ms": 0, "advisor_error": "", "advisor_llm_called": False}
     payload = {
         "objective": str(objective or "")[:280],
@@ -110,11 +112,32 @@ def build_advisor_recs(
             belief_summary=json.dumps(payload["belief_summary"], ensure_ascii=False),
         )
         raw = get_planner_llm().invoke(messages)
+        ended_wall = datetime.now(timezone.utc).isoformat()
         meta["advisor_llm_called"] = True
         text = getattr(raw, "content", str(raw))
         recs = _normalize_advisor(json.loads(text))
         meta["advisor_ok"] = True
-        return recs, {**meta, "advisor_latency_ms": int((time.perf_counter() - started) * 1000)}
+        return recs, {
+            **meta,
+            "advisor_latency_ms": int((time.perf_counter() - started) * 1000),
+            "advisor_start_ts": started_wall,
+            "advisor_end_ts": ended_wall,
+            "advisor_input_payload_raw": [
+                {"role": getattr(msg, "type", "user"), "content": str(getattr(msg, "content", ""))}
+                for msg in messages
+            ],
+            "advisor_input_prompt_rendered": "\n\n".join(
+                f"[{getattr(msg, 'type', 'user')}]\n{str(getattr(msg, 'content', ''))}" for msg in messages
+            ),
+            "advisor_output_text_rendered": str(text),
+            "advisor_output_payload_raw": recs,
+        }
     except Exception as exc:
+        ended_wall = datetime.now(timezone.utc).isoformat()
         meta["advisor_error"] = str(exc)[:180]
-        return _normalize_advisor({}), {**meta, "advisor_latency_ms": int((time.perf_counter() - started) * 1000)}
+        return _normalize_advisor({}), {
+            **meta,
+            "advisor_latency_ms": int((time.perf_counter() - started) * 1000),
+            "advisor_start_ts": started_wall,
+            "advisor_end_ts": ended_wall,
+        }
