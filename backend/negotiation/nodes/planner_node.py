@@ -275,6 +275,10 @@ def phase_policy_planner_node(state: dict) -> dict:
             retry_count=1 if bool(planner_meta.get("planner_fallback_used", False)) else 0,
             error_stage=str(planner_meta.get("planner_error_stage", "")),
             error=str(planner_meta.get("planner_error", "")),
+            input_prompt_rendered=str(planner_meta.get("planner_input_prompt_rendered", "")),
+            output_text_rendered=str(planner_meta.get("planner_output_text_rendered", "")),
+            input_payload_raw=planner_meta.get("planner_input_payload_raw"),
+            output_payload_raw=planner_meta.get("planner_output_payload_raw"),
         )
 
         if not planner_debug["gate_decision"]["gate_path"]:
