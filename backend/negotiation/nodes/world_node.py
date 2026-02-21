@@ -103,15 +103,16 @@ def _apply_judge_advisor_results(
         )
     else:
         now_iso = datetime.now(timezone.utc).isoformat()
+        disabled = str(advisor_meta.get("advisor_error", "")).strip().lower() == "disabled"
         record_llm_call_ms(
             state,
             name="advisor_llm",
             node="world_updater",
             latency_ms=0,
-            ok=False,
-            status="skipped",
-            error_stage="disabled",
-            error=str(advisor_meta.get("advisor_error", "disabled")),
+            ok=False if disabled else False,
+            status="skipped" if disabled else "error",
+            error_stage="disabled" if disabled else "llm_invoke",
+            error="disabled_by_config" if disabled else str(advisor_meta.get("advisor_error", "advisor_not_called")),
             start_ts=now_iso,
             end_ts=now_iso,
         )

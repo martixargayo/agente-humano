@@ -177,6 +177,59 @@ def test_world_updater_records_advisor_skipped_when_disabled(monkeypatch):
     advisor = [x for x in out["trace_runtime"]["llm_calls"] if x.get("name") == "advisor_llm"]
     assert advisor
     assert advisor[0]["status"] == "skipped"
+    assert advisor[0]["error"] == "disabled_by_config"
+
+
+def test_world_updater_runs_advisor_by_default_when_env_unset(monkeypatch):
+    monkeypatch.delenv("ADVISOR_ENABLED", raising=False)
+    monkeypatch.setenv("WORLD_PARALLELISM_ENABLED", "0")
+
+    def fake_update_world_state(prev_world, user_message, **kwargs):
+        return prev_world, {
+            "extractor_llm_latency_ms": 1,
+            "extractor_llm_start_ts": "2026-01-01T00:00:00+00:00",
+            "extractor_llm_end_ts": "2026-01-01T00:00:00.001+00:00",
+        }
+
+    def fake_world_judge_llm(**kwargs):
+        return {"plan_status": "continue_same_step", "missing_signals": [], "safety_flags": []}, {
+            "judge_latency_ms": 1,
+            "judge_start_ts": "2026-01-01T00:00:00+00:00",
+            "judge_end_ts": "2026-01-01T00:00:00.001+00:00",
+            "judge_error_type": "",
+        }
+
+    def fake_advisor(**kwargs):
+        return {}, {
+            "advisor_ok": True,
+            "advisor_latency_ms": 1,
+            "advisor_llm_called": True,
+            "advisor_start_ts": "2026-01-01T00:00:00+00:00",
+            "advisor_end_ts": "2026-01-01T00:00:00.001+00:00",
+        }
+
+    monkeypatch.setattr(world_node, "update_world_state", fake_update_world_state)
+    monkeypatch.setattr(world_node, "world_judge_llm", fake_world_judge_llm)
+    monkeypatch.setattr(world_node, "build_advisor_recs", fake_advisor)
+
+    state = {
+        "deps": None,
+        "world_state": default_world_state(),
+        "belief_state": default_belief_state(),
+        "progress_state": default_progress_state(),
+        "user_message": "hola",
+        "turn_count": 1,
+        "input_modality": "text",
+        "recent_history_text": "",
+        "short_memory": "",
+        "long_memory": "",
+        "objective": "",
+        "trace_runtime": init_trace_runtime(),
+    }
+
+    out = world_node.world_updater_node(state)
+    advisor = next(x for x in out["trace_runtime"]["llm_calls"] if x.get("name") == "advisor_llm")
+    assert advisor["status"] == "ok"
 
 
 def test_world_parallelism_overlaps_tasks(monkeypatch):
@@ -421,3 +474,28 @@ def test_planner_gate_present_when_skipped_and_gate_payload_mapped(monkeypatch):
     assert planner_gate["status"] == "ok"
     assert planner_gate["input_payload_raw"]["planner_request"] == "continue_policy"
     assert planner_gate["output_payload_raw"]["gate_decision"] == "skipped"
+
+
+def test_planner_gate_skip_adds_synthetic_planner_llm_and_contiguous_sequence(monkeypatch):
+    monkeypatch.setenv("LIVETRACE2_MODE", "internal")
+    session = SessionState(user_id="u", session_id="s")
+    session.last_updated = datetime(2026, 1, 2, tzinfo=timezone.utc)
+    trace_item = _base_trace_item()
+    trace_item["trace_runtime"]["gate_events"] = [
+        {
+            "name": "planner_gate",
+            "node": "phase_policy_planner",
+            "decision": "skipped",
+            "reason": "continue_same_step_without_planner",
+            "reason_codes": ["continue_policy_reuse"],
+            "gate_inputs": {"planner_request": "continue_policy"},
+            "start_ts": "2026-01-01T00:00:01+00:00",
+            "end_ts": "2026-01-01T00:00:01+00:00",
+            "latency_ms": 0,
+        }
+    ]
+    event = build_livetrace2_event(user_id="u", session_id="s", session=session, trace_index=0, trace_item=trace_item)
+    assert [node["sequence_index"] for node in event["nodes"]] == list(range(len(event["nodes"])))
+    planner_llm = next(node for node in event["nodes"] if node["node_name"] == "planner_llm")
+    assert planner_llm["status"] == "skipped"
+    assert "skipped_by_planner_gate" in planner_llm["output_payload_raw"]["reason_codes"]

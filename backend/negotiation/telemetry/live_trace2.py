@@ -195,16 +195,94 @@ def _build_gate_nodes(trace_id: str, session_id: str, turn_idx: int, runtime: di
     return out
 
 
+def _inject_skipped_llm_nodes(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    existing = {str(node.get("node_name", "")) for node in nodes if isinstance(node, dict)}
+    injected: list[dict[str, Any]] = []
+    for node in nodes:
+        if not isinstance(node, dict) or str(node.get("node_type")) != "gate":
+            continue
+        gate_name = str(node.get("node_name", ""))
+        decision = str(node.get("gate_decision", "executed") or "executed")
+        if decision != "skipped":
+            continue
+        target_llm = ""
+        reason_codes = list(node.get("gate_reason_codes", [])) if isinstance(node.get("gate_reason_codes"), list) else []
+        if gate_name == "planner_gate":
+            target_llm = "planner_llm"
+            reason_codes = [*reason_codes, "skipped_by_planner_gate"]
+        elif gate_name == "belief_gate":
+            target_llm = "belief_llm"
+            reason_codes = [*reason_codes, "skipped_by_belief_gate"]
+        elif gate_name == "world_gate":
+            target_llm = "world_extractor_llm"
+            reason_codes = [*reason_codes, "skipped_by_world_gate"]
+        if not target_llm or target_llm in existing:
+            continue
+        ts = str(node.get("ended_at") or node.get("started_at") or "")
+        injected.append(
+            {
+                "trace_id": node.get("trace_id"),
+                "session_id": node.get("session_id"),
+                "turn_idx": node.get("turn_idx"),
+                "node_id": f"synthetic-{target_llm}-{len(injected)}",
+                "node_name": target_llm,
+                "node_type": "llm_call",
+                "status": "skipped",
+                "started_at": ts,
+                "ended_at": ts,
+                "latency_ms": 0,
+                "sequence_index": 0,
+                "input_prompt_rendered": "",
+                "input_payload_raw": None,
+                "output_text_rendered": "",
+                "output_text_raw": None,
+                "output_payload_raw": {
+                    "gate_decision_reason": str(node.get("gate_reason", "") or ""),
+                    "reason_codes": reason_codes,
+                    "skipped_by_gate": gate_name,
+                },
+                "output_payload_parsed": {
+                    "gate_decision_reason": str(node.get("gate_reason", "") or ""),
+                    "reason_codes": reason_codes,
+                    "skipped_by_gate": gate_name,
+                },
+                "model": None,
+                "tokens_in": None,
+                "tokens_out": None,
+                "retry_count": 0,
+                "ok": False,
+                "error_stage": "skipped_by_gate",
+                "error": str(node.get("gate_reason", "") or ""),
+                "queue_ms": None,
+                "ttfb_ms": None,
+                "gate_rule_id": "",
+                "gate_version": "",
+                "gate_inputs": None,
+                "gate_decision": "",
+                "gate_reason": "",
+                "gate_reason_codes": [],
+                "input_capture_state": "not_captured",
+                "output_capture_state": "not_captured",
+                "input_truncation": None,
+                "output_truncation": None,
+            }
+        )
+        existing.add(target_llm)
+    if not injected:
+        return nodes
+    return [*nodes, *injected]
+
+
 def _sort_nodes(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
     indexed = list(enumerate(nodes))
 
-    def _key(item: tuple[int, dict[str, Any]]) -> tuple[float, float, int]:
+    def _key(item: tuple[int, dict[str, Any]]) -> tuple[float, float, str, int]:
         pos, node = item
         start_dt = _parse_ts(node.get("started_at"))
         end_dt = _parse_ts(node.get("ended_at"))
         start_v = start_dt.timestamp() if start_dt else float("inf")
         end_v = end_dt.timestamp() if end_dt else float("inf")
-        return (start_v, end_v, pos)
+        return (start_v, end_v, str(node.get("node_name", "")), pos)
 
     indexed.sort(key=_key)
     out: list[dict[str, Any]] = []
@@ -235,6 +313,7 @@ def build_livetrace2_event(*, user_id: str, session_id: str, session: SessionSta
 
     nodes = _build_llm_nodes(trace_id, session_id, turn_idx, runtime)
     nodes.extend(_build_gate_nodes(trace_id, session_id, turn_idx, runtime))
+    nodes = _inject_skipped_llm_nodes(nodes)
     nodes = _sort_nodes(nodes)
 
     for i, node in enumerate(nodes):
