@@ -450,6 +450,12 @@ def negotiation_livetrace2_panel():
     <div class="panel timeline-scroll"><div id="timelineGrid"></div></div>
     <div class="panel" id="right"><div class="meta-small">Selecciona un nodo.</div></div>
   </div>
+  <div class="panel" style="margin-top:12px; min-height:auto;">
+    <h3 style="margin:0 0 8px 0; font-size:14px;">Historial de turnos</h3>
+    <div class="meta-small" style="margin-bottom:8px;">Se apilan de más nuevo a más antiguo. Abre cada desplegable para ver el turno completo.</div>
+    <div id="historyFilters" class="box" style="margin-bottom:8px;display:none;"></div>
+    <div id="turnHistory"><div class="meta-small">Aún no hay turnos recibidos.</div></div>
+  </div>
 </div>
 <button id="expandBtn" class="fixed-btn">Desplegar todo</button>
 <script>
@@ -461,10 +467,14 @@ const kTurn = document.getElementById('kTurn');
 const kLatency = document.getElementById('kLatency');
 const kPar = document.getElementById('kPar');
 const kOverlap = document.getElementById('kOverlap');
+const turnHistory = document.getElementById('turnHistory');
+const historyFilters = document.getElementById('historyFilters');
 const toggleSkipped = document.getElementById('toggleSkipped');
 const expandBtn = document.getElementById('expandBtn');
 const uiDebug = document.getElementById('uiDebug');
 let latest = null;
+let historyByTurn = new Map();
+let historyNodeFilters = new Map();
 let selected = null;
 let expanded = false;
 
@@ -569,6 +579,87 @@ function renderExpanded(nodes){
   right.innerHTML = nodes.map((node)=>`<div class="node" style="margin-bottom:10px"><div class="row"><strong>${node.sequence_index}. ${node.node_name}</strong><span>${node.latency_ms||0} ms</span></div>${detail(node)}</div>`).join('');
 }
 
+
+function isHistoryNodeVisible(node){
+  const typeKey = String(node.node_type || '').toLowerCase();
+  const typeEnabled = typeKey === 'gate'
+    ? document.getElementById('filterTypeGate')?.checked !== false
+    : document.getElementById('filterTypeLlm')?.checked !== false;
+  if(!typeEnabled) return false;
+  const name = String(node.node_name || 'unknown');
+  return historyNodeFilters.get(name) !== false;
+}
+
+function renderHistoryFilters(turns){
+  if(!historyFilters) return;
+  if(!expanded){
+    historyFilters.style.display = 'none';
+    return;
+  }
+  historyFilters.style.display = 'block';
+  const names = [...new Set(turns.flatMap((evt)=> (evt.nodes || []).map((n)=>String(n.node_name || 'unknown'))))].sort();
+  for(const name of names){
+    if(!historyNodeFilters.has(name)) historyNodeFilters.set(name, true);
+  }
+  const namesHtml = names.map((name)=>{
+    const checked = historyNodeFilters.get(name) !== false ? 'checked' : '';
+    return `<label class="pill" style="display:flex;align-items:center;gap:6px;"><input class="filterNodeName" data-node-name="${name}" type="checkbox" ${checked} />${name}</label>`;
+  }).join('');
+  historyFilters.innerHTML = `<div style="padding:8px"><div class="meta-small" style="margin-bottom:6px">Filtros para comparar secuencia turno a turno (ej. solo <code>advisor_llm</code> o solo <code>world_judge_llm</code>).</div><div class="kpi" style="margin-top:0"><label class="pill" style="display:flex;align-items:center;gap:6px;"><input id="filterTypeGate" type="checkbox" checked />Gates</label><label class="pill" style="display:flex;align-items:center;gap:6px;"><input id="filterTypeLlm" type="checkbox" checked />LLMs</label><button id="filterAll" class="pill" style="cursor:pointer;color:#e2e8f0;border:1px solid #334155">Todo</button><button id="filterNone" class="pill" style="cursor:pointer;color:#e2e8f0;border:1px solid #334155">Nada</button></div><div class="kpi">${namesHtml}</div></div>`;
+
+  const gateEl = document.getElementById('filterTypeGate');
+  const llmEl = document.getElementById('filterTypeLlm');
+  gateEl.onchange = () => renderTurnHistory();
+  llmEl.onchange = () => renderTurnHistory();
+  document.getElementById('filterAll').onclick = () => {
+    for(const name of names) historyNodeFilters.set(name, true);
+    renderTurnHistory();
+  };
+  document.getElementById('filterNone').onclick = () => {
+    for(const name of names) historyNodeFilters.set(name, false);
+    renderTurnHistory();
+  };
+  for(const el of historyFilters.querySelectorAll('.filterNodeName')){
+    el.onchange = (evt) => {
+      const name = String(evt.target?.getAttribute('data-node-name') || 'unknown');
+      historyNodeFilters.set(name, Boolean(evt.target?.checked));
+      renderTurnHistory();
+    };
+  }
+}
+
+function renderTurnHistory(){
+  const turns = [...historyByTurn.values()].sort((a,b)=>{
+    const tb = Number(b.turn_idx || 0);
+    const ta = Number(a.turn_idx || 0);
+    if(tb !== ta) return tb - ta;
+    return Number(b.trace_index || 0) - Number(a.trace_index || 0);
+  });
+  renderHistoryFilters(turns);
+  if(!turns.length){
+    turnHistory.innerHTML = '<div class="meta-small">Aún no hay turnos recibidos.</div>';
+    return;
+  }
+  turnHistory.innerHTML = turns.map((evt)=>{
+    const allNodes = sortByTime(evt.nodes || []);
+    const filteredNodes = allNodes.filter((n)=>{
+      if(!toggleSkipped.checked){
+        const skipped = String(n.status||'') === 'skipped';
+        const notCaptured = String(n.input_capture_state||'') === 'not_captured' && String(n.output_capture_state||'') === 'not_captured';
+        if(skipped || notCaptured) return false;
+      }
+      return isHistoryNodeVisible(n);
+    });
+    const startedAt = ts(evt.started_at);
+    const endedAt = ts(evt.ended_at);
+    const detailsOpen = evt.trace_index === latest?.trace_index ? ' open' : '';
+    const nodesHtml = filteredNodes.length
+      ? filteredNodes.map((node)=>`<div class="node" style="margin-top:8px"><div class="row"><strong>${node.sequence_index}. ${node.node_name}</strong><span>${node.latency_ms||0} ms</span></div>${detail(node)}</div>`).join('')
+      : '<div class="meta-small" style="padding:8px 0">No hay nodos visibles con los filtros actuales.</div>';
+    return `<details${detailsOpen} style="margin-top:0;margin-bottom:8px"><summary>Turno ${evt.turn_idx} · trace #${evt.trace_index} · ${filteredNodes.length}/${allNodes.length} nodos visibles · ${evt.total_latency_ms} ms</summary><div class="meta-small" style="padding:8px 0">${startedAt} → ${endedAt}</div>${nodesHtml}</details>`;
+  }).join('');
+}
+
 function render(){
   if(!latest){ grid.innerHTML = '<div class="meta-small">Esperando trazas...</div>'; return; }
   const allNodes = latest.nodes || [];
@@ -627,13 +718,20 @@ expandBtn.onclick = () => {
   expanded = !expanded;
   expandBtn.textContent = expanded ? 'Collapse all' : 'Desplegar todo';
   render();
+  renderTurnHistory();
 };
 
 const es = new EventSource('/negociacion/livetrace2/stream');
 es.addEventListener('open', () => { conn.textContent='conectado'; conn.className='badge ok'; });
 es.addEventListener('error', () => { conn.textContent='reconectando'; conn.className='badge'; });
-es.addEventListener('trace2', (event) => { latest = JSON.parse(event.data); selected = null; render(); });
-toggleSkipped.onchange = () => render();
+es.addEventListener('trace2', (event) => {
+  latest = JSON.parse(event.data);
+  historyByTurn.set(String(latest.turn_idx), latest);
+  selected = null;
+  render();
+  renderTurnHistory();
+});
+toggleSkipped.onchange = () => { render(); renderTurnHistory(); };
 </script>
 </body>
 </html>

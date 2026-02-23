@@ -39,3 +39,22 @@ def test_ui_order_respects_gate_before_llm_when_same_timestamp():
     html = negotiation_livetrace2_panel()
     assert "const pa = ta === 'gate' ? 0 : 1;" in html
     assert "const pb = tb === 'gate' ? 0 : 1;" in html
+
+
+def test_ui_turn_history_keeps_previous_turns_in_expandables():
+    html = negotiation_livetrace2_panel()
+    assert 'id="turnHistory"' in html
+    assert "function renderTurnHistory()" in html
+    assert "historyByTurn = new Map()" in html
+    assert "<details" in html
+
+
+def test_ui_turn_history_filter_controls_are_available_in_expand_mode():
+    html = negotiation_livetrace2_panel()
+    assert 'id="historyFilters"' in html
+    assert 'function renderHistoryFilters' in html
+    assert 'filterTypeGate' in html
+    assert 'filterTypeLlm' in html
+    assert 'filterAll' in html
+    assert 'filterNone' in html
+    assert 'historyNodeFilters = new Map()' in html
