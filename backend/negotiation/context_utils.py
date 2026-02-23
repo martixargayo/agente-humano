@@ -154,6 +154,15 @@ def should_refresh_summary(session: "SessionState", *, context_limit_turns: int)
     return turns > context_limit_turns
 
 
+def get_last_summarize_meta() -> dict:
+    try:
+        from .state.deps import get_last_summarize_meta as _get_last_summarize_meta
+
+        return _get_last_summarize_meta()
+    except Exception:
+        return {}
+
+
 def maybe_refresh_summary(
     session: "SessionState",
     *,
@@ -203,6 +212,7 @@ def maybe_refresh_summary(
     prefix_hash = hashlib.sha256(new_block.encode("utf-8")).hexdigest()[:10]
 
     raw_candidate = summarize_fn(existing_summary, new_block)
+    summarize_meta = get_last_summarize_meta()
     candidate_obj = _try_parse_summary_json(raw_candidate)
     existing_obj = _try_parse_summary_json(existing_summary)
     candidate_invalid = candidate_obj is None and bool((raw_candidate or "").strip())
@@ -228,6 +238,9 @@ def maybe_refresh_summary(
         "candidate_invalid": candidate_invalid,
         "merge_used_existing": merge_used_existing,
         "reason": "summarized",
+        "summary_input_prompt_rendered": str(summarize_meta.get("input_prompt_rendered", "")),
+        "summary_output_text_rendered": str(summarize_meta.get("output_text_rendered", "")),
+        "summary_input_payload_raw": summarize_meta.get("rendered_messages"),
     }
 
 

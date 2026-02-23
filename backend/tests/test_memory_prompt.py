@@ -96,9 +96,9 @@ def test_executor_prompt_memory_single_injection(monkeypatch):
 
     try:
         executor_user = captured["messages"][1].content
-        assert "[MEMORY]" in executor_user
-        assert "[LONG_MEMORY]" in executor_user
-        assert "[SHORT_MEMORY]" in executor_user
+        assert "E) MEMORIA" in executor_user
+        assert "MEMORIA_CORTA:" in executor_user
+        assert "MEMORIA_LARGA:" in executor_user
         assert executor_user.count("Vendedor: Hola") == 1
         assert "[HISTORIAL RECIENTE]" not in executor_user
         assert "[RESUMEN INTERNO" not in executor_user
@@ -146,6 +146,23 @@ def test_summary_refresh_trims_and_updates(monkeypatch):
             ensure_ascii=False,
         )
 
+    monkeypatch.setattr(
+        "negotiation.context_utils.get_last_summarize_meta",
+        lambda: {
+            "input_prompt_rendered": "\n\n".join(
+                [
+                    f"[system]\n{SUMMARY_SYSTEM_PROMPT.strip()}",
+                    f"[user]\n{SUMMARY_USER_PROMPT.strip()}".replace("{existing_summary}", "{}").replace("{new_block}", "{}"),
+                ]
+            ),
+            "output_text_rendered": json.dumps(_summary_payload({"facts": ["Resumen nuevo"]}), ensure_ascii=False),
+            "rendered_messages": [
+                {"role": "system", "content": SUMMARY_SYSTEM_PROMPT.strip()},
+                {"role": "user", "content": SUMMARY_USER_PROMPT.strip()},
+            ],
+        },
+    )
+
     deps = _base_deps(captured, summarize=fake_summarize)
 
     monkeypatch.setattr(
@@ -172,8 +189,21 @@ def test_summary_refresh_trims_and_updates(monkeypatch):
         assert sum(1 for m in state.history if m.get("role") == "user") <= 2
 
         executor_user = captured["messages"][1].content
-        assert "[LONG_MEMORY]" in executor_user
-        assert "[SHORT_MEMORY]" in executor_user
+        assert "E) MEMORIA" in executor_user
+        assert "MEMORIA_CORTA:" in executor_user
+        assert "MEMORIA_LARGA:" in executor_user
+
+        refresh_meta = state.debug_trace[-1].get("refresh_meta", {})
+        assert "summary_input_prompt_rendered" in refresh_meta
+        assert "summary_output_text_rendered" in refresh_meta
+        assert "summary_input_payload_raw" in refresh_meta
+        assert "session_summarizer" in refresh_meta["summary_input_prompt_rendered"]
+        assert "Bloque de conversación a integrar" in refresh_meta["summary_input_prompt_rendered"]
+        assert refresh_meta["summary_output_text_rendered"].strip().startswith("{")
+        payload = refresh_meta["summary_input_payload_raw"]
+        assert isinstance(payload, list) and len(payload) == 2
+        assert payload[0]["role"] == "system"
+        assert payload[1]["role"] == "user"
     except AssertionError:
         _print_snapshot(state, captured)
         raise

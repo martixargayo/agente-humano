@@ -169,6 +169,8 @@ def test_advisor_prompt_contains_constraints_last_counterparty_and_user_message(
     assert "ULTIMA_FRASE_DEL_VENDEDOR" in meta["advisor_input_prompt_rendered"]
     assert "PERSPECTIVA: buyer" in meta["advisor_input_prompt_rendered"]
     assert "Me interesa, pero quiero verificar papeles." in meta["advisor_input_prompt_rendered"]
+    assert meta["advisor_input_prompt_rendered"].count("[system]") == 1
+    assert meta["advisor_input_prompt_rendered"].count("[human]") == 1
 
 
 def test_advisor_world_full_json_is_compact(monkeypatch):
