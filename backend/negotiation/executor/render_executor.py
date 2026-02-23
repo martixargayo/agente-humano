@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from copy import deepcopy
 from typing import Any, Dict, List
 
@@ -12,6 +13,7 @@ from ..elementos.render.executor_prompts import (
     EXECUTOR_SYSTEM_PROMPT,
     EXECUTOR_USER_PROMPT,
 )
+from ..llm_planning_context import build_executor_context_block_full
 from ..elementos.render.render_contracts import RENDER_LIMITS
 from ..schemas import ExecutorOutput, RenderConstraints
 
@@ -188,6 +190,7 @@ def _safe_neutral_fallback() -> str:
 
 def normalize_executor_output(raw: object) -> ExecutorOutput:
     base: ExecutorOutput = {
+        "schema_version": "executor_v2",
         "response_text": "",
         "asked_question": False,
         "requested_info_slots": [],
@@ -235,6 +238,60 @@ def normalize_executor_output(raw: object) -> ExecutorOutput:
     return base
 
 
+def _enforce_executor_v2_contract(payload: ExecutorOutput, style_contract: dict, constraints_struct: dict) -> ExecutorOutput:
+    out = dict(payload)
+    text = str(out.get("response_text", "")).strip()
+    max_words = int(style_contract.get("max_words", 30) or 30)
+    if len(text.split()) > max_words:
+        text = " ".join(text.split()[:max_words]).strip()
+    max_questions = int(style_contract.get("max_questions", 1) or 1)
+    if text.count("?") > max_questions:
+        text = "?".join(text.split("?")[: max_questions + 1]).strip()
+        if max_questions > 0 and not text.endswith("?"):
+            text = text.rstrip(" .") + "?"
+    if any(line.strip().startswith(("-", "*")) for line in text.splitlines()) or "**" in text or "#" in text:
+        text = text.replace("*", "").replace("#", "").replace("\n", " ").strip()
+    lowered = text.lower()
+    leaks_detected = any(token in lowered for token in ["batna", "presupuesto máximo", "8000", "ocho mil"])
+    leaks_detected = leaks_detected or bool(re.search(r"\b8[\.\s]?000\b", text, flags=re.IGNORECASE))
+    leaks_detected = leaks_detected or bool(re.search(r"\b8k\b", text, flags=re.IGNORECASE))
+    if leaks_detected:
+        text = "Prefiero centrarnos en el estado real del coche y los papeles para avanzar con seguridad."
+    out["response_text"] = text
+    asked = "?" in text
+    out["asked_question"] = asked
+    slots = out.get("requested_info_slots", []) if isinstance(out.get("requested_info_slots"), list) else []
+    cleaned_slots = [str(x).strip() for x in slots if str(x).strip()]
+    if asked and not cleaned_slots:
+        cleaned_slots = ["detalle_verificable"]
+    if not asked:
+        cleaned_slots = []
+    out["requested_info_slots"] = cleaned_slots[:1]
+    out["schema_version"] = "executor_v2"
+    return normalize_executor_output(out)
+
+
+def extract_last_counterparty_utterance(state: dict) -> str:
+    direct = str(state.get("last_counterparty_utterance", "") or "").strip()
+    if direct:
+        return direct
+
+    recent_history = str(state.get("recent_history_text", "") or "")
+    if recent_history:
+        lines = [line.strip() for line in recent_history.splitlines() if line.strip()]
+        for line in reversed(lines):
+            lower = line.lower()
+            if lower.startswith("vendedor:") or lower.startswith("don joaquín:") or lower.startswith("don joaquín:"):
+                return line
+
+    user_message = str(state.get("user_message", "") or "").strip()
+    if user_message:
+        lower_user = user_message.lower()
+        if lower_user.startswith("vendedor:") or lower_user.startswith("don joaquín:") or lower_user.startswith("don joaquin:"):
+            return user_message
+    return ""
+
+
 def render_executor_output(
     state: dict,
     *,
@@ -271,27 +328,27 @@ def render_executor_output(
         constraints_epistemic = {"epistemic_style": "neutral", "must_hedge": False, "verify_first": False}
 
     prompt = EXECUTOR_USER_PROMPT.format(
-        conversation_mode=conversation_mode,
-        policy_pack_active=policy_pack_active,
-        policy_id=policy_id,
-        micro_goal=strategy_summary.get("micro_goal", ""),
-        risk_posture=strategy_summary.get("risk_posture", ""),
-        why_short=strategy_summary.get("why_short", ""),
-        inputs_used=strategy_summary.get("inputs_used", []),
-        phase_effective=strategy_summary.get("phase_effective", ""),
-        policy_next_hint=strategy_summary.get("policy_next_hint", ""),
-        intent_next_hint=strategy_summary.get("intent_next_hint", ""),
+        full_profiles_block=build_executor_context_block_full(
+            state.get("progress_state", {}),
+            persona_profile=persona,
+            scene_profile=scene,
+            style_contract=style,
+            constraints_struct=constraints,
+        ),
         executor_instruction_json=json.dumps(strategy_summary.get("executor_instruction", {}), ensure_ascii=False),
-        persona_json=json.dumps(persona, ensure_ascii=False),
-        scene_json=json.dumps(scene, ensure_ascii=False),
-        style_json=json.dumps(style, ensure_ascii=False),
-        constraints_json=json.dumps(constraints, ensure_ascii=False),
-        epistemic_contract_json=json.dumps(constraints_epistemic, ensure_ascii=False),
-        memory_block=memory_block,
+        last_counterparty_utterance=extract_last_counterparty_utterance(state),
+        memory_short=str(state.get("short_memory", "") or ""),
+        memory_long=str(state.get("long_memory", "") or ""),
         world_json=json.dumps(world_state, ensure_ascii=False),
-        belief_state_summary=belief_summary_json,
-        belief_summary_truncated=str(belief_summary_truncated).lower(),
-        belief_summary_keys=json.dumps(belief_summary_keys, ensure_ascii=False),
+        belief_json=json.dumps(state.get("belief_state", {}), ensure_ascii=False),
+        planner_output_summary=json.dumps(
+            {
+                "phase": strategy_summary.get("phase_effective", ""),
+                "policy_id": policy_id,
+                "plan_id": str((strategy_summary.get("executor_instruction") or {}).get("plan_id", "")),
+            },
+            ensure_ascii=False,
+        ),
         user_message=user_message,
         output_schema=EXECUTOR_OUTPUT_SCHEMA.strip(),
     )
@@ -304,4 +361,4 @@ def render_executor_output(
     raw = deps.execute(messages)
     text = raw if isinstance(raw, str) else getattr(raw, "content", "")
     data = safe_json_load(text)
-    return normalize_executor_output(data)
+    return _enforce_executor_v2_contract(normalize_executor_output(data), style, constraints)

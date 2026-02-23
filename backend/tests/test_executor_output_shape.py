@@ -71,5 +71,7 @@ def test_executor_prompt_includes_instruction_when_present(monkeypatch):
         },
     }
     executor_node(state)
-    assert "EXECUTOR INSTRUCTION (HIGHEST PRIORITY, authoritative when provided):" in captured["prompt"]
+    assert "B) INSTRUCCION_DEL_PLANNER (PRIORIDAD MAXIMA)" in captured["prompt"]
     assert '"plan_id": "plan_t1"' in captured["prompt"]
+    assert "PERSONA PROFILE (fixed):" not in captured["prompt"]
+    assert "SCENE PROFILE (fixed):" not in captured["prompt"]

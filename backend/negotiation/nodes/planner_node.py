@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import time
 from datetime import datetime, timezone
 
@@ -255,6 +256,7 @@ def phase_policy_planner_node(state: dict) -> dict:
     if not planner_skipped:
         planner_call_meta: dict = {}
         started = time.perf_counter()
+        use_planner_v2 = bool(state.get("use_planner_v2", False)) or os.getenv("USE_PLANNER_V2", "0") == "1"
         try:
             phase_candidate, policy_decision, planner_call_meta = deps.plan_phase_policy(
                 world_state=state["world_state"],
@@ -269,6 +271,10 @@ def phase_policy_planner_node(state: dict) -> dict:
                 recent_context=state.get("recent_history_text", ""),
                 allowed_policy_ids=allowed_all,
                 advisor_recs=state.get("advisor_recs") if isinstance(state.get("advisor_recs"), dict) else {},
+                use_planner_v2=use_planner_v2,
+                judge_result=state.get("policy_plan_judgement") if isinstance(state.get("policy_plan_judgement"), dict) else {},
+                memory_short=str(state.get("short_memory", "") or ""),
+                memory_long=str(state.get("long_memory", "") or ""),
             )
             planner_meta.update(planner_call_meta)
             planner_debug["llm_call"]["planner_llm_called"] = True
@@ -352,7 +358,10 @@ def phase_policy_planner_node(state: dict) -> dict:
     state["policy_post_repair"] = policy_decision
     state["policy_decision"] = policy_decision
     state["planner_meta"] = planner_meta
-    state["executor_instruction"] = _build_executor_instruction(active_plan)
+    if isinstance(planner_meta.get("executor_instruction"), dict) and planner_meta.get("planner_version") == "v2":
+        state["executor_instruction"] = planner_meta.get("executor_instruction")
+    else:
+        state["executor_instruction"] = _build_executor_instruction(active_plan)
     plan_id_after = str((active_plan or {}).get("plan_id", ""))
     step_idx_after = int((active_plan or {}).get("current_step_idx", 0) or 0)
     planner_debug["plan_handling"] = {

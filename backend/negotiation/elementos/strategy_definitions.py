@@ -83,6 +83,46 @@ class PhasePolicyDecisionModel(BaseModel):
     active_plan: PlannerActivePlanModel
 
 
+class PlannerV2StepModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    step_idx: int = Field(default=0, ge=0)
+    goal: str = Field(default="", max_length=220)
+    instruction: str = Field(default="", max_length=320)
+    ask_slots: conlist(str, max_length=1) = Field(default_factory=list)
+    success_criteria: conlist(str, max_length=5) = Field(default_factory=list)
+    stop_conditions: conlist(str, max_length=5) = Field(default_factory=list)
+
+
+class PlannerV2ActivePlanModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    plan_id: str = Field(default="", max_length=64)
+    current_step_idx: int = Field(default=0, ge=0)
+    context_digest: str = Field(default="", max_length=320)
+    steps: conlist(PlannerV2StepModel, min_length=2, max_length=5)
+
+
+class PlannerV2ExecutorInstructionModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    plan_id: str = Field(default="", max_length=64)
+    step_idx: int = Field(default=0, ge=0)
+    instruction: str = Field(default="", max_length=320)
+    ask_slots: conlist(str, max_length=1) = Field(default_factory=list)
+    must_avoid: conlist(str, max_length=8) = Field(default_factory=list)
+    max_questions_per_turn: int = Field(default=1, ge=0, le=1)
+    language: Literal["es"] = "es"
+    style_id: Literal["psyplay_compact"] = "psyplay_compact"
+
+
+class PlannerV2DecisionModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    schema_version: Literal["planner_v2"] = "planner_v2"
+    phase: PHASE_LITERAL
+    recovery_mode: bool = False
+    policy_id: str = ""
+    active_plan: PlannerV2ActivePlanModel
+    executor_instruction: PlannerV2ExecutorInstructionModel
+
+
 INTENT_TYPES = (
     "relationship",
     "closing",
