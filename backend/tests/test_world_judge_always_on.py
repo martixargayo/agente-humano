@@ -93,11 +93,12 @@ def test_world_judge_payload_includes_context_fields_and_evidence_candidates(mon
         progress_state={"no_progress_same_step_turns": 3, "loop_flags": ["continue_loop"]},
     )
     assert captured["payload"] is not None
-    assert '"assistant_last_message": "a"' in captured["payload"]
-    assert '"memory_short": "ms"' in captured["payload"]
-    assert '"memory_long": "ml"' in captured["payload"]
-    assert '"progress_counters"' in captured["payload"]
-    assert '"evidence_candidates"' in captured["payload"]
+    assert "A) BLOQUE_PERFILES_COMPLETOS" in captured["payload"]
+    assert "assistant_last_message: \"a\"" in captured["payload"]
+    assert "memory_short: \"ms\"" in captured["payload"]
+    assert "memory_long: \"ml\"" in captured["payload"]
+    assert "progress_counters_json" in captured["payload"]
+    assert "evidence_candidates_json" in captured["payload"]
 
 
 def test_world_judge_constraint_message_injects_evidence(monkeypatch):

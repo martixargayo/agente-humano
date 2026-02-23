@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from prompts import (
+from .repo_prompts import (
     ADVISOR_SYSTEM_PROMPT,
     ADVISOR_USER_PROMPT,
     ADVISOR_V2_SYSTEM_PROMPT,
@@ -263,7 +263,7 @@ def build_advisor_recs(
         "use_advisor_v2": False,
         "advisor_llm_call_count": 0,
     }
-    use_v2 = os.getenv("USE_ADVISOR_V2", "0") == "1"
+    use_v2 = True
     meta["advisor_prompt_variant"] = "v2" if use_v2 else "v1"
     meta["use_advisor_v2"] = bool(use_v2)
     persona_profile, scene_profile, style_contract, constraints_struct = build_full_roleplay_profiles(progress_state)

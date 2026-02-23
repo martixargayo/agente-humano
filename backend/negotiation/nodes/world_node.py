@@ -37,7 +37,7 @@ from ..llm_planning_context import (
     build_world_full_compact,
     compact_json_for_prompt,
 )
-from prompts import WORLD_JUDGE_V2_SYSTEM_PROMPT, WORLD_JUDGE_V2_USER_PROMPT
+from ..repo_prompts import WORLD_JUDGE_V2_SYSTEM_PROMPT, WORLD_JUDGE_V2_USER_PROMPT
 
 
 _PENDING_PARALLEL_LOCK = threading.Lock()
@@ -631,7 +631,7 @@ def world_judge_llm(
 
     started = time.perf_counter()
     started_wall = datetime.now(timezone.utc).isoformat()
-    use_v2 = os.getenv("USE_WORLD_JUDGE_V2", "0") == "1"
+    use_v2 = True
     model_name = None
     text = ""
     rendered_prompt = ""
