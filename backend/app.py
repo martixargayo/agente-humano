@@ -482,7 +482,12 @@ const activeFilters = new Set(FILTER_NODE_ORDER);
 let expandAll = false;
 
 function pretty(v){ try{return JSON.stringify(v ?? {}, null, 2);}catch{return String(v ?? '');} }
-function ts(v){ return v ? new Date(v).toISOString() : 'NO TIMESTAMPS'; }
+function ts(v){
+  if(v === null || v === undefined || v === '') return 'NO TIMESTAMPS';
+  const normalized = (typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 1e12) ? v * 1000 : v;
+  const d = new Date(normalized);
+  return Number.isNaN(d.getTime()) ? 'NO TIMESTAMPS' : d.toISOString();
+}
 function escapeHtml(v){ return String(v ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
 
 function turnId(evt){

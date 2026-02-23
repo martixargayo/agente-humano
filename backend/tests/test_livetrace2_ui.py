@@ -59,3 +59,9 @@ def test_livetrace2_has_global_and_local_expand_controls():
     assert "expandAll ? 'Contraer todo' : 'Desplegar todo'" in html
     assert 'class="pill local-toggle"' in html
     assert "localExpanded.has(id) ? 'Ocultar' : 'Desplegar'" in html
+
+
+def test_livetrace2_ts_helper_handles_invalid_timestamp_values():
+    html = negotiation_livetrace2_panel()
+    assert "Number.isNaN(d.getTime()) ? 'NO TIMESTAMPS' : d.toISOString()" in html
+    assert "Math.abs(v) < 1e12" in html
