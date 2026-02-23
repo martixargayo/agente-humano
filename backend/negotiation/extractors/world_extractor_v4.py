@@ -8,26 +8,40 @@ from typing import Tuple
 from ..telemetry.llm_usage import extract_llm_usage
 
 WORLD_EXTRACTOR_V4_SYSTEM_PROMPT = """
-You are a strict JSON extractor for negotiation world buckets.
-Return ONLY valid JSON.
-No markdown. No extra keys.
-Do not invent numbers or dates.
+Eres un extractor estricto de JSON para buckets del mundo de una negociación.
+Devuelve SOLO JSON válido.
+Sin markdown. Sin claves extra.
+No inventes números ni fechas.
+Todos los campos item.text deben estar en español.
+Dispones del bloque BACKGROUND_CONTEXT/PERSONA_PUBLIC/SCENE_PUBLIC/STYLE_PUBLIC/CONSTRAINTS_PUBLIC. Úsalo SOLO para desambiguar roles y pronombres y para aplicar guardrails. No inventes detalles.
+BACKGROUND_CONTEXT/PERSONA_PUBLIC/SCENE_PUBLIC/STYLE_PUBLIC/CONSTRAINTS_PUBLIC NO son evidencia del turno. No emitas items basados en esos objetos si el mensaje actual no lo afirma explícitamente.
+CONSTRAINTS_PUBLIC sirve solo como guardrail de comportamiento. NO lo conviertas en items del mundo salvo que el MENSAJE ACTUAL lo afirme explícitamente.
+Si speaker_of_user_message == 'seller', redacta item.text como hecho atribuido al vendedor (ej. 'Don Joaquín (vendedor) dice que...' o 'El vendedor indica que...').
+Si speaker_of_user_message == 'buyer', redacta item.text atribuido al comprador (Carlos).
+Si unknown, mantén item.text neutral sin forzar rol.
+Si el mensaje contiene intercambio (X a cambio de Y / si... entonces...), intenta separar:
+  - concessions: lo que la parte cede (X) si está explícito
+  - requests: lo que la parte pide/condiciona (Y) si está explícito
+  - offers: si no se puede separar, usa una frase de oferta global
+  - context: temporalidad o condición corta (ej. 'hoy', 'si se paga hoy') SOLO si está explícita
+  No inventes X/Y/condición.
 """.strip()
 
 WORLD_EXTRACTOR_V4_USER_PROMPT = """
-Update WORLD in append-mostly mode.
+Actualiza WORLD en modo anexado incremental.
 
 conversation_mode: {conversation_mode}
 turn_idx: {turn_idx}
+{background_block}
 
-CURRENT user_message:
+MENSAJE ACTUAL:
 {user_message}
 
-PREVIOUS world_state (json):
+WORLD_PREVIO (json):
 {prev_world_state_json}
 
-RULES:
-- Output ONLY this JSON schema:
+REGLAS:
+- Devuelve SOLO este esquema JSON:
 {
   "schema_version": "world_extractor_v4",
   "world_buckets_patch": {
@@ -45,23 +59,23 @@ RULES:
   }
 }
 
-item format:
+formato item:
 {
-  "text": "short human sentence useful for a planner",
+  "text": "frase humana breve y útil para planificación",
   "confidence": 0.85,
-  "raw_text": "literal quote from user message",
+  "raw_text": "cita literal del mensaje actual",
   "source_turn": {turn_idx}
 }
 
-- Append-mostly: propose only NEW items from this user message.
-- Do not rewrite prior items.
-- If user expresses a conditional/implicit exchange, add at least one item in offers or concessions.
-- Keep text simple and concise.
-- raw_text is mandatory for every emitted item.
-- confidence is mandatory and must be numeric in [0,1].
-- Use confidence >= 0.60 for emitted items; if confidence would be < 0.60, do not emit that item.
-- Never emit confidence=0 unless the quote explicitly states total uncertainty.
-- If no new information for a bucket, return empty list for that bucket.
+- Propón SOLO items NUEVOS del mensaje actual (sin reescritura histórica).
+- No reescribas items previos.
+- Si el MENSAJE ACTUAL expresa intercambio condicional o implícito, agrega al menos un item en offers o concessions.
+- Mantén text simple y conciso.
+- raw_text es obligatorio en cada item emitido y debe ser cita literal del mensaje del turno.
+- confidence es obligatorio y numérico en [0,1].
+- Usa confidence >= 0.60 para items emitidos; si sería < 0.60, no emitas ese item.
+- Nunca emitas confidence=0 salvo que la cita exprese incertidumbre total de forma explícita.
+- Si no hay información nueva para un bucket, devuelve lista vacía para ese bucket.
 """.strip()
 
 
@@ -128,14 +142,21 @@ def extract_world_patch_llm_v4(
     belief_state: dict,
     conversation_mode: str,
     turn_idx: int,
+    speaker_of_user_message: str = "unknown",
+    persona_profile: dict | None = None,
+    scene_profile: dict | None = None,
+    style_contract: dict | None = None,
+    constraints_struct: dict | None = None,
+    background_block_public: str = "",
 ) -> Tuple[dict, dict]:
-    del belief_state
+    del belief_state, speaker_of_user_message, persona_profile, scene_profile, style_contract, constraints_struct
     dump_started = time.perf_counter()
     prev_world_state_json = json.dumps(prev_world_state or {}, ensure_ascii=False)
     json_dump_prev_ms = int((time.perf_counter() - dump_started) * 1000)
     user_prompt = WORLD_EXTRACTOR_V4_USER_PROMPT
     user_prompt = user_prompt.replace("{conversation_mode}", str(conversation_mode))
     user_prompt = user_prompt.replace("{turn_idx}", str(int(turn_idx)))
+    user_prompt = user_prompt.replace("{background_block}", str(background_block_public or "").strip())
     user_prompt = user_prompt.replace("{user_message}", user_message or "")
     user_prompt = user_prompt.replace("{prev_world_state_json}", prev_world_state_json)
     messages = [

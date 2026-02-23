@@ -222,6 +222,12 @@ def update_world_state(
     extractor_mode: str = "llm",
     conversation_mode: str = "general",
     deps: Any | None = None,
+    speaker_of_user_message: str = "unknown",
+    persona_profile: dict | None = None,
+    scene_profile: dict | None = None,
+    style_contract: dict | None = None,
+    constraints_struct: dict | None = None,
+    background_block_public: str = "",
 ) -> Tuple[WorldState, dict]:
     del recent_history, force_llm, extractor_mode
 
@@ -273,6 +279,12 @@ def update_world_state(
             belief_state,
             conversation_mode,
             turn_idx,
+            speaker_of_user_message=speaker_of_user_message,
+            persona_profile=persona_profile,
+            scene_profile=scene_profile,
+            style_contract=style_contract,
+            constraints_struct=constraints_struct,
+            background_block_public=background_block_public,
         )
         timers["world_json_dump_prev_ms"] = int((extractor_meta or {}).get("world_json_dump_prev_ms", 0) or 0)
         timers["world_extractor_llm_ms"] = int((extractor_meta or {}).get("extractor_llm_latency_ms", 0) or 0)

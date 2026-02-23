@@ -6,6 +6,11 @@ import time
 from datetime import datetime, timezone
 
 from ..extractors.belief_extractor_v1 import extract_belief_state_llm_v1
+from ..llm_background import (
+    build_background_context,
+    build_background_public_block,
+    infer_speaker_of_user_message,
+)
 from ..schemas import default_belief_state, default_progress_state
 from ..state.deps import DEFAULT_DEPS
 from ..telemetry.trace_runtime import record_gate_event, record_llm_call
@@ -80,12 +85,34 @@ def belief_updater_node(state: dict) -> dict:
     else:
         llm_started = time.perf_counter()
         try:
+            progress_state = state.get("progress_state") if isinstance(state.get("progress_state"), dict) else {}
+            persona_profile, scene_profile, style_contract, constraints_struct = build_background_context(progress_state)
+            user_message = state.get("user_message", "")
+            speaker_of_user_message = str(state.get("speaker_of_user_message") or "").strip() or infer_speaker_of_user_message(user_message)
+            background_block_public = build_background_public_block(
+                persona_profile,
+                scene_profile,
+                style_contract,
+                constraints_struct,
+                language="es",
+                task_type="negotiation",
+                domain="mustang67_car_purchase",
+                participants={"buyer": "Carlos", "seller": "Don Joaquín"},
+                speaker_of_user_message=speaker_of_user_message,
+            )
+            belief_turn_idx = int(state.get("turn_count", 0) or ((state.get("world_state") or {}).get("world_state_meta", {}).get("turn_idx", 0) or 0))
             belief_state, llm_meta = extract_belief_state_llm_v1(
                 deps=deps,
-                user_message=state.get("user_message", ""),
+                user_message=user_message,
                 world_state=state.get("world_state", {}),
                 prev_belief_state=prev_belief,
-                turn_idx=int(state.get("turn_count", 0) or 0),
+                turn_idx=belief_turn_idx,
+                speaker_of_user_message=speaker_of_user_message,
+                persona_profile=persona_profile,
+                scene_profile=scene_profile,
+                style_contract=style_contract,
+                constraints_struct=constraints_struct,
+                background_block_public=background_block_public,
             )
             record_llm_call(
                 state,
