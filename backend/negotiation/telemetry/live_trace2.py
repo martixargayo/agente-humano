@@ -275,14 +275,16 @@ def _inject_skipped_llm_nodes(nodes: list[dict[str, Any]]) -> list[dict[str, Any
 
 def _sort_nodes(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
     indexed = list(enumerate(nodes))
+    node_type_priority = {"gate": 0, "llm_call": 1}
 
-    def _key(item: tuple[int, dict[str, Any]]) -> tuple[float, float, str, int]:
+    def _key(item: tuple[int, dict[str, Any]]) -> tuple[float, float, int, str, int]:
         pos, node = item
         start_dt = _parse_ts(node.get("started_at"))
         end_dt = _parse_ts(node.get("ended_at"))
         start_v = start_dt.timestamp() if start_dt else float("inf")
         end_v = end_dt.timestamp() if end_dt else float("inf")
-        return (start_v, end_v, str(node.get("node_name", "")), pos)
+        type_prio = node_type_priority.get(str(node.get("node_type", "")), 9)
+        return (start_v, end_v, type_prio, str(node.get("node_name", "")), pos)
 
     indexed.sort(key=_key)
     out: list[dict[str, Any]] = []
