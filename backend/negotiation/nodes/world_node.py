@@ -21,7 +21,7 @@ from ..mode_inference import update_conversation_mode
 from ..llm_background import (
     build_background_context,
     build_background_public_block,
-    infer_speaker_of_user_message,
+    canonical_speaker_for_turn,
 )
 from ..perception.interaction_signals import _previous_user_message, extract_interaction_signals
 from ..schemas import default_progress_state, default_world_state
@@ -632,15 +632,11 @@ def world_judge_llm(
             persona_profile, scene_profile, style_contract, constraints_struct = build_full_roleplay_profiles(progress_state)
             full_profiles_block = build_judge_context_block_full(progress_state)
             objective_summary = build_objective_summary(objective, scene_profile, persona_profile)
-            speaker_of_last_message = str(
-                (progress_state or {}).get("speaker_of_last_message")
-                or (progress_state or {}).get("speaker_of_user_message")
-                or (state.get("speaker_of_last_message") if isinstance(state, dict) else "")
-                or (state.get("speaker_of_user_message") if isinstance(state, dict) else "")
-                or ""
-            ).strip().lower()
-            if speaker_of_last_message not in {"seller", "buyer"}:
-                speaker_of_last_message = "unknown"
+            speaker_of_last_message = canonical_speaker_for_turn(
+                progress_state=progress_state,
+                state=state,
+                default="seller",
+            )
             world_digest_json = json.dumps(build_world_digest(world_state or {}, world_diff), ensure_ascii=False)
             user_prompt = WORLD_JUDGE_V2_USER_PROMPT.format(
                 full_profiles_block=full_profiles_block,
@@ -712,6 +708,8 @@ def world_judge_llm(
             ),
             "judge_output_text_rendered": str(text),
             "judge_output_payload_raw": candidate,
+            "judge_prompt_variant": "v2" if use_v2 else "v1",
+            "use_world_judge_v2": bool(use_v2),
             **evidence_meta,
         }
     except Exception as exc:
@@ -729,6 +727,8 @@ def world_judge_llm(
             "judge_degraded": True,
             "judge_start_ts": started_wall,
             "judge_end_ts": ended_wall,
+            "judge_prompt_variant": "v2" if use_v2 else "v1",
+            "use_world_judge_v2": bool(use_v2),
         }
 
 
@@ -834,7 +834,11 @@ def world_updater_node(state: dict) -> dict:
             wd = {} if prev_world == ws else diff_world_state(prev_world, ws)
             return ws, wd, extractor_meta_local
         persona_profile, scene_profile, style_contract, constraints_struct = build_background_context(progress_state)
-        speaker_of_user_message = str(state.get("speaker_of_user_message") or "").strip() or infer_speaker_of_user_message(user_message)
+        speaker_of_user_message = canonical_speaker_for_turn(
+            progress_state=progress_state,
+            state=state,
+            default="seller",
+        )
         background_block_public = build_background_public_block(
             persona_profile,
             scene_profile,

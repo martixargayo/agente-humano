@@ -372,6 +372,7 @@ ADVISOR_USER_PROMPT = """
 
 
 WORLD_JUDGE_V2_SYSTEM_PROMPT = """
+WORLD_JUDGE_PROMPT_VARIANT: v2
 Eres world_judge_llm. Evalúas el estado del plan activo y el último intercambio.
 El último mensaje puede venir del vendedor. Usa SPEAKER_OF_LAST_MESSAGE y PARTICIPANTES.
 NO infieras quién habla. Usa SPEAKER_OF_LAST_MESSAGE proporcionado por el sistema.
@@ -463,6 +464,7 @@ I) Recordatorio esquema de salida: JSON v1 exacto, sin claves extra.
 
 
 ADVISOR_V2_SYSTEM_PROMPT = """
+ADVISOR_PROMPT_VARIANT: v2
 Eres advisor estratégico para Carlos (comprador) negociando con Don Joaquín (vendedor).
 Tu trabajo: recomendaciones compactas, priorizadas y realistas.
 NO infieras quién habla. Usa SPEAKER_OF_LAST_MESSAGE proporcionado por el sistema.

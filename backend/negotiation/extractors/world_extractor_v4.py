@@ -135,6 +135,52 @@ def _normalize_item(raw: object, turn_idx: int) -> dict | None:
     }
 
 
+
+
+def _contains_offer_request_pattern(user_message: str) -> bool:
+    text = str(user_message or "").strip().lower()
+    if not text:
+        return False
+    patterns = (
+        "qué me ofreces",
+        "que me ofreces",
+        "¿qué ofreces?",
+        "que ofreces",
+        "qué tienes",
+        "que tienes",
+        "qué me propones",
+        "que me propones",
+    )
+    return any(pattern in text for pattern in patterns)
+
+
+def _ensure_minimum_request_item(*, patch: dict, meta: dict, user_message: str, turn_idx: int) -> None:
+    if not bool(meta.get("negotiation_signal_detected", False)):
+        return
+    requests = patch.get("requests") if isinstance(patch.get("requests"), list) else []
+    if requests:
+        return
+    if not _contains_offer_request_pattern(user_message):
+        return
+    literal = str(user_message or "").strip()
+    if not literal:
+        return
+    requests.append(
+        {
+            "text": "El hablante pide que la otra parte le haga una oferta/propuesta.",
+            "confidence": 0.75,
+            "confidence_defaulted": False,
+            "confidence_source": "postprocess_min_request_rule",
+            "raw_text": literal,
+            "source_turn": int(turn_idx),
+        }
+    )
+    patch["requests"] = requests
+    reasons = list(meta.get("postprocess_reason_codes") or [])
+    reasons.append("minimum_request_from_offer_question")
+    meta["postprocess_reason_codes"] = reasons
+
+
 def extract_world_patch_llm_v4(
     deps,
     user_message: str,
@@ -193,6 +239,12 @@ def extract_world_patch_llm_v4(
     meta.setdefault("extraction_quality", "medium")
     meta["extractor_version"] = "world_extractor_v4"
     meta["schema_version"] = str(data.get("schema_version", ""))
+    _ensure_minimum_request_item(
+        patch=patch,
+        meta=meta,
+        user_message=user_message,
+        turn_idx=turn_idx,
+    )
     total_items = sum(len(items) for items in patch.values())
     defaulted_items = sum(
         1

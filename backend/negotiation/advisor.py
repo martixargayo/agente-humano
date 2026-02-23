@@ -18,6 +18,7 @@ from prompts import (
 )
 from .executor.render_executor import extract_last_counterparty_utterance
 from .llm_clients import get_advisor_llm
+from .llm_background import canonical_speaker_for_turn
 from .llm_planning_context import (
     build_advisor_context_block_full,
     build_belief_digest,
@@ -395,19 +396,19 @@ def build_advisor_recs(
         "advisor_repair_parse_strategy": "",
         "repair_invoke_called": False,
         "advisor_reason_code": "",
+        "advisor_prompt_variant": "",
+        "use_advisor_v2": False,
     }
     use_v2 = os.getenv("USE_ADVISOR_V2", "0") == "1"
+    meta["advisor_prompt_variant"] = "v2" if use_v2 else "v1"
+    meta["use_advisor_v2"] = bool(use_v2)
     persona_profile, scene_profile, style_contract, constraints_struct = build_full_roleplay_profiles(progress_state)
     objective_summary = build_objective_summary(objective, scene_profile, persona_profile)
-    speaker_of_last_message = str(
-        (progress_state or {}).get("speaker_of_last_message")
-        or (progress_state or {}).get("speaker_of_user_message")
-        or (state.get("speaker_of_last_message") if isinstance(state, dict) else "")
-        or (state.get("speaker_of_user_message") if isinstance(state, dict) else "")
-        or ""
-    ).strip().lower()
-    if speaker_of_last_message not in {"seller", "buyer"}:
-        speaker_of_last_message = "unknown"
+    speaker_of_last_message = canonical_speaker_for_turn(
+        progress_state=progress_state,
+        state=state,
+        default="seller",
+    )
     world_diff = (progress_state or {}).get("world_diff") if isinstance((progress_state or {}).get("world_diff"), dict) else {}
     payload = {
         "objective": str(objective or "")[:280],
@@ -432,6 +433,7 @@ def build_advisor_recs(
             {
                 "recent_history": recent_history,
                 "recent_history_text": recent_history,
+                "user_message": user_message,
                 "speaker_of_user_message": speaker_of_last_message,
             }
         ),

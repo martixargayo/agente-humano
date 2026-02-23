@@ -9,14 +9,31 @@ from .schemas import default_constraints_struct
 
 
 def infer_speaker_of_user_message(user_message: str, *, fallback: str = "unknown") -> str:
-    raw = str(user_message or "").strip().lower()
-    if not raw:
-        return fallback
-    if raw.startswith(("vendedor:", "don joaquín:", "don joaquin:", "seller:")):
-        return "seller"
-    if raw.startswith(("comprador:", "carlos:", "buyer:")):
-        return "buyer"
-    return fallback
+    del user_message
+    normalized = str(fallback or "unknown").strip().lower()
+    if normalized in {"seller", "buyer"}:
+        return normalized
+    return "unknown"
+
+
+def canonical_speaker_for_turn(
+    *,
+    progress_state: dict | None,
+    state: dict | None = None,
+    default: str = "seller",
+) -> str:
+    progress = progress_state if isinstance(progress_state, dict) else {}
+    candidate = str(
+        progress.get("speaker_of_user_message")
+        or progress.get("speaker_of_last_message")
+        or ((state or {}).get("speaker_of_user_message") if isinstance(state, dict) else "")
+        or ((state or {}).get("speaker_of_last_message") if isinstance(state, dict) else "")
+        or default
+    ).strip().lower()
+    if candidate in {"seller", "buyer"}:
+        return candidate
+    fallback = str(default or "seller").strip().lower()
+    return fallback if fallback in {"seller", "buyer"} else "seller"
 
 
 def build_background_context(progress_state: dict | None) -> tuple[dict, dict, dict, dict]:

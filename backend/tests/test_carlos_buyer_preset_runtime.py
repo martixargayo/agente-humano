@@ -131,6 +131,9 @@ def test_e2e_runtime_env_preset_applies_to_executor(monkeypatch):
     assert meta["persona_id"] == "buyer_mustang67_v1"
     assert meta["scene_id"] == "mustang67_in_person_viewing"
     assert meta["style_id"] == "psyplay_compact"
+    assert last_state["profile_selected"]["persona_id"] == "buyer_mustang67_v1"
+    assert last_state["profile_selected"]["reason"] in {"forced_by_render_state", "forced_by_domain"}
+    assert last_state["trace_runtime"]["feature_flags"]["WORLD_PARALLELISM_ENABLED"] in {True, False}
 
 
 def test_e2e_explicit_preset_overrides_env_and_reaches_executor(monkeypatch):
