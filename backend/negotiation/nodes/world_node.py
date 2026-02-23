@@ -18,6 +18,11 @@ from ..gate_utils import (
 )
 from ..llm_clients import get_planner_llm
 from ..mode_inference import update_conversation_mode
+from ..llm_background import (
+    build_background_context,
+    build_background_public_block,
+    infer_speaker_of_user_message,
+)
 from ..perception.interaction_signals import _previous_user_message, extract_interaction_signals
 from ..schemas import default_progress_state, default_world_state
 from ..world_state_updater import apply_world_skip_fallback, diff_world_state, update_world_state
@@ -763,6 +768,19 @@ def world_updater_node(state: dict) -> dict:
             }
             wd = {} if prev_world == ws else diff_world_state(prev_world, ws)
             return ws, wd, extractor_meta_local
+        persona_profile, scene_profile, style_contract, constraints_struct = build_background_context(progress_state)
+        speaker_of_user_message = str(state.get("speaker_of_user_message") or "").strip() or infer_speaker_of_user_message(user_message)
+        background_block_public = build_background_public_block(
+            persona_profile,
+            scene_profile,
+            style_contract,
+            constraints_struct,
+            language="es",
+            task_type="negotiation",
+            domain="mustang67_car_purchase",
+            participants={"buyer": "Carlos", "seller": "Don Joaquín"},
+            speaker_of_user_message=speaker_of_user_message,
+        )
         ws, extractor_meta_local = update_world_state(
             prev_world,
             user_message,
@@ -771,6 +789,12 @@ def world_updater_node(state: dict) -> dict:
             turn_count=turn_count,
             conversation_mode=conversation_mode,
             deps=deps,
+            speaker_of_user_message=speaker_of_user_message,
+            persona_profile=persona_profile,
+            scene_profile=scene_profile,
+            style_contract=style_contract,
+            constraints_struct=constraints_struct,
+            background_block_public=background_block_public,
         )
         extractor_meta_local["world_gate_features"] = gate_meta
         extractor_meta_local["extractor_skipped"] = False

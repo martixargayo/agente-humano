@@ -5,6 +5,7 @@ import json
 from typing import Any
 
 from .extractors.belief_extractor_v1 import extract_belief_state_llm_v1
+from .llm_background import infer_speaker_of_user_message
 from .llm_clients import get_belief_llm
 from .schemas import BeliefState, WorldState, default_belief_state
 from .validation import normalize_belief_buckets
@@ -110,6 +111,11 @@ def update_belief_state_compat(
             world_state=world_state,
             prev_belief_state=previous,
             turn_idx=int((world_state or {}).get("world_state_meta", {}).get("turn_idx", 0) or 0),
+            speaker_of_user_message=infer_speaker_of_user_message(user_message),
+            persona_profile={},
+            scene_profile={},
+            style_contract={},
+            constraints_struct={},
         )
         before_fp = _belief_fingerprint(previous)
         after_fp = _belief_fingerprint(belief_state)

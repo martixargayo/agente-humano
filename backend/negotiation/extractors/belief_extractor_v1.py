@@ -12,25 +12,35 @@ _MAX_ITEMS = 8
 _MAX_TEXT = 180
 
 BELIEF_EXTRACTOR_V1_SYSTEM_PROMPT = """
-You are a strict JSON extractor for belief_state v3.
-Return ONLY valid JSON with the exact keys requested.
-No markdown. No comments. No extra top-level keys.
+Eres un extractor estricto de JSON para belief_state v3.
+Devuelve SOLO JSON válido con las claves exactas solicitadas.
+Sin markdown. Sin comentarios. Sin claves extra al nivel superior.
+Todos los campos belief_buckets.*.text deben estar en español.
+Perspectiva: comprador Carlos. Si la evidencia proviene del vendedor (speaker_of_user_message='seller' o items que atribuyen al vendedor), formula hipótesis sobre el vendedor (ej. 'El vendedor podría...' / 'El vendedor parece...'), NO 'User is...' ni frases genéricas en inglés.
+BACKGROUND_CONTEXT/PERSONA_PUBLIC/SCENE_PUBLIC/STYLE_PUBLIC/CONSTRAINTS_PUBLIC NO son evidencia. No crees hipótesis/factores basados solo en esos objetos si no aparecen en world_buckets o en el mensaje actual.
+CONSTRAINTS_PUBLIC es guardrail (qué evitar), no evidencia. No generes hipótesis basadas solo en eso.
+planner_signals son sugerencias. Si no hay evidencia clara, recommended_move='hold' y conflict_risk bajo. No fuerces 'probe' por defecto.
+Usa previous_belief_state_compact para marcar status:
+  - new si no existía antes
+  - active si sigue aplicando
+  - weakening si la evidencia nueva lo debilita
 """.strip()
 
 BELIEF_EXTRACTOR_V1_USER_PROMPT = """
-Build BELIEF STATE v3 from negotiation evidence.
+Construye BELIEF STATE v3 a partir de evidencia de negociación en este turno.
 
 turn_idx: {turn_idx}
-current_user_message:
+{background_block}
+MENSAJE_ACTUAL:
 {user_message}
 
-world_state.world_buckets (top N per bucket):
+world_state.world_buckets (top N por bucket):
 {world_buckets_json}
 
 previous_belief_state_compact:
 {prev_belief_json}
 
-Return ONLY this schema:
+Devuelve SOLO este esquema:
 {{
   "schema_version": "v3",
   "belief_buckets": {{
@@ -47,11 +57,11 @@ Return ONLY this schema:
   }}
 }}
 
-Rules:
-- Use world buckets as primary evidence.
-- strategy_notes are tactical hints only, never the final assistant reply.
-- Keep each text concise.
-- conflict_risk must be numeric [0,1].
+Reglas:
+- Usa world buckets como evidencia principal.
+- strategy_notes son pistas tácticas, nunca la respuesta final del asistente.
+- Mantén cada text conciso.
+- conflict_risk debe ser numérico en [0,1].
 """.strip()
 
 
@@ -141,11 +151,19 @@ def extract_belief_state_llm_v1(
     world_state: dict,
     prev_belief_state: dict,
     turn_idx: int,
+    speaker_of_user_message: str = "unknown",
+    persona_profile: dict | None = None,
+    scene_profile: dict | None = None,
+    style_contract: dict | None = None,
+    constraints_struct: dict | None = None,
+    background_block_public: str = "",
 ) -> tuple[dict, dict]:
+    del speaker_of_user_message, persona_profile, scene_profile, style_contract, constraints_struct
     world_buckets_json = json.dumps(_compact_world_buckets(world_state), ensure_ascii=False)
     prev_belief_json = json.dumps(_compact_prev_belief(prev_belief_state), ensure_ascii=False)
     user_prompt = BELIEF_EXTRACTOR_V1_USER_PROMPT.format(
         turn_idx=int(turn_idx),
+        background_block=str(background_block_public or "").strip(),
         user_message=str(user_message or "")[:1500],
         world_buckets_json=world_buckets_json,
         prev_belief_json=prev_belief_json,
@@ -176,4 +194,3 @@ def extract_belief_state_llm_v1(
         "belief_output_payload_raw": data,
     }
     return belief_state, meta
-
