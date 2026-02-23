@@ -2,9 +2,30 @@ from __future__ import annotations
 
 from datetime import datetime
 import os
+from pathlib import Path
+import socket
 from typing import Any
+from uuid import uuid4
 
 from state import SESSIONS, SessionState
+
+
+_SERVER_INSTANCE_ID = os.getenv("SERVER_INSTANCE_ID") or f"{socket.gethostname()}:{os.getpid()}:{uuid4().hex[:8]}"
+
+
+def _build_git_sha() -> str:
+    env_sha = str(os.getenv("BUILD_GIT_SHA", "")).strip()
+    if env_sha:
+        return env_sha[:64]
+    try:
+        root = Path(__file__).resolve().parents[3]
+        head = (root / ".git" / "HEAD").read_text(encoding="utf-8").strip()
+        if head.startswith("ref:"):
+            ref = head.split(" ", 1)[1].strip()
+            return (root / ".git" / ref).read_text(encoding="utf-8").strip()[:64]
+        return head[:64]
+    except Exception:
+        return "unknown"
 
 
 def _safe_dict(value: Any) -> dict[str, Any]:
@@ -330,6 +351,23 @@ def build_livetrace2_event(*, user_id: str, session_id: str, session: SessionSta
         turn_ended = str(nodes[-1].get("ended_at", "") or "")
 
     total_latency = sum(int(node.get("latency_ms", 0) or 0) for node in nodes)
+    env_snapshot = {
+        "WORLD_PARALLELISM_ENABLED": str(os.getenv("WORLD_PARALLELISM_ENABLED", "")),
+        "ADVISOR_ENABLED": str(os.getenv("ADVISOR_ENABLED", "")),
+        "LIVETRACE2_MODE": str(os.getenv("LIVETRACE2_MODE", "")),
+    }
+    event_identity = {
+        "session_id": session_id,
+        "trace_index": int(trace_index),
+        "turn": turn_idx,
+    }
+    header = {
+        "build_git_sha": _build_git_sha(),
+        "build_version": str(os.getenv("BUILD_VERSION", "")),
+        "server_instance_id": _SERVER_INSTANCE_ID,
+        "env_snapshot": env_snapshot,
+        "event_identity": event_identity,
+    }
 
     return {
         "trace_schema_version": "livetrace2-v1",
@@ -345,6 +383,9 @@ def build_livetrace2_event(*, user_id: str, session_id: str, session: SessionSta
         "updated_at": session.last_updated.isoformat(),
         "input_message": trace_item.get("user_message", ""),
         "final_reply": trace_item.get("assistant_reply", ""),
+        "header": header,
+        "event_identity": event_identity,
+        "trace_debug_markers": trace_item.get("trace_debug_markers") if isinstance(trace_item.get("trace_debug_markers"), list) else [],
         "world_parallelism": trace_item.get("world_parallelism") if isinstance(trace_item.get("world_parallelism"), dict) else {},
         "nodes": nodes,
     }

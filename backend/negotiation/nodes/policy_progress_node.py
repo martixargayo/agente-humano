@@ -7,6 +7,9 @@ from .world_node import flush_world_parallel_pending
 
 def policy_progress_node(state: dict) -> dict:
     flush_world_parallel_pending(state)
+    markers = state.get("trace_debug_markers") if isinstance(state.get("trace_debug_markers"), list) else []
+    markers.append({"marker": "policy_progress_entered_after_flush"})
+    state["trace_debug_markers"] = markers[-64:]
     progress_state = state.get("progress_state", {})
     policy_plan_judgement = state.get("policy_plan_judgement")
     if not isinstance(policy_plan_judgement, dict):

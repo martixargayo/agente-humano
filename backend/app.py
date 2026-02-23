@@ -432,6 +432,7 @@ def negotiation_livetrace2_panel():
     <div>
       <h2 style="margin:0">LiveTrace2 v1</h2>
       <div class="meta-small">Timeline real con ramas por solape temporal, gates y LLMs.</div>
+      <div id="uiDebug" class="meta-small" style="display:none"></div>
     </div>
     <div>
       <span id="conn" class="badge">conectando...</span>
@@ -462,6 +463,7 @@ const kPar = document.getElementById('kPar');
 const kOverlap = document.getElementById('kOverlap');
 const toggleSkipped = document.getElementById('toggleSkipped');
 const expandBtn = document.getElementById('expandBtn');
+const uiDebug = document.getElementById('uiDebug');
 let latest = null;
 let selected = null;
 let expanded = false;
@@ -476,21 +478,36 @@ function sortByTime(nodes){
     if (sa !== sb) return sa - sb;
     const ea = Date.parse(a.ended_at || '') || Number.MAX_SAFE_INTEGER;
     const eb = Date.parse(b.ended_at || '') || Number.MAX_SAFE_INTEGER;
-    return ea - eb;
+    if (ea !== eb) return ea - eb;
+    const ta = String(a.node_type || '');
+    const tb = String(b.node_type || '');
+    const pa = ta === 'gate' ? 0 : 1;
+    const pb = tb === 'gate' ? 0 : 1;
+    if (pa !== pb) return pa - pb;
+    return (Number(a.sequence_index || 0) - Number(b.sequence_index || 0));
   });
 }
 
 function layoutNodes(nodes){
   const sorted = sortByTime(nodes);
-  const byName = new Map(sorted.map((n)=>[n.node_name, n]));
   const col1Order = [
     'world_gate', 'world_extractor_llm', 'belief_gate', 'belief_llm', 'planner_gate', 'planner_llm', 'executor_llm'
   ];
 
+  const used = new Set();
   const col1 = [];
-  for(const name of col1Order){ if(byName.has(name)) col1.push(byName.get(name)); }
-  const leftovers = sorted.filter((n)=>!col1Order.includes(n.node_name) && !['world_judge_llm','advisor_llm'].includes(n.node_name));
-  col1.push(...leftovers);
+  for(const name of col1Order){
+    for(const node of sorted){
+      if(used.has(node.node_id)) continue;
+      if(node.node_name === name){ col1.push(node); used.add(node.node_id); }
+    }
+  }
+  for(const node of sorted){
+    if(used.has(node.node_id)) continue;
+    if(['world_judge_llm','advisor_llm'].includes(node.node_name)) continue;
+    col1.push(node);
+    used.add(node.node_id);
+  }
 
   const positioned = [];
   let row = 1;
@@ -503,14 +520,40 @@ function layoutNodes(nodes){
   const plannerStartRow = plannerAnchor ? plannerAnchor._row : Math.max(2, row);
   const parallelSpan = Math.max(1, plannerStartRow);
 
-  const judge = byName.get('world_judge_llm');
-  if(judge){ positioned.push({...judge, _lane: 2, _row: 1, _span: parallelSpan}); }
+  const judgeNodes = sorted.filter((n)=>n.node_name === 'world_judge_llm');
+  for(const judge of judgeNodes){
+    if(used.has(judge.node_id)) continue;
+    positioned.push({...judge, _lane: 2, _row: 1, _span: parallelSpan});
+    used.add(judge.node_id);
+  }
 
-  const advisor = byName.get('advisor_llm');
-  if(advisor){ positioned.push({...advisor, _lane: 3, _row: 1, _span: parallelSpan}); }
+  const advisorNodes = sorted.filter((n)=>n.node_name === 'advisor_llm');
+  for(const advisor of advisorNodes){
+    if(used.has(advisor.node_id)) continue;
+    positioned.push({...advisor, _lane: 3, _row: 1, _span: parallelSpan});
+    used.add(advisor.node_id);
+  }
 
   return positioned.sort((a,b)=>a.sequence_index-b.sequence_index);
 }
+
+function computeHiddenNodesMeta(allNodes, visibleNodes, layoutNodesOut){
+  const hiddenByFilter = Math.max(0, (allNodes||[]).length - (visibleNodes||[]).length);
+  const hiddenByLayout = Math.max(0, (visibleNodes||[]).length - (layoutNodesOut||[]).length);
+  const layoutIds = new Set((layoutNodesOut||[]).map((n)=>String(n.node_id||'')));
+  const hiddenByLayoutNames = (visibleNodes||[])
+    .filter((n)=>!layoutIds.has(String(n.node_id||'')))
+    .map((n)=>String(n.node_name||'unknown'));
+  return {
+    all_nodes_count: (allNodes||[]).length,
+    visible_nodes_count: (visibleNodes||[]).length,
+    hidden_nodes_count: hiddenByFilter + hiddenByLayout,
+    hidden_by_filter: hiddenByFilter,
+    hidden_by_layout: hiddenByLayout,
+    hidden_node_names: hiddenByLayoutNames,
+  };
+}
+
 
 function detail(node){
   const input = node.input_prompt_rendered || (node.input_payload_raw == null ? 'NOT_CAPTURED' : pretty(node.input_payload_raw));
@@ -544,12 +587,27 @@ function render(){
   kOverlap.textContent = `sum=${wp.sum_ms ?? '-'} · critical=${wp.critical_path_ms ?? '-'} · overlap=${wp.overlap_ms ?? '-'}`;
 
   grid.innerHTML = '';
-  if(nodes.length !== allNodes.length){
+  const hiddenMeta = computeHiddenNodesMeta(allNodes, visibleNodes, nodes);
+  if(hiddenMeta.hidden_nodes_count > 0){
+    const reasons = [];
+    if(hiddenMeta.hidden_by_filter > 0) reasons.push(`filtro=${hiddenMeta.hidden_by_filter}`);
+    if(hiddenMeta.hidden_by_layout > 0) reasons.push(`layout=${hiddenMeta.hidden_by_layout}`);
+    const names = hiddenMeta.hidden_node_names.length ? ` · hidden=${hiddenMeta.hidden_node_names.join(',')}` : '';
     const warn = document.createElement('div');
     warn.className = 'meta-small';
     warn.style.gridColumn = '1 / span 3';
-    warn.textContent = `⚠️ Se ocultaron ${allNodes.length - nodes.length} nodos en layout. Revisa filtros/tipos.`;
+    warn.textContent = `⚠️ Se ocultaron ${hiddenMeta.hidden_nodes_count} nodos (${reasons.join(' + ') || 'unknown'}).${names}`;
     grid.appendChild(warn);
+  }
+  const mode = String(latest?.header?.env_snapshot?.LIVETRACE2_MODE || '').toLowerCase();
+  if(uiDebug){
+    if(mode === 'internal'){
+      uiDebug.style.display = 'block';
+      uiDebug.textContent = `debug ui: all=${hiddenMeta.all_nodes_count} visible=${hiddenMeta.visible_nodes_count} hidden=${hiddenMeta.hidden_nodes_count} (filter=${hiddenMeta.hidden_by_filter},layout=${hiddenMeta.hidden_by_layout})`;
+    } else {
+      uiDebug.style.display = 'none';
+      uiDebug.textContent = '';
+    }
   }
   for(const node of nodes){
     const el = document.createElement('div');
