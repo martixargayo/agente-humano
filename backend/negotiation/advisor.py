@@ -1,13 +1,114 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import re
 import time
+import os
 from datetime import datetime, timezone
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from prompts import ADVISOR_SYSTEM_PROMPT, ADVISOR_USER_PROMPT
 from .llm_clients import get_planner_llm
+
+
+def _advisor_output_diagnostics(text: str) -> dict:
+    raw = str(text or "")
+    mode = str(os.getenv("LIVETRACE2_MODE", "public") or "public").strip().lower()
+    head = raw[:300]
+    tail = raw[-300:] if len(raw) > 300 else raw
+    if mode == "public":
+        head = head[:120]
+        tail = tail[:120]
+    return {
+        "advisor_output_text_sha256": hashlib.sha256(raw.encode("utf-8", errors="ignore")).hexdigest(),
+        "advisor_output_text_snippet_head": head,
+        "advisor_output_text_snippet_tail": tail,
+        "advisor_output_text_len": len(raw),
+    }
+
+
+def _extract_first_balanced_object(text: str) -> str | None:
+    s = str(text or "")
+    start = s.find("{")
+    if start < 0:
+        return None
+    depth = 0
+    in_string = False
+    escape = False
+    for idx in range(start, len(s)):
+        ch = s[idx]
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return s[start : idx + 1]
+    return None
+
+
+def _robust_json_parse(text: str) -> tuple[dict | None, str]:
+    raw = str(text or "")
+    candidates: list[tuple[str, str]] = [(raw, "raw")]
+    extracted = _extract_first_balanced_object(raw)
+    if extracted and extracted != raw:
+        candidates.append((extracted, "balanced_object"))
+    if extracted:
+        no_trailing = re.sub(r",\s*([}\]])", r"\1", extracted)
+        if no_trailing != extracted:
+            candidates.append((no_trailing, "balanced_object_without_trailing_commas"))
+        single_to_double = re.sub(r"'([^'\\]*(?:\\.[^'\\]*)*)'", r'"\1"', no_trailing)
+        if single_to_double != no_trailing:
+            candidates.append((single_to_double, "balanced_object_single_quotes_fixed"))
+
+    for candidate, strategy in candidates:
+        try:
+            parsed = json.loads(candidate)
+            if isinstance(parsed, dict):
+                return parsed, strategy
+        except Exception:
+            continue
+    return None, "json_parse_failed"
+
+
+def _retry_repair_json(*, broken_text: str, payload: dict) -> tuple[dict | None, str]:
+    repair_messages = [
+        SystemMessage(
+            content=(
+                "Devuelve SOLO JSON válido (sin markdown ni texto extra) con schema: "
+                "{diagnosis:list[str], loop_or_waste_flags:list[str], recommended_moves:list[object], "
+                "guardrails:list[object], do_not_do:list[str], suggested_utterances:list[str]}"
+            )
+        ),
+        HumanMessage(
+            content=json.dumps(
+                {
+                    "task": "repair_json",
+                    "invalid_json": str(broken_text or "")[-3500:],
+                    "context_payload": payload,
+                },
+                ensure_ascii=False,
+            )
+        ),
+    ]
+    repair_raw = get_planner_llm().invoke(repair_messages)
+    repair_text = getattr(repair_raw, "content", str(repair_raw))
+    parsed, strategy = _robust_json_parse(str(repair_text))
+    if isinstance(parsed, dict):
+        return parsed, f"repair_retry:{strategy}"
+    return None, "repair_failed"
 
 
 def _compact_world_summary(world_state: dict) -> dict:
@@ -137,7 +238,15 @@ def build_advisor_recs(
         meta["advisor_llm_called"] = True
         text = getattr(raw, "content", str(raw))
         meta["advisor_error_stage"] = "json_parse"
-        parsed = json.loads(text)
+        parsed, parse_strategy = _robust_json_parse(str(text))
+        if not isinstance(parsed, dict):
+            meta["advisor_error_stage"] = "repair_retry"
+            repaired, repair_strategy = _retry_repair_json(broken_text=str(text), payload=payload)
+            if isinstance(repaired, dict):
+                parsed = repaired
+                parse_strategy = repair_strategy
+            else:
+                raise json.JSONDecodeError("advisor_invalid_json_after_repair", str(text), 0)
         recs = _normalize_advisor(parsed)
         ended_wall = datetime.now(timezone.utc).isoformat()
         meta["advisor_ok"] = True
@@ -153,8 +262,11 @@ def build_advisor_recs(
             ),
             "advisor_output_text_rendered": str(text),
             "advisor_output_payload_raw": recs,
+            "advisor_parse_strategy": parse_strategy,
         }
     except Exception as exc:
+        text = locals().get("text", "")
+        diagnostics = _advisor_output_diagnostics(str(text))
         ended_wall = datetime.now(timezone.utc).isoformat()
         meta["advisor_error"] = f"{exc.__class__.__name__}: {str(exc)}"[:220]
         meta["advisor_error_type"] = exc.__class__.__name__
@@ -170,5 +282,7 @@ def build_advisor_recs(
                 "error_type": meta.get("advisor_error_type", "unknown"),
                 "error_message": meta.get("advisor_error", "unknown_error"),
                 "stage": meta.get("advisor_error_stage", "unknown"),
+                **diagnostics,
             },
+            **diagnostics,
         }

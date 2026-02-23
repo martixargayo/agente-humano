@@ -14,6 +14,8 @@ from negotiation.nodes import world_node
 from negotiation.nodes.belief_node import belief_updater_node
 from negotiation.nodes.policy_progress_node import policy_progress_node
 from negotiation.nodes.planner_node import phase_policy_planner_node
+from negotiation import advisor as advisor_module
+from negotiation.negotiation_graph import NegotiationTurn
 from state import SessionState
 
 
@@ -827,3 +829,105 @@ def test_planner_gate_emission_contract():
     out = phase_policy_planner_node(state)
     planner_gates = [x for x in out["trace_runtime"]["gate_events"] if x.get("name") == "planner_gate"]
     assert len(planner_gates) == 1, f"expected single planner_gate, got={planner_gates}"
+
+
+def test_state_schema_keeps_world_parallelism_and_markers():
+    fields = getattr(NegotiationTurn, "__annotations__", {})
+    assert "world_parallelism" in fields
+    assert "trace_debug_markers" in fields
+    assert "_pending_world_parallel" in fields
+    assert "world_parallel_pending_key" in fields
+
+
+def test_debug_trace_includes_world_parallelism_and_markers():
+    trace_item = _base_trace_item()
+    trace_item["world_parallelism"] = {"enabled": True, "mode": "thread_pool", "sum_ms": 11}
+    trace_item["trace_debug_markers"] = [{"marker": "world_parallel_scheduled_at"}]
+    trace_item["trace_state_probe"] = {"has_world_parallelism": True, "trace_debug_markers_count": 1}
+    assert trace_item["world_parallelism"]["enabled"] is True
+    assert trace_item["trace_debug_markers"][0]["marker"] == "world_parallel_scheduled_at"
+
+
+def test_event_header_reason_code(monkeypatch):
+    monkeypatch.setenv("LIVETRACE2_MODE", "internal")
+    session = SessionState(user_id="u", session_id="s")
+    session.last_updated = datetime(2026, 1, 2, tzinfo=timezone.utc)
+
+    trace_missing = _base_trace_item()
+    event_missing = build_livetrace2_event(user_id="u", session_id="s", session=session, trace_index=0, trace_item=trace_missing)
+    assert event_missing["header"]["world_parallelism_reason_code"] in {"missing_in_trace_item", "computed_from_llm_calls_fallback"}
+
+    trace_with_calls = _base_trace_item()
+    trace_with_calls["trace_runtime"]["llm_calls"] = [
+        {"name": "world_extractor_llm", "status": "ok", "latency_ms": 7, "start_ts": "2026-01-01T00:00:00+00:00", "end_ts": "2026-01-01T00:00:00.007000+00:00"},
+        {"name": "world_judge_llm", "status": "ok", "latency_ms": 12, "start_ts": "2026-01-01T00:00:00+00:00", "end_ts": "2026-01-01T00:00:00.012000+00:00"},
+        {"name": "advisor_llm", "status": "ok", "latency_ms": 10, "start_ts": "2026-01-01T00:00:00+00:00", "end_ts": "2026-01-01T00:00:00.010000+00:00"},
+    ]
+    event_fallback = build_livetrace2_event(user_id="u", session_id="s", session=session, trace_index=1, trace_item=trace_with_calls)
+    assert event_fallback["header"]["world_parallelism_reason_code"] == "computed_from_llm_calls_fallback"
+
+
+def test_event_parallelism_computed_when_missing():
+    session = SessionState(user_id="u", session_id="s")
+    session.last_updated = datetime(2026, 1, 2, tzinfo=timezone.utc)
+    trace_item = _base_trace_item()
+    trace_item["trace_runtime"]["llm_calls"] = [
+        {"name": "world_extractor_llm", "status": "ok", "latency_ms": 8, "start_ts": "2026-01-01T00:00:00+00:00", "end_ts": "2026-01-01T00:00:00.008000+00:00"},
+        {"name": "world_judge_llm", "status": "ok", "latency_ms": 20, "start_ts": "2026-01-01T00:00:00+00:00", "end_ts": "2026-01-01T00:00:00.020000+00:00"},
+        {"name": "advisor_llm", "status": "ok", "latency_ms": 6, "start_ts": "2026-01-01T00:00:00+00:00", "end_ts": "2026-01-01T00:00:00.006000+00:00"},
+    ]
+    event = build_livetrace2_event(user_id="u", session_id="s", session=session, trace_index=0, trace_item=trace_item)
+    assert event["world_parallelism"]["enabled"] is True
+    assert event["world_parallelism"]["mode"] == "computed_from_llm_calls"
+    assert event["world_parallelism"]["overlap_ms"] >= 0
+
+
+class _FakeRaw:
+    def __init__(self, content: str):
+        self.content = content
+
+
+class _FakeLLM:
+    def __init__(self, outputs: list[str]):
+        self.outputs = list(outputs)
+
+    def invoke(self, _messages):
+        if not self.outputs:
+            return _FakeRaw("{}")
+        return _FakeRaw(self.outputs.pop(0))
+
+
+def test_advisor_invalid_json_produces_diagnostics(monkeypatch):
+    monkeypatch.setattr(advisor_module, "get_planner_llm", lambda: _FakeLLM(["{diagnosis: [oops], }"]))
+    recs, meta = advisor_module.build_advisor_recs(
+        objective="o", recent_history="h", memory_short="", memory_long="", active_plan={}, progress_state={}, world_state={}, belief_state={}
+    )
+    assert recs == advisor_module._normalize_advisor({})
+    assert meta["advisor_error_stage"] in {"repair_retry", "json_parse"}
+    payload = meta.get("advisor_output_payload_raw") or {}
+    assert payload.get("error_type")
+    assert payload.get("stage")
+    assert payload.get("advisor_output_text_sha256")
+    assert isinstance(payload.get("advisor_output_text_snippet_head"), str)
+    assert isinstance(payload.get("advisor_output_text_snippet_tail"), str)
+
+
+def test_advisor_repair_parse_success(monkeypatch):
+    monkeypatch.setattr(advisor_module, "get_planner_llm", lambda: _FakeLLM(["{'diagnosis':['ok'], 'do_not_do': [],}"]))
+    recs, meta = advisor_module.build_advisor_recs(
+        objective="o", recent_history="h", memory_short="", memory_long="", active_plan={}, progress_state={}, world_state={}, belief_state={}
+    )
+    assert meta["advisor_ok"] is True
+    assert recs["diagnosis"] == ["ok"]
+    assert "single_quotes_fixed" in str(meta.get("advisor_parse_strategy", ""))
+
+
+def test_advisor_retry_repair_success(monkeypatch):
+    fake = _FakeLLM(["not-json", '{"diagnosis":["fixed"]}'])
+    monkeypatch.setattr(advisor_module, "get_planner_llm", lambda: fake)
+    recs, meta = advisor_module.build_advisor_recs(
+        objective="o", recent_history="h", memory_short="", memory_long="", active_plan={}, progress_state={}, world_state={}, belief_state={}
+    )
+    assert meta["advisor_ok"] is True
+    assert recs["diagnosis"] == ["fixed"]
+    assert str(meta.get("advisor_parse_strategy", "")).startswith("repair_retry:")
