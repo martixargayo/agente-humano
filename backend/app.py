@@ -450,6 +450,11 @@ def negotiation_livetrace2_panel():
     <div class="panel timeline-scroll"><div id="timelineGrid"></div></div>
     <div class="panel" id="right"><div class="meta-small">Selecciona un nodo.</div></div>
   </div>
+  <div class="panel" style="margin-top:12px; min-height:auto;">
+    <h3 style="margin:0 0 8px 0; font-size:14px;">Historial de turnos</h3>
+    <div class="meta-small" style="margin-bottom:8px;">Se apilan de más nuevo a más antiguo. Abre cada desplegable para ver el turno completo.</div>
+    <div id="turnHistory"><div class="meta-small">Aún no hay turnos recibidos.</div></div>
+  </div>
 </div>
 <button id="expandBtn" class="fixed-btn">Desplegar todo</button>
 <script>
@@ -461,10 +466,12 @@ const kTurn = document.getElementById('kTurn');
 const kLatency = document.getElementById('kLatency');
 const kPar = document.getElementById('kPar');
 const kOverlap = document.getElementById('kOverlap');
+const turnHistory = document.getElementById('turnHistory');
 const toggleSkipped = document.getElementById('toggleSkipped');
 const expandBtn = document.getElementById('expandBtn');
 const uiDebug = document.getElementById('uiDebug');
 let latest = null;
+let historyByTurn = new Map();
 let selected = null;
 let expanded = false;
 
@@ -569,6 +576,27 @@ function renderExpanded(nodes){
   right.innerHTML = nodes.map((node)=>`<div class="node" style="margin-bottom:10px"><div class="row"><strong>${node.sequence_index}. ${node.node_name}</strong><span>${node.latency_ms||0} ms</span></div>${detail(node)}</div>`).join('');
 }
 
+function renderTurnHistory(){
+  const turns = [...historyByTurn.values()].sort((a,b)=>{
+    const tb = Number(b.turn_idx || 0);
+    const ta = Number(a.turn_idx || 0);
+    if(tb !== ta) return tb - ta;
+    return Number(b.trace_index || 0) - Number(a.trace_index || 0);
+  });
+  if(!turns.length){
+    turnHistory.innerHTML = '<div class="meta-small">Aún no hay turnos recibidos.</div>';
+    return;
+  }
+  turnHistory.innerHTML = turns.map((evt)=>{
+    const nodeCount = (evt.nodes || []).length;
+    const startedAt = ts(evt.started_at);
+    const endedAt = ts(evt.ended_at);
+    const detailsOpen = evt.trace_index === latest?.trace_index ? ' open' : '';
+    const safeEvent = pretty(evt).replaceAll('<','&lt;');
+    return `<details${detailsOpen} style="margin-top:0;margin-bottom:8px"><summary>Turno ${evt.turn_idx} · trace #${evt.trace_index} · ${nodeCount} nodos · ${evt.total_latency_ms} ms</summary><pre>${safeEvent}</pre><div class="meta-small" style="padding-bottom:8px">${startedAt} → ${endedAt}</div></details>`;
+  }).join('');
+}
+
 function render(){
   if(!latest){ grid.innerHTML = '<div class="meta-small">Esperando trazas...</div>'; return; }
   const allNodes = latest.nodes || [];
@@ -632,7 +660,13 @@ expandBtn.onclick = () => {
 const es = new EventSource('/negociacion/livetrace2/stream');
 es.addEventListener('open', () => { conn.textContent='conectado'; conn.className='badge ok'; });
 es.addEventListener('error', () => { conn.textContent='reconectando'; conn.className='badge'; });
-es.addEventListener('trace2', (event) => { latest = JSON.parse(event.data); selected = null; render(); });
+es.addEventListener('trace2', (event) => {
+  latest = JSON.parse(event.data);
+  historyByTurn.set(String(latest.turn_idx), latest);
+  selected = null;
+  render();
+  renderTurnHistory();
+});
 toggleSkipped.onchange = () => render();
 </script>
 </body>
