@@ -29,6 +29,15 @@ from ..world_state_updater import apply_world_skip_fallback, diff_world_state, u
 from ..telemetry.trace_runtime import record_gate_event, record_llm_call_ms, record_node_phase_ms
 from ..telemetry.llm_usage import extract_llm_usage
 from ..advisor import build_advisor_recs
+from ..llm_planning_context import (
+    build_full_roleplay_profiles,
+    build_judge_context_block_full,
+    build_objective_summary,
+    build_world_digest,
+    build_world_full_compact,
+    compact_json_for_prompt,
+)
+from prompts import WORLD_JUDGE_V2_SYSTEM_PROMPT, WORLD_JUDGE_V2_USER_PROMPT
 
 
 _PENDING_PARALLEL_LOCK = threading.Lock()
@@ -567,8 +576,10 @@ def world_judge_llm(
     memory_short: str = "",
     memory_long: str = "",
     progress_state: dict | None = None,
+    state: dict | None = None,
 ) -> tuple[dict, dict]:
     current_step = None
+    success_criteria_list: list[str] = []
     if isinstance(active_plan, dict):
         steps = list(active_plan.get("steps", []))
         cur = int(active_plan.get("current_step_idx", 0) or 0)
@@ -576,7 +587,18 @@ def world_judge_llm(
             cur = max(0, min(cur, len(steps) - 1))
             if isinstance(steps[cur], dict):
                 current_step = steps[cur]
+                raw_sc = (current_step or {}).get("success_criteria")
+                if isinstance(raw_sc, list):
+                    success_criteria_list = [str(x).strip() for x in raw_sc if str(x).strip()]
+                elif isinstance(raw_sc, str) and raw_sc.strip():
+                    success_criteria_list = [raw_sc.strip()]
     progress_state = progress_state or {}
+    world_diff = progress_state.get("world_diff") if isinstance(progress_state.get("world_diff"), dict) else {}
+    evidence_candidates = _build_evidence_candidates(
+        str(user_message or ""),
+        str(assistant_last_message or ""),
+        str(recent_history or ""),
+    )
     payload = {
         "turn_idx": turn_count,
         "objective": str(objective or "")[:240],
@@ -594,11 +616,7 @@ def world_judge_llm(
             "plan_id_changes_window": int(progress_state.get("plan_id_changes_window", 0) or 0),
             "loop_flags": list(progress_state.get("loop_flags", []) or []),
         },
-        "evidence_candidates": _build_evidence_candidates(
-            str(user_message or ""),
-            str(assistant_last_message or ""),
-            str(recent_history or ""),
-        ),
+        "evidence_candidates": evidence_candidates,
         "world_state_summary": {
             "world_buckets": (world_state or {}).get("world_buckets", {}),
             "world_state_meta": (world_state or {}).get("world_state_meta", {}),
@@ -607,12 +625,49 @@ def world_judge_llm(
 
     started = time.perf_counter()
     started_wall = datetime.now(timezone.utc).isoformat()
+    use_v2 = os.getenv("USE_WORLD_JUDGE_V2", "0") == "1"
     try:
         model = get_planner_llm()
-        messages = [
-            SystemMessage(content=_WORLD_JUDGE_SYSTEM_PROMPT),
-            HumanMessage(content=json.dumps(payload, ensure_ascii=False)),
-        ]
+        if use_v2:
+            persona_profile, scene_profile, style_contract, constraints_struct = build_full_roleplay_profiles(progress_state)
+            full_profiles_block = build_judge_context_block_full(progress_state)
+            objective_summary = build_objective_summary(objective, scene_profile, persona_profile)
+            speaker_of_last_message = str(
+                (progress_state or {}).get("speaker_of_last_message")
+                or (progress_state or {}).get("speaker_of_user_message")
+                or (state.get("speaker_of_last_message") if isinstance(state, dict) else "")
+                or (state.get("speaker_of_user_message") if isinstance(state, dict) else "")
+                or ""
+            ).strip().lower()
+            if speaker_of_last_message not in {"seller", "buyer"}:
+                speaker_of_last_message = "unknown"
+            world_digest_json = json.dumps(build_world_digest(world_state or {}, world_diff), ensure_ascii=False)
+            user_prompt = WORLD_JUDGE_V2_USER_PROMPT.format(
+                full_profiles_block=full_profiles_block,
+                objective_summary=objective_summary,
+                speaker_of_last_message=speaker_of_last_message,
+                active_plan_json=json.dumps(active_plan if isinstance(active_plan, dict) else {}, ensure_ascii=False),
+                current_step_json=json.dumps(current_step or {}, ensure_ascii=False),
+                success_criteria_json=json.dumps(success_criteria_list, ensure_ascii=False),
+                user_message=json.dumps(str(user_message or "")[:1000], ensure_ascii=False),
+                assistant_last_message=json.dumps(str(assistant_last_message or "")[:1000], ensure_ascii=False),
+                recent_history_text=json.dumps(str(recent_history or "")[-1200:], ensure_ascii=False),
+                memory_short=json.dumps(str(memory_short or "")[-1200:], ensure_ascii=False),
+                memory_long=json.dumps(str(memory_long or "")[-1200:], ensure_ascii=False),
+                world_digest_json=world_digest_json,
+                world_full_json=compact_json_for_prompt(build_world_full_compact(world_state or {}), max_chars=8000),
+                progress_counters_json=json.dumps(payload["progress_counters"], ensure_ascii=False),
+                evidence_candidates_json=json.dumps(evidence_candidates, ensure_ascii=False),
+            )
+            messages = [
+                SystemMessage(content=WORLD_JUDGE_V2_SYSTEM_PROMPT),
+                HumanMessage(content=user_prompt),
+            ]
+        else:
+            messages = [
+                SystemMessage(content=_WORLD_JUDGE_SYSTEM_PROMPT),
+                HumanMessage(content=json.dumps(payload, ensure_ascii=False)),
+            ]
         raw = model.invoke(messages)
         ended_wall = datetime.now(timezone.utc).isoformat()
         llm_usage = extract_llm_usage(raw)
@@ -626,6 +681,16 @@ def world_judge_llm(
             payload=payload,
             progress_state=progress_state,
         )
+        if use_v2 and speaker_of_last_message == "unknown":
+            normalized["degraded"] = True
+            normalized["degrade_reason"] = "missing_speaker_role"
+            normalized["skip_planner"] = False
+            original_why = str(normalized.get("why", "") or "")
+            prefix = "Falta rol del hablante; decisión conservadora. "
+            if not original_why.startswith(prefix):
+                normalized["why"] = f"{prefix}{original_why}".strip()
+            if normalized.get("plan_status") != "interrupted_replan":
+                normalized["plan_status"] = "continue_same_step"
         return normalized, {
             "judge_error_type": "",
             "judge_retry_count": 0,
@@ -815,6 +880,7 @@ def world_updater_node(state: dict) -> dict:
             memory_short=state.get("short_memory", ""),
             memory_long=state.get("long_memory", ""),
             progress_state=progress_state,
+            state=state,
         )
 
     def _run_advisor() -> tuple[dict, dict]:
@@ -834,6 +900,8 @@ def world_updater_node(state: dict) -> dict:
             progress_state=progress_state,
             world_state=prev_world,
             belief_state=state.get("belief_state", {}),
+            user_message=state.get("user_message", ""),
+            state=state,
         )
 
     judgement: dict | None = None

@@ -111,24 +111,42 @@ def _build_full_context_block(
     scene_profile: dict | None = None,
     style_contract: dict | None = None,
     constraints_struct: dict | None = None,
+    perspectiva: str | None = None,
 ) -> str:
     if not all(isinstance(x, dict) for x in [persona_profile, scene_profile, style_contract, constraints_struct]):
         persona_profile, scene_profile, style_contract, constraints_struct = build_full_roleplay_profiles(progress_state)
-    return "\n".join(
-        [
-            "BLOQUE_PERFILES_COMPLETOS:",
-            f"PERSONA_PROFILE_JSON: {json.dumps(persona_profile, ensure_ascii=False)}",
-            f"ESCENA_PROFILE_JSON: {json.dumps(scene_profile, ensure_ascii=False)}",
-            f"STYLE_CONTRACT_JSON: {json.dumps(style_contract, ensure_ascii=False)}",
-            f"CONSTRAINTS_STRUCT_JSON: {json.dumps(constraints_struct, ensure_ascii=False)}",
-            'PARTICIPANTES: {"buyer":"Carlos","seller":"Don Joaquín"}',
-            "IDIOMA: es",
-        ]
-    ).strip()
+    lines = [
+        "BLOQUE_PERFILES_COMPLETOS:",
+        f"PERSONA_PROFILE_JSON: {json.dumps(persona_profile, ensure_ascii=False)}",
+        f"ESCENA_PROFILE_JSON: {json.dumps(scene_profile, ensure_ascii=False)}",
+        f"STYLE_CONTRACT_JSON: {json.dumps(style_contract, ensure_ascii=False)}",
+        f"CONSTRAINTS_STRUCT_JSON: {json.dumps(constraints_struct, ensure_ascii=False)}",
+        'PARTICIPANTES: {"buyer":"Carlos","seller":"Don Joaquín"}',
+    ]
+    if str(perspectiva or "").strip():
+        lines.append(f"PERSPECTIVA: {str(perspectiva).strip()}")
+    lines.append("IDIOMA: es")
+    return "\n".join(lines).strip()
 
 
 def build_planner_context_block_full(progress_state: dict | None) -> str:
     return _build_full_context_block(progress_state)
+
+
+def build_judge_context_block_full(progress_state: dict | None) -> str:
+    persona_profile, scene_profile, style_contract, constraints_struct = build_full_roleplay_profiles(progress_state)
+    return _build_full_context_block(
+        progress_state,
+        persona_profile=persona_profile,
+        scene_profile=scene_profile,
+        style_contract=style_contract,
+        constraints_struct=constraints_struct,
+        perspectiva="buyer",
+    )
+
+
+def build_advisor_context_block_full(progress_state: dict | None) -> str:
+    return build_judge_context_block_full(progress_state)
 
 
 def build_executor_context_block_full(
@@ -177,6 +195,43 @@ def build_objective_summary(objective: str, scene_profile: dict, persona_profile
     goals = ((persona_profile.get("role_card") or {}).get("goals") if isinstance(persona_profile, dict) else []) or []
     goals_compact = "; ".join(str(g).strip() for g in goals[:2] if str(g).strip())
     return f"{macro_goal}. Metas inmediatas: {goals_compact}".strip(" .")
+
+
+def infer_speaker_of_last_message(*, user_message: str, recent_history_text: str, fallback: str = "unknown") -> str:
+    history = str(recent_history_text or "")
+    last_line = ""
+    if history:
+        lines = [line.strip() for line in history.splitlines() if line.strip()]
+        if lines:
+            last_line = lines[-1]
+    probes = [last_line, str(user_message or "").strip()]
+    for text in probes:
+        lowered = text.lower()
+        if lowered.startswith("vendedor:") or lowered.startswith("don joaquín:"):
+            return "seller"
+        if lowered.startswith("comprador:") or lowered.startswith("carlos:"):
+            return "buyer"
+    return str(fallback or "unknown") or "unknown"
+
+
+def build_world_full_compact(world_state: dict, *, top_n: int = 6) -> dict:
+    state = world_state if isinstance(world_state, dict) else {}
+    buckets = state.get("world_buckets") if isinstance(state.get("world_buckets"), dict) else {}
+    compact_buckets: dict[str, list] = {}
+    for key, value in buckets.items():
+        if isinstance(value, list):
+            compact_buckets[str(key)] = value[:top_n]
+    return {
+        "world_state_meta": state.get("world_state_meta", {}) if isinstance(state.get("world_state_meta"), dict) else {},
+        "world_buckets": compact_buckets,
+    }
+
+
+def compact_json_for_prompt(payload: dict, *, max_chars: int = 8000) -> str:
+    text = json.dumps(payload if isinstance(payload, dict) else {}, ensure_ascii=False)
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars]
 
 
 def map_constraints_to_must_avoid(constraints_struct: dict) -> list[str]:
