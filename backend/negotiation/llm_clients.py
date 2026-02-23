@@ -36,6 +36,13 @@ def get_advisor_llm() -> ChatOpenAI:
     if advisor_model:
         kwargs["model"] = advisor_model
     kwargs["temperature"] = float(os.getenv("NEGOTIATION_ADVISOR_TEMPERATURE", "0") or 0)
+    kwargs["max_tokens"] = int(
+        os.getenv(
+            "NEGOTIATION_ADVISOR_MAX_TOKENS",
+            str(max(int(kwargs.get("max_tokens", 0) or 0), 520)),
+        )
+        or 520
+    )
     return ChatOpenAI(**kwargs)
 
 @lru_cache(maxsize=1)

@@ -99,6 +99,51 @@ def _json_error_details(text: str) -> dict:
         return {"json_error_msg": f"non_json_decode_error:{exc.__class__.__name__}"}
 
 
+def _extract_first_balanced_json_object(text: str) -> str:
+    raw = str(text or "")
+    start = raw.find("{")
+    if start < 0:
+        return ""
+    in_string = False
+    escape = False
+    depth = 0
+    for idx in range(start, len(raw)):
+        ch = raw[idx]
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+            continue
+        if ch == "{":
+            depth += 1
+            continue
+        if ch == "}":
+            depth -= 1
+            if depth == 0:
+                return raw[start : idx + 1]
+    return raw[start:]
+
+
+def _close_json_structures_locally(text: str) -> str:
+    raw = str(text or "").strip()
+    if not raw:
+        return raw
+    fixed = raw
+    missing_brackets = max(0, fixed.count("[") - fixed.count("]"))
+    if missing_brackets:
+        fixed = f"{fixed}{']' * missing_brackets}"
+    missing_braces = max(0, fixed.count("{") - fixed.count("}"))
+    if missing_braces:
+        fixed = f"{fixed}{'}' * missing_braces}"
+    return fixed
+
+
 def _advisor_output_diagnostics(text: str, *, prefix: str = "advisor_output") -> dict:
     raw = str(text or "")
     mode = str(os.getenv("LIVETRACE2_MODE", "public") or "public").strip().lower()
@@ -323,9 +368,20 @@ def build_advisor_recs(
         parse_strategy = ""
         llm = get_advisor_llm()
         meta["advisor_model"] = getattr(llm, "model_name", None) or getattr(llm, "model", None)
-        raw = llm.invoke(messages)
+        response_format_mode = ""
+        llm_for_invoke = llm
+        if os.getenv("NEGOTIATION_ADVISOR_RESPONSE_FORMAT", "json_object").strip().lower() == "json_object":
+            try:
+                llm_for_invoke = llm.bind(response_format={"type": "json_object"})
+                response_format_mode = "json_object"
+            except Exception:
+                llm_for_invoke = llm
+                response_format_mode = "unsupported"
+
+        raw = llm_for_invoke.invoke(messages)
         meta["advisor_llm_called"] = True
         meta["advisor_llm_call_count"] = 1
+        meta["advisor_response_format_mode"] = response_format_mode
         text = getattr(raw, "content", str(raw))
         initial_diag = _advisor_output_diagnostics(str(text), prefix="advisor_initial_output")
 
@@ -339,9 +395,31 @@ def build_advisor_recs(
                 meta["advisor_error_stage"] = "schema_invalid"
                 meta["advisor_reason_code"] = "advisor_output_not_object"
         except Exception:
-            parse_error = _json_error_details(str(text))
-            meta["advisor_error_stage"] = "parse_failed"
-            meta["advisor_reason_code"] = "advisor_invalid_json"
+            raw_text = str(text)
+            repaired = _escape_newlines_inside_strings(raw_text)
+            extracted = _extract_first_balanced_json_object(repaired)
+            closed = _close_json_structures_locally(extracted or repaired)
+            parse_strategy = ""
+            for candidate, strategy_name in [
+                (repaired, "json_loads_escaped_newlines"),
+                (extracted, "json_loads_balanced_object"),
+                (closed, "json_loads_balanced_closed"),
+            ]:
+                if not str(candidate).strip():
+                    continue
+                try:
+                    loaded = json.loads(str(candidate))
+                except Exception:
+                    continue
+                if isinstance(loaded, dict):
+                    parsed = loaded
+                    parse_strategy = strategy_name
+                    meta["advisor_local_repair_applied"] = strategy_name
+                    break
+            if not isinstance(parsed, dict):
+                parse_error = _json_error_details(raw_text)
+                meta["advisor_error_stage"] = "parse_failed"
+                meta["advisor_reason_code"] = "advisor_invalid_json"
 
         if isinstance(parsed, dict):
             recs = _normalize_advisor(parsed)
