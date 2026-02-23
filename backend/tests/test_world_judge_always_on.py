@@ -12,8 +12,11 @@ class _FakeModel:
     def __init__(self, content: str = "", raises: bool = False):
         self._content = content
         self._raises = raises
+        self.calls = 0
+        self.model_name = "fake-judge-model"
 
     def invoke(self, _messages):
+        self.calls += 1
         if self._raises:
             raise RuntimeError("judge_down")
         return _FakeResp(self._content)
@@ -203,3 +206,39 @@ def test_world_judge_loop_forces_interrupted_replan(monkeypatch):
     )
     assert judgement["plan_status"] == "interrupted_replan"
     assert judgement["degrade_reason"] == "loop_same_step_threshold"
+
+
+def test_world_judge_invalid_json_single_call_fallback(monkeypatch):
+    fake = _FakeModel(content='{"bad_json"')
+    monkeypatch.setattr("negotiation.nodes.world_node.get_planner_llm", lambda: fake)
+    judgement, meta = world_judge_llm(
+        active_plan={"plan_id": "p1", "current_step_idx": 0, "steps": [{}]},
+        user_message="hola",
+        objective="obj",
+        world_state={},
+        recent_history="",
+        turn_count=1,
+    )
+    assert fake.calls == 1
+    assert judgement["degraded"] is True
+    assert meta["judge_llm_call_count"] == 1
+    assert meta["judge_retry_count"] == 0
+    assert meta["judge_error_stage"] == "parse_failed"
+
+
+def test_world_judge_invalid_schema_single_call_fallback(monkeypatch):
+    fake = _FakeModel(content='["bad"]')
+    monkeypatch.setattr("negotiation.nodes.world_node.get_planner_llm", lambda: fake)
+    judgement, meta = world_judge_llm(
+        active_plan={"plan_id": "p1", "current_step_idx": 0, "steps": [{}]},
+        user_message="hola",
+        objective="obj",
+        world_state={},
+        recent_history="",
+        turn_count=1,
+    )
+    assert fake.calls == 1
+    assert judgement["degraded"] is True
+    assert meta["judge_llm_call_count"] == 1
+    assert meta["judge_retry_count"] == 0
+    assert meta["judge_error_stage"] == "schema_invalid"

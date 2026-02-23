@@ -41,23 +41,23 @@ class _FakeJudgeLLM:
         )
 
 
-class _FakeStructuredAdvisor:
-    def invoke(self, _messages):
-        return {
-            "diagnosis": ["ok"],
-            "loop_or_waste_flags": [],
-            "recommended_moves": [{"title": "t", "why": "w", "how": "h"}],
-            "guardrails": [{"if": "si", "then": "entonces"}],
-            "do_not_do": [],
-            "suggested_utterances": ["Perfecto, revisemos papeles."],
-        }
-
-
 class _FakeAdvisorLLM:
     model_name = "fake"
 
-    def with_structured_output(self, _schema):
-        return _FakeStructuredAdvisor()
+    def invoke(self, _messages):
+        return _FakeResponse(
+            json.dumps(
+                {
+                    "diagnosis": ["ok"],
+                    "loop_or_waste_flags": [],
+                    "recommended_moves": [{"title": "t", "why": "w", "how": "h"}],
+                    "guardrails": [{"if": "si", "then": "entonces"}],
+                    "do_not_do": [],
+                    "suggested_utterances": ["Perfecto, revisemos papeles."],
+                },
+                ensure_ascii=False,
+            )
+        )
 
 
 def test_context_blocks_include_perspectiva_buyer():

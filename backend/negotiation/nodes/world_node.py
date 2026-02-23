@@ -115,7 +115,7 @@ def _apply_judge_advisor_results(
             node="world_updater",
             latency_ms=int(advisor_meta.get("advisor_latency_ms", 0) or 0),
             ok=bool(advisor_meta.get("advisor_ok", False)),
-            model=None,
+            model=advisor_meta.get("advisor_model"),
             retry_count=0,
             error_stage=str(advisor_meta.get("advisor_error_stage") or ("llm_invoke" if advisor_meta.get("advisor_error") else "")),
             error=str(advisor_meta.get("advisor_error", "")),
@@ -125,6 +125,9 @@ def _apply_judge_advisor_results(
             output_text_rendered=str(advisor_meta.get("advisor_output_text_rendered", "")),
             input_payload_raw=advisor_meta.get("advisor_input_payload_raw"),
             output_payload_raw=advisor_meta.get("advisor_output_payload_raw"),
+            prompt_variant=advisor_meta.get("advisor_prompt_variant"),
+            payload_chars=advisor_meta.get("advisor_payload_chars"),
+            llm_call_count=advisor_meta.get("advisor_llm_call_count"),
         )
     else:
         now_iso = datetime.now(timezone.utc).isoformat()
@@ -172,7 +175,7 @@ def _apply_judge_advisor_results(
         tokens_in=judge_meta.get("judge_tokens_in"),
         tokens_out=judge_meta.get("judge_tokens_out"),
         retry_count=int(judge_meta.get("judge_retry_count", 0) or 0),
-        error_stage="llm_invoke" if judge_meta.get("judge_error_type") else "",
+        error_stage=str(judge_meta.get("judge_error_stage", "") or ("llm_exception" if judge_meta.get("judge_error_type") else "")),
         error=str(judge_meta.get("judge_error_type", "")),
         start_ts=judge_meta.get("judge_start_ts"),
         end_ts=judge_meta.get("judge_end_ts"),
@@ -182,6 +185,9 @@ def _apply_judge_advisor_results(
         output_text_rendered=str(judge_meta.get("judge_output_text_rendered", "")),
         input_payload_raw=judge_meta.get("judge_input_payload_raw"),
         output_payload_raw=judge_meta.get("judge_output_payload_raw"),
+        prompt_variant=judge_meta.get("judge_prompt_variant"),
+        payload_chars=judge_meta.get("judge_payload_chars"),
+        llm_call_count=judge_meta.get("judge_llm_call_count"),
     )
 
     extractor_meta = state.get("extractor_meta") if isinstance(state.get("extractor_meta"), dict) else {}
@@ -626,8 +632,12 @@ def world_judge_llm(
     started = time.perf_counter()
     started_wall = datetime.now(timezone.utc).isoformat()
     use_v2 = os.getenv("USE_WORLD_JUDGE_V2", "0") == "1"
+    model_name = None
+    text = ""
+    rendered_prompt = ""
     try:
         model = get_planner_llm()
+        model_name = getattr(model, "model_name", None) or getattr(model, "model", None)
         if use_v2:
             persona_profile, scene_profile, style_contract, constraints_struct = build_full_roleplay_profiles(progress_state)
             full_profiles_block = build_judge_context_block_full(progress_state)
@@ -664,6 +674,9 @@ def world_judge_llm(
                 SystemMessage(content=_WORLD_JUDGE_SYSTEM_PROMPT),
                 HumanMessage(content=json.dumps(payload, ensure_ascii=False)),
             ]
+        rendered_prompt = "\n\n".join(
+            f"[{getattr(msg, 'type', 'user')}]\n{str(getattr(msg, 'content', ''))}" for msg in messages
+        )
         raw = model.invoke(messages)
         ended_wall = datetime.now(timezone.utc).isoformat()
         llm_usage = extract_llm_usage(raw)
@@ -689,12 +702,14 @@ def world_judge_llm(
                 normalized["plan_status"] = "continue_same_step"
         return normalized, {
             "judge_error_type": "",
+            "judge_error_stage": "",
             "judge_retry_count": 0,
+            "judge_llm_call_count": 1,
             "judge_latency_ms": int((time.perf_counter() - started) * 1000),
             "judge_degraded": bool(normalized.get("degraded", False)),
             "judge_start_ts": started_wall,
             "judge_end_ts": ended_wall,
-            "judge_model": llm_usage.get("model"),
+            "judge_model": llm_usage.get("model") or model_name,
             "judge_tokens_in": llm_usage.get("tokens_in"),
             "judge_tokens_out": llm_usage.get("tokens_out"),
             "judge_queue_ms": llm_usage.get("queue_ms"),
@@ -710,6 +725,11 @@ def world_judge_llm(
             "judge_output_payload_raw": candidate,
             "judge_prompt_variant": "v2" if use_v2 else "v1",
             "use_world_judge_v2": bool(use_v2),
+            "judge_payload_chars": len(
+                "\n\n".join(
+                    f"[{getattr(msg, 'type', 'user')}]\n{str(getattr(msg, 'content', ''))}" for msg in messages
+                )
+            ),
             **evidence_meta,
         }
     except Exception as exc:
@@ -720,15 +740,26 @@ def world_judge_llm(
             turn_count=turn_count,
             degrade_reason=str(exc)[:80] or "judge_llm_exception",
         )
+        error_stage = "llm_exception"
+        if isinstance(exc, json.JSONDecodeError):
+            error_stage = "parse_failed"
+        elif isinstance(exc, ValueError) and "judge_invalid_json_shape" in str(exc):
+            error_stage = "schema_invalid"
         return fallback, {
             "judge_error_type": exc.__class__.__name__,
-            "judge_retry_count": 1,
+            "judge_error_stage": error_stage,
+            "judge_retry_count": 0,
+            "judge_llm_call_count": 1,
             "judge_latency_ms": int((time.perf_counter() - started) * 1000),
             "judge_degraded": True,
             "judge_start_ts": started_wall,
             "judge_end_ts": ended_wall,
             "judge_prompt_variant": "v2" if use_v2 else "v1",
             "use_world_judge_v2": bool(use_v2),
+            "judge_model": model_name,
+            "judge_input_prompt_rendered": rendered_prompt,
+            "judge_output_text_rendered": str(text),
+            "judge_payload_chars": len(rendered_prompt),
         }
 
 

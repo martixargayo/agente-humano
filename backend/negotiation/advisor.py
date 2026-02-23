@@ -2,13 +2,11 @@ from __future__ import annotations
 
 import json
 import hashlib
-import re
 import time
 import os
 from datetime import datetime, timezone
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from pydantic import BaseModel, Field
 
 from prompts import (
     ADVISOR_SYSTEM_PROMPT,
@@ -28,26 +26,6 @@ from .llm_planning_context import (
     build_world_full_compact,
     compact_json_for_prompt,
 )
-
-
-class AdvisorMove(BaseModel):
-    title: str = ""
-    why: str = ""
-    how: str = ""
-
-
-class AdvisorGuardrail(BaseModel):
-    if_: str = Field(default="", alias="if")
-    then: str = ""
-
-
-class AdvisorStructuredPayload(BaseModel):
-    diagnosis: list[str] = Field(default_factory=list)
-    loop_or_waste_flags: list[str] = Field(default_factory=list)
-    recommended_moves: list[AdvisorMove] = Field(default_factory=list)
-    guardrails: list[AdvisorGuardrail] = Field(default_factory=list)
-    do_not_do: list[str] = Field(default_factory=list)
-    suggested_utterances: list[str] = Field(default_factory=list)
 
 
 def _find_unescaped_newline_in_string(text: str) -> bool:
@@ -154,164 +132,6 @@ def _advisor_output_diagnostics(text: str, *, prefix: str = "advisor_output") ->
     return details
 
 
-def _extract_first_balanced_object(text: str) -> str | None:
-    s = str(text or "")
-    start = s.find("{")
-    if start < 0:
-        return None
-    depth = 0
-    in_string = False
-    escape = False
-    for idx in range(start, len(s)):
-        ch = s[idx]
-        if in_string:
-            if escape:
-                escape = False
-            elif ch == "\\":
-                escape = True
-            elif ch == '"':
-                in_string = False
-            continue
-        if ch == '"':
-            in_string = True
-            continue
-        if ch == "{":
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-            if depth == 0:
-                return s[start : idx + 1]
-    return None
-
-
-def _robust_json_parse(text: str) -> tuple[dict | None, str]:
-    raw = str(text or "").lstrip("\ufeff")
-    first_brace = raw.find("{")
-    if first_brace > 0:
-        raw = raw[first_brace:]
-    candidates: list[tuple[str, str]] = [(raw, "raw")]
-
-    if _find_unescaped_newline_in_string(raw):
-        candidates.append((_escape_newlines_inside_strings(raw), "raw_newlines_escaped"))
-
-    extracted = _extract_first_balanced_object(raw)
-    if extracted and extracted != raw:
-        candidates.append((extracted, "balanced_object"))
-    if extracted:
-        no_trailing = re.sub(r",\s*([}\]])", r"\1", extracted)
-        if no_trailing != extracted:
-            candidates.append((no_trailing, "balanced_object_without_trailing_commas"))
-        single_to_double = re.sub(r"'([^'\\]*(?:\\.[^'\\]*)*)'", r'"\1"', no_trailing)
-        if single_to_double != no_trailing:
-            candidates.append((single_to_double, "balanced_object_single_quotes_fixed"))
-
-    seen: set[str] = set()
-    for candidate, strategy in candidates:
-        if candidate in seen:
-            continue
-        seen.add(candidate)
-        try:
-            parsed = json.loads(candidate)
-            if isinstance(parsed, dict):
-                return parsed, strategy
-        except Exception:
-            continue
-    return None, "json_parse_failed"
-
-
-def _invoke_json_mode(messages: list, llm) -> tuple[str, str]:
-    json_system = SystemMessage(
-        content=(
-            "Return ONLY valid JSON object. No markdown, no prose, no prefix. "
-            "All string values must be single-line (no raw newlines). "
-            "Keep concise: diagnosis<=4, loop_or_waste_flags<=4, recommended_moves<=3, "
-            "guardrails<=3, do_not_do<=4, suggested_utterances<=3."
-        )
-    )
-    raw = llm.bind(response_format={"type": "json_object"}).invoke([json_system, *messages])
-    return getattr(raw, "content", str(raw)), "json_mode"
-
-
-def _retry_repair_json(
-    *,
-    broken_text: str,
-    payload: dict,
-    parse_error: dict,
-    initial_diagnostics: dict,
-    llm,
-) -> tuple[dict | None, str, str, dict]:
-    repair_messages = [
-        SystemMessage(
-            content=(
-                "Devuelve SOLO JSON válido (sin markdown ni texto extra). "
-                "No repitas el texto original si está roto. "
-                "Si el error indica truncación o desbalanceo, reemite el objeto completo y corto."
-            )
-        ),
-        HumanMessage(
-            content=json.dumps(
-                {
-                    "task": "repair_json",
-                    "invalid_json": str(broken_text or "")[-3500:],
-                    "json_error": parse_error,
-                    "invalid_json_diagnostics": initial_diagnostics,
-                    "schema": {
-                        "diagnosis": ["str"],
-                        "loop_or_waste_flags": ["str"],
-                        "recommended_moves": [{"title": "str", "why": "str", "how": "str"}],
-                        "guardrails": [{"if": "str", "then": "str"}],
-                        "do_not_do": ["str"],
-                        "suggested_utterances": ["str"],
-                    },
-                    "context_payload": payload,
-                },
-                ensure_ascii=False,
-            )
-        ),
-    ]
-    repair_input_prompt_rendered = "\n\n".join(
-        f"[{getattr(msg, 'type', 'user')}]\n{str(getattr(msg, 'content', ''))}" for msg in repair_messages
-    )
-    repair_raw = llm.invoke(repair_messages)
-    repair_text = getattr(repair_raw, "content", str(repair_raw))
-    parsed, strategy = _robust_json_parse(str(repair_text))
-    extra = {
-        "repair_invoke_called": True,
-        "advisor_repair_input_prompt_rendered": repair_input_prompt_rendered,
-    }
-    if isinstance(parsed, dict):
-        return parsed, f"repair_retry:{strategy}", str(repair_text), extra
-
-    if hashlib.sha256(str(repair_text).encode("utf-8", errors="ignore")).hexdigest() == hashlib.sha256(
-        str(broken_text).encode("utf-8", errors="ignore")
-    ).hexdigest():
-        extra["advisor_reason_code"] = "repair_same_as_initial"
-
-    try:
-        forced_text, mode = _invoke_json_mode(repair_messages, llm)
-        forced_messages = [
-            SystemMessage(
-                content=(
-                    "Return ONLY valid JSON object. No markdown, no prose, no prefix. "
-                    "All string values must be single-line (no raw newlines). "
-                    "Keep concise: diagnosis<=4, loop_or_waste_flags<=4, recommended_moves<=3, "
-                    "guardrails<=3, do_not_do<=4, suggested_utterances<=3."
-                )
-            ),
-            *repair_messages,
-        ]
-        extra["advisor_repair_json_mode_input_prompt_rendered"] = "\n\n".join(
-            f"[{getattr(msg, 'type', 'user')}]\n{str(getattr(msg, 'content', ''))}" for msg in forced_messages
-        )
-        forced_parsed, forced_strategy = _robust_json_parse(forced_text)
-        if isinstance(forced_parsed, dict):
-            return forced_parsed, f"repair_retry:{mode}:{forced_strategy}", forced_text, extra
-    except Exception as exc:
-        extra["advisor_repair_json_mode_error"] = f"{exc.__class__.__name__}:{str(exc)[:80]}"
-
-    return None, "repair_failed", str(repair_text), extra
-
-
 def _compact_world_summary(world_state: dict) -> dict:
     buckets = (world_state or {}).get("world_buckets", {}) if isinstance(world_state, dict) else {}
     return {
@@ -393,11 +213,10 @@ def build_advisor_recs(
         "advisor_error_stage": "",
         "advisor_llm_called": False,
         "advisor_parse_strategy": "",
-        "advisor_repair_parse_strategy": "",
-        "repair_invoke_called": False,
         "advisor_reason_code": "",
         "advisor_prompt_variant": "",
         "use_advisor_v2": False,
+        "advisor_llm_call_count": 0,
     }
     use_v2 = os.getenv("USE_ADVISOR_V2", "0") == "1"
     meta["advisor_prompt_variant"] = "v2" if use_v2 else "v1"
@@ -500,83 +319,44 @@ def build_advisor_recs(
 
     try:
         text = ""
-        repair_text = ""
-        initial_diag: dict = {}
-        repair_diag: dict = {}
         parse_error: dict = {}
         parse_strategy = ""
-        repair_parse_strategy = ""
-        parsed: dict | None = None
-
         llm = get_advisor_llm()
         meta["advisor_model"] = getattr(llm, "model_name", None) or getattr(llm, "model", None)
+        raw = llm.invoke(messages)
+        meta["advisor_llm_called"] = True
+        meta["advisor_llm_call_count"] = 1
+        text = getattr(raw, "content", str(raw))
+        initial_diag = _advisor_output_diagnostics(str(text), prefix="advisor_initial_output")
 
-        meta["advisor_error_stage"] = "structured_output"
-        structured_error = ""
+        parsed: dict | None = None
         try:
-            structured = llm.with_structured_output(AdvisorStructuredPayload)
-            structured_result = structured.invoke(messages)
-            meta["advisor_llm_called"] = True
-            if isinstance(structured_result, AdvisorStructuredPayload):
-                parsed = structured_result.model_dump(by_alias=True)
-            elif hasattr(structured_result, "model_dump"):
-                parsed = structured_result.model_dump(by_alias=True)
-            elif isinstance(structured_result, dict):
-                parsed = structured_result
-            parse_strategy = "structured_output"
-        except Exception as exc:
-            structured_error = f"{exc.__class__.__name__}: {str(exc)[:160]}"
-
-        if not isinstance(parsed, dict):
-            meta["advisor_error_stage"] = "json_mode"
-            try:
-                text, parse_strategy = _invoke_json_mode(messages, llm)
-                meta["advisor_llm_called"] = True
-                initial_diag = _advisor_output_diagnostics(str(text), prefix="advisor_initial_output")
-                parse_error = _json_error_details(str(text))
-                parsed, robust_strategy = _robust_json_parse(str(text))
-                parse_strategy = f"{parse_strategy}:{robust_strategy}"
-            except Exception:
-                meta["advisor_error_stage"] = "llm_invoke"
-                raw = llm.invoke(messages)
-                meta["advisor_llm_called"] = True
-                text = getattr(raw, "content", str(raw))
-                initial_diag = _advisor_output_diagnostics(str(text), prefix="advisor_initial_output")
-                parse_error = _json_error_details(str(text))
-                meta["advisor_error_stage"] = "json_parse"
-                parsed, parse_strategy = _robust_json_parse(str(text))
-
-        if not isinstance(parsed, dict):
-            meta["advisor_error_stage"] = "repair_retry"
-            repaired, repair_strategy, repair_text, repair_extra = _retry_repair_json(
-                broken_text=str(text),
-                payload=payload,
-                parse_error=parse_error,
-                initial_diagnostics=initial_diag,
-                llm=llm,
-            )
-            repair_parse_strategy = repair_strategy
-            repair_diag = _advisor_output_diagnostics(str(repair_text), prefix="advisor_repair_output")
-            if repair_extra.get("repair_invoke_called"):
-                meta["repair_invoke_called"] = True
-            if repair_extra.get("advisor_reason_code"):
-                meta["advisor_reason_code"] = str(repair_extra.get("advisor_reason_code"))
-            if repair_extra.get("advisor_repair_json_mode_error"):
-                meta["advisor_repair_json_mode_error"] = str(repair_extra.get("advisor_repair_json_mode_error"))
-            if isinstance(repaired, dict):
-                parsed = repaired
-                parse_strategy = repair_strategy
+            loaded = json.loads(str(text))
+            parse_strategy = "json_loads"
+            if isinstance(loaded, dict):
+                parsed = loaded
             else:
-                raise json.JSONDecodeError("advisor_invalid_json_after_repair", str(repair_text), 0)
+                meta["advisor_error_stage"] = "schema_invalid"
+                meta["advisor_reason_code"] = "advisor_output_not_object"
+        except Exception:
+            parse_error = _json_error_details(str(text))
+            meta["advisor_error_stage"] = "parse_failed"
+            meta["advisor_reason_code"] = "advisor_invalid_json"
 
-        recs = _normalize_advisor(parsed)
+        if isinstance(parsed, dict):
+            recs = _normalize_advisor(parsed)
+            if recs == _normalize_advisor({}) and parsed != {}:
+                meta["advisor_error_stage"] = "schema_invalid"
+                meta["advisor_reason_code"] = "advisor_schema_invalid"
+            else:
+                meta["advisor_error_stage"] = ""
+                meta["advisor_reason_code"] = ""
+        else:
+            recs = _normalize_advisor({})
+
         ended_wall = datetime.now(timezone.utc).isoformat()
-        meta["advisor_ok"] = True
-        meta["advisor_error_stage"] = ""
+        meta["advisor_ok"] = meta.get("advisor_error_stage", "") == ""
         meta["advisor_parse_strategy"] = parse_strategy
-        meta["advisor_repair_parse_strategy"] = repair_parse_strategy
-        if structured_error:
-            meta["advisor_structured_error"] = structured_error
         return recs, {
             **meta,
             "advisor_latency_ms": int((time.perf_counter() - started) * 1000),
@@ -586,41 +366,45 @@ def build_advisor_recs(
             "advisor_input_prompt_rendered": "\n\n".join(
                 f"[{getattr(msg, 'type', 'user')}]\n{str(getattr(msg, 'content', ''))}" for msg in messages
             ),
+            "advisor_payload_chars": len("\n\n".join(
+                f"[{getattr(msg, 'type', 'user')}]\n{str(getattr(msg, 'content', ''))}" for msg in messages
+            )),
             "advisor_output_text_rendered": str(text),
             "advisor_output_payload_raw": recs,
             "advisor_parse_strategy": parse_strategy,
-            "advisor_repair_parse_strategy": repair_parse_strategy,
             "advisor_parse_error": parse_error,
             **initial_diag,
-            **repair_diag,
         }
     except Exception as exc:
         text = locals().get("text", "")
-        repair_text = locals().get("repair_text", "")
         parse_error = locals().get("parse_error", {})
         diagnostics = _advisor_output_diagnostics(str(text), prefix="advisor_initial_output")
-        repair_diagnostics = _advisor_output_diagnostics(str(repair_text), prefix="advisor_repair_output")
         ended_wall = datetime.now(timezone.utc).isoformat()
         meta["advisor_error"] = f"{exc.__class__.__name__}: {str(exc)}"[:220]
         meta["advisor_error_type"] = exc.__class__.__name__
-        if not meta.get("advisor_error_stage"):
-            meta["advisor_error_stage"] = "unknown"
+        meta["advisor_error_stage"] = "llm_exception"
+        if meta.get("advisor_llm_call_count", 0) == 0:
+            meta["advisor_llm_call_count"] = 1
         return _normalize_advisor({}), {
             **meta,
             "advisor_latency_ms": int((time.perf_counter() - started) * 1000),
             "advisor_start_ts": started_wall,
             "advisor_end_ts": ended_wall,
             "advisor_input_payload_raw": input_payload_raw,
+            "advisor_input_prompt_rendered": "\n\n".join(
+                f"[{getattr(msg, 'type', 'user')}]\n{str(getattr(msg, 'content', ''))}" for msg in messages
+            ),
+            "advisor_output_text_rendered": str(text),
+            "advisor_payload_chars": len("\n\n".join(
+                f"[{getattr(msg, 'type', 'user')}]\n{str(getattr(msg, 'content', ''))}" for msg in messages
+            )),
             "advisor_output_payload_raw": {
                 "error_type": meta.get("advisor_error_type", "unknown"),
                 "error_message": meta.get("advisor_error", "unknown_error"),
                 "stage": meta.get("advisor_error_stage", "unknown"),
                 "advisor_parse_strategy": meta.get("advisor_parse_strategy") or locals().get("parse_strategy", ""),
-                "advisor_repair_parse_strategy": meta.get("advisor_repair_parse_strategy") or locals().get("repair_parse_strategy", ""),
                 "advisor_parse_error": parse_error,
                 **diagnostics,
-                **repair_diagnostics,
             },
             **diagnostics,
-            **repair_diagnostics,
         }
