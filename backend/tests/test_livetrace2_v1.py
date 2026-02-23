@@ -13,6 +13,9 @@ from negotiation.telemetry.trace_runtime import init_trace_runtime
 from negotiation.nodes import world_node
 from negotiation.nodes.belief_node import belief_updater_node
 from negotiation.nodes.policy_progress_node import policy_progress_node
+from negotiation.nodes.planner_node import phase_policy_planner_node
+from negotiation import advisor as advisor_module
+from negotiation.negotiation_graph import NegotiationTurn
 from state import SessionState
 
 
@@ -572,3 +575,359 @@ def test_planner_gate_skip_adds_synthetic_planner_llm_and_contiguous_sequence(mo
     planner_llm = next(node for node in event["nodes"] if node["node_name"] == "planner_llm")
     assert planner_llm["status"] == "skipped"
     assert "skipped_by_planner_gate" in planner_llm["output_payload_raw"]["reason_codes"]
+
+
+def test_livetrace2_header_includes_build_and_env_snapshot(monkeypatch):
+    monkeypatch.setenv("BUILD_GIT_SHA", "abc123")
+    monkeypatch.setenv("BUILD_VERSION", "vtest")
+    monkeypatch.setenv("WORLD_PARALLELISM_ENABLED", "1")
+    monkeypatch.setenv("ADVISOR_ENABLED", "0")
+    monkeypatch.setenv("LIVETRACE2_MODE", "internal")
+    session = SessionState(user_id="u", session_id="s")
+    session.last_updated = datetime(2026, 1, 2, tzinfo=timezone.utc)
+    event = build_livetrace2_event(user_id="u", session_id="s", session=session, trace_index=3, trace_item=_base_trace_item())
+    header = event["header"]
+    assert header["build_git_sha"] == "abc123"
+    assert header["build_version"] == "vtest"
+    assert header["server_instance_id"]
+    assert header["env_snapshot"] == {
+        "WORLD_PARALLELISM_ENABLED": "1",
+        "ADVISOR_ENABLED": "0",
+        "LIVETRACE2_MODE": "internal",
+    }
+
+
+def test_livetrace2_header_includes_event_identity():
+    session = SessionState(user_id="u", session_id="s")
+    session.last_updated = datetime(2026, 1, 2, tzinfo=timezone.utc)
+    trace_item = _base_trace_item()
+    trace_item["turn"] = 9
+    event = build_livetrace2_event(user_id="u", session_id="s", session=session, trace_index=7, trace_item=trace_item)
+    assert event["header"]["event_identity"] == {"session_id": "s", "trace_index": 7, "turn": 9}
+    assert event["event_identity"] == {"session_id": "s", "trace_index": 7, "turn": 9}
+
+
+def _assert_parallelism_chain_or_raise(*, state_after_world: dict, trace_item: dict, event: dict) -> None:
+    if not isinstance(state_after_world.get("world_parallelism"), dict) or not state_after_world.get("world_parallelism"):
+        raise AssertionError("missing_at_state:world_updater")
+    if not isinstance(trace_item.get("world_parallelism"), dict) or not trace_item.get("world_parallelism"):
+        raise AssertionError("missing_at_trace_item:debug_trace")
+    if not isinstance(event.get("world_parallelism"), dict) or not event.get("world_parallelism"):
+        raise AssertionError("missing_at_event:build_livetrace2_event")
+
+
+def test_parallelism_propagates_to_event_header_and_nodes(monkeypatch):
+    monkeypatch.setenv("ADVISOR_ENABLED", "1")
+    monkeypatch.setenv("WORLD_PARALLELISM_ENABLED", "1")
+
+    def fake_update_world_state(prev_world, user_message, **kwargs):
+        return prev_world, {"extractor_llm_latency_ms": 120, "extractor_llm_start_ts": "2026-01-01T00:00:00+00:00", "extractor_llm_end_ts": "2026-01-01T00:00:00.120000+00:00"}
+
+    def fake_world_judge_llm(**kwargs):
+        return {"plan_status": "continue_same_step", "missing_signals": [], "safety_flags": []}, {"judge_latency_ms": 120, "judge_start_ts": "2026-01-01T00:00:00+00:00", "judge_end_ts": "2026-01-01T00:00:00.120000+00:00", "judge_error_type": ""}
+
+    def fake_advisor(**kwargs):
+        return {"recs": []}, {"advisor_ok": True, "advisor_latency_ms": 70, "advisor_llm_called": True, "advisor_start_ts": "2026-01-01T00:00:00+00:00", "advisor_end_ts": "2026-01-01T00:00:00.070000+00:00", "advisor_output_payload_raw": {"recs": []}}
+
+    monkeypatch.setattr(world_node, "update_world_state", fake_update_world_state)
+    monkeypatch.setattr(world_node, "world_judge_llm", fake_world_judge_llm)
+    monkeypatch.setattr(world_node, "build_advisor_recs", fake_advisor)
+
+    state = {"deps": None, "world_state": default_world_state(), "belief_state": default_belief_state(), "progress_state": default_progress_state(), "user_message": "hola", "turn_count": 1, "input_modality": "text", "recent_history_text": "", "short_memory": "", "long_memory": "", "objective": "", "trace_runtime": init_trace_runtime()}
+    out = world_node.world_updater_node(state)
+    out = policy_progress_node(out)
+    session = SessionState(user_id="u", session_id="s")
+    session.last_updated = datetime(2026, 1, 2, tzinfo=timezone.utc)
+    trace_item = {"turn": 1, "trace_runtime": out["trace_runtime"], "world_parallelism": out.get("world_parallelism", {})}
+    event = build_livetrace2_event(user_id="u", session_id="s", session=session, trace_index=0, trace_item=trace_item)
+    _assert_parallelism_chain_or_raise(state_after_world=out, trace_item=trace_item, event=event)
+
+    wp = event["world_parallelism"]
+    assert wp["enabled"] is True
+    assert wp["sum_ms"] >= wp["critical_path_ms"] >= 0
+    assert wp["overlap_ms"] >= 0
+    assert wp["saved_ms_estimate"] >= 0
+
+    calls = {x.get("node_name"): x for x in event["nodes"]}
+    assert calls["world_extractor_llm"]["started_at"] <= calls["world_judge_llm"]["ended_at"]
+
+
+def test_parallelism_missing_is_detected_with_precise_breakpoint(monkeypatch):
+    monkeypatch.setenv("WORLD_PARALLELISM_ENABLED", "1")
+    monkeypatch.setenv("ADVISOR_ENABLED", "0")
+
+    def fake_update_world_state(prev_world, user_message, **kwargs):
+        return prev_world, {"extractor_llm_latency_ms": 10, "extractor_llm_start_ts": "2026-01-01T00:00:00+00:00", "extractor_llm_end_ts": "2026-01-01T00:00:00.010000+00:00"}
+
+    def fake_world_judge_llm(**kwargs):
+        return {"plan_status": "continue_same_step", "missing_signals": [], "safety_flags": []}, {"judge_latency_ms": 10, "judge_start_ts": "2026-01-01T00:00:00+00:00", "judge_end_ts": "2026-01-01T00:00:00.010000+00:00", "judge_error_type": ""}
+
+    monkeypatch.setattr(world_node, "update_world_state", fake_update_world_state)
+    monkeypatch.setattr(world_node, "world_judge_llm", fake_world_judge_llm)
+
+    state = {"deps": None, "world_state": default_world_state(), "belief_state": default_belief_state(), "progress_state": default_progress_state(), "user_message": "hola", "turn_count": 1, "input_modality": "text", "recent_history_text": "", "short_memory": "", "long_memory": "", "objective": "", "trace_runtime": init_trace_runtime()}
+    out = policy_progress_node(world_node.world_updater_node(state))
+    session = SessionState(user_id="u", session_id="s")
+    session.last_updated = datetime(2026, 1, 2, tzinfo=timezone.utc)
+    trace_item = {"turn": 1, "trace_runtime": out["trace_runtime"], "world_parallelism": {}}
+    event = build_livetrace2_event(user_id="u", session_id="s", session=session, trace_index=0, trace_item=trace_item)
+
+    try:
+        _assert_parallelism_chain_or_raise(state_after_world=out, trace_item=trace_item, event=event)
+        assert False, "expected assertion"
+    except AssertionError as exc:
+        assert "missing_at_trace_item:debug_trace" in str(exc)
+
+
+def test_advisor_status_ok_error_skipped_are_explicit_and_informative(monkeypatch):
+    monkeypatch.setenv("WORLD_PARALLELISM_ENABLED", "0")
+
+    def fake_update_world_state(prev_world, user_message, **kwargs):
+        return prev_world, {"extractor_llm_latency_ms": 5, "extractor_llm_start_ts": "2026-01-01T00:00:00+00:00", "extractor_llm_end_ts": "2026-01-01T00:00:00.005000+00:00"}
+
+    def fake_world_judge_llm(**kwargs):
+        return {"plan_status": "continue_same_step", "missing_signals": [], "safety_flags": []}, {"judge_latency_ms": 5, "judge_start_ts": "2026-01-01T00:00:00+00:00", "judge_end_ts": "2026-01-01T00:00:00.005000+00:00", "judge_error_type": ""}
+
+    monkeypatch.setattr(world_node, "update_world_state", fake_update_world_state)
+    monkeypatch.setattr(world_node, "world_judge_llm", fake_world_judge_llm)
+
+    # ok
+    monkeypatch.setenv("ADVISOR_ENABLED", "1")
+    monkeypatch.setattr(world_node, "build_advisor_recs", lambda **kwargs: ({"ok": True}, {"advisor_ok": True, "advisor_latency_ms": 6, "advisor_llm_called": True, "advisor_start_ts": "2026-01-01T00:00:00+00:00", "advisor_end_ts": "2026-01-01T00:00:00.006000+00:00", "advisor_input_prompt_rendered": "p", "advisor_output_text_rendered": "o", "advisor_output_payload_raw": {"ok": True}}))
+    st = {"deps": None, "world_state": default_world_state(), "belief_state": default_belief_state(), "progress_state": default_progress_state(), "user_message": "hola", "turn_count": 1, "input_modality": "text", "recent_history_text": "", "short_memory": "", "long_memory": "", "objective": "", "trace_runtime": init_trace_runtime()}
+    out_ok = world_node.world_updater_node(st)
+    advisor_ok = next(x for x in out_ok["trace_runtime"]["llm_calls"] if x.get("name") == "advisor_llm")
+    assert advisor_ok["status"] == "ok"
+    assert advisor_ok["output_payload_raw"] is not None
+
+    # error
+    monkeypatch.setattr(world_node, "build_advisor_recs", lambda **kwargs: ({}, {"advisor_ok": False, "advisor_latency_ms": 3, "advisor_error": "boom", "advisor_llm_called": False, "advisor_start_ts": "2026-01-01T00:00:00+00:00", "advisor_end_ts": "2026-01-01T00:00:00.003000+00:00"}))
+    st2 = {"deps": None, "world_state": default_world_state(), "belief_state": default_belief_state(), "progress_state": default_progress_state(), "user_message": "hola", "turn_count": 1, "input_modality": "text", "recent_history_text": "", "short_memory": "", "long_memory": "", "objective": "", "trace_runtime": init_trace_runtime()}
+    out_err = world_node.world_updater_node(st2)
+    advisor_err = next(x for x in out_err["trace_runtime"]["llm_calls"] if x.get("name") == "advisor_llm")
+    assert advisor_err["status"] == "error"
+    assert advisor_err["error"]
+
+    # skipped disabled
+    monkeypatch.setenv("ADVISOR_ENABLED", "0")
+    st3 = {"deps": None, "world_state": default_world_state(), "belief_state": default_belief_state(), "progress_state": default_progress_state(), "user_message": "hola", "turn_count": 1, "input_modality": "text", "recent_history_text": "", "short_memory": "", "long_memory": "", "objective": "", "trace_runtime": init_trace_runtime()}
+    out_skip = world_node.world_updater_node(st3)
+    advisor_skip = next(x for x in out_skip["trace_runtime"]["llm_calls"] if x.get("name") == "advisor_llm")
+    assert advisor_skip["status"] == "skipped"
+    assert advisor_skip["error"] == "disabled_by_config"
+
+
+def test_env_snapshot_propagation(monkeypatch):
+    monkeypatch.setenv("WORLD_PARALLELISM_ENABLED", "1")
+    monkeypatch.setenv("ADVISOR_ENABLED", "0")
+    monkeypatch.setenv("LIVETRACE2_MODE", "internal")
+    session = SessionState(user_id="u", session_id="s")
+    session.last_updated = datetime(2026, 1, 2, tzinfo=timezone.utc)
+    event = build_livetrace2_event(user_id="u", session_id="s", session=session, trace_index=0, trace_item=_base_trace_item())
+    got = event["header"]["env_snapshot"]
+    assert got == {
+        "WORLD_PARALLELISM_ENABLED": "1",
+        "ADVISOR_ENABLED": "0",
+        "LIVETRACE2_MODE": "internal",
+    }, f"env_snapshot mismatch; got={got}"
+
+
+def _assert_markers_chain_or_raise(*, state_after_policy: dict, trace_item: dict, event: dict) -> None:
+    required = {
+        "world_updater_entered",
+        "world_parallel_scheduled_at",
+        "pending_payload_stored",
+        "flush_started_at",
+        "flush_completed_at",
+        "world_parallelism_written_to_state",
+        "policy_progress_entered_after_flush",
+    }
+
+    def names(items):
+        return {str(x.get("marker", "")) for x in (items or []) if isinstance(x, dict)}
+
+    state_names = names(state_after_policy.get("trace_debug_markers"))
+    if not required.issubset(state_names):
+        raise AssertionError(f"missing_at_state:{sorted(required-state_names)}")
+    trace_names = names(trace_item.get("trace_debug_markers"))
+    if not required.issubset(trace_names):
+        raise AssertionError(f"missing_at_debug_trace:{sorted(required-trace_names)}")
+    event_names = names(event.get("trace_debug_markers"))
+    if not required.issubset(event_names):
+        raise AssertionError(f"missing_at_event:{sorted(required-event_names)}")
+
+
+def test_trace_debug_markers_propagate(monkeypatch):
+    monkeypatch.setenv("WORLD_PARALLELISM_ENABLED", "1")
+    monkeypatch.setenv("ADVISOR_ENABLED", "1")
+
+    def fake_update_world_state(prev_world, user_message, **kwargs):
+        return prev_world, {"extractor_llm_latency_ms": 10, "extractor_llm_start_ts": "2026-01-01T00:00:00+00:00", "extractor_llm_end_ts": "2026-01-01T00:00:00.010000+00:00"}
+
+    def fake_world_judge_llm(**kwargs):
+        return {"plan_status": "continue_same_step", "missing_signals": [], "safety_flags": []}, {"judge_latency_ms": 20, "judge_start_ts": "2026-01-01T00:00:00+00:00", "judge_end_ts": "2026-01-01T00:00:00.020000+00:00", "judge_error_type": ""}
+
+    def fake_advisor(**kwargs):
+        return {}, {"advisor_ok": True, "advisor_latency_ms": 15, "advisor_llm_called": True, "advisor_start_ts": "2026-01-01T00:00:00+00:00", "advisor_end_ts": "2026-01-01T00:00:00.015000+00:00", "advisor_output_payload_raw": {"diagnosis": []}}
+
+    monkeypatch.setattr(world_node, "update_world_state", fake_update_world_state)
+    monkeypatch.setattr(world_node, "world_judge_llm", fake_world_judge_llm)
+    monkeypatch.setattr(world_node, "build_advisor_recs", fake_advisor)
+
+    state = {"deps": None, "world_state": default_world_state(), "belief_state": default_belief_state(), "progress_state": default_progress_state(), "user_message": "hola", "turn_count": 1, "input_modality": "text", "recent_history_text": "", "short_memory": "", "long_memory": "", "objective": "", "trace_runtime": init_trace_runtime()}
+    out = policy_progress_node(world_node.world_updater_node(state))
+    session = SessionState(user_id="u", session_id="s")
+    session.last_updated = datetime(2026, 1, 2, tzinfo=timezone.utc)
+    trace_item = {"turn": 1, "trace_runtime": out["trace_runtime"], "world_parallelism": out.get("world_parallelism", {}), "trace_debug_markers": out.get("trace_debug_markers", [])}
+    event = build_livetrace2_event(user_id="u", session_id="s", session=session, trace_index=0, trace_item=trace_item)
+    _assert_markers_chain_or_raise(state_after_policy=out, trace_item=trace_item, event=event)
+
+
+def test_world_parallelism_written_when_expected(monkeypatch):
+    monkeypatch.setenv("WORLD_PARALLELISM_ENABLED", "1")
+    monkeypatch.setenv("ADVISOR_ENABLED", "1")
+
+    monkeypatch.setattr(world_node, "update_world_state", lambda prev_world, user_message, **kwargs: (prev_world, {"extractor_llm_latency_ms": 8, "extractor_llm_start_ts": "2026-01-01T00:00:00+00:00", "extractor_llm_end_ts": "2026-01-01T00:00:00.008000+00:00"}))
+    monkeypatch.setattr(world_node, "world_judge_llm", lambda **kwargs: ({"plan_status": "continue_same_step", "missing_signals": [], "safety_flags": []}, {"judge_latency_ms": 12, "judge_start_ts": "2026-01-01T00:00:00+00:00", "judge_end_ts": "2026-01-01T00:00:00.012000+00:00", "judge_error_type": ""}))
+    monkeypatch.setattr(world_node, "build_advisor_recs", lambda **kwargs: ({}, {"advisor_ok": True, "advisor_latency_ms": 7, "advisor_llm_called": True, "advisor_start_ts": "2026-01-01T00:00:00+00:00", "advisor_end_ts": "2026-01-01T00:00:00.007000+00:00", "advisor_output_payload_raw": {"diagnosis": []}}))
+
+    state = {"deps": None, "world_state": default_world_state(), "belief_state": default_belief_state(), "progress_state": default_progress_state(), "user_message": "hola", "turn_count": 1, "input_modality": "text", "recent_history_text": "", "short_memory": "", "long_memory": "", "objective": "", "trace_runtime": init_trace_runtime()}
+    out = policy_progress_node(world_node.world_updater_node(state))
+    assert isinstance(out.get("world_parallelism"), dict) and out["world_parallelism"]
+
+    session = SessionState(user_id="u", session_id="s")
+    session.last_updated = datetime(2026, 1, 2, tzinfo=timezone.utc)
+    event = build_livetrace2_event(user_id="u", session_id="s", session=session, trace_index=0, trace_item={"turn": 1, "trace_runtime": out["trace_runtime"], "world_parallelism": out.get("world_parallelism", {})})
+    assert isinstance(event.get("world_parallelism"), dict) and event["world_parallelism"]
+
+
+def test_advisor_error_contains_diagnostics(monkeypatch):
+    monkeypatch.setenv("WORLD_PARALLELISM_ENABLED", "0")
+    monkeypatch.setenv("ADVISOR_ENABLED", "1")
+
+    monkeypatch.setattr(world_node, "update_world_state", lambda prev_world, user_message, **kwargs: (prev_world, {"extractor_llm_latency_ms": 3, "extractor_llm_start_ts": "2026-01-01T00:00:00+00:00", "extractor_llm_end_ts": "2026-01-01T00:00:00.003000+00:00"}))
+    monkeypatch.setattr(world_node, "world_judge_llm", lambda **kwargs: ({"plan_status": "continue_same_step", "missing_signals": [], "safety_flags": []}, {"judge_latency_ms": 4, "judge_start_ts": "2026-01-01T00:00:00+00:00", "judge_end_ts": "2026-01-01T00:00:00.004000+00:00", "judge_error_type": ""}))
+    monkeypatch.setattr(world_node, "build_advisor_recs", lambda **kwargs: ({}, {"advisor_ok": False, "advisor_llm_called": False, "advisor_error": "KeyError: diagnosis", "advisor_error_type": "KeyError", "advisor_error_stage": "prompt_format", "advisor_start_ts": "2026-01-01T00:00:00+00:00", "advisor_end_ts": "2026-01-01T00:00:00.001000+00:00", "advisor_output_payload_raw": {"error_type": "KeyError", "error_message": "KeyError: diagnosis", "stage": "prompt_format"}}))
+
+    out = world_node.world_updater_node({"deps": None, "world_state": default_world_state(), "belief_state": default_belief_state(), "progress_state": default_progress_state(), "user_message": "hola", "turn_count": 1, "input_modality": "text", "recent_history_text": "", "short_memory": "", "long_memory": "", "objective": "", "trace_runtime": init_trace_runtime()})
+    advisor = next(x for x in out["trace_runtime"]["llm_calls"] if x.get("name") == "advisor_llm")
+    assert advisor["status"] == "error"
+    assert "KeyError" in advisor["error"] and "diagnosis" in advisor["error"]
+    assert advisor["output_payload_raw"]["error_type"] == "KeyError"
+    assert advisor["output_payload_raw"]["stage"] == "prompt_format"
+
+
+def test_planner_gate_emission_contract():
+    state = {
+        "world_state": default_world_state(),
+        "belief_state": default_belief_state(),
+        "progress_state": default_progress_state(),
+        "objective": "x",
+        "trace_runtime": init_trace_runtime(),
+        "policy_plan_judgement": {"skip_planner": True},
+    }
+    out = phase_policy_planner_node(state)
+    planner_gates = [x for x in out["trace_runtime"]["gate_events"] if x.get("name") == "planner_gate"]
+    assert len(planner_gates) == 1, f"expected single planner_gate, got={planner_gates}"
+
+
+def test_state_schema_keeps_world_parallelism_and_markers():
+    fields = getattr(NegotiationTurn, "__annotations__", {})
+    assert "world_parallelism" in fields
+    assert "trace_debug_markers" in fields
+    assert "_pending_world_parallel" in fields
+    assert "world_parallel_pending_key" in fields
+
+
+def test_debug_trace_includes_world_parallelism_and_markers():
+    trace_item = _base_trace_item()
+    trace_item["world_parallelism"] = {"enabled": True, "mode": "thread_pool", "sum_ms": 11}
+    trace_item["trace_debug_markers"] = [{"marker": "world_parallel_scheduled_at"}]
+    trace_item["trace_state_probe"] = {"has_world_parallelism": True, "trace_debug_markers_count": 1}
+    assert trace_item["world_parallelism"]["enabled"] is True
+    assert trace_item["trace_debug_markers"][0]["marker"] == "world_parallel_scheduled_at"
+
+
+def test_event_header_reason_code(monkeypatch):
+    monkeypatch.setenv("LIVETRACE2_MODE", "internal")
+    session = SessionState(user_id="u", session_id="s")
+    session.last_updated = datetime(2026, 1, 2, tzinfo=timezone.utc)
+
+    trace_missing = _base_trace_item()
+    event_missing = build_livetrace2_event(user_id="u", session_id="s", session=session, trace_index=0, trace_item=trace_missing)
+    assert event_missing["header"]["world_parallelism_reason_code"] in {"missing_in_trace_item", "computed_from_llm_calls_fallback"}
+
+    trace_with_calls = _base_trace_item()
+    trace_with_calls["trace_runtime"]["llm_calls"] = [
+        {"name": "world_extractor_llm", "status": "ok", "latency_ms": 7, "start_ts": "2026-01-01T00:00:00+00:00", "end_ts": "2026-01-01T00:00:00.007000+00:00"},
+        {"name": "world_judge_llm", "status": "ok", "latency_ms": 12, "start_ts": "2026-01-01T00:00:00+00:00", "end_ts": "2026-01-01T00:00:00.012000+00:00"},
+        {"name": "advisor_llm", "status": "ok", "latency_ms": 10, "start_ts": "2026-01-01T00:00:00+00:00", "end_ts": "2026-01-01T00:00:00.010000+00:00"},
+    ]
+    event_fallback = build_livetrace2_event(user_id="u", session_id="s", session=session, trace_index=1, trace_item=trace_with_calls)
+    assert event_fallback["header"]["world_parallelism_reason_code"] == "computed_from_llm_calls_fallback"
+
+
+def test_event_parallelism_computed_when_missing():
+    session = SessionState(user_id="u", session_id="s")
+    session.last_updated = datetime(2026, 1, 2, tzinfo=timezone.utc)
+    trace_item = _base_trace_item()
+    trace_item["trace_runtime"]["llm_calls"] = [
+        {"name": "world_extractor_llm", "status": "ok", "latency_ms": 8, "start_ts": "2026-01-01T00:00:00+00:00", "end_ts": "2026-01-01T00:00:00.008000+00:00"},
+        {"name": "world_judge_llm", "status": "ok", "latency_ms": 20, "start_ts": "2026-01-01T00:00:00+00:00", "end_ts": "2026-01-01T00:00:00.020000+00:00"},
+        {"name": "advisor_llm", "status": "ok", "latency_ms": 6, "start_ts": "2026-01-01T00:00:00+00:00", "end_ts": "2026-01-01T00:00:00.006000+00:00"},
+    ]
+    event = build_livetrace2_event(user_id="u", session_id="s", session=session, trace_index=0, trace_item=trace_item)
+    assert event["world_parallelism"]["enabled"] is True
+    assert event["world_parallelism"]["mode"] == "computed_from_llm_calls"
+    assert event["world_parallelism"]["overlap_ms"] >= 0
+
+
+class _FakeRaw:
+    def __init__(self, content: str):
+        self.content = content
+
+
+class _FakeLLM:
+    def __init__(self, outputs: list[str]):
+        self.outputs = list(outputs)
+
+    def invoke(self, _messages):
+        if not self.outputs:
+            return _FakeRaw("{}")
+        return _FakeRaw(self.outputs.pop(0))
+
+
+def test_advisor_invalid_json_produces_diagnostics(monkeypatch):
+    monkeypatch.setattr(advisor_module, "get_planner_llm", lambda: _FakeLLM(["{diagnosis: [oops], }"]))
+    recs, meta = advisor_module.build_advisor_recs(
+        objective="o", recent_history="h", memory_short="", memory_long="", active_plan={}, progress_state={}, world_state={}, belief_state={}
+    )
+    assert recs == advisor_module._normalize_advisor({})
+    assert meta["advisor_error_stage"] in {"repair_retry", "json_parse"}
+    payload = meta.get("advisor_output_payload_raw") or {}
+    assert payload.get("error_type")
+    assert payload.get("stage")
+    assert payload.get("advisor_output_text_sha256")
+    assert isinstance(payload.get("advisor_output_text_snippet_head"), str)
+    assert isinstance(payload.get("advisor_output_text_snippet_tail"), str)
+
+
+def test_advisor_repair_parse_success(monkeypatch):
+    monkeypatch.setattr(advisor_module, "get_planner_llm", lambda: _FakeLLM(["{'diagnosis':['ok'], 'do_not_do': [],}"]))
+    recs, meta = advisor_module.build_advisor_recs(
+        objective="o", recent_history="h", memory_short="", memory_long="", active_plan={}, progress_state={}, world_state={}, belief_state={}
+    )
+    assert meta["advisor_ok"] is True
+    assert recs["diagnosis"] == ["ok"]
+    assert "single_quotes_fixed" in str(meta.get("advisor_parse_strategy", ""))
+
+
+def test_advisor_retry_repair_success(monkeypatch):
+    fake = _FakeLLM(["not-json", '{"diagnosis":["fixed"]}'])
+    monkeypatch.setattr(advisor_module, "get_planner_llm", lambda: fake)
+    recs, meta = advisor_module.build_advisor_recs(
+        objective="o", recent_history="h", memory_short="", memory_long="", active_plan={}, progress_state={}, world_state={}, belief_state={}
+    )
+    assert meta["advisor_ok"] is True
+    assert recs["diagnosis"] == ["fixed"]
+    assert str(meta.get("advisor_parse_strategy", "")).startswith("repair_retry:")

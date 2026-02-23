@@ -293,6 +293,9 @@ class NegotiationTurn(TypedDict):
     override_reason: str | None
 
     trace_runtime: dict
+    world_parallelism: dict
+    trace_debug_markers: list[dict]
+    _pending_world_parallel: dict | None
     world_parallel_pending_key: str | None
     planner_debug_v2: dict
     executor_debug_v2: dict
@@ -391,6 +394,18 @@ Objetivo: recuperar tácticas concretas para ejecutar esta policy.
             f"[RAG ERROR] No se pudieron recuperar tácticas para {policy_id}."
         )
 
+
+
+
+def _merge_trace_debug_markers(*marker_lists: list | None) -> list[dict]:
+    merged: list[dict] = []
+    for items in marker_lists:
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if isinstance(item, dict):
+                merged.append(item)
+    return merged[-64:]
 
 # ---- Construcción del grafo LangGraph ----
 
@@ -580,6 +595,9 @@ def run_negotiation_agent(
         "override_policy_id": None,
         "override_reason": None,
         "trace_runtime": init_trace_runtime(),
+        "world_parallelism": {},
+        "trace_debug_markers": [],
+        "_pending_world_parallel": None,
         "world_parallel_pending_key": None,
     }
 
@@ -636,6 +654,19 @@ def run_negotiation_agent(
         }
     t_summary_enqueued = time.perf_counter()
 
+    markers = _merge_trace_debug_markers(
+        graph_state.get("trace_debug_markers") if isinstance(graph_state, dict) else None,
+        new_graph_state.get("trace_debug_markers") if isinstance(new_graph_state, dict) else None,
+    )
+    markers.append({"marker": "debug_trace_appended_at", "t": t_summary_enqueued})
+    new_graph_state["trace_debug_markers"] = markers[-64:]
+    trace_marker_names = [str(x.get("marker", "")) for x in new_graph_state.get("trace_debug_markers", []) if isinstance(x, dict)]
+    trace_state_probe = {
+        "has_world_parallelism": bool(new_graph_state.get("world_parallelism")),
+        "trace_debug_markers_count": len(new_graph_state.get("trace_debug_markers", [])) if isinstance(new_graph_state.get("trace_debug_markers"), list) else 0,
+        "trace_debug_marker_names": trace_marker_names,
+    }
+
     state.debug_trace.append(
         {
             "turn": state.turn_count,
@@ -680,6 +711,8 @@ def run_negotiation_agent(
             "planner_debug_v2": new_graph_state.get("planner_debug_v2", {}),
             "executor_validator_meta": new_graph_state.get("executor_validator_meta", {}),
             "trace_runtime": new_graph_state.get("trace_runtime", init_trace_runtime()),
+            "trace_debug_markers": new_graph_state.get("trace_debug_markers", []),
+            "trace_state_probe": trace_state_probe,
             "phase_state": new_graph_state.get("progress_state", {}).get("phase_state", {}),
             "phase_meta": new_graph_state.get("planner_meta", {}).get("phase_meta", {}),
             "extractor_used": new_graph_state.get("extractor_meta", {}).get("extractor_used", False),
