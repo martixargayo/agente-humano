@@ -5,7 +5,7 @@ import json
 from negotiation import advisor
 from negotiation.llm_planning_context import build_advisor_context_block_full, build_judge_context_block_full
 from negotiation.nodes import world_node
-from prompts import ADVISOR_V2_SYSTEM_PROMPT, WORLD_JUDGE_V2_SYSTEM_PROMPT
+from negotiation.repo_prompts import ADVISOR_V2_SYSTEM_PROMPT, WORLD_JUDGE_V2_SYSTEM_PROMPT
 
 
 class _FakeResponse:
@@ -66,7 +66,7 @@ def test_context_blocks_include_perspectiva_buyer():
 
 
 def test_world_judge_prompt_contains_full_profiles_and_speaker(monkeypatch):
-    monkeypatch.setenv("USE_WORLD_JUDGE_V2", "1")
+    monkeypatch.setenv("USE_WORLD_JUDGE_V2", "0")
     monkeypatch.setattr(world_node, "get_planner_llm", lambda: _FakeJudgeLLM())
     judgement, meta = world_node.world_judge_llm(
         active_plan={
@@ -98,8 +98,8 @@ def test_world_judge_skip_planner_rule_prompt_present():
 
 
 def test_v2_no_heuristic_speaker_call(monkeypatch):
-    monkeypatch.setenv("USE_WORLD_JUDGE_V2", "1")
-    monkeypatch.setenv("USE_ADVISOR_V2", "1")
+    monkeypatch.setenv("USE_WORLD_JUDGE_V2", "0")
+    monkeypatch.setenv("USE_ADVISOR_V2", "0")
     monkeypatch.setattr(world_node, "get_planner_llm", lambda: _FakeJudgeLLM())
     monkeypatch.setattr(advisor, "get_advisor_llm", lambda: _FakeAdvisorLLM())
 
@@ -134,7 +134,7 @@ def test_v2_no_heuristic_speaker_call(monkeypatch):
 
 
 def test_world_judge_defaults_speaker_to_seller_without_degrade(monkeypatch):
-    monkeypatch.setenv("USE_WORLD_JUDGE_V2", "1")
+    monkeypatch.setenv("USE_WORLD_JUDGE_V2", "0")
     monkeypatch.setattr(world_node, "get_planner_llm", lambda: _FakeJudgeLLM(plan_status="advance_step"))
     judgement, _meta = world_node.world_judge_llm(
         active_plan={"plan_id": "p1", "current_step_idx": 0, "steps": [{"instruction": "x", "success_criteria": "a"}]},
@@ -150,7 +150,7 @@ def test_world_judge_defaults_speaker_to_seller_without_degrade(monkeypatch):
 
 
 def test_advisor_prompt_contains_constraints_last_counterparty_and_user_message(monkeypatch):
-    monkeypatch.setenv("USE_ADVISOR_V2", "1")
+    monkeypatch.setenv("USE_ADVISOR_V2", "0")
     monkeypatch.setattr(advisor, "get_advisor_llm", lambda: _FakeAdvisorLLM())
     recs, meta = advisor.build_advisor_recs(
         objective="",
@@ -177,7 +177,7 @@ def test_advisor_prompt_contains_constraints_last_counterparty_and_user_message(
 
 
 def test_advisor_world_full_json_is_compact(monkeypatch):
-    monkeypatch.setenv("USE_ADVISOR_V2", "1")
+    monkeypatch.setenv("USE_ADVISOR_V2", "0")
     monkeypatch.setattr(advisor, "get_advisor_llm", lambda: _FakeAdvisorLLM())
     huge_world = {
         "world_state_meta": {"version": "v1"},
