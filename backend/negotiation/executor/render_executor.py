@@ -276,20 +276,16 @@ def extract_last_counterparty_utterance(state: dict) -> str:
     if direct:
         return direct
 
-    recent_history = str(state.get("recent_history_text", "") or "")
-    if recent_history:
-        lines = [line.strip() for line in recent_history.splitlines() if line.strip()]
-        for line in reversed(lines):
-            lower = line.lower()
-            if lower.startswith("vendedor:") or lower.startswith("don joaquín:") or lower.startswith("don joaquín:"):
-                return line
+    speaker = str(
+        state.get("speaker_of_user_message")
+        or state.get("speaker_of_last_message")
+        or ((state.get("progress_state") or {}).get("speaker_of_user_message") if isinstance(state.get("progress_state"), dict) else "")
+        or ""
+    ).strip().lower()
+    if speaker != "seller":
+        return ""
 
-    user_message = str(state.get("user_message", "") or "").strip()
-    if user_message:
-        lower_user = user_message.lower()
-        if lower_user.startswith("vendedor:") or lower_user.startswith("don joaquín:") or lower_user.startswith("don joaquin:"):
-            return user_message
-    return ""
+    return str(state.get("user_message", "") or "").strip()
 
 
 def render_executor_output(
@@ -350,6 +346,12 @@ def render_executor_output(
             ensure_ascii=False,
         ),
         user_message=user_message,
+        speaker_of_user_message=str(
+            state.get("speaker_of_user_message")
+            or state.get("speaker_of_last_message")
+            or ((state.get("progress_state") or {}).get("speaker_of_user_message") if isinstance(state.get("progress_state"), dict) else "")
+            or "seller"
+        ).strip().lower(),
         output_schema=EXECUTOR_OUTPUT_SCHEMA.strip(),
     )
 

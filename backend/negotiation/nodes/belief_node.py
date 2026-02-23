@@ -9,7 +9,7 @@ from ..extractors.belief_extractor_v1 import extract_belief_state_llm_v1
 from ..llm_background import (
     build_background_context,
     build_background_public_block,
-    infer_speaker_of_user_message,
+    canonical_speaker_for_turn,
 )
 from ..schemas import default_belief_state, default_progress_state
 from ..state.deps import DEFAULT_DEPS
@@ -88,7 +88,11 @@ def belief_updater_node(state: dict) -> dict:
             progress_state = state.get("progress_state") if isinstance(state.get("progress_state"), dict) else {}
             persona_profile, scene_profile, style_contract, constraints_struct = build_background_context(progress_state)
             user_message = state.get("user_message", "")
-            speaker_of_user_message = str(state.get("speaker_of_user_message") or "").strip() or infer_speaker_of_user_message(user_message)
+            speaker_of_user_message = canonical_speaker_for_turn(
+                progress_state=progress_state,
+                state=state,
+                default="seller",
+            )
             background_block_public = build_background_public_block(
                 persona_profile,
                 scene_profile,

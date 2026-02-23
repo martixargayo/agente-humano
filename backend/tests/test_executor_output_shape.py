@@ -75,3 +75,39 @@ def test_executor_prompt_includes_instruction_when_present(monkeypatch):
     assert '"plan_id": "plan_t1"' in captured["prompt"]
     assert "PERSONA PROFILE (fixed):" not in captured["prompt"]
     assert "SCENE PROFILE (fixed):" not in captured["prompt"]
+
+
+def test_executor_prompt_uses_render_state_profiles():
+    captured = {"prompt": ""}
+
+    def _execute(messages):
+        captured["prompt"] = messages[1].content
+        return (
+            '{"response_text":"Ok","asked_question":false,'
+            '"requested_info_slots":[],"tone_used":"neutral",'
+            '"followup_intent":null,"render_meta":{}}'
+        )
+
+    progress = default_progress_state()
+    progress["render_state"] = {
+        "persona_id": "buyer_mustang67_v1",
+        "scene_id": "mustang67_in_person_viewing",
+        "style_id": "psyplay_compact",
+    }
+    progress["speaker_of_user_message"] = "seller"
+
+    state = {
+        "deps": SimpleNamespace(execute=_execute),
+        "long_memory": "",
+        "short_memory": "",
+        "user_message": "¿qué me ofreces?",
+        "policy_decision": default_policy_decision(),
+        "progress_state": progress,
+        "world_state": default_world_state(),
+    }
+
+    executor_node(state)
+    assert '"persona_id": "buyer_mustang67_v1"' in captured["prompt"]
+    assert '"scene_id": "mustang67_in_person_viewing"' in captured["prompt"]
+    assert "D) MENSAJE_ACTUAL (DEL HABLANTE)" in captured["prompt"]
+    assert "SPEAKER_OF_USER_MESSAGE: seller" in captured["prompt"]

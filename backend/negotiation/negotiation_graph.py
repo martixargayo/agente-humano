@@ -249,6 +249,10 @@ class NegotiationTurn(TypedDict):
     turn_count: int
     input_modality: str
     conversation_mode: str
+    speaker_of_user_message: str
+    speaker_of_last_message: str
+    feature_flags: dict
+    profile_selected: dict
 
     objective: str
     constraints: str
@@ -531,6 +535,52 @@ def run_negotiation_agent(
         override_existing=override_existing,
         preset_source=preset_source,
     )
+
+    domain_key = "mustang67_car_purchase"
+    task_type_key = "negotiation"
+    render_state = progress_state_input.get("render_state") if isinstance(progress_state_input.get("render_state"), dict) else {}
+    if runtime_preset is None and domain_key == "mustang67_car_purchase" and task_type_key == "negotiation":
+        progress_state_input, forced_meta = apply_buyer_preset_to_render_state(
+            progress_state_input,
+            "carlos",
+            override_existing=False,
+            preset_source="env",
+        )
+        if bool(forced_meta.get("buyer_preset_applied", False)):
+            preset_meta = dict(forced_meta)
+            preset_meta["buyer_preset_source"] = "domain"
+            render_state = progress_state_input.get("render_state") if isinstance(progress_state_input.get("render_state"), dict) else {}
+
+    profile_reason = "fallback_default_missing_render_state"
+    if str((render_state or {}).get("buyer_preset_id", "")).strip().lower() == "carlos":
+        if runtime_preset:
+            profile_reason = "forced_by_render_state"
+        else:
+            profile_reason = "forced_by_domain"
+    profile_selected = {
+        "persona_id": str((render_state or {}).get("persona_id", "default") or "default"),
+        "scene_id": str((render_state or {}).get("scene_id", "default_chat") or "default_chat"),
+        "style_id": str((render_state or {}).get("style_id", "default") or "default"),
+        "reason": profile_reason,
+    }
+
+    feature_flags = {
+        "USE_WORLD_JUDGE_V2": os.getenv("USE_WORLD_JUDGE_V2", "0") == "1",
+        "USE_ADVISOR_V2": os.getenv("USE_ADVISOR_V2", "0") == "1",
+        "USE_PLANNER_V2": os.getenv("USE_PLANNER_V2", "0") == "1",
+        "ADVISOR_ENABLED": os.getenv("ADVISOR_ENABLED", "1") == "1",
+        "WORLD_PARALLELISM_ENABLED": os.getenv("WORLD_PARALLELISM_ENABLED", "1") == "1",
+    }
+
+    speaker_canonical = str(
+        progress_state_input.get("speaker_of_user_message")
+        or progress_state_input.get("speaker_of_last_message")
+        or "seller"
+    ).strip().lower()
+    if speaker_canonical not in {"seller", "buyer"}:
+        speaker_canonical = "seller"
+    progress_state_input["speaker_of_user_message"] = speaker_canonical
+    progress_state_input["speaker_of_last_message"] = speaker_canonical
     policy_issues_in: list[str] = []
     last_policy_executed_input = state.last_policy_executed
     if (
@@ -554,6 +604,10 @@ def run_negotiation_agent(
         "refresh_meta": refresh_meta,
         "user_message": user_message,
         "conversation_mode": progress_state_input.get("conversation_mode", "general"),
+        "speaker_of_user_message": speaker_canonical,
+        "speaker_of_last_message": speaker_canonical,
+        "feature_flags": feature_flags,
+        "profile_selected": profile_selected,
         "objective": objective,
         "constraints": constraints,
         "hard_constraints_struct": hard_constraints_struct,
@@ -594,7 +648,7 @@ def run_negotiation_agent(
         "strategy_summary": {},
         "override_policy_id": None,
         "override_reason": None,
-        "trace_runtime": init_trace_runtime(),
+        "trace_runtime": {**init_trace_runtime(), "feature_flags": feature_flags, "profile_selected": profile_selected},
         "world_parallelism": {},
         "trace_debug_markers": [],
         "_pending_world_parallel": None,

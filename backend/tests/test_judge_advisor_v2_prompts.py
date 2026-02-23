@@ -83,6 +83,9 @@ def test_world_judge_prompt_contains_full_profiles_and_speaker(monkeypatch):
         state={"speaker_of_last_message": "seller"},
     )
     assert judgement["schema_version"] == "v1"
+    assert "WORLD_JUDGE_PROMPT_VARIANT: v2" in meta["judge_input_prompt_rendered"]
+    assert meta["judge_prompt_variant"] == "v2"
+    assert meta["use_world_judge_v2"] is True
     assert "BLOQUE_PERFILES_COMPLETOS" in meta["judge_input_prompt_rendered"]
     assert "SPEAKER_OF_LAST_MESSAGE: seller" in meta["judge_input_prompt_rendered"]
     assert "PERSPECTIVA: buyer" in meta["judge_input_prompt_rendered"]
@@ -130,7 +133,7 @@ def test_v2_no_heuristic_speaker_call(monkeypatch):
     )
 
 
-def test_world_judge_speaker_unknown_degrades(monkeypatch):
+def test_world_judge_defaults_speaker_to_seller_without_degrade(monkeypatch):
     monkeypatch.setenv("USE_WORLD_JUDGE_V2", "1")
     monkeypatch.setattr(world_node, "get_planner_llm", lambda: _FakeJudgeLLM(plan_status="advance_step"))
     judgement, _meta = world_node.world_judge_llm(
@@ -143,10 +146,7 @@ def test_world_judge_speaker_unknown_degrades(monkeypatch):
         progress_state={},
         state={},
     )
-    assert judgement["degraded"] is True
-    assert "missing_speaker_role" in judgement["degrade_reason"]
-    assert judgement["skip_planner"] is False
-    assert judgement["why"].startswith("Falta rol del hablante; decisión conservadora. ")
+    assert judgement["degraded"] is False
 
 
 def test_advisor_prompt_contains_constraints_last_counterparty_and_user_message(monkeypatch):
@@ -165,6 +165,9 @@ def test_advisor_prompt_contains_constraints_last_counterparty_and_user_message(
         state={"speaker_of_last_message": "seller"},
     )
     assert recs["diagnosis"] == ["ok"]
+    assert "ADVISOR_PROMPT_VARIANT: v2" in meta["advisor_input_prompt_rendered"]
+    assert meta["advisor_prompt_variant"] == "v2"
+    assert meta["use_advisor_v2"] is True
     assert "BLOQUE_PERFILES_COMPLETOS" in meta["advisor_input_prompt_rendered"]
     assert "ULTIMA_FRASE_DEL_VENDEDOR" in meta["advisor_input_prompt_rendered"]
     assert "PERSPECTIVA: buyer" in meta["advisor_input_prompt_rendered"]

@@ -170,3 +170,48 @@ def test_belief_extractor_seller_perspective_spanish_and_no_persona_leak():
     assert "BACKGROUND_CONTEXT:" in meta["belief_input_prompt_rendered"]
     assert "persona_profile:" not in meta["belief_input_prompt_rendered"]
     assert meta["belief_output_payload_raw"]["schema_version"] == "v3"
+
+
+class _WorldDepsEmptyPatch:
+    def __init__(self):
+        self.messages = []
+
+    class _LLM:
+        def __init__(self, outer):
+            self.outer = outer
+
+        def invoke(self, messages):
+            self.outer.messages = messages
+            return (
+                '{"schema_version":"world_extractor_v4","world_buckets_patch":'
+                '{"offers":[],"concessions":[],"constraints":[],"interests":[],"claims":[],"requests":[],"context":[]},'
+                '"meta":{"negotiation_signal_detected":true,"extraction_quality":"high"}}'
+            )
+
+    @property
+    def llm(self):
+        return self._LLM(self)
+
+
+def test_world_extractor_postprocess_emits_min_request_for_offer_question():
+    deps = _WorldDepsEmptyPatch()
+    patch, meta = extract_world_patch_llm_v4(
+        deps,
+        user_message="Yo no tengo nada que decir, ¿qué me ofreces?",
+        prev_world_state=default_world_state(),
+        belief_state=default_belief_state(),
+        conversation_mode="negotiation",
+        turn_idx=5,
+        speaker_of_user_message="seller",
+        persona_profile=CARLOS_PERSONA_PROFILE,
+        scene_profile=CARLOS_SCENE_PROFILE,
+        style_contract=CARLOS_STYLE_CONTRACT,
+        constraints_struct=CARLOS_CONSTRAINTS_STRUCT,
+        background_block_public=_background_block("seller"),
+    )
+
+    assert patch["requests"], "requests debería tener al menos un item por postproceso"
+    item = patch["requests"][0]
+    assert item["confidence"] >= 0.60
+    assert item["raw_text"] == "Yo no tengo nada que decir, ¿qué me ofreces?"
+    assert "minimum_request_from_offer_question" in (meta.get("postprocess_reason_codes") or [])
