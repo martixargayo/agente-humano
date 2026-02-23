@@ -420,11 +420,21 @@ def negotiation_livetrace2_panel():
     .turn-head { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; }
     .nodes { margin-top:8px; display:grid; gap:8px; }
     .node { border:1px solid #334155; border-radius:10px; padding:8px; background:#0f172a; }
+    .summary-strip { margin-top:8px; display:grid; grid-template-columns:repeat(4, minmax(180px, 1fr)); gap:8px; }
+    .summary-box { border:1px solid #334155; border-radius:10px; padding:8px; background:#0f172a; cursor:pointer; }
+    .summary-box.active { border-color:#38bdf8; }
+    .summary-box .t { font-size:11px; color:#cbd5e1; }
+    .summary-box .m { font-size:12px; color:#93c5fd; margin-top:4px; display:flex; justify-content:space-between; }
+    .s-ok { color:#86efac; }
+    .s-error { color:#fca5a5; }
+    .s-skipped { color:#fcd34d; }
+    .s-missing { color:#94a3b8; }
     .row { display:flex; justify-content:space-between; gap:8px; font-size:12px; color:#93c5fd; }
     .io { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:8px; }
     .box { border:1px solid #334155; border-radius:10px; background:#020617; }
     .box h4 { margin:0; padding:8px; border-bottom:1px solid #1e293b; font-size:12px; color:#93c5fd; }
     pre { margin:0; padding:10px; white-space:pre-wrap; word-break:break-word; max-height:28vh; overflow:auto; font-size:12px; }
+    @media (max-width: 1280px) { .summary-strip { grid-template-columns:repeat(2, minmax(220px, 1fr)); } }
   </style>
 </head>
 <body>
@@ -447,7 +457,7 @@ def negotiation_livetrace2_panel():
   </div>
 
   <div id="filtersPanel">
-    <div class="meta-small" style="margin-bottom:8px;">Filtra nodos por nombre (afecta a todos los turnos y todos los modos de despliegue).</div>
+    <div class="meta-small" style="margin-bottom:8px;">Filtra nodos por nombre (afecta a cards de resumen y detalle).</div>
     <div id="filtersGrid" class="filters-grid"></div>
   </div>
 
@@ -465,6 +475,7 @@ const FILTER_NODE_ORDER = [
   'planner_llm',
   'executor_llm',
 ];
+const SUMMARY_NODE_ORDER = FILTER_NODE_ORDER;
 
 const conn = document.getElementById('conn');
 const total = document.getElementById('total');
@@ -479,6 +490,7 @@ const turns = [];
 const turnIndexById = new Map();
 const localExpanded = new Set();
 const activeFilters = new Set(FILTER_NODE_ORDER);
+const expandedNodeByTurn = new Map();
 let expandAll = false;
 
 function pretty(v){ try{return JSON.stringify(v ?? {}, null, 2);}catch{return String(v ?? '');} }
@@ -500,7 +512,15 @@ function detail(node){
   const output = node.output_text_raw || node.output_text_rendered || (node.output_payload_parsed == null && node.output_payload_raw == null ? 'NOT_CAPTURED' : pretty(node.output_payload_parsed ?? node.output_payload_raw));
   const gateExtra = node.node_type === 'gate' ? `<div class="io"><div class="box"><h4>Gate inputs</h4><pre>${escapeHtml(pretty(node.gate_inputs))}</pre></div><div class="box"><h4>Gate decision</h4><pre>${escapeHtml(node.gate_decision || '—')}
 ${escapeHtml((node.gate_reason_codes||[]).join(', ') || node.gate_reason || '—')}</pre></div></div>` : '';
-  return `<div class="row"><strong>${escapeHtml(node.node_name)}</strong><span>${escapeHtml(node.node_type)} · ${escapeHtml(node.status)}</span></div><div class="row"><span>${node.latency_ms||0} ms</span><span>${ts(node.started_at)} → ${ts(node.ended_at)}</span></div><div class="io"><div class="box"><h4>Entrada</h4><pre>${escapeHtml(input)}</pre></div><div class="box"><h4>Salida</h4><pre>${escapeHtml(output)}</pre></div></div>${gateExtra}`;
+  return `<div class="row"><strong>${escapeHtml(node.node_name)}</strong><span>${escapeHtml(node.node_type)} · ${escapeHtml(node.status || 'missing')}</span></div><div class="row"><span>${node.latency_ms ?? '—'} ms</span><span>${ts(node.started_at)} → ${ts(node.ended_at)}</span></div><div class="io"><div class="box"><h4>Entrada</h4><pre>${escapeHtml(input)}</pre></div><div class="box"><h4>Salida</h4><pre>${escapeHtml(output)}</pre></div></div>${gateExtra}`;
+}
+
+function statusClass(status){
+  const s = String(status || '').toLowerCase();
+  if(s === 'ok') return 's-ok';
+  if(s === 'error') return 's-error';
+  if(s === 'skipped') return 's-skipped';
+  return 's-missing';
 }
 
 function renderFilters(){
@@ -514,6 +534,9 @@ function renderFilters(){
       if(!name) return;
       if(event.target.checked) activeFilters.add(name);
       else activeFilters.delete(name);
+      for(const [tid, nodeName] of expandedNodeByTurn.entries()){
+        if(nodeName === name && !activeFilters.has(nodeName)) expandedNodeByTurn.set(tid, null);
+      }
       renderTurns();
     };
   }
@@ -528,6 +551,19 @@ function isNodeVisible(node){
   return !(skipped || notCaptured);
 }
 
+function buildSummaryNodes(allNodes){
+  const byName = new Map();
+  for(const node of allNodes){
+    const name = String(node.node_name || '');
+    if(!byName.has(name)) byName.set(name, node);
+  }
+  return SUMMARY_NODE_ORDER.map((name)=>{
+    const raw = byName.get(name);
+    if(raw) return raw;
+    return { node_name:name, latency_ms:'—', status:'missing', node_type:'unknown', started_at:'', ended_at:'' };
+  });
+}
+
 function renderTurns(){
   total.textContent = `${turns.length} turnos`;
   if(!turns.length){
@@ -539,14 +575,26 @@ function renderTurns(){
     const allNodes = Array.isArray(evt.nodes) ? evt.nodes : [];
     const visibleNodes = allNodes.filter(isNodeVisible);
     const expanded = expandAll || localExpanded.has(id);
+    const selectedNodeName = expandedNodeByTurn.get(id) || null;
+
     const details = expanded
       ? (visibleNodes.length
           ? `<div class="nodes">${visibleNodes.map((node)=>`<div class="node">${detail(node)}</div>`).join('')}</div>`
           : '<div class="meta-small" style="margin-top:8px;">No hay nodos visibles con los filtros actuales.</div>')
-      : '';
+      : (()=>{
+          const summaryNodes = buildSummaryNodes(allNodes).filter((node)=>activeFilters.has(String(node.node_name || '')));
+          const strip = summaryNodes.length
+            ? `<div class="summary-strip">${summaryNodes.map((node)=>`<div class="summary-box ${selectedNodeName===node.node_name?'active':''}" data-turn-id="${id}" data-node-name="${node.node_name}"><div class="t">${escapeHtml(node.node_name)}</div><div class="m"><span>${escapeHtml(String(node.latency_ms ?? '—'))} ms</span><span class="${statusClass(node.status)}">${escapeHtml(String(node.status || 'missing'))}</span></div></div>`).join('')}</div>`
+            : '<div class="meta-small" style="margin-top:8px;">No hay nodos visibles con los filtros actuales.</div>';
+          const selectedNode = summaryNodes.find((n)=>String(n.node_name)===String(selectedNodeName)) || null;
+          const oneNodeDetail = selectedNode ? `<div class="node" style="margin-top:8px">${detail(selectedNode)}</div>` : '';
+          return strip + oneNodeDetail;
+        })();
+
     const localBtn = expandAll
       ? '<button class="pill" disabled title="Desactiva Desplegar todo para usarlo">Desplegar</button>'
       : `<button class="pill local-toggle" data-turn-id="${id}">${localExpanded.has(id) ? 'Ocultar' : 'Desplegar'}</button>`;
+
     return `<div class="turn-card"><div class="turn-head"><div><strong>Turno ${Number(evt.turn_idx || 0)}</strong> · session=${escapeHtml(evt.session_id || 'n/a')} · trace=${Number(evt.trace_index || 0)}<div class="meta-small">${ts(evt.started_at)} → ${ts(evt.ended_at)} · visibles=${visibleNodes.length}/${allNodes.length} · latencia=${evt.total_latency_ms ?? '-'} ms</div></div><div>${localBtn}</div></div>${details}</div>`;
   }).join('');
 
@@ -556,6 +604,17 @@ function renderTurns(){
       if(!id) return;
       if(localExpanded.has(id)) localExpanded.delete(id);
       else localExpanded.add(id);
+      renderTurns();
+    };
+  }
+
+  for(const box of turnsList.querySelectorAll('.summary-box')){
+    box.onclick = (event) => {
+      const tid = String(event.currentTarget?.getAttribute('data-turn-id') || '');
+      const nodeName = String(event.currentTarget?.getAttribute('data-node-name') || '');
+      if(!tid || !nodeName) return;
+      const current = expandedNodeByTurn.get(tid) || null;
+      expandedNodeByTurn.set(tid, current === nodeName ? null : nodeName);
       renderTurns();
     };
   }
