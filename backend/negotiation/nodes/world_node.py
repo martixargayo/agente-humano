@@ -42,6 +42,16 @@ def _pop_pending_parallel(key: str) -> dict | None:
         return _PENDING_PARALLEL.pop(key, None)
 
 
+
+
+def _append_trace_debug_marker(state: dict, marker: str, **extra: object) -> None:
+    markers = state.get("trace_debug_markers")
+    if not isinstance(markers, list):
+        markers = []
+    payload = {"marker": marker, "ts": datetime.now(timezone.utc).isoformat()}
+    payload.update({k: v for k, v in extra.items() if v is not None})
+    markers.append(payload)
+    state["trace_debug_markers"] = markers[-64:]
 def _compute_parallelism_metrics(state: dict, parallel_meta: dict) -> None:
     calls_by_name = {
         item.get("name"): item
@@ -72,6 +82,7 @@ def _compute_parallelism_metrics(state: dict, parallel_meta: dict) -> None:
     parallel_meta["overlap_ms"] = overlap_ms
     parallel_meta["saved_ms_estimate"] = overlap_ms
     state["world_parallelism"] = parallel_meta
+    _append_trace_debug_marker(state, "world_parallelism_written_to_state", enabled=parallel_meta.get("enabled"), overlap_ms=parallel_meta.get("overlap_ms"))
 
 
 def _apply_judge_advisor_results(
@@ -174,11 +185,13 @@ def _apply_judge_advisor_results(
 
 
 def flush_world_parallel_pending(state: dict) -> dict:
+    _append_trace_debug_marker(state, "flush_started_at")
     pending = state.pop("_pending_world_parallel", None)
     pending_key = str(state.pop("world_parallel_pending_key", "") or "")
     if not isinstance(pending, dict) and pending_key:
         pending = _pop_pending_parallel(pending_key)
     if not isinstance(pending, dict):
+        _append_trace_debug_marker(state, "flush_completed_at", had_pending=False)
         return state
 
     parallel_meta = pending.get("parallel_meta") if isinstance(pending.get("parallel_meta"), dict) else {}
@@ -245,6 +258,7 @@ def flush_world_parallel_pending(state: dict) -> dict:
         advisor_recs=advisor_recs,
         advisor_meta=advisor_meta,
     )
+    _append_trace_debug_marker(state, "flush_completed_at", had_pending=True)
     return state
 
 
@@ -790,6 +804,7 @@ def world_updater_node(state: dict) -> dict:
         try:
             executor = ThreadPoolExecutor(max_workers=3 if advisor_enabled else 2)
             parallel_started_ts = datetime.now(timezone.utc).isoformat()
+            _append_trace_debug_marker(state, "world_parallel_scheduled_at", advisor_enabled=advisor_enabled)
             judge_future = executor.submit(_run_judge)
             advisor_future = executor.submit(_run_advisor) if advisor_enabled else None
             world_state, world_diff, extractor_meta = _run_extractor()
@@ -803,6 +818,7 @@ def world_updater_node(state: dict) -> dict:
             }
             state["_pending_world_parallel"] = pending_payload
             state["world_parallel_pending_key"] = _store_pending_parallel(pending_payload)
+            _append_trace_debug_marker(state, "pending_payload_stored")
             if not advisor_enabled:
                 advisor_recs, advisor_meta = _run_advisor()
         except Exception:
