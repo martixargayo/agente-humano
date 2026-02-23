@@ -10,8 +10,23 @@ from datetime import datetime, timezone
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
-from prompts import ADVISOR_SYSTEM_PROMPT, ADVISOR_USER_PROMPT
+from prompts import (
+    ADVISOR_SYSTEM_PROMPT,
+    ADVISOR_USER_PROMPT,
+    ADVISOR_V2_SYSTEM_PROMPT,
+    ADVISOR_V2_USER_PROMPT,
+)
+from .executor.render_executor import extract_last_counterparty_utterance
 from .llm_clients import get_advisor_llm
+from .llm_planning_context import (
+    build_advisor_context_block_full,
+    build_belief_digest,
+    build_full_roleplay_profiles,
+    build_objective_summary,
+    build_world_digest,
+    build_world_full_compact,
+    compact_json_for_prompt,
+)
 
 
 class AdvisorMove(BaseModel):
@@ -344,6 +359,8 @@ def build_advisor_recs(
     progress_state: dict,
     world_state: dict,
     belief_state: dict,
+    user_message: str = "",
+    state: dict | None = None,
 ) -> tuple[dict, dict]:
     started = time.perf_counter()
     started_wall = datetime.now(timezone.utc).isoformat()
@@ -359,12 +376,29 @@ def build_advisor_recs(
         "repair_invoke_called": False,
         "advisor_reason_code": "",
     }
+    use_v2 = os.getenv("USE_ADVISOR_V2", "0") == "1"
+    persona_profile, scene_profile, style_contract, constraints_struct = build_full_roleplay_profiles(progress_state)
+    objective_summary = build_objective_summary(objective, scene_profile, persona_profile)
+    speaker_of_last_message = str(
+        (progress_state or {}).get("speaker_of_last_message")
+        or (progress_state or {}).get("speaker_of_user_message")
+        or (state.get("speaker_of_last_message") if isinstance(state, dict) else "")
+        or (state.get("speaker_of_user_message") if isinstance(state, dict) else "")
+        or ""
+    ).strip().lower()
+    if speaker_of_last_message not in {"seller", "buyer"}:
+        speaker_of_last_message = "unknown"
+    world_diff = (progress_state or {}).get("world_diff") if isinstance((progress_state or {}).get("world_diff"), dict) else {}
     payload = {
         "objective": str(objective or "")[:280],
+        "objective_summary": objective_summary,
         "recent_history": str(recent_history or "")[-1800:],
+        "user_message": str(user_message or "")[:1000],
         "memory_short": str(memory_short or "")[-1200:],
         "memory_long": str(memory_long or "")[-1200:],
         "active_plan": active_plan if isinstance(active_plan, dict) else {},
+        "phase_state": (progress_state or {}).get("phase_state") if isinstance((progress_state or {}).get("phase_state"), dict) else {},
+        "policy_state": (progress_state or {}).get("policy_state") if isinstance((progress_state or {}).get("policy_state"), dict) else {},
         "progress_counters": {
             "no_progress_same_step_turns": int((progress_state or {}).get("no_progress_same_step_turns", 0) or 0),
             "judgement_missing_streak": int((progress_state or {}).get("judgement_missing_streak", 0) or 0),
@@ -372,22 +406,63 @@ def build_advisor_recs(
         },
         "world_summary": _compact_world_summary(world_state),
         "belief_summary": _compact_belief_summary(belief_state),
+        "full_profiles_block": build_advisor_context_block_full(progress_state),
+        "speaker_of_last_message": speaker_of_last_message,
+        "last_counterparty_utterance": extract_last_counterparty_utterance(
+            {
+                "recent_history": recent_history,
+                "recent_history_text": recent_history,
+                "speaker_of_user_message": speaker_of_last_message,
+            }
+        ),
+        "world_digest_json": json.dumps(build_world_digest(world_state or {}, world_diff), ensure_ascii=False),
+        "world_full_json": compact_json_for_prompt(build_world_full_compact(world_state or {}), max_chars=8000),
+        "belief_digest_json": json.dumps(build_belief_digest(belief_state or {}), ensure_ascii=False),
+        "progress_counters_json": json.dumps(
+            {
+                "no_progress_same_step_turns": int((progress_state or {}).get("no_progress_same_step_turns", 0) or 0),
+                "judgement_missing_streak": int((progress_state or {}).get("judgement_missing_streak", 0) or 0),
+                "loop_flags": list((progress_state or {}).get("loop_flags", []) or []),
+            },
+            ensure_ascii=False,
+        ),
     }
 
+    if use_v2:
+        system_prompt = ADVISOR_V2_SYSTEM_PROMPT
+        user_prompt = ADVISOR_V2_USER_PROMPT.format(
+            full_profiles_block=payload["full_profiles_block"],
+            objective_summary=payload["objective_summary"],
+            speaker_of_last_message=payload["speaker_of_last_message"],
+            last_counterparty_utterance=json.dumps(payload["last_counterparty_utterance"], ensure_ascii=False),
+            user_message=json.dumps(payload["user_message"], ensure_ascii=False),
+            recent_history_text=json.dumps(payload["recent_history"], ensure_ascii=False),
+            memory_short=json.dumps(payload["memory_short"], ensure_ascii=False),
+            memory_long=json.dumps(payload["memory_long"], ensure_ascii=False),
+            active_plan_json=json.dumps(payload["active_plan"], ensure_ascii=False),
+            phase_state_json=json.dumps(payload["phase_state"], ensure_ascii=False),
+            policy_state_json=json.dumps(payload["policy_state"], ensure_ascii=False),
+            world_digest_json=payload["world_digest_json"],
+            world_full_json=payload["world_full_json"],
+            belief_digest_json=payload["belief_digest_json"],
+            progress_counters_json=payload["progress_counters_json"],
+        )
+    else:
+        system_prompt = ADVISOR_SYSTEM_PROMPT
+        user_prompt = ADVISOR_USER_PROMPT.format(
+            objective=payload["objective"],
+            recent_history=json.dumps(payload["recent_history"], ensure_ascii=False),
+            memory_short=json.dumps(payload["memory_short"], ensure_ascii=False),
+            memory_long=json.dumps(payload["memory_long"], ensure_ascii=False),
+            active_plan=json.dumps(payload["active_plan"], ensure_ascii=False),
+            progress_counters=json.dumps(payload["progress_counters"], ensure_ascii=False),
+            world_summary=json.dumps(payload["world_summary"], ensure_ascii=False),
+            belief_summary=json.dumps(payload["belief_summary"], ensure_ascii=False),
+        )
+
     messages = [
-        SystemMessage(content=ADVISOR_SYSTEM_PROMPT),
-        HumanMessage(
-            content=ADVISOR_USER_PROMPT.format(
-                objective=payload["objective"],
-                recent_history=json.dumps(payload["recent_history"], ensure_ascii=False),
-                memory_short=json.dumps(payload["memory_short"], ensure_ascii=False),
-                memory_long=json.dumps(payload["memory_long"], ensure_ascii=False),
-                active_plan=json.dumps(payload["active_plan"], ensure_ascii=False),
-                progress_counters=json.dumps(payload["progress_counters"], ensure_ascii=False),
-                world_summary=json.dumps(payload["world_summary"], ensure_ascii=False),
-                belief_summary=json.dumps(payload["belief_summary"], ensure_ascii=False),
-            )
-        ),
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=user_prompt),
     ]
 
     input_payload_raw = {
