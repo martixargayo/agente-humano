@@ -422,6 +422,7 @@ def build_livetrace2_event(*, user_id: str, session_id: str, session: SessionSta
         "trace_index": int(trace_index),
         "turn": turn_idx,
     }
+    runtime_feature_flags = runtime.get("feature_flags") if isinstance(runtime.get("feature_flags"), dict) else {}
     wp_payload = trace_item.get("world_parallelism") if isinstance(trace_item.get("world_parallelism"), dict) else {}
     wp_reason_code = "present" if wp_payload else "missing_in_trace_item"
     if not wp_payload:
@@ -448,6 +449,20 @@ def build_livetrace2_event(*, user_id: str, session_id: str, session: SessionSta
             "USE_PLANNER_V2": use_planner_v2 == "1",
             "ADVISOR_ENABLED": adv_env == "1",
             "WORLD_PARALLELISM_ENABLED": wp_env == "1",
+        },
+        "feature_flags_runtime": {
+            "USE_WORLD_JUDGE_V2": bool(runtime_feature_flags.get("USE_WORLD_JUDGE_V2", False)),
+            "USE_ADVISOR_V2": bool(runtime_feature_flags.get("USE_ADVISOR_V2", False)),
+            "USE_PLANNER_V2": bool(runtime_feature_flags.get("USE_PLANNER_V2", False)),
+            "ADVISOR_ENABLED": bool(runtime_feature_flags.get("ADVISOR_ENABLED", False)),
+            "WORLD_PARALLELISM_ENABLED": bool(runtime_feature_flags.get("WORLD_PARALLELISM_ENABLED", False)),
+        },
+        "feature_flags_mismatch": {
+            "USE_WORLD_JUDGE_V2": bool(runtime_feature_flags) and bool(runtime_feature_flags.get("USE_WORLD_JUDGE_V2", False)) != (use_judge_v2 == "1"),
+            "USE_ADVISOR_V2": bool(runtime_feature_flags) and bool(runtime_feature_flags.get("USE_ADVISOR_V2", False)) != (use_advisor_v2 == "1"),
+            "USE_PLANNER_V2": bool(runtime_feature_flags) and bool(runtime_feature_flags.get("USE_PLANNER_V2", False)) != (use_planner_v2 == "1"),
+            "ADVISOR_ENABLED": bool(runtime_feature_flags) and bool(runtime_feature_flags.get("ADVISOR_ENABLED", False)) != (adv_env == "1"),
+            "WORLD_PARALLELISM_ENABLED": bool(runtime_feature_flags) and bool(runtime_feature_flags.get("WORLD_PARALLELISM_ENABLED", False)) != (wp_env == "1"),
         },
         "env_read_ok": True,
         "event_identity": event_identity,
