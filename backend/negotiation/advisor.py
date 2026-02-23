@@ -268,10 +268,16 @@ def _retry_repair_json(
             )
         ),
     ]
+    repair_input_prompt_rendered = "\n\n".join(
+        f"[{getattr(msg, 'type', 'user')}]\n{str(getattr(msg, 'content', ''))}" for msg in repair_messages
+    )
     repair_raw = llm.invoke(repair_messages)
     repair_text = getattr(repair_raw, "content", str(repair_raw))
     parsed, strategy = _robust_json_parse(str(repair_text))
-    extra = {"repair_invoke_called": True}
+    extra = {
+        "repair_invoke_called": True,
+        "advisor_repair_input_prompt_rendered": repair_input_prompt_rendered,
+    }
     if isinstance(parsed, dict):
         return parsed, f"repair_retry:{strategy}", str(repair_text), extra
 
@@ -282,6 +288,20 @@ def _retry_repair_json(
 
     try:
         forced_text, mode = _invoke_json_mode(repair_messages, llm)
+        forced_messages = [
+            SystemMessage(
+                content=(
+                    "Return ONLY valid JSON object. No markdown, no prose, no prefix. "
+                    "All string values must be single-line (no raw newlines). "
+                    "Keep concise: diagnosis<=4, loop_or_waste_flags<=4, recommended_moves<=3, "
+                    "guardrails<=3, do_not_do<=4, suggested_utterances<=3."
+                )
+            ),
+            *repair_messages,
+        ]
+        extra["advisor_repair_json_mode_input_prompt_rendered"] = "\n\n".join(
+            f"[{getattr(msg, 'type', 'user')}]\n{str(getattr(msg, 'content', ''))}" for msg in forced_messages
+        )
         forced_parsed, forced_strategy = _robust_json_parse(forced_text)
         if isinstance(forced_parsed, dict):
             return forced_parsed, f"repair_retry:{mode}:{forced_strategy}", forced_text, extra

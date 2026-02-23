@@ -14,6 +14,7 @@ from ..telemetry.llm_usage import extract_llm_usage
 
 PlanFn = Callable[..., Tuple[dict, PolicyDecision, dict]]
 _LAST_EXECUTE_META: dict[str, Any] = {}
+_LAST_SUMMARIZE_META: dict[str, Any] = {}
 BeliefFn = Callable[..., Tuple[BeliefState, dict]]
 ExecuteFn = Callable[..., str]
 SummarizeFn = Callable[[str, str], str]
@@ -62,13 +63,31 @@ def get_last_execute_meta() -> dict[str, Any]:
     return dict(_LAST_EXECUTE_META)
 
 
+def get_last_summarize_meta() -> dict[str, Any]:
+    return dict(_LAST_SUMMARIZE_META)
+
+
 def _default_summarize(existing_summary: str, new_block: str) -> str:
+    global _LAST_SUMMARIZE_META
     messages = summary_prompt.format_messages(
         existing_summary=existing_summary,
         new_block=new_block,
     )
     result = get_summary_llm().invoke(messages)
-    return getattr(result, "content", str(result)).strip()
+    usage = extract_llm_usage(result)
+    rendered_messages: list[dict[str, str]] = []
+    for message in messages:
+        role = getattr(message, "type", None) or getattr(message, "role", None) or "user"
+        content = getattr(message, "content", "")
+        rendered_messages.append({"role": str(role), "content": str(content)})
+    output_text = getattr(result, "content", str(result)).strip()
+    _LAST_SUMMARIZE_META = {
+        **usage,
+        "rendered_messages": rendered_messages,
+        "input_prompt_rendered": "\n\n".join(f"[{item['role']}]\n{item['content']}" for item in rendered_messages),
+        "output_text_rendered": str(output_text),
+    }
+    return output_text
 
 
 DEFAULT_DEPS = AgentDeps(
