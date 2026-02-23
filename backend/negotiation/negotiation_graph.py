@@ -392,6 +392,18 @@ Objetivo: recuperar tácticas concretas para ejecutar esta policy.
         )
 
 
+
+
+def _merge_trace_debug_markers(*marker_lists: list | None) -> list[dict]:
+    merged: list[dict] = []
+    for items in marker_lists:
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if isinstance(item, dict):
+                merged.append(item)
+    return merged[-64:]
+
 # ---- Construcción del grafo LangGraph ----
 
 
@@ -636,6 +648,13 @@ def run_negotiation_agent(
         }
     t_summary_enqueued = time.perf_counter()
 
+    markers = _merge_trace_debug_markers(
+        graph_state.get("trace_debug_markers") if isinstance(graph_state, dict) else None,
+        new_graph_state.get("trace_debug_markers") if isinstance(new_graph_state, dict) else None,
+    )
+    markers.append({"marker": "debug_trace_appended_at", "t": t_summary_enqueued})
+    new_graph_state["trace_debug_markers"] = markers[-64:]
+
     state.debug_trace.append(
         {
             "turn": state.turn_count,
@@ -680,6 +699,7 @@ def run_negotiation_agent(
             "planner_debug_v2": new_graph_state.get("planner_debug_v2", {}),
             "executor_validator_meta": new_graph_state.get("executor_validator_meta", {}),
             "trace_runtime": new_graph_state.get("trace_runtime", init_trace_runtime()),
+            "trace_debug_markers": new_graph_state.get("trace_debug_markers", []),
             "phase_state": new_graph_state.get("progress_state", {}).get("phase_state", {}),
             "phase_meta": new_graph_state.get("planner_meta", {}).get("phase_meta", {}),
             "extractor_used": new_graph_state.get("extractor_meta", {}).get("extractor_used", False),

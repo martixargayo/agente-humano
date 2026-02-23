@@ -2,13 +2,40 @@ from __future__ import annotations
 
 from datetime import datetime
 import os
+from pathlib import Path
+import socket
 from typing import Any
+from uuid import uuid4
 
 from state import SESSIONS, SessionState
 
 
+_SERVER_INSTANCE_ID = os.getenv("SERVER_INSTANCE_ID") or f"{socket.gethostname()}:{os.getpid()}:{uuid4().hex[:8]}"
+
+
+def _build_git_sha() -> str:
+    env_sha = str(os.getenv("BUILD_GIT_SHA", "")).strip()
+    if env_sha:
+        return env_sha[:64]
+    try:
+        root = Path(__file__).resolve().parents[3]
+        head = (root / ".git" / "HEAD").read_text(encoding="utf-8").strip()
+        if head.startswith("ref:"):
+            ref = head.split(" ", 1)[1].strip()
+            return (root / ".git" / ref).read_text(encoding="utf-8").strip()[:64]
+        return head[:64]
+    except Exception:
+        return "unknown"
+
+
 def _safe_dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
+
+
+def _env_with_default(name: str, default: str) -> tuple[str, bool]:
+    if name in os.environ:
+        return str(os.getenv(name, default)), True
+    return default, False
 
 
 def _parse_ts(value: Any) -> datetime | None:
@@ -330,6 +357,35 @@ def build_livetrace2_event(*, user_id: str, session_id: str, session: SessionSta
         turn_ended = str(nodes[-1].get("ended_at", "") or "")
 
     total_latency = sum(int(node.get("latency_ms", 0) or 0) for node in nodes)
+    wp_env, wp_set = _env_with_default("WORLD_PARALLELISM_ENABLED", "1")
+    adv_env, adv_set = _env_with_default("ADVISOR_ENABLED", "1")
+    lt_mode, lt_set = _env_with_default("LIVETRACE2_MODE", "public")
+    env_snapshot = {
+        "WORLD_PARALLELISM_ENABLED": wp_env,
+        "ADVISOR_ENABLED": adv_env,
+        "LIVETRACE2_MODE": lt_mode,
+    }
+    event_identity = {
+        "session_id": session_id,
+        "trace_index": int(trace_index),
+        "turn": turn_idx,
+    }
+    wp_payload = trace_item.get("world_parallelism") if isinstance(trace_item.get("world_parallelism"), dict) else {}
+    header = {
+        "build_git_sha": _build_git_sha(),
+        "build_version": str(os.getenv("BUILD_VERSION", "")),
+        "server_instance_id": _SERVER_INSTANCE_ID,
+        "env_snapshot": env_snapshot,
+        "env_source": {
+            "WORLD_PARALLELISM_ENABLED": "process_env" if wp_set else "default",
+            "ADVISOR_ENABLED": "process_env" if adv_set else "default",
+            "LIVETRACE2_MODE": "process_env" if lt_set else "default",
+        },
+        "env_read_ok": True,
+        "event_identity": event_identity,
+        "world_parallelism_present": bool(wp_payload),
+        "world_parallelism_reason_code": "present" if wp_payload else "missing_in_trace_item",
+    }
 
     return {
         "trace_schema_version": "livetrace2-v1",
@@ -345,7 +401,10 @@ def build_livetrace2_event(*, user_id: str, session_id: str, session: SessionSta
         "updated_at": session.last_updated.isoformat(),
         "input_message": trace_item.get("user_message", ""),
         "final_reply": trace_item.get("assistant_reply", ""),
-        "world_parallelism": trace_item.get("world_parallelism") if isinstance(trace_item.get("world_parallelism"), dict) else {},
+        "header": header,
+        "event_identity": event_identity,
+        "trace_debug_markers": trace_item.get("trace_debug_markers") if isinstance(trace_item.get("trace_debug_markers"), list) else [],
+        "world_parallelism": wp_payload,
         "nodes": nodes,
     }
 

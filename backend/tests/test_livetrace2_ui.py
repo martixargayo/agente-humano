@@ -19,3 +19,23 @@ def test_livetrace2_ui_wide_layout_and_three_columns():
     assert "width:96vw" in html
     assert "grid-template-columns: minmax(420px, 2fr) minmax(210px, 1fr) minmax(210px, 1fr)" in html
     assert "timeline-scroll" in html
+
+
+def test_ui_does_not_collapse_nodes_by_name():
+    html = negotiation_livetrace2_panel()
+    assert "const used = new Set();" in html
+    assert "for(const node of sorted){" in html
+    assert "node.node_id" in html
+
+
+def test_ui_hidden_nodes_warning_reports_reason():
+    html = negotiation_livetrace2_panel()
+    assert "computeHiddenNodesMeta" in html
+    assert "filtro=" in html
+    assert "layout=" in html
+
+
+def test_ui_order_respects_gate_before_llm_when_same_timestamp():
+    html = negotiation_livetrace2_panel()
+    assert "const pa = ta === 'gate' ? 0 : 1;" in html
+    assert "const pb = tb === 'gate' ? 0 : 1;" in html

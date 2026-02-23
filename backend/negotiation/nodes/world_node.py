@@ -42,6 +42,16 @@ def _pop_pending_parallel(key: str) -> dict | None:
         return _PENDING_PARALLEL.pop(key, None)
 
 
+
+
+def _append_trace_debug_marker(state: dict, marker: str, **extra: object) -> None:
+    markers = state.get("trace_debug_markers")
+    if not isinstance(markers, list):
+        markers = []
+    payload = {"marker": marker, "ts": datetime.now(timezone.utc).isoformat()}
+    payload.update({k: v for k, v in extra.items() if v is not None})
+    markers.append(payload)
+    state["trace_debug_markers"] = markers[-64:]
 def _compute_parallelism_metrics(state: dict, parallel_meta: dict) -> None:
     calls_by_name = {
         item.get("name"): item
@@ -72,6 +82,7 @@ def _compute_parallelism_metrics(state: dict, parallel_meta: dict) -> None:
     parallel_meta["overlap_ms"] = overlap_ms
     parallel_meta["saved_ms_estimate"] = overlap_ms
     state["world_parallelism"] = parallel_meta
+    _append_trace_debug_marker(state, "world_parallelism_written_to_state", enabled=parallel_meta.get("enabled"), overlap_ms=parallel_meta.get("overlap_ms"))
 
 
 def _apply_judge_advisor_results(
@@ -92,7 +103,7 @@ def _apply_judge_advisor_results(
             ok=bool(advisor_meta.get("advisor_ok", False)),
             model=None,
             retry_count=0,
-            error_stage="llm_invoke" if advisor_meta.get("advisor_error") else "",
+            error_stage=str(advisor_meta.get("advisor_error_stage") or ("llm_invoke" if advisor_meta.get("advisor_error") else "")),
             error=str(advisor_meta.get("advisor_error", "")),
             start_ts=advisor_meta.get("advisor_start_ts"),
             end_ts=advisor_meta.get("advisor_end_ts"),
@@ -111,6 +122,8 @@ def _apply_judge_advisor_results(
             or advisor_meta.get("advisor_error_message")
             or "advisor_not_called"
         )
+        advisor_error_type = str(advisor_meta.get("advisor_error_type") or "")
+        advisor_error_stage = str(advisor_meta.get("advisor_error_stage") or ("disabled" if disabled else "llm_invoke"))
         record_llm_call_ms(
             state,
             name="advisor_llm",
@@ -118,10 +131,18 @@ def _apply_judge_advisor_results(
             latency_ms=0,
             ok=False if disabled else False,
             status="skipped" if disabled else "error",
-            error_stage="disabled" if disabled else "llm_invoke",
+            error_stage=advisor_error_stage,
             error="disabled_by_config" if disabled else advisor_error,
             start_ts=start_iso,
             end_ts=end_iso,
+            input_payload_raw=advisor_meta.get("advisor_input_payload_raw"),
+            output_payload_raw=advisor_meta.get("advisor_output_payload_raw")
+            if advisor_meta.get("advisor_output_payload_raw") is not None
+            else {
+                "error_type": advisor_error_type or ("disabled" if disabled else "advisor_not_called"),
+                "error_message": "disabled_by_config" if disabled else advisor_error,
+                "stage": advisor_error_stage,
+            },
         )
 
     state["advisor_recs"] = advisor_recs
@@ -174,11 +195,13 @@ def _apply_judge_advisor_results(
 
 
 def flush_world_parallel_pending(state: dict) -> dict:
+    _append_trace_debug_marker(state, "flush_started_at")
     pending = state.pop("_pending_world_parallel", None)
     pending_key = str(state.pop("world_parallel_pending_key", "") or "")
     if not isinstance(pending, dict) and pending_key:
         pending = _pop_pending_parallel(pending_key)
     if not isinstance(pending, dict):
+        _append_trace_debug_marker(state, "flush_completed_at", had_pending=False)
         return state
 
     parallel_meta = pending.get("parallel_meta") if isinstance(pending.get("parallel_meta"), dict) else {}
@@ -245,6 +268,7 @@ def flush_world_parallel_pending(state: dict) -> dict:
         advisor_recs=advisor_recs,
         advisor_meta=advisor_meta,
     )
+    _append_trace_debug_marker(state, "flush_completed_at", had_pending=True)
     return state
 
 
@@ -639,6 +663,7 @@ def world_judge_llm(
 
 
 def world_updater_node(state: dict) -> dict:
+    _append_trace_debug_marker(state, "world_updater_entered")
     deps = state.get("deps")
     prev_world = state.get("world_state") or default_world_state()
     state["prev_world_state"] = prev_world
@@ -714,11 +739,16 @@ def world_updater_node(state: dict) -> dict:
     advisor_enabled = os.getenv("ADVISOR_ENABLED", "1") == "1"
     parallel_meta = {
         "enabled": bool(parallel_enabled),
-        "mode": "threads",
+        "mode": "threads" if parallel_enabled else "n/a",
         "tasks": {},
         "fallback_to_sequential": False,
         "fallback_reason_codes": [],
+        "sum_ms": 0,
+        "critical_path_ms": 0,
+        "overlap_ms": 0,
+        "saved_ms_estimate": 0,
     }
+    state["world_parallelism"] = dict(parallel_meta)
 
     def _run_extractor() -> tuple[dict, dict, dict]:
         if world_skipped:
@@ -790,6 +820,7 @@ def world_updater_node(state: dict) -> dict:
         try:
             executor = ThreadPoolExecutor(max_workers=3 if advisor_enabled else 2)
             parallel_started_ts = datetime.now(timezone.utc).isoformat()
+            _append_trace_debug_marker(state, "world_parallel_scheduled_at", advisor_enabled=advisor_enabled)
             judge_future = executor.submit(_run_judge)
             advisor_future = executor.submit(_run_advisor) if advisor_enabled else None
             world_state, world_diff, extractor_meta = _run_extractor()
@@ -803,6 +834,7 @@ def world_updater_node(state: dict) -> dict:
             }
             state["_pending_world_parallel"] = pending_payload
             state["world_parallel_pending_key"] = _store_pending_parallel(pending_payload)
+            _append_trace_debug_marker(state, "pending_payload_stored")
             if not advisor_enabled:
                 advisor_recs, advisor_meta = _run_advisor()
         except Exception:
