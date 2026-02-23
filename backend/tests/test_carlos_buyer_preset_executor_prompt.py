@@ -46,10 +46,13 @@ def test_carlos_preset_prompt_and_constraints_exact():
     assert result["response_text"] == "ok"
 
     prompt = deps.messages[1].content
-    assert f"PERSONA PROFILE (fixed):\n{json.dumps(CARLOS_PERSONA_PROFILE, ensure_ascii=False)}" in prompt
-    assert f"SCENE PROFILE (fixed):\n{json.dumps(CARLOS_SCENE_PROFILE, ensure_ascii=False)}" in prompt
-    assert f"STYLE CONTRACT (fixed):\n{json.dumps(CARLOS_STYLE_CONTRACT, ensure_ascii=False)}" in prompt
-    assert f"CONSTRAINTS_STRUCT (must obey):\n{json.dumps(CARLOS_CONSTRAINTS_STRUCT, ensure_ascii=False)}" in prompt
+    assert "BLOQUE_PERFILES_COMPLETOS:" in prompt
+    assert f"PERSONA_PROFILE_JSON: {json.dumps(CARLOS_PERSONA_PROFILE, ensure_ascii=False)}" in prompt
+    assert f"ESCENA_PROFILE_JSON: {json.dumps(CARLOS_SCENE_PROFILE, ensure_ascii=False)}" in prompt
+    assert f"STYLE_CONTRACT_JSON: {json.dumps(CARLOS_STYLE_CONTRACT, ensure_ascii=False)}" in prompt
+    assert f"CONSTRAINTS_STRUCT_JSON: {json.dumps(CARLOS_CONSTRAINTS_STRUCT, ensure_ascii=False)}" in prompt
+    assert "PERSONA PROFILE (fixed):" not in prompt
+    assert "SCENE PROFILE (fixed):" not in prompt
 
     assert persona == CARLOS_PERSONA_PROFILE
     assert scene == CARLOS_SCENE_PROFILE
