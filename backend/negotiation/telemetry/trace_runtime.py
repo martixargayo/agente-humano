@@ -160,6 +160,9 @@ def record_llm_call_ms(
     input_payload_raw: Any | None = None,
     output_payload_raw: Any | None = None,
     status: str | None = None,
+    prompt_variant: str | None = None,
+    payload_chars: int | None = None,
+    llm_call_count: int | None = None,
 ) -> None:
     runtime = ensure_trace_runtime(state)
     input_prompt_final, input_prompt_meta = _truncate_text(str(input_prompt_rendered or ""), 12000)
@@ -186,6 +189,9 @@ def record_llm_call_ms(
         "input_payload_raw": input_payload_raw,
         "output_payload_raw": output_payload_raw,
         "status": str(status or ("ok" if bool(ok) else "error"))[:24],
+        "prompt_variant": str(prompt_variant or "")[:12],
+        "payload_chars": payload_chars if isinstance(payload_chars, int) and payload_chars >= 0 else None,
+        "llm_call_count": llm_call_count if isinstance(llm_call_count, int) and llm_call_count >= 0 else None,
     }
     runtime["llm_calls"].append(call)
     runtime["llm_calls"] = runtime["llm_calls"][:12]
