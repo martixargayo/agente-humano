@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+import os
 
 from langchain_openai import ChatOpenAI
 
@@ -25,6 +26,18 @@ def get_planner_llm() -> ChatOpenAI:
     return ChatOpenAI(**build_chat_openai_kwargs(cfg.planner))
 
 
+
+
+@lru_cache(maxsize=1)
+def get_advisor_llm() -> ChatOpenAI:
+    cfg = get_negotiation_model_config()
+    kwargs = build_chat_openai_kwargs(cfg.planner)
+    advisor_model = str(os.getenv("NEGOTIATION_ADVISOR_MODEL", "") or "").strip()
+    if advisor_model:
+        kwargs["model"] = advisor_model
+    kwargs["temperature"] = float(os.getenv("NEGOTIATION_ADVISOR_TEMPERATURE", "0") or 0)
+    return ChatOpenAI(**kwargs)
+
 @lru_cache(maxsize=1)
 def get_executor_llm() -> ChatOpenAI:
     cfg = get_negotiation_model_config()
@@ -41,5 +54,6 @@ def reset_negotiation_llm_caches() -> None:
     get_world_llm.cache_clear()
     get_belief_llm.cache_clear()
     get_planner_llm.cache_clear()
+    get_advisor_llm.cache_clear()
     get_executor_llm.cache_clear()
     get_summary_llm.cache_clear()

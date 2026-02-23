@@ -888,8 +888,36 @@ class _FakeRaw:
 
 
 class _FakeLLM:
-    def __init__(self, outputs: list[str]):
+    def __init__(self, outputs: list[str], *, structured_payload=None, json_mode_outputs: list[str] | None = None):
         self.outputs = list(outputs)
+        self.structured_payload = structured_payload
+        self.json_mode_outputs = list(json_mode_outputs or [])
+
+    def with_structured_output(self, _schema):
+        if self.structured_payload is None:
+            raise RuntimeError("structured_not_supported")
+
+        class _Structured:
+            def __init__(self, payload):
+                self.payload = payload
+
+            def invoke(self, _messages):
+                return self.payload
+
+        return _Structured(self.structured_payload)
+
+    def bind(self, **kwargs):
+        _ = kwargs
+        class _Bound:
+            def __init__(self, parent):
+                self.parent = parent
+
+            def invoke(self, _messages):
+                if self.parent.json_mode_outputs:
+                    return _FakeRaw(self.parent.json_mode_outputs.pop(0))
+                raise RuntimeError("json_mode_not_available")
+
+        return _Bound(self)
 
     def invoke(self, _messages):
         if not self.outputs:
@@ -898,22 +926,23 @@ class _FakeLLM:
 
 
 def test_advisor_invalid_json_produces_diagnostics(monkeypatch):
-    monkeypatch.setattr(advisor_module, "get_planner_llm", lambda: _FakeLLM(["{diagnosis: [oops], }"]))
+    monkeypatch.setattr(advisor_module, "get_advisor_llm", lambda: _FakeLLM(["{diagnosis: [oops], }", "still nope"]))
     recs, meta = advisor_module.build_advisor_recs(
         objective="o", recent_history="h", memory_short="", memory_long="", active_plan={}, progress_state={}, world_state={}, belief_state={}
     )
     assert recs == advisor_module._normalize_advisor({})
-    assert meta["advisor_error_stage"] in {"repair_retry", "json_parse"}
+    assert meta["advisor_error_stage"] == "repair_retry"
     payload = meta.get("advisor_output_payload_raw") or {}
     assert payload.get("error_type")
     assert payload.get("stage")
     assert payload.get("advisor_initial_output_text_sha256")
     assert isinstance(payload.get("advisor_initial_output_text_snippet_head"), str)
+    assert isinstance(payload.get("advisor_initial_output_text_snippet_middle"), str)
     assert isinstance(payload.get("advisor_initial_output_text_snippet_tail"), str)
 
 
 def test_advisor_repair_parse_success(monkeypatch):
-    monkeypatch.setattr(advisor_module, "get_planner_llm", lambda: _FakeLLM(["{'diagnosis':['ok'], 'do_not_do': [],}"]))
+    monkeypatch.setattr(advisor_module, "get_advisor_llm", lambda: _FakeLLM(["{'diagnosis':['ok'], 'do_not_do': [],}"]))
     recs, meta = advisor_module.build_advisor_recs(
         objective="o", recent_history="h", memory_short="", memory_long="", active_plan={}, progress_state={}, world_state={}, belief_state={}
     )
@@ -922,11 +951,9 @@ def test_advisor_repair_parse_success(monkeypatch):
     assert "single_quotes_fixed" in str(meta.get("advisor_parse_strategy", ""))
 
 
-
-
 def test_advisor_repair_invalid_json_includes_repair_diagnostics(monkeypatch):
     fake = _FakeLLM(["{bad json}", "Claro, aquí tienes: nope"])
-    monkeypatch.setattr(advisor_module, "get_planner_llm", lambda: fake)
+    monkeypatch.setattr(advisor_module, "get_advisor_llm", lambda: fake)
     recs, meta = advisor_module.build_advisor_recs(
         objective="o", recent_history="h", memory_short="", memory_long="", active_plan={}, progress_state={}, world_state={}, belief_state={}
     )
@@ -939,15 +966,8 @@ def test_advisor_repair_invalid_json_includes_repair_diagnostics(monkeypatch):
 
 
 def test_advisor_structured_output_path(monkeypatch):
-    class _Structured:
-        def invoke(self, _messages):
-            return advisor_module.AdvisorStructuredPayload(diagnosis=["structured"])
-
-    class _StructuredLLM:
-        def with_structured_output(self, _schema):
-            return _Structured()
-
-    monkeypatch.setattr(advisor_module, "get_planner_llm", lambda: _StructuredLLM())
+    fake = _FakeLLM([], structured_payload=advisor_module.AdvisorStructuredPayload(diagnosis=["structured"]))
+    monkeypatch.setattr(advisor_module, "get_advisor_llm", lambda: fake)
     recs, meta = advisor_module.build_advisor_recs(
         objective="o", recent_history="h", memory_short="", memory_long="", active_plan={}, progress_state={}, world_state={}, belief_state={}
     )
@@ -955,9 +975,48 @@ def test_advisor_structured_output_path(monkeypatch):
     assert meta.get("advisor_parse_strategy") == "structured_output"
     assert recs["diagnosis"] == ["structured"]
 
+
+def test_advisor_json_mode_fixes_newline_inside_string(monkeypatch):
+    broken = '{"diagnosis":["line1\nline2"],"loop_or_waste_flags":[],"recommended_moves":[],"guardrails":[],"do_not_do":[],"suggested_utterances":[]}'
+    fake = _FakeLLM([broken], json_mode_outputs=[broken])
+    monkeypatch.setattr(advisor_module, "get_advisor_llm", lambda: fake)
+    recs, meta = advisor_module.build_advisor_recs(
+        objective="o", recent_history="h", memory_short="", memory_long="", active_plan={}, progress_state={}, world_state={}, belief_state={}
+    )
+    assert meta["advisor_ok"] is True
+    assert recs["diagnosis"]
+    assert "raw_newlines_escaped" in str(meta.get("advisor_parse_strategy", ""))
+
+
+def test_advisor_repair_same_as_initial_marks_reason_and_recovers(monkeypatch):
+    broken = '{"diagnosis": ["unterminated"'
+    repaired = '{"diagnosis": ["unterminated"'
+    forced = '{"diagnosis":["fixed"],"loop_or_waste_flags":[],"recommended_moves":[],"guardrails":[],"do_not_do":[],"suggested_utterances":[]}'
+
+    class _RepairJsonModeLLM(_FakeLLM):
+        def __init__(self):
+            super().__init__([broken, repaired])
+            self.bind_calls = 0
+
+        def bind(self, **kwargs):
+            _ = kwargs
+            self.bind_calls += 1
+            if self.bind_calls == 1:
+                raise RuntimeError("json_mode_not_available_initial")
+            return _FakeLLM([], json_mode_outputs=[forced]).bind()
+
+    monkeypatch.setattr(advisor_module, "get_advisor_llm", lambda: _RepairJsonModeLLM())
+    recs, meta = advisor_module.build_advisor_recs(
+        objective="o", recent_history="h", memory_short="", memory_long="", active_plan={}, progress_state={}, world_state={}, belief_state={}
+    )
+    assert meta["advisor_ok"] is True
+    assert recs["diagnosis"] == ["fixed"]
+    assert meta.get("advisor_reason_code") == "repair_same_as_initial"
+
+
 def test_advisor_retry_repair_success(monkeypatch):
     fake = _FakeLLM(["not-json", '{"diagnosis":["fixed"]}'])
-    monkeypatch.setattr(advisor_module, "get_planner_llm", lambda: fake)
+    monkeypatch.setattr(advisor_module, "get_advisor_llm", lambda: fake)
     recs, meta = advisor_module.build_advisor_recs(
         objective="o", recent_history="h", memory_short="", memory_long="", active_plan={}, progress_state={}, world_state={}, belief_state={}
     )
