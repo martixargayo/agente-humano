@@ -409,21 +409,22 @@ def negotiation_livetrace2_panel():
     .top { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
     .badge { padding:4px 10px; border-radius:999px; font-size:12px; background:#334155; }
     .ok { background:#14532d; }
-    .layout { display:grid; grid-template-columns: minmax(860px, 1.6fr) minmax(900px, 2.9fr); gap:14px; margin-top:12px; }
-    .panel { background:#0b1326; border:1px solid #1e293b; border-radius:12px; padding:10px; min-height:78vh; overflow:auto; }
-    .timeline-scroll { overflow-x:auto; }
-    #timelineGrid { display:grid; grid-template-columns: minmax(420px, 2fr) minmax(210px, 1fr) minmax(210px, 1fr); gap:10px; min-width:860px; align-items:stretch; }
-    .node { border:1px solid #1e293b; border-radius:10px; padding:8px; cursor:pointer; background:#0f172a; }
-    .node.active { border-color:#38bdf8; }
-    .row { display:flex; justify-content:space-between; font-size:12px; color:#93c5fd; gap:8px; }
-    .kpi { display:flex; gap:8px; flex-wrap:wrap; font-size:12px; margin-top:8px; }
-    .pill { background:#1e293b; border-radius:8px; padding:5px 8px; }
-    .io { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .controls { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; align-items:center; }
+    .pill { background:#1e293b; border-radius:8px; padding:6px 10px; border:1px solid #334155; font-size:12px; color:#e2e8f0; }
+    button.pill { cursor:pointer; }
+    .meta-small { color:#94a3b8; font-size:11px; }
+    #filtersPanel { display:none; margin-top:8px; border:1px solid #334155; border-radius:10px; background:#0b1326; padding:10px; }
+    #filtersPanel .filters-grid { display:grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap:8px; }
+    .turns { margin-top:12px; display:grid; gap:10px; }
+    .turn-card { border:1px solid #1e293b; border-radius:12px; background:#0b1326; padding:10px; }
+    .turn-head { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; }
+    .nodes { margin-top:8px; display:grid; gap:8px; }
+    .node { border:1px solid #334155; border-radius:10px; padding:8px; background:#0f172a; }
+    .row { display:flex; justify-content:space-between; gap:8px; font-size:12px; color:#93c5fd; }
+    .io { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:8px; }
     .box { border:1px solid #334155; border-radius:10px; background:#020617; }
     .box h4 { margin:0; padding:8px; border-bottom:1px solid #1e293b; font-size:12px; color:#93c5fd; }
-    pre { margin:0; padding:10px; white-space:pre-wrap; word-break:break-word; max-height:38vh; overflow:auto; font-size:12px; }
-    .fixed-btn { position:fixed; right:18px; bottom:18px; z-index:99; border:1px solid #334155; background:#0f172a; color:#e2e8f0; padding:10px 12px; border-radius:10px; cursor:pointer; }
-    .meta-small { color:#94a3b8; font-size:11px; }
+    pre { margin:0; padding:10px; white-space:pre-wrap; word-break:break-word; max-height:28vh; overflow:auto; font-size:12px; }
   </style>
 </head>
 <body>
@@ -431,209 +432,172 @@ def negotiation_livetrace2_panel():
   <div class="top">
     <div>
       <h2 style="margin:0">LiveTrace2 v1</h2>
-      <div class="meta-small">Timeline real con ramas por solape temporal, gates y LLMs.</div>
-      <div id="uiDebug" class="meta-small" style="display:none"></div>
+      <div class="meta-small">Listado acumulado de turnos, filtros por nodo y control de despliegue global/local.</div>
     </div>
     <div>
       <span id="conn" class="badge">conectando...</span>
-      <span id="total" class="badge">0 eventos</span>
+      <span id="total" class="badge">0 turnos</span>
     </div>
   </div>
-  <div class="kpi">
-    <span id="kTurn" class="pill">Turno: -</span>
-    <span id="kLatency" class="pill">Latencia total: -</span>
-    <span id="kPar" class="pill">Paralelismo: -</span>
-    <span id="kOverlap" class="pill">Overlap: -</span>
-    <label class="pill" style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input id="toggleSkipped" type="checkbox" checked /> Show skipped/not captured</label>
+
+  <div class="controls">
+    <button id="expandAllBtn" class="pill">Desplegar todo</button>
+    <button id="filtersBtn" class="pill">Filtros</button>
+    <label class="pill" style="display:flex;align-items:center;gap:6px;"><input id="toggleSkipped" type="checkbox" checked /> Show skipped/not captured</label>
   </div>
-  <div class="layout">
-    <div class="panel timeline-scroll"><div id="timelineGrid"></div></div>
-    <div class="panel" id="right"><div class="meta-small">Selecciona un nodo.</div></div>
+
+  <div id="filtersPanel">
+    <div class="meta-small" style="margin-bottom:8px;">Filtra nodos por nombre (afecta a todos los turnos y todos los modos de despliegue).</div>
+    <div id="filtersGrid" class="filters-grid"></div>
   </div>
+
+  <div id="turnsList" class="turns"><div class="meta-small">Aún no hay turnos recibidos.</div></div>
 </div>
-<button id="expandBtn" class="fixed-btn">Desplegar todo</button>
+
 <script>
-const grid = document.getElementById('timelineGrid');
-const right = document.getElementById('right');
+const FILTER_NODE_ORDER = [
+  'advisor_llm',
+  'world_gate',
+  'world_extractor_llm',
+  'belief_gate',
+  'belief_llm',
+  'planner_gate',
+  'planner_llm',
+  'executor_llm',
+];
+
 const conn = document.getElementById('conn');
 const total = document.getElementById('total');
-const kTurn = document.getElementById('kTurn');
-const kLatency = document.getElementById('kLatency');
-const kPar = document.getElementById('kPar');
-const kOverlap = document.getElementById('kOverlap');
+const turnsList = document.getElementById('turnsList');
+const expandAllBtn = document.getElementById('expandAllBtn');
+const filtersBtn = document.getElementById('filtersBtn');
+const filtersPanel = document.getElementById('filtersPanel');
+const filtersGrid = document.getElementById('filtersGrid');
 const toggleSkipped = document.getElementById('toggleSkipped');
-const expandBtn = document.getElementById('expandBtn');
-const uiDebug = document.getElementById('uiDebug');
-let latest = null;
-let selected = null;
-let expanded = false;
+
+const turns = [];
+const turnIndexById = new Map();
+const localExpanded = new Set();
+const activeFilters = new Set(FILTER_NODE_ORDER);
+let expandAll = false;
 
 function pretty(v){ try{return JSON.stringify(v ?? {}, null, 2);}catch{return String(v ?? '');} }
-function ts(v){ return v ? new Date(v).toISOString() : 'NO TIMESTAMPS'; }
-
-function sortByTime(nodes){
-  return [...(nodes||[])].sort((a,b)=>{
-    const sa = Date.parse(a.started_at || '') || Number.MAX_SAFE_INTEGER;
-    const sb = Date.parse(b.started_at || '') || Number.MAX_SAFE_INTEGER;
-    if (sa !== sb) return sa - sb;
-    const ea = Date.parse(a.ended_at || '') || Number.MAX_SAFE_INTEGER;
-    const eb = Date.parse(b.ended_at || '') || Number.MAX_SAFE_INTEGER;
-    if (ea !== eb) return ea - eb;
-    const ta = String(a.node_type || '');
-    const tb = String(b.node_type || '');
-    const pa = ta === 'gate' ? 0 : 1;
-    const pb = tb === 'gate' ? 0 : 1;
-    if (pa !== pb) return pa - pb;
-    return (Number(a.sequence_index || 0) - Number(b.sequence_index || 0));
-  });
+function ts(v){
+  if(v === null || v === undefined || v === '') return 'NO TIMESTAMPS';
+  const normalized = (typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 1e12) ? v * 1000 : v;
+  const d = new Date(normalized);
+  return Number.isNaN(d.getTime()) ? 'NO TIMESTAMPS' : d.toISOString();
 }
+function escapeHtml(v){ return String(v ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
 
-function layoutNodes(nodes){
-  const sorted = sortByTime(nodes);
-  const col1Order = [
-    'world_gate', 'world_extractor_llm', 'belief_gate', 'belief_llm', 'planner_gate', 'planner_llm', 'executor_llm'
-  ];
-
-  const used = new Set();
-  const col1 = [];
-  for(const name of col1Order){
-    for(const node of sorted){
-      if(used.has(node.node_id)) continue;
-      if(node.node_name === name){ col1.push(node); used.add(node.node_id); }
-    }
-  }
-  for(const node of sorted){
-    if(used.has(node.node_id)) continue;
-    if(['world_judge_llm','advisor_llm'].includes(node.node_name)) continue;
-    col1.push(node);
-    used.add(node.node_id);
-  }
-
-  const positioned = [];
-  let row = 1;
-  for(const node of col1){
-    positioned.push({...node, _lane: 1, _row: row, _span: 1});
-    row += 1;
-  }
-
-  const plannerAnchor = positioned.find((n)=>n.node_name === 'planner_gate' || n.node_name === 'planner_llm');
-  const plannerStartRow = plannerAnchor ? plannerAnchor._row : Math.max(2, row);
-  const parallelSpan = Math.max(1, plannerStartRow);
-
-  const judgeNodes = sorted.filter((n)=>n.node_name === 'world_judge_llm');
-  for(const judge of judgeNodes){
-    if(used.has(judge.node_id)) continue;
-    positioned.push({...judge, _lane: 2, _row: 1, _span: parallelSpan});
-    used.add(judge.node_id);
-  }
-
-  const advisorNodes = sorted.filter((n)=>n.node_name === 'advisor_llm');
-  for(const advisor of advisorNodes){
-    if(used.has(advisor.node_id)) continue;
-    positioned.push({...advisor, _lane: 3, _row: 1, _span: parallelSpan});
-    used.add(advisor.node_id);
-  }
-
-  return positioned.sort((a,b)=>a.sequence_index-b.sequence_index);
+function turnId(evt){
+  const session = String(evt.session_id || evt?.header?.event_identity?.session_id || 'session');
+  return `${session}::${Number(evt.turn_idx || 0)}::${Number(evt.trace_index || 0)}`;
 }
-
-function computeHiddenNodesMeta(allNodes, visibleNodes, layoutNodesOut){
-  const hiddenByFilter = Math.max(0, (allNodes||[]).length - (visibleNodes||[]).length);
-  const hiddenByLayout = Math.max(0, (visibleNodes||[]).length - (layoutNodesOut||[]).length);
-  const layoutIds = new Set((layoutNodesOut||[]).map((n)=>String(n.node_id||'')));
-  const hiddenByLayoutNames = (visibleNodes||[])
-    .filter((n)=>!layoutIds.has(String(n.node_id||'')))
-    .map((n)=>String(n.node_name||'unknown'));
-  return {
-    all_nodes_count: (allNodes||[]).length,
-    visible_nodes_count: (visibleNodes||[]).length,
-    hidden_nodes_count: hiddenByFilter + hiddenByLayout,
-    hidden_by_filter: hiddenByFilter,
-    hidden_by_layout: hiddenByLayout,
-    hidden_node_names: hiddenByLayoutNames,
-  };
-}
-
 
 function detail(node){
   const input = node.input_prompt_rendered || (node.input_payload_raw == null ? 'NOT_CAPTURED' : pretty(node.input_payload_raw));
   const output = node.output_text_raw || node.output_text_rendered || (node.output_payload_parsed == null && node.output_payload_raw == null ? 'NOT_CAPTURED' : pretty(node.output_payload_parsed ?? node.output_payload_raw));
-  const gateExtra = node.node_type === 'gate' ? `<div class="io" style="margin-top:10px"><div class="box"><h4>Gate inputs</h4><pre>${pretty(node.gate_inputs)}</pre></div><div class="box"><h4>Gate decision</h4><pre>${node.gate_decision || '—'}
-${(node.gate_reason_codes||[]).join(', ') || node.gate_reason || '—'}</pre></div></div>` : '';
-  return `<div class="row"><strong>${node.node_name}</strong><span>${node.node_type} · ${node.status}</span></div>
-  <div class="kpi"><span class="pill">${node.latency_ms||0} ms</span><span class="pill">${ts(node.started_at)} → ${ts(node.ended_at)}</span><span class="pill">capture: in=${node.input_capture_state} out=${node.output_capture_state}</span></div>
-  <div class="io" style="margin-top:10px"><div class="box"><h4>Entrada real</h4><pre>${input}</pre></div><div class="box"><h4>Salida real (raw/parsed)</h4><pre>${output}</pre></div></div>${gateExtra}`;
+  const gateExtra = node.node_type === 'gate' ? `<div class="io"><div class="box"><h4>Gate inputs</h4><pre>${escapeHtml(pretty(node.gate_inputs))}</pre></div><div class="box"><h4>Gate decision</h4><pre>${escapeHtml(node.gate_decision || '—')}
+${escapeHtml((node.gate_reason_codes||[]).join(', ') || node.gate_reason || '—')}</pre></div></div>` : '';
+  return `<div class="row"><strong>${escapeHtml(node.node_name)}</strong><span>${escapeHtml(node.node_type)} · ${escapeHtml(node.status)}</span></div><div class="row"><span>${node.latency_ms||0} ms</span><span>${ts(node.started_at)} → ${ts(node.ended_at)}</span></div><div class="io"><div class="box"><h4>Entrada</h4><pre>${escapeHtml(input)}</pre></div><div class="box"><h4>Salida</h4><pre>${escapeHtml(output)}</pre></div></div>${gateExtra}`;
 }
 
-function renderExpanded(nodes){
-  right.innerHTML = nodes.map((node)=>`<div class="node" style="margin-bottom:10px"><div class="row"><strong>${node.sequence_index}. ${node.node_name}</strong><span>${node.latency_ms||0} ms</span></div>${detail(node)}</div>`).join('');
+function renderFilters(){
+  filtersGrid.innerHTML = FILTER_NODE_ORDER.map((name)=>{
+    const checked = activeFilters.has(name) ? 'checked' : '';
+    return `<label class="pill" style="display:flex;align-items:center;gap:6px;"><input class="filterItem" type="checkbox" data-name="${name}" ${checked} />${name}</label>`;
+  }).join('');
+  for(const el of filtersGrid.querySelectorAll('.filterItem')){
+    el.onchange = (event) => {
+      const name = String(event.target?.getAttribute('data-name') || '');
+      if(!name) return;
+      if(event.target.checked) activeFilters.add(name);
+      else activeFilters.delete(name);
+      renderTurns();
+    };
+  }
 }
 
-function render(){
-  if(!latest){ grid.innerHTML = '<div class="meta-small">Esperando trazas...</div>'; return; }
-  const allNodes = latest.nodes || [];
-  const visibleNodes = allNodes.filter((n)=>{
-    if(toggleSkipped.checked) return true;
-    const skipped = String(n.status||'') === 'skipped';
-    const notCaptured = String(n.input_capture_state||'') === 'not_captured' && String(n.output_capture_state||'') === 'not_captured';
-    return !(skipped || notCaptured);
-  });
-  const nodes = layoutNodes(visibleNodes);
-  total.textContent = `evento #${latest.trace_index}`;
-  kTurn.textContent = `Turno: ${latest.turn_idx}`;
-  kLatency.textContent = `Latencia total: ${latest.total_latency_ms} ms`;
-  const wp = latest.world_parallelism || {};
-  kPar.textContent = `Parallel: ${wp.enabled ? 'on' : 'off'} · ${wp.mode || 'n/a'}`;
-  kOverlap.textContent = `sum=${wp.sum_ms ?? '-'} · critical=${wp.critical_path_ms ?? '-'} · overlap=${wp.overlap_ms ?? '-'}`;
-
-  grid.innerHTML = '';
-  const hiddenMeta = computeHiddenNodesMeta(allNodes, visibleNodes, nodes);
-  if(hiddenMeta.hidden_nodes_count > 0){
-    const reasons = [];
-    if(hiddenMeta.hidden_by_filter > 0) reasons.push(`filtro=${hiddenMeta.hidden_by_filter}`);
-    if(hiddenMeta.hidden_by_layout > 0) reasons.push(`layout=${hiddenMeta.hidden_by_layout}`);
-    const names = hiddenMeta.hidden_node_names.length ? ` · hidden=${hiddenMeta.hidden_node_names.join(',')}` : '';
-    const warn = document.createElement('div');
-    warn.className = 'meta-small';
-    warn.style.gridColumn = '1 / span 3';
-    warn.textContent = `⚠️ Se ocultaron ${hiddenMeta.hidden_nodes_count} nodos (${reasons.join(' + ') || 'unknown'}).${names}`;
-    grid.appendChild(warn);
-  }
-  const mode = String(latest?.header?.env_snapshot?.LIVETRACE2_MODE || '').toLowerCase();
-  if(uiDebug){
-    if(mode === 'internal'){
-      uiDebug.style.display = 'block';
-      uiDebug.textContent = `debug ui: all=${hiddenMeta.all_nodes_count} visible=${hiddenMeta.visible_nodes_count} hidden=${hiddenMeta.hidden_nodes_count} (filter=${hiddenMeta.hidden_by_filter},layout=${hiddenMeta.hidden_by_layout})`;
-    } else {
-      uiDebug.style.display = 'none';
-      uiDebug.textContent = '';
-    }
-  }
-  for(const node of nodes){
-    const el = document.createElement('div');
-    el.className = 'node' + ((selected && selected.node_id===node.node_id) ? ' active' : '');
-    el.style.gridColumn = String(node._lane);
-    el.style.gridRow = `${node._row} / span ${node._span}`;
-    el.innerHTML = `<div class="row"><strong>${node.sequence_index}. ${node.node_name}</strong><span>${node.latency_ms||0} ms</span></div><div class="meta-small">${node.node_type} · ${node.status}</div><div class="meta-small">${ts(node.started_at)}</div>`;
-    el.onclick = () => { selected = node; if(!expanded) right.innerHTML = detail(node); };
-    grid.appendChild(el);
-  }
-  if(expanded){ renderExpanded(nodes); }
-  else if(selected){ right.innerHTML = detail(selected); }
-  else if(nodes.length){ selected = nodes[0]; right.innerHTML = detail(selected); }
+function isNodeVisible(node){
+  const name = String(node.node_name || '');
+  if(!activeFilters.has(name)) return false;
+  if(toggleSkipped.checked) return true;
+  const skipped = String(node.status||'') === 'skipped';
+  const notCaptured = String(node.input_capture_state||'') === 'not_captured' && String(node.output_capture_state||'') === 'not_captured';
+  return !(skipped || notCaptured);
 }
 
-expandBtn.onclick = () => {
-  expanded = !expanded;
-  expandBtn.textContent = expanded ? 'Collapse all' : 'Desplegar todo';
-  render();
+function renderTurns(){
+  total.textContent = `${turns.length} turnos`;
+  if(!turns.length){
+    turnsList.innerHTML = '<div class="meta-small">Aún no hay turnos recibidos.</div>';
+    return;
+  }
+  turnsList.innerHTML = turns.map((evt)=>{
+    const id = turnId(evt);
+    const allNodes = Array.isArray(evt.nodes) ? evt.nodes : [];
+    const visibleNodes = allNodes.filter(isNodeVisible);
+    const expanded = expandAll || localExpanded.has(id);
+    const details = expanded
+      ? (visibleNodes.length
+          ? `<div class="nodes">${visibleNodes.map((node)=>`<div class="node">${detail(node)}</div>`).join('')}</div>`
+          : '<div class="meta-small" style="margin-top:8px;">No hay nodos visibles con los filtros actuales.</div>')
+      : '';
+    const localBtn = expandAll
+      ? '<button class="pill" disabled title="Desactiva Desplegar todo para usarlo">Desplegar</button>'
+      : `<button class="pill local-toggle" data-turn-id="${id}">${localExpanded.has(id) ? 'Ocultar' : 'Desplegar'}</button>`;
+    return `<div class="turn-card"><div class="turn-head"><div><strong>Turno ${Number(evt.turn_idx || 0)}</strong> · session=${escapeHtml(evt.session_id || 'n/a')} · trace=${Number(evt.trace_index || 0)}<div class="meta-small">${ts(evt.started_at)} → ${ts(evt.ended_at)} · visibles=${visibleNodes.length}/${allNodes.length} · latencia=${evt.total_latency_ms ?? '-'} ms</div></div><div>${localBtn}</div></div>${details}</div>`;
+  }).join('');
+
+  for(const btn of turnsList.querySelectorAll('.local-toggle')){
+    btn.onclick = (event) => {
+      const id = String(event.target?.getAttribute('data-turn-id') || '');
+      if(!id) return;
+      if(localExpanded.has(id)) localExpanded.delete(id);
+      else localExpanded.add(id);
+      renderTurns();
+    };
+  }
+}
+
+function upsertTurn(evt){
+  const id = turnId(evt);
+  if(turnIndexById.has(id)){
+    const idx = turnIndexById.get(id);
+    turns[idx] = evt;
+    return;
+  }
+  turnIndexById.set(id, turns.length);
+  turns.push(evt);
+}
+
+expandAllBtn.onclick = () => {
+  expandAll = !expandAll;
+  expandAllBtn.textContent = expandAll ? 'Contraer todo' : 'Desplegar todo';
+  renderTurns();
 };
+
+filtersBtn.onclick = () => {
+  const isOpen = filtersPanel.style.display === 'block';
+  filtersPanel.style.display = isOpen ? 'none' : 'block';
+};
+
+toggleSkipped.onchange = () => renderTurns();
+
+renderFilters();
+renderTurns();
 
 const es = new EventSource('/negociacion/livetrace2/stream');
 es.addEventListener('open', () => { conn.textContent='conectado'; conn.className='badge ok'; });
 es.addEventListener('error', () => { conn.textContent='reconectando'; conn.className='badge'; });
-es.addEventListener('trace2', (event) => { latest = JSON.parse(event.data); selected = null; render(); });
-toggleSkipped.onchange = () => render();
+es.addEventListener('trace2', (event) => {
+  const evt = JSON.parse(event.data);
+  upsertTurn(evt);
+  renderTurns();
+});
+
+window.__livetrace2_ingest = (evt) => { upsertTurn(evt); renderTurns(); };
 </script>
 </body>
 </html>
