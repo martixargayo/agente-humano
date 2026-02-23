@@ -103,7 +103,7 @@ def _apply_judge_advisor_results(
             ok=bool(advisor_meta.get("advisor_ok", False)),
             model=None,
             retry_count=0,
-            error_stage="llm_invoke" if advisor_meta.get("advisor_error") else "",
+            error_stage=str(advisor_meta.get("advisor_error_stage") or ("llm_invoke" if advisor_meta.get("advisor_error") else "")),
             error=str(advisor_meta.get("advisor_error", "")),
             start_ts=advisor_meta.get("advisor_start_ts"),
             end_ts=advisor_meta.get("advisor_end_ts"),
@@ -122,6 +122,8 @@ def _apply_judge_advisor_results(
             or advisor_meta.get("advisor_error_message")
             or "advisor_not_called"
         )
+        advisor_error_type = str(advisor_meta.get("advisor_error_type") or "")
+        advisor_error_stage = str(advisor_meta.get("advisor_error_stage") or ("disabled" if disabled else "llm_invoke"))
         record_llm_call_ms(
             state,
             name="advisor_llm",
@@ -129,10 +131,18 @@ def _apply_judge_advisor_results(
             latency_ms=0,
             ok=False if disabled else False,
             status="skipped" if disabled else "error",
-            error_stage="disabled" if disabled else "llm_invoke",
+            error_stage=advisor_error_stage,
             error="disabled_by_config" if disabled else advisor_error,
             start_ts=start_iso,
             end_ts=end_iso,
+            input_payload_raw=advisor_meta.get("advisor_input_payload_raw"),
+            output_payload_raw=advisor_meta.get("advisor_output_payload_raw")
+            if advisor_meta.get("advisor_output_payload_raw") is not None
+            else {
+                "error_type": advisor_error_type or ("disabled" if disabled else "advisor_not_called"),
+                "error_message": "disabled_by_config" if disabled else advisor_error,
+                "stage": advisor_error_stage,
+            },
         )
 
     state["advisor_recs"] = advisor_recs
@@ -653,6 +663,7 @@ def world_judge_llm(
 
 
 def world_updater_node(state: dict) -> dict:
+    _append_trace_debug_marker(state, "world_updater_entered")
     deps = state.get("deps")
     prev_world = state.get("world_state") or default_world_state()
     state["prev_world_state"] = prev_world
@@ -728,11 +739,16 @@ def world_updater_node(state: dict) -> dict:
     advisor_enabled = os.getenv("ADVISOR_ENABLED", "1") == "1"
     parallel_meta = {
         "enabled": bool(parallel_enabled),
-        "mode": "threads",
+        "mode": "threads" if parallel_enabled else "n/a",
         "tasks": {},
         "fallback_to_sequential": False,
         "fallback_reason_codes": [],
+        "sum_ms": 0,
+        "critical_path_ms": 0,
+        "overlap_ms": 0,
+        "saved_ms_estimate": 0,
     }
+    state["world_parallelism"] = dict(parallel_meta)
 
     def _run_extractor() -> tuple[dict, dict, dict]:
         if world_skipped:

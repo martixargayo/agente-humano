@@ -4,14 +4,10 @@ import json
 import time
 from datetime import datetime, timezone
 
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.messages import HumanMessage, SystemMessage
 
 from prompts import ADVISOR_SYSTEM_PROMPT, ADVISOR_USER_PROMPT
 from .llm_clients import get_planner_llm
-
-_advisor_prompt = ChatPromptTemplate.from_messages(
-    [("system", ADVISOR_SYSTEM_PROMPT), ("user", ADVISOR_USER_PROMPT)]
-)
 
 
 def _compact_world_summary(world_state: dict) -> dict:
@@ -85,7 +81,14 @@ def build_advisor_recs(
 ) -> tuple[dict, dict]:
     started = time.perf_counter()
     started_wall = datetime.now(timezone.utc).isoformat()
-    meta = {"advisor_ok": False, "advisor_latency_ms": 0, "advisor_error": "", "advisor_llm_called": False}
+    meta = {
+        "advisor_ok": False,
+        "advisor_latency_ms": 0,
+        "advisor_error": "",
+        "advisor_error_type": "",
+        "advisor_error_stage": "",
+        "advisor_llm_called": False,
+    }
     payload = {
         "objective": str(objective or "")[:280],
         "recent_history": str(recent_history or "")[-1800:],
@@ -100,32 +103,51 @@ def build_advisor_recs(
         "world_summary": _compact_world_summary(world_state),
         "belief_summary": _compact_belief_summary(belief_state),
     }
+
+    messages = [
+        SystemMessage(content=ADVISOR_SYSTEM_PROMPT),
+        HumanMessage(
+            content=ADVISOR_USER_PROMPT.format(
+                objective=payload["objective"],
+                recent_history=json.dumps(payload["recent_history"], ensure_ascii=False),
+                memory_short=json.dumps(payload["memory_short"], ensure_ascii=False),
+                memory_long=json.dumps(payload["memory_long"], ensure_ascii=False),
+                active_plan=json.dumps(payload["active_plan"], ensure_ascii=False),
+                progress_counters=json.dumps(payload["progress_counters"], ensure_ascii=False),
+                world_summary=json.dumps(payload["world_summary"], ensure_ascii=False),
+                belief_summary=json.dumps(payload["belief_summary"], ensure_ascii=False),
+            )
+        ),
+    ]
+
+    input_payload_raw = {
+        "objective_len": len(str(payload.get("objective", ""))),
+        "recent_history_len": len(str(payload.get("recent_history", ""))),
+        "memory_short_len": len(str(payload.get("memory_short", ""))),
+        "memory_long_len": len(str(payload.get("memory_long", ""))),
+        "active_plan_keys": sorted(list((payload.get("active_plan") or {}).keys()))[:16],
+        "progress_counters_keys": sorted(list((payload.get("progress_counters") or {}).keys()))[:16],
+        "world_summary_keys": sorted(list((payload.get("world_summary") or {}).keys()))[:16],
+        "belief_summary_keys": sorted(list((payload.get("belief_summary") or {}).keys()))[:16],
+    }
+
     try:
-        messages = _advisor_prompt.format_messages(
-            objective=payload["objective"],
-            recent_history=json.dumps(payload["recent_history"], ensure_ascii=False),
-            memory_short=json.dumps(payload["memory_short"], ensure_ascii=False),
-            memory_long=json.dumps(payload["memory_long"], ensure_ascii=False),
-            active_plan=json.dumps(payload["active_plan"], ensure_ascii=False),
-            progress_counters=json.dumps(payload["progress_counters"], ensure_ascii=False),
-            world_summary=json.dumps(payload["world_summary"], ensure_ascii=False),
-            belief_summary=json.dumps(payload["belief_summary"], ensure_ascii=False),
-        )
+        meta["advisor_error_stage"] = "llm_invoke"
         raw = get_planner_llm().invoke(messages)
-        ended_wall = datetime.now(timezone.utc).isoformat()
         meta["advisor_llm_called"] = True
         text = getattr(raw, "content", str(raw))
-        recs = _normalize_advisor(json.loads(text))
+        meta["advisor_error_stage"] = "json_parse"
+        parsed = json.loads(text)
+        recs = _normalize_advisor(parsed)
+        ended_wall = datetime.now(timezone.utc).isoformat()
         meta["advisor_ok"] = True
+        meta["advisor_error_stage"] = ""
         return recs, {
             **meta,
             "advisor_latency_ms": int((time.perf_counter() - started) * 1000),
             "advisor_start_ts": started_wall,
             "advisor_end_ts": ended_wall,
-            "advisor_input_payload_raw": [
-                {"role": getattr(msg, "type", "user"), "content": str(getattr(msg, "content", ""))}
-                for msg in messages
-            ],
+            "advisor_input_payload_raw": input_payload_raw,
             "advisor_input_prompt_rendered": "\n\n".join(
                 f"[{getattr(msg, 'type', 'user')}]\n{str(getattr(msg, 'content', ''))}" for msg in messages
             ),
@@ -134,10 +156,19 @@ def build_advisor_recs(
         }
     except Exception as exc:
         ended_wall = datetime.now(timezone.utc).isoformat()
-        meta["advisor_error"] = str(exc)[:180]
+        meta["advisor_error"] = f"{exc.__class__.__name__}: {str(exc)}"[:220]
+        meta["advisor_error_type"] = exc.__class__.__name__
+        if not meta.get("advisor_error_stage"):
+            meta["advisor_error_stage"] = "unknown"
         return _normalize_advisor({}), {
             **meta,
             "advisor_latency_ms": int((time.perf_counter() - started) * 1000),
             "advisor_start_ts": started_wall,
             "advisor_end_ts": ended_wall,
+            "advisor_input_payload_raw": input_payload_raw,
+            "advisor_output_payload_raw": {
+                "error_type": meta.get("advisor_error_type", "unknown"),
+                "error_message": meta.get("advisor_error", "unknown_error"),
+                "stage": meta.get("advisor_error_stage", "unknown"),
+            },
         }

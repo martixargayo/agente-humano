@@ -392,6 +392,18 @@ Objetivo: recuperar tácticas concretas para ejecutar esta policy.
         )
 
 
+
+
+def _merge_trace_debug_markers(*marker_lists: list | None) -> list[dict]:
+    merged: list[dict] = []
+    for items in marker_lists:
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if isinstance(item, dict):
+                merged.append(item)
+    return merged[-64:]
+
 # ---- Construcción del grafo LangGraph ----
 
 
@@ -636,7 +648,10 @@ def run_negotiation_agent(
         }
     t_summary_enqueued = time.perf_counter()
 
-    markers = new_graph_state.get("trace_debug_markers") if isinstance(new_graph_state.get("trace_debug_markers"), list) else []
+    markers = _merge_trace_debug_markers(
+        graph_state.get("trace_debug_markers") if isinstance(graph_state, dict) else None,
+        new_graph_state.get("trace_debug_markers") if isinstance(new_graph_state, dict) else None,
+    )
     markers.append({"marker": "debug_trace_appended_at", "t": t_summary_enqueued})
     new_graph_state["trace_debug_markers"] = markers[-64:]
 
