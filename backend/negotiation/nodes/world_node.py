@@ -104,6 +104,13 @@ def _apply_judge_advisor_results(
     else:
         now_iso = datetime.now(timezone.utc).isoformat()
         disabled = str(advisor_meta.get("advisor_error", "")).strip().lower() == "disabled"
+        start_iso = str(advisor_meta.get("advisor_start_ts") or advisor_meta.get("advisor_scheduled_start_ts") or now_iso)
+        end_iso = str(advisor_meta.get("advisor_end_ts") or now_iso)
+        advisor_error = str(
+            advisor_meta.get("advisor_error")
+            or advisor_meta.get("advisor_error_message")
+            or "advisor_not_called"
+        )
         record_llm_call_ms(
             state,
             name="advisor_llm",
@@ -112,9 +119,9 @@ def _apply_judge_advisor_results(
             ok=False if disabled else False,
             status="skipped" if disabled else "error",
             error_stage="disabled" if disabled else "llm_invoke",
-            error="disabled_by_config" if disabled else str(advisor_meta.get("advisor_error", "advisor_not_called")),
-            start_ts=now_iso,
-            end_ts=now_iso,
+            error="disabled_by_config" if disabled else advisor_error,
+            start_ts=start_iso,
+            end_ts=end_iso,
         )
 
     state["advisor_recs"] = advisor_recs
@@ -175,6 +182,7 @@ def flush_world_parallel_pending(state: dict) -> dict:
         return state
 
     parallel_meta = pending.get("parallel_meta") if isinstance(pending.get("parallel_meta"), dict) else {}
+    parallel_started_ts = str(pending.get("parallel_started_ts", "") or "")
     advisor_enabled = bool(pending.get("advisor_enabled", True))
     judgement = pending.get("judgement") if isinstance(pending.get("judgement"), dict) else None
     judge_meta = pending.get("judge_meta") if isinstance(pending.get("judge_meta"), dict) else None
@@ -185,14 +193,23 @@ def flush_world_parallel_pending(state: dict) -> dict:
     judge_future = pending.get("judge_future") if isinstance(pending.get("judge_future"), Future) else None
     advisor_future = pending.get("advisor_future") if isinstance(pending.get("advisor_future"), Future) else None
 
+    judge_join_error = None
+    advisor_join_error = None
     try:
         if judge_future is not None:
-            judgement, judge_meta = judge_future.result()
+            try:
+                judgement, judge_meta = judge_future.result()
+            except Exception as exc:
+                judge_join_error = exc
+                parallel_meta["fallback_to_sequential"] = True
+                parallel_meta.setdefault("fallback_reason_codes", []).append("parallel_join_error:judge")
         if advisor_enabled and advisor_future is not None:
-            advisor_recs, advisor_meta = advisor_future.result()
-    except Exception:
-        parallel_meta["fallback_to_sequential"] = True
-        parallel_meta.setdefault("fallback_reason_codes", []).append("parallel_join_error")
+            try:
+                advisor_recs, advisor_meta = advisor_future.result()
+            except Exception as exc:
+                advisor_join_error = exc
+                parallel_meta["fallback_to_sequential"] = True
+                parallel_meta.setdefault("fallback_reason_codes", []).append("parallel_join_error:advisor")
     finally:
         if executor is not None:
             executor.shutdown(wait=False, cancel_futures=False)
@@ -201,10 +218,11 @@ def flush_world_parallel_pending(state: dict) -> dict:
         judgement = {"plan_status": "interrupted_replan", "missing_signals": [], "safety_flags": []}
     if not isinstance(judge_meta, dict):
         judge_meta = {
-            "judge_error_type": "join_error",
+            "judge_error_type": (judge_join_error.__class__.__name__ if judge_join_error else "join_error"),
             "judge_latency_ms": 0,
-            "judge_start_ts": datetime.now(timezone.utc).isoformat(),
+            "judge_start_ts": parallel_started_ts or datetime.now(timezone.utc).isoformat(),
             "judge_end_ts": datetime.now(timezone.utc).isoformat(),
+            "judge_error_message": str(judge_join_error)[:180] if judge_join_error else "join_error",
         }
     if not isinstance(advisor_recs, dict):
         advisor_recs = {}
@@ -212,8 +230,11 @@ def flush_world_parallel_pending(state: dict) -> dict:
         advisor_meta = {
             "advisor_ok": False,
             "advisor_latency_ms": 0,
-            "advisor_error": "join_error",
+            "advisor_error": str(advisor_join_error)[:180] if advisor_join_error else "join_error",
+            "advisor_error_type": advisor_join_error.__class__.__name__ if advisor_join_error else "join_error",
             "advisor_llm_called": False,
+            "advisor_start_ts": parallel_started_ts or datetime.now(timezone.utc).isoformat(),
+            "advisor_end_ts": datetime.now(timezone.utc).isoformat(),
         }
 
     _apply_judge_advisor_results(
@@ -768,6 +789,7 @@ def world_updater_node(state: dict) -> dict:
     if parallel_enabled:
         try:
             executor = ThreadPoolExecutor(max_workers=3 if advisor_enabled else 2)
+            parallel_started_ts = datetime.now(timezone.utc).isoformat()
             judge_future = executor.submit(_run_judge)
             advisor_future = executor.submit(_run_advisor) if advisor_enabled else None
             world_state, world_diff, extractor_meta = _run_extractor()
@@ -777,6 +799,7 @@ def world_updater_node(state: dict) -> dict:
                 "advisor_future": advisor_future,
                 "advisor_enabled": advisor_enabled,
                 "parallel_meta": parallel_meta,
+                "parallel_started_ts": parallel_started_ts,
             }
             state["_pending_world_parallel"] = pending_payload
             state["world_parallel_pending_key"] = _store_pending_parallel(pending_payload)
