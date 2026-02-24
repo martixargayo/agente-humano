@@ -26,6 +26,7 @@ def test_livetrace2_filters_panel_has_exact_items_in_order():
     html = negotiation_livetrace2_panel()
     expected = [
         "'advisor_llm'",
+        "'world_judge_llm'",
         "'world_gate'",
         "'world_extractor_llm'",
         "'belief_gate'",
@@ -79,3 +80,27 @@ def test_livetrace2_ts_helper_handles_invalid_timestamp_values():
     html = negotiation_livetrace2_panel()
     assert "Number.isNaN(d.getTime()) ? 'NO TIMESTAMPS' : d.toISOString()" in html
     assert "Math.abs(v) < 1e12" in html
+
+
+def test_livetrace2_turn_cards_show_user_and_ia_lines():
+    html = negotiation_livetrace2_panel()
+    assert 'function pickUserText(evt)' in html
+    assert 'function pickIaText(evt)' in html
+    assert '<strong>User:</strong>' in html
+    assert '<strong>IA:</strong>' in html
+
+
+def test_livetrace2_has_dialog_mode_toggle_and_render():
+    html = negotiation_livetrace2_panel()
+    assert 'id="dialogBtn"' in html
+    assert 'let dialogMode = false;' in html
+    assert 'function renderDialogOnly()' in html
+    assert "dialogBtn.textContent = dialogMode ? 'dialogo ✓' : 'dialogo';" in html
+    assert 'if(dialogMode){' in html
+
+
+def test_livetrace2_world_judge_is_in_order_and_render_pipeline():
+    html = negotiation_livetrace2_panel()
+    assert "'world_judge_llm'" in html
+    assert 'function orderNodesForDisplay(nodes)' in html
+    assert 'const visibleNodes = orderNodesForDisplay(allNodes.filter(isNodeVisible));' in html

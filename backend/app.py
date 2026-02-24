@@ -417,6 +417,9 @@ def negotiation_livetrace2_panel():
     #filtersPanel .filters-grid { display:grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap:8px; }
     .turns { margin-top:12px; display:grid; gap:10px; }
     .turn-card { border:1px solid #1e293b; border-radius:12px; background:#0b1326; padding:10px; }
+    .dialog-only { border:1px solid #334155; border-radius:12px; background:#0b1326; padding:10px; margin-top:10px; }
+    .dialog-item { padding:10px 0; border-bottom:1px solid #1e293b; }
+    .dialog-item:last-child { border-bottom:none; }
     .turn-head { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; }
     .nodes { margin-top:8px; display:grid; gap:8px; }
     .node { border:1px solid #334155; border-radius:10px; padding:8px; background:#0f172a; }
@@ -453,7 +456,8 @@ def negotiation_livetrace2_panel():
   <div class="controls">
     <button id="expandAllBtn" class="pill">Desplegar todo</button>
     <button id="filtersBtn" class="pill">Filtros</button>
-    <label class="pill" style="display:flex;align-items:center;gap:6px;"><input id="toggleSkipped" type="checkbox" checked /> Show skipped/not captured</label>
+    <label id="skippedWrap" class="pill" style="display:flex;align-items:center;gap:6px;"><input id="toggleSkipped" type="checkbox" checked /> Show skipped/not captured</label>
+    <button id="dialogBtn" class="pill">dialogo</button>
   </div>
 
   <div id="filtersPanel">
@@ -467,6 +471,7 @@ def negotiation_livetrace2_panel():
 <script>
 const FILTER_NODE_ORDER = [
   'advisor_llm',
+  'world_judge_llm',
   'world_gate',
   'world_extractor_llm',
   'belief_gate',
@@ -485,6 +490,8 @@ const filtersBtn = document.getElementById('filtersBtn');
 const filtersPanel = document.getElementById('filtersPanel');
 const filtersGrid = document.getElementById('filtersGrid');
 const toggleSkipped = document.getElementById('toggleSkipped');
+const skippedWrap = document.getElementById('skippedWrap');
+const dialogBtn = document.getElementById('dialogBtn');
 
 const turns = [];
 const turnIndexById = new Map();
@@ -492,6 +499,7 @@ const localExpanded = new Set();
 const activeFilters = new Set(FILTER_NODE_ORDER);
 const expandedNodeByTurn = new Map();
 let expandAll = false;
+let dialogMode = false;
 
 function pretty(v){ try{return JSON.stringify(v ?? {}, null, 2);}catch{return String(v ?? '');} }
 function ts(v){
@@ -550,6 +558,7 @@ function isNodeVisible(node){
   const notCaptured = String(node.input_capture_state||'') === 'not_captured' && String(node.output_capture_state||'') === 'not_captured';
   return !(skipped || notCaptured);
 }
+function escapeHtml(v){ return String(v ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
 
 function buildSummaryNodes(allNodes){
   const byName = new Map();
@@ -564,8 +573,49 @@ function buildSummaryNodes(allNodes){
   });
 }
 
+
+function pickUserText(evt){
+  return String(evt.input_message || evt.user_message || evt.message || '').trim() || '—';
+}
+
+function pickIaText(evt){
+  return String(evt.final_reply || evt.output_text || evt.reply || '').trim() || '—';
+}
+
+function renderDialogOnly(){
+  const orderedTurns = [...turns].sort((a,b)=>{
+    const sa = String(a.session_id || '');
+    const sb = String(b.session_id || '');
+    if(sa !== sb) return sa.localeCompare(sb);
+    const ta = Number(a.turn_idx || 0);
+    const tb = Number(b.turn_idx || 0);
+    if(ta !== tb) return ta - tb;
+    return Number(a.trace_index || 0) - Number(b.trace_index || 0);
+  });
+  if(!orderedTurns.length){
+    turnsList.innerHTML = '<div class="meta-small">Aún no hay turnos recibidos.</div>';
+    return;
+  }
+  turnsList.innerHTML = `<div class="dialog-only">${orderedTurns.map((evt)=>`<div class="dialog-item"><div><strong>User:</strong> ${escapeHtml(pickUserText(evt))}</div><div style="margin-top:6px"><strong>IA:</strong> ${escapeHtml(pickIaText(evt))}</div></div>`).join('')}</div>`;
+}
+
+
+function orderNodesForDisplay(nodes){
+  const prio = new Map(SUMMARY_NODE_ORDER.map((name, idx)=>[name, idx]));
+  return [...nodes].sort((a,b)=>{
+    const pa = prio.has(String(a.node_name || '')) ? prio.get(String(a.node_name || '')) : 999;
+    const pb = prio.has(String(b.node_name || '')) ? prio.get(String(b.node_name || '')) : 999;
+    if(pa !== pb) return pa - pb;
+    return Number(a.sequence_index || 0) - Number(b.sequence_index || 0);
+  });
+}
+
 function renderTurns(){
   total.textContent = `${turns.length} turnos`;
+  if(dialogMode){
+    renderDialogOnly();
+    return;
+  }
   if(!turns.length){
     turnsList.innerHTML = '<div class="meta-small">Aún no hay turnos recibidos.</div>';
     return;
@@ -573,7 +623,7 @@ function renderTurns(){
   turnsList.innerHTML = turns.map((evt)=>{
     const id = turnId(evt);
     const allNodes = Array.isArray(evt.nodes) ? evt.nodes : [];
-    const visibleNodes = allNodes.filter(isNodeVisible);
+    const visibleNodes = orderNodesForDisplay(allNodes.filter(isNodeVisible));
     const expanded = expandAll || localExpanded.has(id);
     const selectedNodeName = expandedNodeByTurn.get(id) || null;
 
@@ -595,7 +645,7 @@ function renderTurns(){
       ? '<button class="pill" disabled title="Desactiva Desplegar todo para usarlo">Desplegar</button>'
       : `<button class="pill local-toggle" data-turn-id="${id}">${localExpanded.has(id) ? 'Ocultar' : 'Desplegar'}</button>`;
 
-    return `<div class="turn-card"><div class="turn-head"><div><strong>Turno ${Number(evt.turn_idx || 0)}</strong> · session=${escapeHtml(evt.session_id || 'n/a')} · trace=${Number(evt.trace_index || 0)}<div class="meta-small">${ts(evt.started_at)} → ${ts(evt.ended_at)} · visibles=${visibleNodes.length}/${allNodes.length} · latencia=${evt.total_latency_ms ?? '-'} ms</div></div><div>${localBtn}</div></div>${details}</div>`;
+    return `<div class="turn-card"><div class="turn-head"><div><strong>Turno ${Number(evt.turn_idx || 0)}</strong> · session=${escapeHtml(evt.session_id || 'n/a')} · trace=${Number(evt.trace_index || 0)}<div class="meta-small">${ts(evt.started_at)} → ${ts(evt.ended_at)} · visibles=${visibleNodes.length}/${allNodes.length} · latencia=${evt.total_latency_ms ?? '-'} ms</div><div class="meta-small" style="margin-top:4px"><strong>User:</strong> ${escapeHtml(pickUserText(evt))}</div><div class="meta-small" style="margin-top:2px"><strong>IA:</strong> ${escapeHtml(pickIaText(evt))}</div></div><div>${localBtn}</div></div>${details}</div>`;
   }).join('');
 
   for(const btn of turnsList.querySelectorAll('.local-toggle')){
@@ -643,6 +693,15 @@ filtersBtn.onclick = () => {
 };
 
 toggleSkipped.onchange = () => renderTurns();
+
+dialogBtn.onclick = () => {
+  dialogMode = !dialogMode;
+  dialogBtn.textContent = dialogMode ? 'dialogo ✓' : 'dialogo';
+  filtersPanel.style.display = dialogMode ? 'none' : filtersPanel.style.display;
+  skippedWrap.style.display = dialogMode ? 'none' : 'flex';
+  renderTurns();
+};
+
 
 renderFilters();
 renderTurns();
