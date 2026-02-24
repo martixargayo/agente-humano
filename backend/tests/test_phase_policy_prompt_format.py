@@ -106,6 +106,15 @@ def test_policy_catalog_subset_prompt_block_is_bounded_and_separated_from_allowe
     assert "safe_neutral" in catalog_subset_json
 
 
+def test_planner_v2_system_prompt_includes_anti_loop_initiative_rules():
+    assert "INICIATIVA_Y_ANTI_LOOP" in PLANNER_V2_SYSTEM_PROMPT
+    assert "SUFICIENTE PROVISIONAL" in PLANNER_V2_SYSTEM_PROMPT
+    assert "Cambiar de táctica significa elegir UNA" in PLANNER_V2_SYSTEM_PROMPT
+    assert "(D) Ancla u oferta condicional" in PLANNER_V2_SYSTEM_PROMPT
+    assert "prueba de manejo" in PLANNER_V2_SYSTEM_PROMPT
+    assert "climate/rapport" in PLANNER_V2_SYSTEM_PROMPT
+
+
 def test_build_full_roleplay_profiles_forces_carlos_when_scene_or_style_match():
     persona, scene, style, constraints = build_full_roleplay_profiles(
         {"render_state": {"scene_id": "mustang67_in_person_viewing"}}
