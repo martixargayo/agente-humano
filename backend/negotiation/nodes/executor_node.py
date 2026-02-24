@@ -118,6 +118,34 @@ def _instruction_followed(response_text: str, executor_instruction: dict) -> tup
     return True, ""
 
 
+
+
+def _extract_question_text(response_text: str) -> str:
+    text = str(response_text or "").strip()
+    if not text or "?" not in text:
+        return ""
+    parts = [seg.strip() for seg in text.split("?") if seg.strip()]
+    if not parts:
+        return ""
+    return (parts[-1] + "?")[:180]
+
+
+def _register_recent_question(progress_state: dict, executor_output: dict) -> None:
+    if not isinstance(progress_state, dict):
+        return
+    ledger = progress_state.get("plan_ledger") if isinstance(progress_state.get("plan_ledger"), dict) else {}
+    asked = bool(executor_output.get("asked_question", False))
+    question_text = _extract_question_text(str(executor_output.get("response_text", "") or "")) if asked else ""
+    if not question_text:
+        return
+    recent = [str(x).strip() for x in (ledger.get("asked_questions_recent") if isinstance(ledger.get("asked_questions_recent"), list) else []) if str(x).strip()]
+    if question_text in recent:
+        recent = [x for x in recent if x != question_text]
+    recent.append(question_text)
+    ledger["asked_questions_recent"] = recent[-10:]
+    progress_state["plan_ledger"] = ledger
+
+
 def executor_node(state: dict) -> dict:
     deps = state.get("deps", DEFAULT_DEPS)
     _ensure_objective(state)
@@ -189,6 +217,7 @@ def executor_node(state: dict) -> dict:
     state["executor_output"] = executor_output
     state["assistant_message"] = executor_output.get("response_text", "")
     state["response"] = state["assistant_message"]
+    _register_recent_question(progress_state, executor_output)
     state["executor_render_meta"] = {
         "policy_id": policy_id,
         "conversation_mode": conversation_mode,
@@ -255,6 +284,7 @@ def executor_node(state: dict) -> dict:
         state["executor_output"] = executor_output
         state["assistant_message"] = executor_output.get("response_text", "")
         state["response"] = state["assistant_message"]
+        _register_recent_question(progress_state, executor_output)
 
     if violations:
         logger.info("executor_response_validated=%s violations=%s", repaired_response, violations)

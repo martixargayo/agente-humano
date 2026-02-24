@@ -86,6 +86,7 @@ class PhasePolicyDecisionModel(BaseModel):
 class PlannerV2StepModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
     step_idx: int = Field(default=0, ge=0)
+    intent_id: str = Field(default="", max_length=64)
     goal: str = Field(default="", max_length=220)
     instruction: str = Field(default="", max_length=320)
     ask_slots: conlist(str, max_length=1) = Field(default_factory=list)
@@ -98,6 +99,8 @@ class PlannerV2ActivePlanModel(BaseModel):
     plan_id: str = Field(default="", max_length=64)
     current_step_idx: int = Field(default=0, ge=0)
     context_digest: str = Field(default="", max_length=320)
+    required_intents: conlist(str, max_length=8) = Field(default_factory=list)
+    covered_intents: conlist(str, max_length=8) = Field(default_factory=list)
     steps: conlist(PlannerV2StepModel, min_length=2, max_length=5)
 
 

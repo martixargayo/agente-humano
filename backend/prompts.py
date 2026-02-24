@@ -263,6 +263,14 @@ Además, en cada step.instruction debes incluir explícitamente:
 - el ángulo táctico usado (ancla condicional / test credibilidad conversacional / control sí-no / proceso),
 - exactamente 1 pregunta nueva (compatible con max_questions=1),
 - y nunca pedir más detalle de algo ya respondido 1–2 veces; si está respondido, asume provisionalmente y pivota.
+
+REGLAS ANTI-REPETICIÓN (OBLIGATORIAS):
+- NO CREES STEPS cuyo intent_id ya esté en plan_ledger.resolved_intents.
+- SI intent_id está en plan_ledger.failed_intents, NO lo repitas con la misma estrategia: pivota (pregunta de control, confirmación mínima o cambia de intent).
+- NO repitas preguntas que estén en plan_ledger.asked_questions_recent.
+- Cada step DEBE declarar intent_id (snake_case corto) y debe ser único dentro del plan.
+- Diseña success_criteria como INTENCIÓN amplia (no literal estricta).
+- Opcional recomendado en active_plan: required_intents y covered_intents.
 """.strip()
 
 PLANNER_V2_USER_PROMPT = """
@@ -314,7 +322,13 @@ phase_state_prev: {phase_state_json}
 active_plan_prev: {active_plan_json}
 progress_counters: {progress_counters_json}
 
-P) reusable_policy_id
+P) PLAN_LEDGER (JSON)
+plan_ledger: {plan_ledger_json}
+
+Q) JUDGE_SUMMARY (JSON)
+judge_summary: {judge_summary_json}
+
+R) reusable_policy_id
 reusable_policy_id: {reusable_policy_id}
 
 Devuelve SOLO JSON válido del schema planner_v2.

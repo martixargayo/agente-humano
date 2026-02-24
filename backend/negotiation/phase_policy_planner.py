@@ -151,44 +151,76 @@ def _fallback_plan(allowed_ids: list[str]) -> dict:
         "steps": [
             {
                 "step_idx": 0,
-                "micro_goal": "Validar propuesta actual",
+                "intent_id": "clarify_current_state",
+                "micro_goal": "Clarificar estado actual con información verificable",
                 "what_to_do": f"Aplicar {policy_id} y pedir una aclaración concreta.",
                 "ask": ["¿Qué dato verificable podemos cerrar ahora?"],
-                "success_criteria": ["nueva_informacion_verificable"],
+                "success_criteria": ["confirmar_intencion_con_info_nueva"],
                 "replan_triggers": ["ambiguedad_persistente"],
                 "safe_mode": "normal",
             },
             {
                 "step_idx": 1,
-                "micro_goal": "Consolidar siguiente acción",
+                "intent_id": "confirm_next_step",
+                "micro_goal": "Consolidar siguiente acción acordada",
                 "what_to_do": "Resumir acuerdo parcial y proponer siguiente paso.",
                 "ask": ["¿Te parece bien este siguiente paso?"],
-                "success_criteria": ["confirmacion_de_paso"],
+                "success_criteria": ["acuerdo_sobre_siguiente_paso"],
                 "replan_triggers": ["contradiccion"],
                 "safe_mode": "normal",
             },
         ],
+        "required_intents": ["clarify_current_state", "confirm_next_step"],
+        "covered_intents": ["clarify_current_state", "confirm_next_step"],
         "plan_constraints": {"max_questions_per_turn": 2, "must_avoid": ["escalar_tension"], "stop_conditions": ["amenaza"]},
     }
 
 
+
+
+def _normalize_intent_id(value: object) -> str:
+    raw = str(value or "").strip().lower()
+    if not raw:
+        return ""
+    out = []
+    prev_us = False
+    for ch in raw:
+        if ch.isalnum():
+            out.append(ch)
+            prev_us = False
+        else:
+            if not prev_us:
+                out.append("_")
+            prev_us = True
+    norm = "".join(out).strip("_")[:64]
+    return norm
+
+
 def _to_active_plan(payload_plan: dict, turn_count: int) -> dict:
     steps_out = []
+    covered_intents: list[str] = []
     for idx, step in enumerate(list(payload_plan.get("steps") or [])[:5]):
         if not isinstance(step, dict):
             continue
         step_idx = int(step.get("step_idx", idx) or idx)
+        intent_id = _normalize_intent_id(step.get("intent_id"))
+        success_criteria = [str(x)[:80] for x in list(step.get("success_criteria") or [])[:3]]
+        if not success_criteria:
+            success_criteria = ["intent_alineado_con_info_nueva"]
         steps_out.append(
             {
                 "step_idx": max(0, step_idx),
+                "intent_id": intent_id,
                 "micro_goal": str(step.get("goal", ""))[:160],
                 "what_to_do": str(step.get("instruction", ""))[:260],
                 "ask": [],
-                "success_criteria": [str(x)[:80] for x in list(step.get("success_criteria") or [])[:3]],
+                "success_criteria": success_criteria,
                 "replan_triggers": ["ambiguedad_persistente", "escalada"],
                 "safe_mode": "normal",
             }
         )
+        if intent_id:
+            covered_intents.append(intent_id)
     if len(steps_out) < 2:
         return _fallback_plan([safe_neutral_policy_id()])
     cur = int(payload_plan.get("current_step_idx", 0) or 0)
@@ -204,6 +236,8 @@ def _to_active_plan(payload_plan: dict, turn_count: int) -> dict:
         "current_step_idx": cur,
         "global_goal": str(payload_plan.get("context_digest", ""))[:180],
         "steps": steps_out,
+        "required_intents": [str(x)[:64] for x in list(payload_plan.get("required_intents") or [])[:8]],
+        "covered_intents": covered_intents[:8],
         "plan_constraints": {"max_questions_per_turn": 2, "must_avoid": ["escalar_tension"], "stop_conditions": ["amenaza"]},
     }
 
@@ -287,6 +321,8 @@ def plan_phase_policy(
             phase_state_json=json.dumps(progress_state.get("phase_state", {}), ensure_ascii=False),
             active_plan_json=json.dumps(progress_state.get("active_plan", {}) or {}, ensure_ascii=False),
             progress_counters_json=json.dumps(progress_state.get("progress_counters", {}), ensure_ascii=False),
+            plan_ledger_json=json.dumps(progress_state.get("plan_ledger", {}), ensure_ascii=False),
+            judge_summary_json=json.dumps(judge_result or {}, ensure_ascii=False),
             reusable_policy_id=str((policy_state or {}).get("policy_id", "")),
         )
         llm = get_planner_llm()

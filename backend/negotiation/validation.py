@@ -12,6 +12,7 @@ from .schemas import (
     default_policy_decision,
     default_progress_state,
     default_world_state,
+    default_plan_ledger,
 )
 
 
@@ -230,6 +231,91 @@ def normalize_phase_state(raw: object) -> Tuple[PhaseState, List[str]]:
     return out, issues
 
 
+
+
+def _normalize_plan_ledger(raw: object) -> dict:
+    base = default_plan_ledger()
+    if not isinstance(raw, dict):
+        return dict(base)
+
+    resolved: list[dict] = []
+    seen_resolved: set[str] = set()
+    for item in (raw.get("resolved_intents") if isinstance(raw.get("resolved_intents"), list) else []):
+        if not isinstance(item, dict):
+            continue
+        intent_id = str(item.get("intent_id", "") or "").strip()[:64]
+        if not intent_id or intent_id in seen_resolved:
+            continue
+        seen_resolved.add(intent_id)
+        evidence = str(item.get("evidence", "") or "").strip()[:220]
+        try:
+            turn_idx = int(item.get("turn_idx", 0) or 0)
+        except Exception:
+            turn_idx = 0
+        resolved.append({"intent_id": intent_id, "evidence": evidence, "turn_idx": turn_idx})
+        if len(resolved) >= 30:
+            break
+
+    open_intents: list[dict] = []
+    seen_open: set[str] = set()
+    for item in (raw.get("open_intents") if isinstance(raw.get("open_intents"), list) else []):
+        if not isinstance(item, dict):
+            continue
+        intent_id = str(item.get("intent_id", "") or "").strip()[:64]
+        need = str(item.get("need", "") or "").strip()[:160]
+        if not intent_id or intent_id in seen_open:
+            continue
+        seen_open.add(intent_id)
+        open_intents.append({"intent_id": intent_id, "need": need})
+        if len(open_intents) >= 30:
+            break
+
+    failed: list[dict] = []
+    seen_failed: set[str] = set()
+    for item in (raw.get("failed_intents") if isinstance(raw.get("failed_intents"), list) else []):
+        if not isinstance(item, dict):
+            continue
+        intent_id = str(item.get("intent_id", "") or "").strip()[:64]
+        if not intent_id or intent_id in seen_failed:
+            continue
+        seen_failed.add(intent_id)
+        reason = str(item.get("reason", "") or "").strip()[:180]
+        try:
+            attempts = max(0, int(item.get("attempts", 0) or 0))
+        except Exception:
+            attempts = 0
+        try:
+            turn_idx = int(item.get("turn_idx", 0) or 0)
+        except Exception:
+            turn_idx = 0
+        failed.append({"intent_id": intent_id, "reason": reason, "attempts": attempts, "turn_idx": turn_idx})
+        if len(failed) >= 30:
+            break
+
+    asked = _coerce_str_list(raw.get("asked_questions_recent", []), 10)
+    asked = _unique_list(asked, max_items=10)
+
+    counters_in = raw.get("attempt_counters") if isinstance(raw.get("attempt_counters"), dict) else {}
+    counters: dict[str, int] = {}
+    for key, value in counters_in.items():
+        intent_id = str(key or "").strip()[:64]
+        if not intent_id:
+            continue
+        try:
+            counters[intent_id] = max(0, int(value or 0))
+        except Exception:
+            counters[intent_id] = 0
+        if len(counters) >= 120:
+            break
+
+    return {
+        "resolved_intents": resolved,
+        "open_intents": open_intents,
+        "failed_intents": failed,
+        "asked_questions_recent": asked,
+        "attempt_counters": counters,
+    }
+
 def normalize_progress_state(raw: object) -> Tuple[ProgressState, List[str]]:
     base = default_progress_state()
     issues: List[str] = []
@@ -245,6 +331,7 @@ def normalize_progress_state(raw: object) -> Tuple[ProgressState, List[str]]:
     out["gate_state"] = gate
 
     out["phase_state"], phase_issues = normalize_phase_state(raw.get("phase_state", {}))
+    out["plan_ledger"] = _normalize_plan_ledger(raw.get("plan_ledger", {}))
     issues.extend(phase_issues)
     return out, issues
 
