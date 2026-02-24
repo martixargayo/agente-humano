@@ -557,12 +557,6 @@ def _post_normalize_evidence_guardrails(
     normalized["evidence"] = evidence[:4]
     normalized["missing_signals"] = [str(x)[:120] for x in missing_signals if str(x).strip()][:6]
 
-    no_progress_same_step_turns = int((progress_state or {}).get("no_progress_same_step_turns", 0) or 0)
-    if normalized.get("plan_status") == "continue_same_step" and no_progress_same_step_turns >= 3:
-        normalized["plan_status"] = "interrupted_replan"
-        normalized["degraded"] = True
-        normalized["degrade_reason"] = "loop_same_step_threshold"
-
     meta_flags = {
         "judge_evidence_missing": len(normalized.get("evidence", [])) == 0,
         "judge_evidence_injected": injected,

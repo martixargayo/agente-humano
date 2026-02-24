@@ -146,6 +146,7 @@ def test_executor_instruction_comes_from_planner_active_plan():
                     "steps": [
                         {
                             "step_idx": 0,
+                            "intent_id": "step_1",
                             "micro_goal": "g",
                             "what_to_do": "instruccion del step",
                             "ask": [],
@@ -155,6 +156,7 @@ def test_executor_instruction_comes_from_planner_active_plan():
                         },
                         {
                             "step_idx": 1,
+                            "intent_id": "step_2",
                             "micro_goal": "g2",
                             "what_to_do": "i2",
                             "ask": [],
