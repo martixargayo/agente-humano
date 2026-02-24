@@ -88,6 +88,32 @@ def test_planner_skipped_when_advance_step_true_with_active_plan():
     assert result["progress_state"]["active_plan"]["current_step_idx"] == 1
 
 
+def test_planner_runs_replan_when_advance_step_is_on_last_step():
+    called = {"count": 0}
+
+    def fake_plan_phase_policy(**_kwargs):
+        called["count"] += 1
+        return {"phase": "interests"}, {"policy_id": "safe_neutral"}, {}
+
+    progress_state = default_progress_state()
+    policy_state = default_policy_state()
+    policy_state.update({"status": "active", "planner_request": "continue_policy", "policy_id": "safe_neutral"})
+    progress_state["policy_state"] = policy_state
+    progress_state["advance_step"] = True
+    plan = _minimal_active_plan()
+    plan["current_step_idx"] = 1
+    progress_state["active_plan"] = plan
+
+    state = _planner_state(progress_state)
+    state["deps"] = SimpleNamespace(plan_phase_policy=fake_plan_phase_policy)
+
+    result = phase_policy_planner_node(state)
+
+    assert called["count"] == 1
+    assert result["planner_meta"]["planner_skipped"] is False
+    assert result["planner_meta"].get("advance_step_reached_last_step") is True
+
+
 def test_planner_skipped_when_judge_skip_planner_true_with_active_plan():
     called = {"count": 0}
 

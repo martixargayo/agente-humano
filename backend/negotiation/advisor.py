@@ -213,7 +213,7 @@ def _normalize_advisor(payload: object) -> dict:
         "recommended_moves": [],
         "guardrails": [],
         "do_not_do": [str(x)[:140] for x in list(payload.get("do_not_do") or [])[:4]],
-        "suggested_utterances": [str(x)[:180] for x in list(payload.get("suggested_utterances") or [])[:4]],
+        "suggested_utterances": [str(x)[:180] for x in list(payload.get("suggested_utterances") or [])[:1]],
     }
     for item in list(payload.get("recommended_moves") or [])[:4]:
         if isinstance(item, dict):

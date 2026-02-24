@@ -317,6 +317,38 @@ def extract_last_counterparty_utterance(state: dict) -> str:
     return str(state.get("user_message", "") or "").strip()
 
 
+def _build_retry_hint(state: dict) -> str:
+    judgement = state.get("policy_plan_judgement") if isinstance(state.get("policy_plan_judgement"), dict) else {}
+    if not judgement:
+        return ""
+    plan_status = str(judgement.get("plan_status", "") or "").strip()
+    progress_state = state.get("progress_state") if isinstance(state.get("progress_state"), dict) else {}
+    no_progress = int(progress_state.get("no_progress_same_step_turns", 0) or 0)
+    if plan_status != "continue_same_step":
+        return ""
+    if no_progress <= 0:
+        return ""
+
+    step_idx = int(judgement.get("evaluated_step_idx", 0) or 0)
+    why = str(judgement.get("why", "") or "").strip()
+    if len(why) > 180:
+        why = f"{why[:177].rstrip()}..."
+
+    lines = [
+        f"continue_same_step_detected step_idx={step_idx}",
+    ]
+    if why:
+        lines.append(f"judge_why={why}")
+    lines.append(
+        "NO repitas la misma pregunta; usa un ángulo distinto (control sí/no, test credibilidad conversacional, ancla condicional o proceso)."
+    )
+    if no_progress >= 2:
+        lines.append(
+            "pivot obligatorio; asume provisionalmente y cambia de tema a precio/condiciones o test credibilidad."
+        )
+    return "\n".join(lines)
+
+
 def render_executor_output(
     state: dict,
     *,
@@ -374,6 +406,7 @@ def render_executor_output(
             },
             ensure_ascii=False,
         ),
+        retry_hint=_build_retry_hint(state),
         user_message=user_message,
         speaker_of_user_message=str(
             state.get("speaker_of_user_message")

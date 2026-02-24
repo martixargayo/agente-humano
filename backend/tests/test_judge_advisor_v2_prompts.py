@@ -208,3 +208,24 @@ def test_advisor_limits_in_prompt():
     assert "max_questions" in ADVISOR_V2_SYSTEM_PROMPT
     assert "no revelar BATNA" in ADVISOR_V2_SYSTEM_PROMPT
     assert "pueden estar truncados" in ADVISOR_V2_SYSTEM_PROMPT
+    assert "ADVISOR_ANTI_LOOP_Y_VOZ_ATREVIDA" in ADVISOR_V2_SYSTEM_PROMPT
+    assert "repeat_slot_2x:documentacion" in ADVISOR_V2_SYSTEM_PROMPT
+
+
+def test_advisor_normalize_clamps_suggested_utterances_to_one():
+    recs = advisor._normalize_advisor(
+        {
+            "diagnosis": ["ok"],
+            "loop_or_waste_flags": [],
+            "recommended_moves": [],
+            "guardrails": [],
+            "do_not_do": [],
+            "suggested_utterances": [
+                "Primera propuesta.",
+                "Segunda propuesta.",
+                "Tercera propuesta.",
+            ],
+        }
+    )
+    assert len(recs["suggested_utterances"]) == 1
+    assert recs["suggested_utterances"][0] == "Primera propuesta."
