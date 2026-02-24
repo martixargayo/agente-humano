@@ -558,6 +558,7 @@ function isNodeVisible(node){
   const notCaptured = String(node.input_capture_state||'') === 'not_captured' && String(node.output_capture_state||'') === 'not_captured';
   return !(skipped || notCaptured);
 }
+function escapeHtml(v){ return String(v ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
 
 function buildSummaryNodes(allNodes){
   const byName = new Map();
