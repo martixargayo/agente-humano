@@ -94,7 +94,6 @@ def test_planner_v2_schema_and_contract(monkeypatch):
         recent_context="",
         allowed_policy_ids=["safe_neutral", "info_extract_critical"],
         advisor_recs={"recommended_moves": [{"title": "primero evidencia"}]},
-        use_planner_v2=True,
         judge_result={"plan_status": "continue"},
         memory_short="Vendedor: Está impecable.",
         memory_long="Resumen.",

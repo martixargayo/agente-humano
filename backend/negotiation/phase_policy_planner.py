@@ -2,20 +2,17 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import time
 from datetime import datetime, timezone
 
 from langchain_core.prompts import ChatPromptTemplate
 
 from prompts import (
-    PHASE_POLICY_SYSTEM_PROMPT,
-    PHASE_POLICY_USER_PROMPT,
     PLANNER_V2_SYSTEM_PROMPT,
     PLANNER_V2_USER_PROMPT,
 )
 from .config import get_negotiation_model_config
-from .elementos.strategy_definitions import PhasePolicyDecisionModel, PlannerV2DecisionModel, REASON_PREFIXES
+from .elementos.strategy_definitions import PlannerV2DecisionModel
 from .llm_planning_context import (
     PHASE_DEFINITIONS_ES,
     POLICY_CATALOG_ES,
@@ -37,48 +34,9 @@ NEGOTIATION_CONFIG = get_negotiation_model_config()
 PLANNER_MODEL = NEGOTIATION_CONFIG.planner.model
 PLANNER_TEMPERATURE = NEGOTIATION_CONFIG.planner.temperature
 
-_planner_prompt = ChatPromptTemplate.from_messages(
-    [("system", PHASE_POLICY_SYSTEM_PROMPT), ("user", PHASE_POLICY_USER_PROMPT)]
-)
 _planner_v2_prompt = ChatPromptTemplate.from_messages(
     [("system", PLANNER_V2_SYSTEM_PROMPT), ("user", PLANNER_V2_USER_PROMPT)]
 )
-
-
-def _normalize_reasons(reasons: list[str]) -> list[str]:
-    normalized: list[str] = []
-    for reason in reasons or []:
-        raw = str(reason).strip()
-        if not raw:
-            continue
-        if ":" in raw:
-            prefix, rest = raw.split(":", 1)
-            if prefix in REASON_PREFIXES and rest.strip():
-                normalized.append(f"{prefix}:{rest.strip()}"[:64])
-                continue
-        key = raw.replace(" ", "_")[:48] or "unspecified"
-        normalized.append(f"history:{key}"[:64])
-    return normalized[:6]
-
-
-def _compact_world_summary(world_state: WorldState) -> dict:
-    buckets = (world_state or {}).get("world_buckets", {}) if isinstance(world_state, dict) else {}
-    return {
-        "offers": list((buckets.get("offers") or []))[:2],
-        "constraints": list((buckets.get("constraints") or []))[:2],
-        "interests": list((buckets.get("interests") or []))[:2],
-        "requests": list((buckets.get("requests") or []))[:2],
-    }
-
-
-def _compact_belief_summary(belief_state: BeliefState) -> dict:
-    planner = (belief_state or {}).get("planner_signals", {}) if isinstance(belief_state, dict) else {}
-    buckets = (belief_state or {}).get("belief_buckets", {}) if isinstance(belief_state, dict) else {}
-    return {
-        "planner_signals": planner,
-        "hypotheses": list((buckets.get("hypotheses") or []))[:3],
-        "risk_flags": list((buckets.get("risk_flags") or []))[:3],
-    }
 
 
 def _fallback_policy(allowed_ids: list[str]) -> PolicyDecision:
@@ -172,14 +130,12 @@ def plan_phase_policy(
     recent_context: str = "",
     allowed_policy_ids: list[str] | None = None,
     advisor_recs: dict | None = None,
-    use_planner_v2: bool = False,
     judge_result: dict | None = None,
     memory_short: str = "",
     memory_long: str = "",
 ) -> tuple[dict, PolicyDecision, dict]:
-    del policy_plan_summary, constraints_struct
+    del policy_plan_summary, constraints_struct, recent_context
     world_diff = world_diff if isinstance(world_diff, dict) else {}
-    use_v2 = use_planner_v2 or os.getenv("USE_PLANNER_V2", "0") == "1"
     allowed_policy_ids = list(allowed_policy_ids or [])
     if not allowed_policy_ids:
         allowed_policy_ids = [safe_neutral_policy_id()]
@@ -204,45 +160,30 @@ def plan_phase_policy(
     started = time.perf_counter()
     started_wall = datetime.now(timezone.utc).isoformat()
     try:
-        if use_v2:
-            full_profiles_block = build_planner_context_block_full(progress_state)
-            persona_profile, scene_profile, _, _ = build_full_roleplay_profiles(progress_state)
-            objective_summary = build_objective_summary(objective, scene_profile, persona_profile)
-            messages = _planner_v2_prompt.format_messages(
-                full_profiles_block=full_profiles_block,
-                objective_summary=objective_summary,
-                judge_result_json=json.dumps(judge_result or {}, ensure_ascii=False),
-                advisor_recs_json=json.dumps(advisor_recs or {}, ensure_ascii=False),
-                policy_catalog_es=json.dumps(POLICY_CATALOG_ES, ensure_ascii=False),
-                phase_definitions_es=PHASE_DEFINITIONS_ES,
-                memory_short=memory_short,
-                memory_long=memory_long,
-                world_digest_json=json.dumps(build_world_digest(world_state, world_diff), ensure_ascii=False),
-                world_full_json=json.dumps(world_state or {}, ensure_ascii=False),
-                belief_digest_json=json.dumps(build_belief_digest(belief_state), ensure_ascii=False),
-                belief_full_json=json.dumps(belief_state or {}, ensure_ascii=False),
-                policy_state_json=json.dumps(policy_state or {}, ensure_ascii=False),
-                phase_state_json=json.dumps(progress_state.get("phase_state", {}), ensure_ascii=False),
-                active_plan_json=json.dumps(progress_state.get("active_plan", {}) or {}, ensure_ascii=False),
-                progress_counters_json=json.dumps(progress_state.get("progress_counters", {}), ensure_ascii=False),
-                allowed_policy_ids_json=json.dumps(allowed_policy_ids, ensure_ascii=False),
-                reusable_policy_id=str((policy_state or {}).get("policy_id", "")),
-            )
-            structured = get_planner_llm().with_structured_output(PlannerV2DecisionModel)
-        else:
-            messages = _planner_prompt.format_messages(
-                objective=objective,
-                constraints=constraints,
-                recent_context=recent_context,
-                phase_state=json.dumps(progress_state.get("phase_state", {}), ensure_ascii=False),
-                active_plan=json.dumps(progress_state.get("active_plan", {}) or {}, ensure_ascii=False),
-                policy_state=json.dumps(policy_state or {}, ensure_ascii=False),
-                allowed_policy_ids=json.dumps(allowed_policy_ids, ensure_ascii=False),
-                world_summary=json.dumps(_compact_world_summary(world_state), ensure_ascii=False),
-                belief_summary=json.dumps(_compact_belief_summary(belief_state), ensure_ascii=False),
-                advisor_recs=json.dumps(advisor_recs or {}, ensure_ascii=False),
-            )
-            structured = get_planner_llm().with_structured_output(PhasePolicyDecisionModel)
+        full_profiles_block = build_planner_context_block_full(progress_state)
+        persona_profile, scene_profile, _, _ = build_full_roleplay_profiles(progress_state)
+        objective_summary = build_objective_summary(objective, scene_profile, persona_profile)
+        messages = _planner_v2_prompt.format_messages(
+            full_profiles_block=full_profiles_block,
+            objective_summary=objective_summary,
+            judge_result_json=json.dumps(judge_result or {}, ensure_ascii=False),
+            advisor_recs_json=json.dumps(advisor_recs or {}, ensure_ascii=False),
+            policy_catalog_es=json.dumps(POLICY_CATALOG_ES, ensure_ascii=False),
+            phase_definitions_es=PHASE_DEFINITIONS_ES,
+            memory_short=memory_short,
+            memory_long=memory_long,
+            world_digest_json=json.dumps(build_world_digest(world_state, world_diff), ensure_ascii=False),
+            world_full_json=json.dumps(world_state or {}, ensure_ascii=False),
+            belief_digest_json=json.dumps(build_belief_digest(belief_state), ensure_ascii=False),
+            belief_full_json=json.dumps(belief_state or {}, ensure_ascii=False),
+            policy_state_json=json.dumps(policy_state or {}, ensure_ascii=False),
+            phase_state_json=json.dumps(progress_state.get("phase_state", {}), ensure_ascii=False),
+            active_plan_json=json.dumps(progress_state.get("active_plan", {}) or {}, ensure_ascii=False),
+            progress_counters_json=json.dumps(progress_state.get("progress_counters", {}), ensure_ascii=False),
+            allowed_policy_ids_json=json.dumps(allowed_policy_ids, ensure_ascii=False),
+            reusable_policy_id=str((policy_state or {}).get("policy_id", "")),
+        )
+        structured = get_planner_llm().with_structured_output(PlannerV2DecisionModel)
         meta["planner_input_payload_raw"] = [
             {"role": getattr(msg, "type", "user"), "content": str(getattr(msg, "content", ""))}
             for msg in messages
@@ -258,44 +199,24 @@ def plan_phase_policy(
         payload = result.model_dump()
         meta["planner_output_payload_raw"] = payload
         meta["planner_output_text_rendered"] = json.dumps(payload, ensure_ascii=False)
-        if use_v2:
-            phase_candidate = {
-                "phase": payload.get("phase", "climate"),
-                "confidence": 0.7,
-                "recovery_mode": bool(payload.get("recovery_mode", False)),
-                "reasons": ["history:planner_v2"],
-                "signals": [],
-                "alternatives": [],
-            }
-            policy_decision = {
-                "policy_id": str(payload.get("policy_id", "")),
-                "reason": "planner_v2",
-                "micro_goal": str(((payload.get("active_plan") or {}).get("steps") or [{}])[0].get("goal", "")),
-                "risk_posture": "low",
-                "why_short": "planner_v2",
-                "inputs_used": [],
-            }
-            meta["active_plan"] = _to_active_plan(payload.get("active_plan") or {}, int(progress_state.get("last_progress_update_turn", 0) or 0) + 1)
-            meta["executor_instruction"] = payload.get("executor_instruction") or {}
-        else:
-            phase_candidate = {
-                "phase": payload.get("phase", "climate"),
-                "confidence": float(payload.get("confidence", 0.6) or 0.6),
-                "recovery_mode": bool(payload.get("recovery_mode", False)),
-                "reasons": _normalize_reasons(payload.get("reasons", [])),
-                "signals": [],
-                "alternatives": [],
-            }
-            policy_decision = {
-                "policy_id": str(payload.get("policy_id", "")),
-                "reason": str(payload.get("reason", "")),
-                "micro_goal": str(payload.get("micro_goal", "")),
-                "risk_posture": payload.get("risk_posture", "low"),
-                "why_short": str(payload.get("why_short", "")),
-                "inputs_used": [],
-            }
-            payload_plan = payload.get("active_plan") if isinstance(payload.get("active_plan"), dict) else {}
-            meta["active_plan"] = _to_active_plan(payload_plan, int(progress_state.get("last_progress_update_turn", 0) or 0) + 1)
+        phase_candidate = {
+            "phase": payload.get("phase", "climate"),
+            "confidence": 0.7,
+            "recovery_mode": bool(payload.get("recovery_mode", False)),
+            "reasons": ["history:planner_v2"],
+            "signals": [],
+            "alternatives": [],
+        }
+        policy_decision = {
+            "policy_id": str(payload.get("policy_id", "")),
+            "reason": "planner_v2",
+            "micro_goal": str(((payload.get("active_plan") or {}).get("steps") or [{}])[0].get("goal", "")),
+            "risk_posture": "low",
+            "why_short": "planner_v2",
+            "inputs_used": [],
+        }
+        meta["active_plan"] = _to_active_plan(payload.get("active_plan") or {}, int(progress_state.get("last_progress_update_turn", 0) or 0) + 1)
+        meta["executor_instruction"] = payload.get("executor_instruction") or {}
         normalized, issues = normalize_policy_decision(policy_decision, allowed_policy_ids)
         if issues:
             meta["policy_normalization_changed"] = True
@@ -303,7 +224,7 @@ def plan_phase_policy(
         if normalized.get("policy_id") not in allowed_policy_ids and allowed_policy_ids:
             normalized["policy_id"] = allowed_policy_ids[0]
             meta["policy_normalization_changed"] = True
-        meta["planner_version"] = "v2" if use_v2 else "v1"
+        meta["planner_version"] = "v2"
         meta["planner_latency_ms"] = int((time.perf_counter() - started) * 1000)
         meta["planner_start_ts"] = started_wall
         meta["planner_end_ts"] = ended_wall

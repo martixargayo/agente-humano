@@ -408,14 +408,12 @@ def build_livetrace2_event(*, user_id: str, session_id: str, session: SessionSta
     lt_mode, lt_source = _env_with_default("LIVETRACE2_MODE", "public")
     use_judge_v2, use_judge_v2_source = _env_with_default("USE_WORLD_JUDGE_V2", "0")
     use_advisor_v2, use_advisor_v2_source = _env_with_default("USE_ADVISOR_V2", "0")
-    use_planner_v2, use_planner_v2_source = _env_with_default("USE_PLANNER_V2", "0")
     env_snapshot = {
         "WORLD_PARALLELISM_ENABLED": wp_env,
         "ADVISOR_ENABLED": adv_env,
         "LIVETRACE2_MODE": lt_mode,
         "USE_WORLD_JUDGE_V2": use_judge_v2,
         "USE_ADVISOR_V2": use_advisor_v2,
-        "USE_PLANNER_V2": use_planner_v2,
     }
     event_identity = {
         "session_id": session_id,
@@ -441,26 +439,22 @@ def build_livetrace2_event(*, user_id: str, session_id: str, session: SessionSta
             "LIVETRACE2_MODE": lt_source,
             "USE_WORLD_JUDGE_V2": use_judge_v2_source,
             "USE_ADVISOR_V2": use_advisor_v2_source,
-            "USE_PLANNER_V2": use_planner_v2_source,
         },
         "feature_flags": {
             "USE_WORLD_JUDGE_V2": use_judge_v2 == "1",
             "USE_ADVISOR_V2": use_advisor_v2 == "1",
-            "USE_PLANNER_V2": use_planner_v2 == "1",
             "ADVISOR_ENABLED": adv_env == "1",
             "WORLD_PARALLELISM_ENABLED": wp_env == "1",
         },
         "feature_flags_runtime": {
             "USE_WORLD_JUDGE_V2": bool(runtime_feature_flags.get("USE_WORLD_JUDGE_V2", False)),
             "USE_ADVISOR_V2": bool(runtime_feature_flags.get("USE_ADVISOR_V2", False)),
-            "USE_PLANNER_V2": bool(runtime_feature_flags.get("USE_PLANNER_V2", False)),
             "ADVISOR_ENABLED": bool(runtime_feature_flags.get("ADVISOR_ENABLED", False)),
             "WORLD_PARALLELISM_ENABLED": bool(runtime_feature_flags.get("WORLD_PARALLELISM_ENABLED", False)),
         },
         "feature_flags_mismatch": {
             "USE_WORLD_JUDGE_V2": bool(runtime_feature_flags) and bool(runtime_feature_flags.get("USE_WORLD_JUDGE_V2", False)) != (use_judge_v2 == "1"),
             "USE_ADVISOR_V2": bool(runtime_feature_flags) and bool(runtime_feature_flags.get("USE_ADVISOR_V2", False)) != (use_advisor_v2 == "1"),
-            "USE_PLANNER_V2": bool(runtime_feature_flags) and bool(runtime_feature_flags.get("USE_PLANNER_V2", False)) != (use_planner_v2 == "1"),
             "ADVISOR_ENABLED": bool(runtime_feature_flags) and bool(runtime_feature_flags.get("ADVISOR_ENABLED", False)) != (adv_env == "1"),
             "WORLD_PARALLELISM_ENABLED": bool(runtime_feature_flags) and bool(runtime_feature_flags.get("WORLD_PARALLELISM_ENABLED", False)) != (wp_env == "1"),
         },

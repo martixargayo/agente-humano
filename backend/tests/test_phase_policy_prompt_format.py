@@ -1,6 +1,6 @@
 from langchain_core.prompts import ChatPromptTemplate
 
-from prompts import PHASE_POLICY_SYSTEM_PROMPT, PHASE_POLICY_USER_PROMPT, PLANNER_V2_USER_PROMPT
+from prompts import PLANNER_V2_SYSTEM_PROMPT, PLANNER_V2_USER_PROMPT
 from negotiation.llm_planning_context import build_full_roleplay_profiles, build_world_digest
 from negotiation.phase_policy_planner import plan_phase_policy
 from negotiation.schemas import default_belief_state, default_progress_state, default_world_state
@@ -23,22 +23,30 @@ def _planner_inputs():
     )
 
 
-def test_phase_policy_prompt_template_renders_without_keyerror():
+def test_planner_v2_prompt_template_renders_without_keyerror():
     prompt = ChatPromptTemplate.from_messages(
-        [("system", PHASE_POLICY_SYSTEM_PROMPT), ("user", PHASE_POLICY_USER_PROMPT)]
+        [("system", PLANNER_V2_SYSTEM_PROMPT), ("user", PLANNER_V2_USER_PROMPT)]
     )
 
     messages = prompt.format_messages(
-        objective="",
-        constraints="",
-        recent_context="",
-        phase_state="{}",
-        active_plan="{}",
-        policy_state="{}",
-        allowed_policy_ids="[]",
-        world_summary="{}",
-        belief_summary="{}",
-        advisor_recs="{}",
+        full_profiles_block="",
+        objective_summary="",
+        judge_result_json="{}",
+        advisor_recs_json="{}",
+        policy_catalog_es="[]",
+        phase_definitions_es="",
+        memory_short="",
+        memory_long="",
+        world_digest_json="{}",
+        world_full_json="{}",
+        belief_digest_json="{}",
+        belief_full_json="{}",
+        policy_state_json="{}",
+        phase_state_json="{}",
+        active_plan_json="{}",
+        progress_counters_json="{}",
+        allowed_policy_ids_json="[]",
+        reusable_policy_id="",
     )
 
     assert messages
@@ -48,7 +56,7 @@ def test_plan_phase_policy_reports_prompt_format_stage_on_template_error(monkeyp
     broken_prompt = ChatPromptTemplate.from_messages(
         [("system", "broken {missing_var}"), ("user", "ok")]
     )
-    monkeypatch.setattr("negotiation.phase_policy_planner._planner_prompt", broken_prompt)
+    monkeypatch.setattr("negotiation.phase_policy_planner._planner_v2_prompt", broken_prompt)
 
     phase_candidate, policy_decision, meta = plan_phase_policy(**_planner_inputs())
 
@@ -59,29 +67,19 @@ def test_plan_phase_policy_reports_prompt_format_stage_on_template_error(monkeyp
     assert meta["planner_error_stage"] == "prompt_format"
 
 
-def test_phase_policy_prompt_is_minimal_without_policy_catalog_blobs():
-    assert "{policy_catalog}" not in PHASE_POLICY_USER_PROMPT
-    assert "{policy_catalog_with_phases}" not in PHASE_POLICY_USER_PROMPT
-    assert "{world_diff}" not in PHASE_POLICY_USER_PROMPT
-    assert "{belief_cues}" not in PHASE_POLICY_USER_PROMPT
-
-def test_phase_policy_prompt_is_minimal_without_legacy_blobs():
-    legacy_placeholders = [
-        "{policy_catalog}",
-        "{policy_catalog_with_phases}",
-        "{world_diff}",
-        "{belief_cues}",
-        "{constraints_struct}",
-        "{policy_plan_summary}",
-    ]
-    for placeholder in legacy_placeholders:
-        assert placeholder not in PHASE_POLICY_USER_PROMPT
-
-
 def test_planner_v2_prompt_labels_are_in_spanish():
     assert "B) BLOQUE_PERFILES_COMPLETOS" in PLANNER_V2_USER_PROMPT
     assert "K) WORLD_COMPLETO_JSON" in PLANNER_V2_USER_PROMPT
     assert "M) BELIEF_COMPLETO_JSON" in PLANNER_V2_USER_PROMPT
+
+
+def test_planner_v2_system_prompt_includes_anti_loop_initiative_rules():
+    assert "INICIATIVA_Y_ANTI_LOOP" in PLANNER_V2_SYSTEM_PROMPT
+    assert "SUFICIENTE PROVISIONAL" in PLANNER_V2_SYSTEM_PROMPT
+    assert "Cambiar de táctica significa elegir UNA" in PLANNER_V2_SYSTEM_PROMPT
+    assert "(D) Ancla u oferta condicional" in PLANNER_V2_SYSTEM_PROMPT
+    assert "prueba de manejo" in PLANNER_V2_SYSTEM_PROMPT
+    assert "climate/rapport" in PLANNER_V2_SYSTEM_PROMPT
 
 
 def test_build_full_roleplay_profiles_forces_carlos_when_scene_or_style_match():

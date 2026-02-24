@@ -531,7 +531,6 @@ def test_planner_gate_present_when_skipped_and_gate_payload_mapped(monkeypatch):
     monkeypatch.setenv("LIVETRACE2_MODE", "internal")
     monkeypatch.setenv("USE_WORLD_JUDGE_V2", "1")
     monkeypatch.setenv("USE_ADVISOR_V2", "1")
-    monkeypatch.setenv("USE_PLANNER_V2", "0")
     session = SessionState(user_id="u", session_id="s")
     session.last_updated = datetime(2026, 1, 2, tzinfo=timezone.utc)
     trace_item = _base_trace_item()
@@ -599,12 +598,10 @@ def test_livetrace2_header_includes_build_and_env_snapshot(monkeypatch):
         "LIVETRACE2_MODE": "internal",
         "USE_WORLD_JUDGE_V2": "0",
         "USE_ADVISOR_V2": "0",
-        "USE_PLANNER_V2": "0",
     }
     assert header["feature_flags"] == {
         "USE_WORLD_JUDGE_V2": False,
         "USE_ADVISOR_V2": False,
-        "USE_PLANNER_V2": False,
         "ADVISOR_ENABLED": False,
         "WORLD_PARALLELISM_ENABLED": True,
     }
@@ -736,7 +733,6 @@ def test_env_snapshot_propagation(monkeypatch):
     monkeypatch.setenv("LIVETRACE2_MODE", "internal")
     monkeypatch.setenv("USE_WORLD_JUDGE_V2", "1")
     monkeypatch.setenv("USE_ADVISOR_V2", "1")
-    monkeypatch.setenv("USE_PLANNER_V2", "0")
     session = SessionState(user_id="u", session_id="s")
     session.last_updated = datetime(2026, 1, 2, tzinfo=timezone.utc)
     event = build_livetrace2_event(user_id="u", session_id="s", session=session, trace_index=0, trace_item=_base_trace_item())
@@ -747,7 +743,6 @@ def test_env_snapshot_propagation(monkeypatch):
         "LIVETRACE2_MODE": "internal",
         "USE_WORLD_JUDGE_V2": "1",
         "USE_ADVISOR_V2": "1",
-        "USE_PLANNER_V2": "0",
     }, f"env_snapshot mismatch; got={got}"
 
 
