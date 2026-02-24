@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import time
 from datetime import datetime, timezone
 
@@ -181,20 +180,29 @@ def phase_policy_planner_node(state: dict) -> dict:
 
     if planner_request == "continue_policy" and previous_plan:
         if advance_step:
-            advanced_plan, did_advance = _advance_step(previous_plan)
-            if did_advance and advanced_plan:
-                active_plan = advanced_plan
-                active_plan["updated_turn"] = turn_count
-                active_plan_status = "active"
-                planner_skipped = True
-                skip_reason = "advance_step_without_planner"
-                planner_debug["gate_decision"]["gate_path"] = "advance_step_no_llm"
-                planner_debug["gate_decision"]["gate_reason_codes"] = ["advance_step_true"]
-            else:
+            steps = list(previous_plan.get("steps", [])) if isinstance(previous_plan, dict) else []
+            cur_idx = int(previous_plan.get("current_step_idx", 0) or 0) if isinstance(previous_plan, dict) else 0
+            last_idx = len(steps) - 1
+            if steps and cur_idx >= last_idx:
                 planner_request = "replan_policy"
-                planner_meta["advance_step_out_of_range"] = True
-                planner_debug["gate_decision"]["gate_path"] = "replan_out_of_range"
-                planner_debug["gate_decision"]["gate_reason_codes"] = ["step_out_of_range"]
+                planner_meta["advance_step_reached_last_step"] = True
+                planner_debug["gate_decision"]["gate_path"] = "replan_last_step_completed"
+                planner_debug["gate_decision"]["gate_reason_codes"] = ["advance_step_last_step"]
+            else:
+                advanced_plan, did_advance = _advance_step(previous_plan)
+                if did_advance and advanced_plan:
+                    active_plan = advanced_plan
+                    active_plan["updated_turn"] = turn_count
+                    active_plan_status = "active"
+                    planner_skipped = True
+                    skip_reason = "advance_step_without_planner"
+                    planner_debug["gate_decision"]["gate_path"] = "advance_step_no_llm"
+                    planner_debug["gate_decision"]["gate_reason_codes"] = ["advance_step_true"]
+                else:
+                    planner_request = "replan_policy"
+                    planner_meta["advance_step_out_of_range"] = True
+                    planner_debug["gate_decision"]["gate_path"] = "replan_out_of_range"
+                    planner_debug["gate_decision"]["gate_reason_codes"] = ["step_out_of_range"]
         elif judgement_skip_planner:
             active_plan, _ = _clamp_step(previous_plan)
             active_plan["updated_turn"] = turn_count
@@ -256,7 +264,6 @@ def phase_policy_planner_node(state: dict) -> dict:
     if not planner_skipped:
         planner_call_meta: dict = {}
         started = time.perf_counter()
-        use_planner_v2 = bool(state.get("use_planner_v2", False)) or os.getenv("USE_PLANNER_V2", "0") == "1"
         try:
             phase_candidate, policy_decision, planner_call_meta = deps.plan_phase_policy(
                 world_state=state["world_state"],
@@ -271,7 +278,6 @@ def phase_policy_planner_node(state: dict) -> dict:
                 recent_context=state.get("recent_history_text", ""),
                 allowed_policy_ids=allowed_all,
                 advisor_recs=state.get("advisor_recs") if isinstance(state.get("advisor_recs"), dict) else {},
-                use_planner_v2=use_planner_v2,
                 judge_result=state.get("policy_plan_judgement") if isinstance(state.get("policy_plan_judgement"), dict) else {},
                 memory_short=str(state.get("short_memory", "") or ""),
                 memory_long=str(state.get("long_memory", "") or ""),

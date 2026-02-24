@@ -46,6 +46,7 @@ def extract_llm_usage(raw: Any) -> dict[str, Any]:
 
     queue_ms = response_metadata.get("queue_ms") or response_metadata.get("queue_time_ms")
     ttfb_ms = response_metadata.get("ttfb_ms") or response_metadata.get("first_token_ms")
+    finish_reason = response_metadata.get("finish_reason") or usage_metadata.get("finish_reason")
 
     return {
         "model": str(model) if model else None,
@@ -53,4 +54,5 @@ def extract_llm_usage(raw: Any) -> dict[str, Any]:
         "tokens_out": _as_int(tokens_out),
         "queue_ms": _as_int(queue_ms),
         "ttfb_ms": _as_int(ttfb_ms),
+        "finish_reason": str(finish_reason) if finish_reason else "",
     }

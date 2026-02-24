@@ -94,7 +94,6 @@ def test_planner_v2_schema_and_contract(monkeypatch):
         recent_context="",
         allowed_policy_ids=["safe_neutral", "info_extract_critical"],
         advisor_recs={"recommended_moves": [{"title": "primero evidencia"}]},
-        use_planner_v2=True,
         judge_result={"plan_status": "continue"},
         memory_short="Vendedor: Está impecable.",
         memory_long="Resumen.",
@@ -105,10 +104,62 @@ def test_planner_v2_schema_and_contract(monkeypatch):
     assert meta["executor_instruction"]["style_id"] == "psyplay_compact"
     assert len(meta["executor_instruction"]["ask_slots"]) <= 1
     rendered = meta["planner_input_prompt_rendered"]
-    assert "POLICY_CATALOG_ES" in rendered
+    assert "ALLOWED_POLICY_IDS" in rendered
+    assert "POLICY_CATALOG_ES_SUBSET" in rendered
     assert "PHASE_DEFINITIONS_ES" in rendered
     assert "JUDGE_RESULT" in rendered
-    assert rendered.index("ADVISOR_RECS") < rendered.index("POLICY_CATALOG_ES")
+    assert rendered.index("ADVISOR_RECS") < rendered.index("POLICY_CATALOG_ES_SUBSET")
+
+
+def test_planner_repairs_policy_if_not_defined_in_subset(monkeypatch):
+    payload = {
+        "schema_version": "planner_v2",
+        "phase": "interests",
+        "recovery_mode": False,
+        "policy_id": "info_extract_critical",
+        "active_plan": {
+            "plan_id": "plan_v2_1",
+            "current_step_idx": 0,
+            "context_digest": "seguir",
+            "steps": [
+                {"step_idx": 0, "goal": "g1", "instruction": "i1", "ask_slots": [], "success_criteria": ["x"], "stop_conditions": []},
+                {"step_idx": 1, "goal": "g2", "instruction": "i2", "ask_slots": [], "success_criteria": ["y"], "stop_conditions": []},
+            ],
+        },
+        "executor_instruction": {
+            "plan_id": "plan_v2_1",
+            "step_idx": 0,
+            "instruction": "i1",
+            "ask_slots": [],
+            "must_avoid": [],
+            "max_questions_per_turn": 1,
+            "language": "es",
+            "style_id": "psyplay_compact",
+        },
+    }
+    monkeypatch.setattr("negotiation.phase_policy_planner.get_planner_llm", lambda: _FakePlannerLLM(payload))
+
+    _phase, policy, meta = plan_phase_policy(
+        world_state=default_world_state(),
+        world_diff={},
+        belief_state=default_belief_state(),
+        progress_state=default_progress_state(),
+        policy_state={"planner_request": "continue_policy", "policy_id": "safe_neutral"},
+        policy_plan_summary={},
+        objective="",
+        constraints="",
+        constraints_struct={},
+        recent_context="",
+        allowed_policy_ids=["safe_neutral", "info_extract_critical"],
+        advisor_recs={},
+        judge_result={"plan_status": "continue_same_step"},
+        memory_short="",
+        memory_long="",
+    )
+
+    assert meta["policy_subset_ids"] == ["safe_neutral"]
+    assert policy["policy_id"] == "safe_neutral"
+    assert "policy_not_in_subset_repaired" in meta.get("issues", [])
 
 
 def test_executor_v2_enforces_length_question_and_injection_resistance():

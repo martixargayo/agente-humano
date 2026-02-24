@@ -124,6 +124,7 @@ def test_llm_getter_respects_env_before_first_use_and_cache_reset(monkeypatch):
     monkeypatch.setenv("NEGOTIATION_PLANNER_MODEL", "planner-a")
     get_planner_llm()
     first_model = captured[-1]["model"]
+    first_max_tokens = captured[-1]["max_tokens"]
 
     monkeypatch.setenv("NEGOTIATION_PLANNER_MODEL", "planner-b")
     get_planner_llm()
@@ -134,6 +135,7 @@ def test_llm_getter_respects_env_before_first_use_and_cache_reset(monkeypatch):
     third_model_after_reset = captured[-1]["model"]
 
     assert first_model == "planner-a"
+    assert int(first_max_tokens) >= 900
     assert second_model_same_cache == "planner-a"
     assert third_model_after_reset == "planner-b"
 

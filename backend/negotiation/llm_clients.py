@@ -23,7 +23,9 @@ def get_belief_llm() -> ChatOpenAI:
 @lru_cache(maxsize=1)
 def get_planner_llm() -> ChatOpenAI:
     cfg = get_negotiation_model_config()
-    return ChatOpenAI(**build_chat_openai_kwargs(cfg.planner))
+    kwargs = build_chat_openai_kwargs(cfg.planner)
+    kwargs["max_tokens"] = max(int(kwargs.get("max_tokens", 0) or 0), 900)
+    return ChatOpenAI(**kwargs)
 
 
 

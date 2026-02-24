@@ -567,7 +567,6 @@ def run_negotiation_agent(
     feature_flags = {
         "USE_WORLD_JUDGE_V2": os.getenv("USE_WORLD_JUDGE_V2", "0") == "1",
         "USE_ADVISOR_V2": os.getenv("USE_ADVISOR_V2", "0") == "1",
-        "USE_PLANNER_V2": os.getenv("USE_PLANNER_V2", "0") == "1",
         "ADVISOR_ENABLED": os.getenv("ADVISOR_ENABLED", "1") == "1",
         "WORLD_PARALLELISM_ENABLED": os.getenv("WORLD_PARALLELISM_ENABLED", "1") == "1",
     }

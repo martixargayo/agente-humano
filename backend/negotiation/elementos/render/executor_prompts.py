@@ -72,6 +72,9 @@ G) BELIEF_COMPLETO_JSON
 H) RESUMEN_PLANNER
 {planner_output_summary}
 
+I) RETRY_HINT (si aplica)
+{retry_hint}
+
 ESQUEMA_SALIDA:
 {output_schema}
 

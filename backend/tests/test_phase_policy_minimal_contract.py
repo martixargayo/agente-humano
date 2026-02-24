@@ -37,6 +37,56 @@ class _LlmDummy:
         return _StructuredDummy()
 
 
+class _RetryStructuredDummy:
+    def __init__(self):
+        self.calls = 0
+
+    def invoke(self, _messages):
+        self.calls += 1
+        if self.calls == 1:
+            raise ValueError("Could not parse response content as the length limit was reached")
+        return SimpleNamespace(
+            model_dump=lambda: {
+                "schema_version": "planner_v2",
+                "phase": "interests",
+                "recovery_mode": False,
+                "policy_id": "safe_neutral",
+                "active_plan": {
+                    "plan_id": "plan_retry",
+                    "current_step_idx": 0,
+                    "context_digest": "foco",
+                    "steps": [
+                        {"step_idx": 0, "goal": "g1", "success_criteria": ["s1"], "instruction": "i1", "ask_slots": [], "stop_conditions": []},
+                        {"step_idx": 1, "goal": "g2", "success_criteria": ["s2"], "instruction": "i2", "ask_slots": [], "stop_conditions": []},
+                    ],
+                },
+                "executor_instruction": {
+                    "plan_id": "plan_retry",
+                    "step_idx": 0,
+                    "instruction": "i1",
+                    "ask_slots": ["detalle"],
+                    "must_avoid": [],
+                    "max_questions_per_turn": 1,
+                    "language": "es",
+                    "style_id": "psyplay_compact",
+                },
+            }
+        )
+
+
+class _RetryLlmDummy:
+    def __init__(self):
+        self.structured = _RetryStructuredDummy()
+        self.bound_max_tokens = []
+
+    def with_structured_output(self, _schema):
+        return self.structured
+
+    def bind(self, **kwargs):
+        self.bound_max_tokens.append(kwargs.get("max_tokens"))
+        return self
+
+
 def test_plan_phase_policy_returns_minimal_active_plan_contract(monkeypatch):
     monkeypatch.setattr("negotiation.phase_policy_planner.get_planner_llm", lambda: _LlmDummy())
     phase_candidate, policy_decision, meta = plan_phase_policy(
@@ -57,6 +107,31 @@ def test_plan_phase_policy_returns_minimal_active_plan_contract(monkeypatch):
     assert policy_decision["policy_id"] == "safe_neutral"
     assert isinstance(meta.get("active_plan"), dict)
     assert len(meta["active_plan"]["steps"]) >= 2
+
+
+def test_plan_phase_policy_retries_once_on_truncation_with_higher_max_tokens(monkeypatch):
+    retry_llm = _RetryLlmDummy()
+    monkeypatch.setattr("negotiation.phase_policy_planner.get_planner_llm", lambda: retry_llm)
+    phase_candidate, policy_decision, meta = plan_phase_policy(
+        world_state=default_world_state(),
+        world_diff={},
+        belief_state=default_belief_state(),
+        progress_state=default_progress_state(),
+        policy_state={},
+        policy_plan_summary={},
+        objective="obj",
+        constraints="",
+        constraints_struct={},
+        recent_context="",
+        allowed_policy_ids=["safe_neutral"],
+        advisor_recs={},
+    )
+    assert phase_candidate["phase"] == "interests"
+    assert policy_decision["policy_id"] == "safe_neutral"
+    assert meta["planner_retry_count"] == 1
+    assert meta["planner_retry_reason"] == "length_limit_or_truncated_json"
+    assert len(retry_llm.bound_max_tokens) == 1
+    assert int(retry_llm.bound_max_tokens[0]) >= 1200
 
 
 def test_executor_instruction_comes_from_planner_active_plan():
@@ -117,7 +192,14 @@ def test_executor_instruction_comes_from_planner_active_plan():
 def test_world_judge_reads_active_plan_current_step_with_mock_llm(monkeypatch):
     class _JudgeLLM:
         def invoke(self, _messages):
-            return SimpleNamespace(content='{"plan_status":"continue_same_step","evidence":[],"skip_planner":false}')
+            return SimpleNamespace(
+                content=(
+                    '{"schema_version":"v1","plan_status":"continue_same_step",'
+                    '"why":"ok","evidence":[{"quote":"ok","source":"user_message","span":[0,2]}],'
+                    '"confidence":0.8,"missing_signals":[],"safety_flags":[],"degraded":false,'
+                    '"degrade_reason":"","skip_planner":false}'
+                )
+            )
 
     monkeypatch.setattr("negotiation.nodes.world_node.get_planner_llm", lambda: _JudgeLLM())
     active_plan = {
