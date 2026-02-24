@@ -193,7 +193,7 @@ class _WorldDepsEmptyPatch:
         return self._LLM(self)
 
 
-def test_world_extractor_postprocess_emits_min_request_for_offer_question():
+def test_world_extractor_postprocess_keeps_empty_requests_without_llm_item():
     deps = _WorldDepsEmptyPatch()
     patch, meta = extract_world_patch_llm_v4(
         deps,
@@ -210,8 +210,5 @@ def test_world_extractor_postprocess_emits_min_request_for_offer_question():
         background_block_public=_background_block("seller"),
     )
 
-    assert patch["requests"], "requests debería tener al menos un item por postproceso"
-    item = patch["requests"][0]
-    assert item["confidence"] >= 0.60
-    assert item["raw_text"] == "Yo no tengo nada que decir, ¿qué me ofreces?"
-    assert "minimum_request_from_offer_question" in (meta.get("postprocess_reason_codes") or [])
+    assert patch["requests"] == []
+    assert meta.get("postprocess_reason_codes") in (None, [])

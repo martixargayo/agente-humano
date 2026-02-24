@@ -40,6 +40,13 @@ MENSAJE ACTUAL:
 WORLD_PREVIO (json):
 {prev_world_state_json}
 
+CONTEXTO_PLANIFICACION:
+- last_assistant_question: {last_assistant_question}
+- current_step_micro_goal: {current_step_micro_goal}
+- success_criteria: {success_criteria}
+- missing_signals: {missing_signals}
+- expected_slots: {expected_slots}
+
 REGLAS:
 - Devuelve SOLO este esquema JSON:
 {
@@ -55,7 +62,16 @@ REGLAS:
   },
   "meta": {
     "negotiation_signal_detected": true|false,
-    "extraction_quality": "high|medium|low"
+    "extraction_quality": "high|medium|low",
+    "contradictions_detected": true|false,
+    "contradictions": [
+      {
+        "topic": "string breve",
+        "previous_quote": "cita literal previa",
+        "current_quote": "cita literal del MENSAJE ACTUAL",
+        "note": "Antes dijo X, ahora dice Y"
+      }
+    ]
   }
 }
 
@@ -69,18 +85,35 @@ formato item:
 
 - Propón SOLO items NUEVOS del mensaje actual (sin reescritura histórica).
 - No reescribas items previos.
+- Si el MENSAJE ACTUAL contiene varias señales independientes, emite varias. No elijas una y descartes las demás.
+- Si hay mantenimiento + oferta/compromiso en el mismo mensaje, deben salir items en claims y offers (no solo uno).
 - Si el MENSAJE ACTUAL expresa intercambio condicional o implícito, agrega al menos un item en offers o concessions.
+- Usa last_assistant_question + CONTEXTO_PLANIFICACION para interpretar respuestas cortas y largas del MENSAJE ACTUAL.
+- Aunque el mensaje sea corto, si responde a la pregunta previa o llena señales del plan, emite los items correspondientes.
 - Mantén text simple y conciso.
 - raw_text es obligatorio en cada item emitido y debe ser cita literal del mensaje del turno.
+- No inventes: todo item debe derivarse del MENSAJE ACTUAL y conservar raw_text literal del MENSAJE ACTUAL.
 - confidence es obligatorio y numérico en [0,1].
 - Usa confidence >= 0.60 para items emitidos; si sería < 0.60, no emitas ese item.
 - Nunca emitas confidence=0 salvo que la cita exprese incertidumbre total de forma explícita.
+- Si el MENSAJE ACTUAL contradice WORLD_PREVIO, NO omitas el claim nuevo: emítelo y completa meta.contradictions con "antes... ahora...".
+- previous_quote debe venir de raw_text en WORLD_PREVIO; si no existe, usa un fragmento literal de WORLD_PREVIO.text.
 - Si no hay información nueva para un bucket, devuelve lista vacía para ese bucket.
 """.strip()
 
 
 _BUCKETS = ("offers", "concessions", "constraints", "interests", "claims", "requests", "context")
 DEFAULT_ITEM_CONFIDENCE = 0.6
+MAX_ITEMS_PER_TURN = 8
+BUCKET_ITEM_CAPS = {
+    "claims": 5,
+    "offers": 2,
+    "requests": 2,
+    "concessions": 2,
+    "constraints": 2,
+    "interests": 2,
+    "context": 2,
+}
 
 
 def _safe_json_load(text: str) -> dict:
@@ -135,50 +168,49 @@ def _normalize_item(raw: object, turn_idx: int) -> dict | None:
     }
 
 
+def _norm_for_dedupe(text: str) -> str:
+    return " ".join(str(text or "").lower().strip().split())
 
 
-def _contains_offer_request_pattern(user_message: str) -> bool:
-    text = str(user_message or "").strip().lower()
-    if not text:
-        return False
-    patterns = (
-        "qué me ofreces",
-        "que me ofreces",
-        "¿qué ofreces?",
-        "que ofreces",
-        "qué tienes",
-        "que tienes",
-        "qué me propones",
-        "que me propones",
-    )
-    return any(pattern in text for pattern in patterns)
+def _apply_patch_caps_and_dedupe(patch: dict) -> tuple[dict, dict]:
+    out: dict = {bucket: [] for bucket in _BUCKETS}
+    meta = {
+        "postprocess_bucket_trimmed": {},
+        "postprocess_global_trimmed": False,
+        "postprocess_exact_deduped": 0,
+    }
+    flat: list[tuple[str, dict]] = []
+    for bucket in _BUCKETS:
+        bucket_items = patch.get(bucket, []) if isinstance(patch.get(bucket), list) else []
+        seen: set[str] = set()
+        deduped: list[dict] = []
+        for item in bucket_items:
+            dedupe_key = _norm_for_dedupe(item.get("raw_text", ""))
+            if not dedupe_key:
+                dedupe_key = _norm_for_dedupe(item.get("text", ""))
+            if not dedupe_key:
+                continue
+            if dedupe_key in seen:
+                meta["postprocess_exact_deduped"] += 1
+                continue
+            seen.add(dedupe_key)
+            deduped.append(item)
+        cap = int(BUCKET_ITEM_CAPS.get(bucket, MAX_ITEMS_PER_TURN))
+        if len(deduped) > cap:
+            meta["postprocess_bucket_trimmed"][bucket] = {"before": len(deduped), "after": cap}
+        kept = deduped[:cap]
+        out[bucket] = kept
+        flat.extend((bucket, item) for item in kept)
 
+    if len(flat) <= MAX_ITEMS_PER_TURN:
+        return out, meta
 
-def _ensure_minimum_request_item(*, patch: dict, meta: dict, user_message: str, turn_idx: int) -> None:
-    if not bool(meta.get("negotiation_signal_detected", False)):
-        return
-    requests = patch.get("requests") if isinstance(patch.get("requests"), list) else []
-    if requests:
-        return
-    if not _contains_offer_request_pattern(user_message):
-        return
-    literal = str(user_message or "").strip()
-    if not literal:
-        return
-    requests.append(
-        {
-            "text": "El hablante pide que la otra parte le haga una oferta/propuesta.",
-            "confidence": 0.75,
-            "confidence_defaulted": False,
-            "confidence_source": "postprocess_min_request_rule",
-            "raw_text": literal,
-            "source_turn": int(turn_idx),
-        }
-    )
-    patch["requests"] = requests
-    reasons = list(meta.get("postprocess_reason_codes") or [])
-    reasons.append("minimum_request_from_offer_question")
-    meta["postprocess_reason_codes"] = reasons
+    meta["postprocess_global_trimmed"] = True
+    kept_pairs = flat[:MAX_ITEMS_PER_TURN]
+    rebuilt: dict = {bucket: [] for bucket in _BUCKETS}
+    for bucket, item in kept_pairs:
+        rebuilt[bucket].append(item)
+    return rebuilt, meta
 
 
 def extract_world_patch_llm_v4(
@@ -194,6 +226,11 @@ def extract_world_patch_llm_v4(
     style_contract: dict | None = None,
     constraints_struct: dict | None = None,
     background_block_public: str = "",
+    last_assistant_question: str = "",
+    current_step_micro_goal: str = "",
+    success_criteria: list[str] | None = None,
+    missing_signals: list[str] | None = None,
+    expected_slots: list[str] | None = None,
 ) -> Tuple[dict, dict]:
     del belief_state, speaker_of_user_message, persona_profile, scene_profile, style_contract, constraints_struct
     dump_started = time.perf_counter()
@@ -205,6 +242,11 @@ def extract_world_patch_llm_v4(
     user_prompt = user_prompt.replace("{background_block}", str(background_block_public or "").strip())
     user_prompt = user_prompt.replace("{user_message}", user_message or "")
     user_prompt = user_prompt.replace("{prev_world_state_json}", prev_world_state_json)
+    user_prompt = user_prompt.replace("{last_assistant_question}", str(last_assistant_question or ""))
+    user_prompt = user_prompt.replace("{current_step_micro_goal}", str(current_step_micro_goal or ""))
+    user_prompt = user_prompt.replace("{success_criteria}", json.dumps(success_criteria or [], ensure_ascii=False))
+    user_prompt = user_prompt.replace("{missing_signals}", json.dumps(missing_signals or [], ensure_ascii=False))
+    user_prompt = user_prompt.replace("{expected_slots}", json.dumps(expected_slots or [], ensure_ascii=False))
     messages = [
         {"role": "system", "content": WORLD_EXTRACTOR_V4_SYSTEM_PROMPT},
         {"role": "user", "content": user_prompt},
@@ -237,14 +279,13 @@ def extract_world_patch_llm_v4(
     meta = dict(data.get("meta") or {})
     meta.setdefault("negotiation_signal_detected", False)
     meta.setdefault("extraction_quality", "medium")
+    meta.setdefault("contradictions_detected", False)
+    contradictions = meta.get("contradictions", [])
+    meta["contradictions"] = contradictions if isinstance(contradictions, list) else []
     meta["extractor_version"] = "world_extractor_v4"
     meta["schema_version"] = str(data.get("schema_version", ""))
-    _ensure_minimum_request_item(
-        patch=patch,
-        meta=meta,
-        user_message=user_message,
-        turn_idx=turn_idx,
-    )
+    patch, post_meta = _apply_patch_caps_and_dedupe(patch)
+    meta.update(post_meta)
     total_items = sum(len(items) for items in patch.values())
     defaulted_items = sum(
         1

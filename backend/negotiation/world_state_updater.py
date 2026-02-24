@@ -228,10 +228,16 @@ def update_world_state(
     style_contract: dict | None = None,
     constraints_struct: dict | None = None,
     background_block_public: str = "",
+    last_assistant_question: str = "",
+    current_step_micro_goal: str = "",
+    success_criteria: list[str] | None = None,
+    missing_signals: list[str] | None = None,
+    expected_slots: list[str] | None = None,
 ) -> Tuple[WorldState, dict]:
     del recent_history, force_llm, extractor_mode
 
     base_deepcopy_started = time.perf_counter()
+    prev_world_for_prompt = copy.deepcopy(prev_world or default_world_state())
     base = copy.deepcopy(prev_world or default_world_state())
     base_deepcopy_ms = int((time.perf_counter() - base_deepcopy_started) * 1000)
     ensure_world_buckets(base)
@@ -275,7 +281,7 @@ def update_world_state(
         buckets_patch, extractor_meta = extract_world_patch_llm_v4(
             llm_deps,
             user_message,
-            base,
+            prev_world_for_prompt,
             belief_state,
             conversation_mode,
             turn_idx,
@@ -285,6 +291,11 @@ def update_world_state(
             style_contract=style_contract,
             constraints_struct=constraints_struct,
             background_block_public=background_block_public,
+            last_assistant_question=last_assistant_question,
+            current_step_micro_goal=current_step_micro_goal,
+            success_criteria=success_criteria or [],
+            missing_signals=missing_signals or [],
+            expected_slots=expected_slots or [],
         )
         timers["world_json_dump_prev_ms"] = int((extractor_meta or {}).get("world_json_dump_prev_ms", 0) or 0)
         timers["world_extractor_llm_ms"] = int((extractor_meta or {}).get("extractor_llm_latency_ms", 0) or 0)
@@ -303,6 +314,13 @@ def update_world_state(
         world["world_state_meta"]["extractor_failed"] = False
         world["world_state_meta"]["updated_fields"] = [f"world_buckets.{bucket}" for bucket in updated_buckets]
         world["world_state_meta"]["updated_buckets"] = updated_buckets
+        contradictions = (extractor_meta or {}).get("contradictions") if isinstance(extractor_meta, dict) else []
+        contradictions = contradictions if isinstance(contradictions, list) else []
+        if contradictions:
+            last_note = str((contradictions[-1] or {}).get("note", "") or "")[:200]
+            world["world_state_meta"]["conflicts_count"] = int(len(contradictions))
+            world["world_state_meta"]["last_conflict_turn"] = int(turn_idx)
+            world["world_state_meta"]["last_conflict_note"] = last_note
 
         diff_paths_started = time.perf_counter()
         base_vs_new_diff = diff_world_state(base, world)

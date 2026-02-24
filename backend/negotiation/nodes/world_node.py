@@ -881,6 +881,15 @@ def world_updater_node(state: dict) -> dict:
             participants={"buyer": "Carlos", "seller": "Don Joaquín"},
             speaker_of_user_message=speaker_of_user_message,
         )
+        active_plan = progress_state.get("active_plan") if isinstance(progress_state.get("active_plan"), dict) else {}
+        plan_steps = list(active_plan.get("steps") or []) if isinstance(active_plan, dict) else []
+        step_idx = int(active_plan.get("current_step_idx", 0) or 0) if isinstance(active_plan, dict) else 0
+        current_step = plan_steps[step_idx] if plan_steps and 0 <= step_idx < len(plan_steps) and isinstance(plan_steps[step_idx], dict) else {}
+        success_criteria = current_step.get("success_criteria") if isinstance(current_step.get("success_criteria"), list) else []
+        expected_slots = active_plan.get("slots_required") if isinstance(active_plan.get("slots_required"), list) else []
+        policy_plan_judgement = state.get("policy_plan_judgement") if isinstance(state.get("policy_plan_judgement"), dict) else {}
+        missing_signals = policy_plan_judgement.get("missing_signals") if isinstance(policy_plan_judgement.get("missing_signals"), list) else []
+
         ws, extractor_meta_local = update_world_state(
             prev_world,
             user_message,
@@ -895,6 +904,11 @@ def world_updater_node(state: dict) -> dict:
             style_contract=style_contract,
             constraints_struct=constraints_struct,
             background_block_public=background_block_public,
+            last_assistant_question=state.get("last_assistant_message", ""),
+            current_step_micro_goal=str(current_step.get("micro_goal", "") or ""),
+            success_criteria=[str(x)[:120] for x in success_criteria if str(x).strip()][:6],
+            missing_signals=[str(x)[:120] for x in missing_signals if str(x).strip()][:6],
+            expected_slots=[str(x)[:120] for x in expected_slots if str(x).strip()][:6],
         )
         extractor_meta_local["world_gate_features"] = gate_meta
         extractor_meta_local["extractor_skipped"] = False
