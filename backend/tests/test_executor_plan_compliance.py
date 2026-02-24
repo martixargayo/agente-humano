@@ -81,3 +81,28 @@ def test_executor_allows_human_first_with_bridge_and_step_ask():
     assert meta["executor_followed_instruction"] is True
     assert meta.get("deviation_reason", "") == ""
     assert "missing_required_ask_slot" not in (meta.get("instruction_enforcement") or [])
+
+
+def test_executor_human_first_answer_then_bridge_keeps_exact_step_ask_and_single_question():
+    payload = (
+        '{"response_text":"Estoy bien, gracias por preguntar. Volviendo a la negociación, ¿Cuántos propietarios ha tenido exactamente?",'
+        '"asked_question":true,"requested_info_slots":["propietarios"],"tone_used":"neutral",'
+        '"followup_intent":null,"render_meta":{}}'
+    )
+    state = _state_with_response(payload)
+    state["executor_instruction"] = {
+        "instruction": "Responde humano breve y retoma con pregunta de propietarios",
+        "safe_mode": "normal",
+        "ask": ["¿Cuántos propietarios ha tenido exactamente?"],
+    }
+    state["advisor_recs"] = {
+        "human_mode": "answer_then_bridge",
+        "answer_focus": "Estoy bien, gracias por preguntar.",
+        "bridge": "Volviendo a la negociación,",
+    }
+
+    executor_node(state)
+
+    response = state["assistant_message"]
+    assert response.count("?") == 1
+    assert response.endswith("¿Cuántos propietarios ha tenido exactamente?")

@@ -418,6 +418,8 @@ def _normalize_judgement(candidate: object, *, active_plan: dict | None, turn_co
         degrade_reason = "missing_evidence_for_progress"
 
     skip_planner = bool(candidate.get("skip_planner", False))
+    if status != "continue_same_step":
+        skip_planner = False
 
     return {
         "schema_version": "v1",
