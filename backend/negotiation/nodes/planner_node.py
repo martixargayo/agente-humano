@@ -64,20 +64,75 @@ def _build_active_plan_from_replan(policy_decision: dict, phase_effective: dict,
         "steps": [
             {
                 "step_idx": 0,
+                "intent_id": "collect_new_signal",
                 "micro_goal": micro_goal[:160],
                 "what_to_do": f"Aplicar {policy_decision.get('policy_id', 'safe_neutral')} y pedir una señal verificable para avanzar."[:260],
                 "ask": ask[:2],
-                "success_criteria": ["nueva_informacion_verificable"],
+                "success_criteria": ["intencion_alineada_con_info_nueva"],
                 "replan_triggers": ["ambiguedad_persistente", "escalada"],
                 "safe_mode": "deescalate" if bool(phase_effective.get("recovery_mode", False)) else "normal",
             }
         ],
+        "required_intents": ["collect_new_signal"],
+        "covered_intents": ["collect_new_signal"],
         "plan_constraints": {
             "max_questions_per_turn": 2,
             "must_avoid": ["escalar_tension"],
             "stop_conditions": ["amenaza"],
         },
     }
+
+
+
+
+def _normalize_intent_id(value: object) -> str:
+    raw = str(value or "").strip().lower()
+    if not raw:
+        return ""
+    out = []
+    prev_us = False
+    for ch in raw:
+        if ch.isalnum():
+            out.append(ch)
+            prev_us = False
+        else:
+            if not prev_us:
+                out.append("_")
+            prev_us = True
+    return "".join(out).strip("_")[:64]
+
+
+def validate_active_plan_against_ledger(active_plan: dict | None, plan_ledger: dict | None) -> tuple[bool, list[str]]:
+    if not isinstance(active_plan, dict):
+        return False, ["plan_not_dict"]
+    steps = active_plan.get("steps") if isinstance(active_plan.get("steps"), list) else []
+    if not steps:
+        return False, ["steps_missing"]
+
+    resolved = set()
+    for item in (plan_ledger or {}).get("resolved_intents", []) if isinstance((plan_ledger or {}).get("resolved_intents"), list) else []:
+        if not isinstance(item, dict):
+            continue
+        rid = _normalize_intent_id(item.get("intent_id"))
+        if rid:
+            resolved.add(rid)
+
+    seen: set[str] = set()
+    errors: list[str] = []
+    for idx, step in enumerate(steps):
+        if not isinstance(step, dict):
+            errors.append(f"step_{idx}_not_dict")
+            continue
+        intent_id = _normalize_intent_id(step.get("intent_id"))
+        if not intent_id:
+            errors.append(f"step_{idx}_intent_id_missing")
+            continue
+        if intent_id in seen:
+            errors.append(f"duplicate_intent_id:{intent_id}")
+        seen.add(intent_id)
+        if intent_id in resolved:
+            errors.append(f"intent_already_resolved:{intent_id}")
+    return len(errors) == 0, errors
 
 
 def _build_executor_instruction(active_plan: dict | None) -> dict:
@@ -340,6 +395,20 @@ def phase_policy_planner_node(state: dict) -> dict:
         policy_decision = normalized_policy
         active_plan_from_llm = planner_call_meta.get("active_plan") if isinstance(planner_call_meta.get("active_plan"), dict) else None
         active_plan = active_plan_from_llm or _build_active_plan_from_replan(policy_decision, phase_effective, turn_count)
+        plan_ledger = progress_state.get("plan_ledger") if isinstance(progress_state.get("plan_ledger"), dict) else {}
+        plan_valid, plan_errors = validate_active_plan_against_ledger(active_plan, plan_ledger)
+        if not plan_valid:
+            planner_meta["planner_failed"] = True
+            planner_meta["planner_fallback_used"] = True
+            planner_meta["planner_error"] = "invalid_plan_against_ledger"
+            planner_meta["plan_validation_errors"] = plan_errors
+            planner_debug["gate_decision"]["gate_reason_codes"] = list(planner_debug["gate_decision"].get("gate_reason_codes", [])) + ["invalid_plan_against_ledger"]
+            active_plan = _build_active_plan_from_replan(policy_decision, phase_effective, turn_count)
+            fallback_valid, fallback_errors = validate_active_plan_against_ledger(active_plan, plan_ledger)
+            planner_meta["fallback_plan_valid"] = fallback_valid
+            if not fallback_valid:
+                planner_meta["planner_error"] = "invalid_fallback_plan_against_ledger"
+                planner_meta["plan_validation_errors"] = plan_errors + fallback_errors
         active_plan_status = "active"
 
     planner_meta["planner_request"] = planner_request

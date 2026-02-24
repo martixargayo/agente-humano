@@ -486,6 +486,33 @@ ReasonKey = Literal[
 ]
 
 
+
+
+class PlanLedgerResolvedIntent(TypedDict):
+    intent_id: str
+    evidence: str
+    turn_idx: int
+
+
+class PlanLedgerOpenIntent(TypedDict):
+    intent_id: str
+    need: str
+
+
+class PlanLedgerFailedIntent(TypedDict):
+    intent_id: str
+    reason: str
+    attempts: int
+    turn_idx: int
+
+
+class PlanLedger(TypedDict):
+    resolved_intents: List[PlanLedgerResolvedIntent]
+    open_intents: List[PlanLedgerOpenIntent]
+    failed_intents: List[PlanLedgerFailedIntent]
+    asked_questions_recent: List[str]
+    attempt_counters: Dict[str, int]
+
 class ProgressState(TypedDict):
     conversation_mode: ConversationMode
     mode_confidence: float
@@ -512,6 +539,7 @@ class ProgressState(TypedDict):
     last_plan_id: str
     plan_id_changes_window: int
     last_progress_update_turn: int
+    plan_ledger: PlanLedger
 
 
 class GateState(TypedDict):
@@ -651,6 +679,16 @@ def default_policy_state() -> PolicyState:
     }
 
 
+def default_plan_ledger() -> PlanLedger:
+    return {
+        "resolved_intents": [],
+        "open_intents": [],
+        "failed_intents": [],
+        "asked_questions_recent": [],
+        "attempt_counters": {},
+    }
+
+
 def default_progress_state() -> ProgressState:
     return {
         "conversation_mode": "general",
@@ -676,6 +714,7 @@ def default_progress_state() -> ProgressState:
         "last_plan_id": "",
         "plan_id_changes_window": 0,
         "last_progress_update_turn": 0,
+        "plan_ledger": default_plan_ledger(),
         "phase_state": {
             "phase": "climate",
             "phase_proposed": "",

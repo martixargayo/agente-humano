@@ -36,6 +36,11 @@ def progress_updater_node(state: dict) -> dict:
         belief_state=state["belief_state"],
         turn_count=state.get("turn_count", 0),
         include_debug=True,
+        policy_plan_judgement=state.get("policy_plan_judgement") if isinstance(state.get("policy_plan_judgement"), dict) else None,
+        user_message=str(state.get("user_message", "") or ""),
+        active_plan=state.get("progress_state", {}).get("active_plan") if isinstance(state.get("progress_state"), dict) else None,
+        executor_output=state.get("executor_output") if isinstance(state.get("executor_output"), dict) else None,
+        last_assistant_message=str(state.get("last_assistant_message", "") or ""),
     )
     render_state = progress_state.get("render_state") or default_render_state()
     persona, scene, style = resolve_render_profiles(render_state)
