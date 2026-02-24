@@ -83,6 +83,27 @@ def test_context_always_on_long_answer_keeps_extra_signal():
     assert world["world_buckets"]["offers"]
 
 
+def test_short_answer_owner_question_without_numbers_still_extracts_claim():
+    deps = _QueueDeps([
+        '{"schema_version":"world_extractor_v4","world_buckets_patch":{' \
+        '"claims":[{"text":"Comprado nuevo / único propietario","confidence":0.81,"raw_text":"Lo compré nuevo","source_turn":4}],'
+        '"offers":[],"requests":[],"concessions":[],"constraints":[],"interests":[],"context":[]},"meta":{}}'
+    ])
+    world, meta = update_world_state(
+        default_world_state(),
+        "Lo compré nuevo",
+        turn_count=4,
+        deps=deps,
+        last_assistant_question="¿Cuántos propietarios ha tenido?",
+        current_step_micro_goal="confirmar historial de propietarios",
+        success_criteria=["propietarios"],
+        missing_signals=["numero_propietarios"],
+    )
+    assert world["world_buckets"]["claims"]
+    assert world["world_buckets"]["claims"][0]["text"].lower().startswith("comprado nuevo")
+    assert meta.get("extractor_used") is True
+
+
 def test_contradiction_keeps_both_claims_and_sets_meta():
     deps = _QueueDeps([
         '{"schema_version":"world_extractor_v4","world_buckets_patch":{"claims":[{"text":"No lo compró nuevo","confidence":0.8,"raw_text":"No lo compré nuevo","source_turn":1}],"offers":[],"requests":[],"concessions":[],"constraints":[],"interests":[],"context":[]},"meta":{}}',

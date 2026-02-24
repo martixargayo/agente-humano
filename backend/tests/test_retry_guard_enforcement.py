@@ -277,3 +277,28 @@ def test_legacy_step_without_intent_id_uses_no_intent_key(monkeypatch):
     )
     assert out["retry_guard"]["intent_id"] == "__no_intent__"
     assert out["retry_guard"]["active_key"].endswith(":__no_intent__")
+
+
+def test_retry_guard_third_attempt_sets_loop_flag_and_keeps_guard_reached(monkeypatch):
+    monkeypatch.setenv("MAX_ATTEMPTS_PER_INTENT_STEP", "2")
+    progress = default_progress_state()
+    progress["active_plan"] = _active_plan()
+
+    for turn in [1, 2, 3]:
+        progress["last_judgement_status"] = "continue_same_step"
+        progress = update_progress_state(
+            prev_progress=progress,
+            policy_decision=default_policy_decision(),
+            last_policy_executed=None,
+            prev_world_state=default_world_state(),
+            world_state=default_world_state(),
+            prev_belief_state=default_belief_state(),
+            belief_state=default_belief_state(),
+            turn_count=turn,
+            policy_plan_judgement={"plan_status": "continue_same_step", "evidence": [{"quote": f"dato-{turn}"}]},
+            active_plan=_active_plan(),
+        )
+
+    assert progress["retry_guard"]["attempts"] == 3
+    assert progress["retry_guard"]["reached"] is True
+    assert any(str(flag).startswith("max_attempts_reached:p1:0:collect_new_signal") for flag in progress.get("loop_flags", []))

@@ -248,3 +248,10 @@ def test_advisor_normalize_human_mode_fields_defaults_and_clamp():
     assert recs["answer_focus"] == "a"
     assert recs["bridge"] == "b"
     assert recs["dont_do"] == ["x"]
+
+
+def test_advisor_normalization_defaults_human_mode_none_when_missing_fields():
+    recs = advisor._normalize_advisor({"diagnosis": ["ok"]})
+    assert recs["human_mode"] == "none"
+    assert recs["answer_focus"] == ""
+    assert recs["bridge"] == ""
