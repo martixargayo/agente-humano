@@ -14,6 +14,7 @@ from ..llm_background import (
 from ..schemas import default_belief_state, default_progress_state
 from ..state.deps import DEFAULT_DEPS
 from ..telemetry.trace_runtime import record_gate_event, record_llm_call
+from ..world_diff_debug import world_diff_keys_for_debug
 
 
 def _state_fingerprint(value: dict) -> str:
@@ -61,7 +62,10 @@ def belief_updater_node(state: dict) -> dict:
         reason_codes=[] if world_changed else ["no_world_delta"],
         gate_inputs={
             "world_changed_meaningfully": bool(world_changed),
-            "world_diff_keys": sorted((state.get("world_diff") or {}).keys()) if isinstance(state.get("world_diff"), dict) else [],
+            "world_diff_keys": world_diff_keys_for_debug(
+                world_diff=state.get("world_diff"),
+                world_state=state.get("world_state"),
+            ),
         },
         gate_rule_id="belief_world_delta",
         gate_version="v1",

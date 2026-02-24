@@ -6,6 +6,7 @@ from typing import Any
 
 from state import SessionState
 from .trace_runtime import init_trace_runtime, trace_include_internals, trace_level
+from ..world_diff_debug import world_diff_keys_for_debug
 
 
 def _json_keys(value: Any) -> list[str]:
@@ -222,7 +223,10 @@ def build_trace_event(
         "policy": (trace_item.get("policy_decision") or {}).get("policy_id", ""),
         "phase": (trace_item.get("phase_effective") or {}).get("phase", ""),
         "allowed_policy_ids": trace_item.get("allowed_policy_ids") or [],
-        "world_diff_keys": sorted((trace_item.get("world_diff") or {}).keys()),
+        "world_diff_keys": world_diff_keys_for_debug(
+            world_diff=trace_item.get("world_diff"),
+            world_state=trace_item.get("world_new") or trace_item.get("world_state") or {},
+        ),
         "belief_diff_keys": belief_diff_keys,
         "world_base_keys": _json_keys(world_prev),
         "world_new_keys": _json_keys(world_new),
