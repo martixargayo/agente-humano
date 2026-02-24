@@ -235,7 +235,7 @@ def get_negotiation_model_config(
         default_model="gpt-4.1-nano",
         default_temperature=0.0,
         default_timeout_s=18,
-        default_max_tokens=320,
+        default_max_tokens=1200,
         default_structured_output=True,
         default_response_format="json_schema",
         model_legacy=("PHASE_POLICY_MODEL_NAME", "PLANNER_MODEL_NAME", "SUMMARY_MODEL_NAME", "OPENAI_MODEL_NAME"),
