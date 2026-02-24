@@ -146,6 +146,46 @@ def _register_recent_question(progress_state: dict, executor_output: dict) -> No
     progress_state["plan_ledger"] = ledger
 
 
+def _fallback_pivot_question() -> str:
+    return "Vale, dejémoslo así. ¿Prefieres hablar ahora de documentación, precio o condiciones?"
+
+
+def _active_step_identity(progress_state: dict) -> tuple[str, str]:
+    active_plan = progress_state.get("active_plan") if isinstance(progress_state.get("active_plan"), dict) else {}
+    plan_id = str(active_plan.get("plan_id", "") or "").strip() or "__no_plan__"
+    steps = list(active_plan.get("steps", [])) if isinstance(active_plan.get("steps"), list) else []
+    idx = int(active_plan.get("current_step_idx", 0) or 0) if steps else 0
+    idx = max(0, min(idx, len(steps)-1)) if steps else max(0, idx)
+    step = steps[idx] if steps and isinstance(steps[idx], dict) else {}
+    intent_id = str(step.get("intent_id", "") or "").strip()[:64] or "__no_intent__"
+    return f"{plan_id}:{idx}:{intent_id}", intent_id
+
+
+def _block_repeated_question_with_retry_guard(progress_state: dict, executor_output: dict) -> tuple[dict, bool]:
+    if not isinstance(progress_state, dict) or not isinstance(executor_output, dict):
+        return executor_output, False
+    retry_guard = progress_state.get("retry_guard") if isinstance(progress_state.get("retry_guard"), dict) else {}
+    if not bool(retry_guard.get("reached", False)):
+        return executor_output, False
+    asked = bool(executor_output.get("asked_question", False))
+    if not asked:
+        return executor_output, False
+    question_text = _extract_question_text(str(executor_output.get("response_text", "") or ""))
+    if not question_text:
+        return executor_output, False
+    ledger = progress_state.get("plan_ledger") if isinstance(progress_state.get("plan_ledger"), dict) else {}
+    recent = [str(x).strip() for x in (ledger.get("asked_questions_recent") if isinstance(ledger.get("asked_questions_recent"), list) else []) if str(x).strip()]
+    active_key, _intent_id = _active_step_identity(progress_state)
+    guard_key = str(retry_guard.get("active_key", "") or "")
+    if active_key != guard_key:
+        return executor_output, False
+    if question_text not in recent:
+        return executor_output, False
+    patched = dict(executor_output)
+    patched["response_text"] = _fallback_pivot_question()
+    return normalize_executor_output(patched), True
+
+
 def executor_node(state: dict) -> dict:
     deps = state.get("deps", DEFAULT_DEPS)
     _ensure_objective(state)
@@ -286,10 +326,18 @@ def executor_node(state: dict) -> dict:
         state["response"] = state["assistant_message"]
         _register_recent_question(progress_state, executor_output)
 
+    executor_output_blocked, blocked_due_retry_guard = _block_repeated_question_with_retry_guard(progress_state, state.get("executor_output") or {})
+    if blocked_due_retry_guard:
+        state["executor_output"] = executor_output_blocked
+        state["assistant_message"] = executor_output_blocked.get("response_text", "")
+        state["response"] = state["assistant_message"]
+        _register_recent_question(progress_state, executor_output_blocked)
+
     if violations:
         logger.info("executor_response_validated=%s violations=%s", repaired_response, violations)
 
     validator_meta = dict(validator_meta)
+    validator_meta["question_blocked_due_to_retry_guard"] = bool(locals().get("blocked_due_retry_guard", False))
     validator_meta["executor_instruction_compliance"] = "pass" if not instruction_reasons else "repaired"
     validator_meta["executor_followed_instruction"] = followed_instruction
     validator_meta["deviation_reason"] = deviation_reason

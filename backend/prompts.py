@@ -331,6 +331,11 @@ judge_summary: {judge_summary_json}
 R) reusable_policy_id
 reusable_policy_id: {reusable_policy_id}
 
+S) PIVOT_REQUIRED (JSON + REGLA DURA)
+pivot_required: {pivot_required_json}
+pivot_rules: {pivot_required_rules}
+Si pivot_required=true, PROHIBIDO mantener el mismo intent y PROHIBIDO repetir ask de plan_ledger. Debes pivotar.
+
 Devuelve SOLO JSON válido del schema planner_v2.
 """.strip()
 

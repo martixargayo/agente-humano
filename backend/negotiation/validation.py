@@ -13,6 +13,7 @@ from .schemas import (
     default_progress_state,
     default_world_state,
     default_plan_ledger,
+    default_retry_guard_state,
 )
 
 
@@ -308,13 +309,54 @@ def _normalize_plan_ledger(raw: object) -> dict:
         if len(counters) >= 120:
             break
 
+    counters_by_key_in = raw.get("attempt_counters_by_key") if isinstance(raw.get("attempt_counters_by_key"), dict) else {}
+    counters_by_key: dict[str, int] = {}
+    for key, value in counters_by_key_in.items():
+        active_key = str(key or "").strip()[:180]
+        if not active_key:
+            continue
+        try:
+            counters_by_key[active_key] = max(0, int(value or 0))
+        except Exception:
+            counters_by_key[active_key] = 0
+        if len(counters_by_key) >= 240:
+            break
+
     return {
         "resolved_intents": resolved,
         "open_intents": open_intents,
         "failed_intents": failed,
         "asked_questions_recent": asked,
         "attempt_counters": counters,
+        "attempt_counters_by_key": counters_by_key,
     }
+
+
+def _normalize_retry_guard(raw: object) -> dict:
+    base = default_retry_guard_state()
+    if not isinstance(raw, dict):
+        return base
+    out = dict(base)
+    out.update({k: v for k, v in raw.items() if k in out})
+    out["active_key"] = str(out.get("active_key", "") or "")[:180]
+    out["intent_id"] = str(out.get("intent_id", "") or "")[:64]
+    out["plan_id"] = str(out.get("plan_id", "") or "")[:64]
+    try:
+        out["step_idx"] = max(0, int(out.get("step_idx", 0) or 0))
+    except Exception:
+        out["step_idx"] = 0
+    try:
+        out["attempts"] = max(0, int(out.get("attempts", 0) or 0))
+    except Exception:
+        out["attempts"] = 0
+    try:
+        out["max_attempts"] = max(1, int(out.get("max_attempts", 2) or 2))
+    except Exception:
+        out["max_attempts"] = 2
+    out["reached"] = bool(out.get("reached", False)) or out["attempts"] >= out["max_attempts"]
+    out["reason"] = str(out.get("reason", "") or "")[:120]
+    return out
+
 
 def normalize_progress_state(raw: object) -> Tuple[ProgressState, List[str]]:
     base = default_progress_state()
@@ -332,6 +374,7 @@ def normalize_progress_state(raw: object) -> Tuple[ProgressState, List[str]]:
 
     out["phase_state"], phase_issues = normalize_phase_state(raw.get("phase_state", {}))
     out["plan_ledger"] = _normalize_plan_ledger(raw.get("plan_ledger", {}))
+    out["retry_guard"] = _normalize_retry_guard(raw.get("retry_guard", {}))
     issues.extend(phase_issues)
     return out, issues
 

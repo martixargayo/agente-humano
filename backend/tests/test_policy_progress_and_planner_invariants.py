@@ -31,8 +31,8 @@ def _minimal_active_plan():
         "plan_id": "p1",
         "current_step_idx": 0,
         "steps": [
-            {"what_to_do": "seguir", "safe_mode": "normal", "ask": []},
-            {"what_to_do": "cerrar", "safe_mode": "normal", "ask": []},
+            {"intent_id": "collect_new_signal", "what_to_do": "seguir", "safe_mode": "normal", "ask": []},
+            {"intent_id": "pivot_signal", "what_to_do": "cerrar", "safe_mode": "normal", "ask": []},
         ],
         "plan_constraints": {"max_questions_per_turn": 2, "must_avoid": [], "stop_conditions": []},
     }

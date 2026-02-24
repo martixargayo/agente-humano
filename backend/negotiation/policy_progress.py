@@ -60,11 +60,26 @@ def update_policy_state(
 
     force_replan_on_continue = os.getenv("PLANNER_FORCE_REPLAN_ON_CONTINUE_SAME_STEP", "0") == "1"
 
+    retry_guard = progress_state.get("retry_guard") if isinstance(progress_state.get("retry_guard"), dict) else {}
+    retry_guard_reached = bool(retry_guard.get("reached", False))
+
     if status == "continue_same_step":
-        policy_state["planner_request"] = "replan_policy" if force_replan_on_continue else "continue_policy"
-        meta["transition"] = "force_planner" if force_replan_on_continue else "retry"
-        if force_replan_on_continue:
-            meta["reasons"].append("config:force_replan_on_continue_same_step")
+        if retry_guard_reached:
+            policy_state["planner_request"] = "replan_policy"
+            meta["transition"] = "force_planner"
+            meta["reasons"].append("force_replan_max_attempts")
+            meta["reason_codes"] = ["force_replan_max_attempts"]
+        else:
+            prev_active = str(policy_state.get("status", "") or "") == "active"
+            if prev_active:
+                policy_state["planner_request"] = "replan_policy"
+                meta["transition"] = "force_planner"
+                meta["reasons"].append("active_policy_continue_requires_replan")
+            else:
+                policy_state["planner_request"] = "replan_policy" if force_replan_on_continue else "continue_policy"
+                meta["transition"] = "force_planner" if force_replan_on_continue else "retry"
+                if force_replan_on_continue:
+                    meta["reasons"].append("config:force_replan_on_continue_same_step")
     elif status == "advance_step":
         policy_state["planner_request"] = "continue_policy"
         meta["transition"] = "advance"
