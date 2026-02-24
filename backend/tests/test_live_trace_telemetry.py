@@ -247,3 +247,39 @@ def test_build_trace_event_marks_world_state_meta_changed_when_turn_advances():
     assert event["world_new"]["world_state_meta"]["turn_idx"] == 4
     assert "world_state_meta" in event["world_changed_keys"]
     assert "world_state_meta" not in event["world_unchanged_keys"]
+
+
+def test_build_trace_event_world_diff_keys_uses_updated_buckets():
+    session = SessionState(user_id="u1", session_id="s1")
+    session.last_updated = datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+    trace_item = {
+        "turn": 7,
+        "world_diff": {"domain": {"before": {}, "after": {}}},
+        "world_new": {
+            "schema_version": "v3",
+            "world_buckets": {},
+            "world_state_meta": {"updated_buckets": ["claims", "claims"]},
+        },
+    }
+
+    event = build_trace_event(user_id="u1", session_id="s1", session=session, trace_index=0, trace_item=trace_item)
+
+    assert event["world_diff_keys"] == ["claims"]
+
+
+def test_build_trace_event_world_diff_keys_parses_updated_fields_bucket():
+    session = SessionState(user_id="u1", session_id="s1")
+    session.last_updated = datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+    trace_item = {
+        "turn": 8,
+        "world_diff": {"domain": {"before": {}, "after": {}}},
+        "world_new": {
+            "schema_version": "v3",
+            "world_buckets": {},
+            "world_state_meta": {"updated_fields": ["world_buckets.requests"]},
+        },
+    }
+
+    event = build_trace_event(user_id="u1", session_id="s1", session=session, trace_index=0, trace_item=trace_item)
+
+    assert event["world_diff_keys"] == ["requests"]

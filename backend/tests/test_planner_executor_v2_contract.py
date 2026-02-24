@@ -27,9 +27,16 @@ class _FakePlannerLLM:
 class _FakeDeps:
     def __init__(self, response_payload):
         self.response_payload = response_payload
+        self.calls = 0
 
-    def execute(self, _messages):
-        return json.dumps(self.response_payload, ensure_ascii=False)
+    def execute(self, messages):
+        self.calls += 1
+        if isinstance(self.response_payload, list):
+            idx = min(self.calls - 1, len(self.response_payload) - 1)
+            payload = self.response_payload[idx]
+        else:
+            payload = self.response_payload
+        return json.dumps(payload, ensure_ascii=False)
 
 
 def test_planner_v2_schema_and_contract(monkeypatch):
@@ -189,3 +196,113 @@ def test_executor_v2_blocks_budget_leaks_variants():
         )
         assert "batna" not in out["response_text"].lower()
         assert variant.lower() not in out["response_text"].lower()
+
+
+def test_executor_word_cap_reruns_and_finishes_under_80_words():
+    long_text = " ".join([f"palabra{i}" for i in range(120)])
+    short_text = " ".join([f"ok{i}" for i in range(60)])
+    deps = _FakeDeps(
+        [
+            {
+                "schema_version": "executor_v2",
+                "response_text": long_text,
+                "asked_question": False,
+                "requested_info_slots": [],
+                "tone_used": "neutral",
+                "followup_intent": None,
+                "render_meta": {},
+            },
+            {
+                "schema_version": "executor_v2",
+                "response_text": short_text,
+                "asked_question": False,
+                "requested_info_slots": [],
+                "tone_used": "neutral",
+                "followup_intent": None,
+                "render_meta": {},
+            },
+        ]
+    )
+    out = render_executor_output(
+        {
+            "belief_state": default_belief_state(),
+            "progress_state": default_progress_state(),
+        },
+        deps=deps,
+        conversation_mode="negotiation",
+        policy_pack_active="universal",
+        policy_id="safe_neutral",
+        persona_profile={},
+        scene_profile={},
+        style_contract={"max_words": 200, "max_questions": 1},
+        constraints_struct={},
+        strategy_summary={"executor_instruction": {}},
+        memory_block="",
+        world_state=default_world_state(),
+        user_message="hola",
+    )
+
+    assert deps.calls == 2
+    assert len(out["response_text"].split()) <= 80
+    assert out["render_meta"]["word_cap_limit"] == 80
+    assert out["render_meta"]["word_cap_original_words"] == 120
+    assert out["render_meta"]["word_cap_reruns"] == 1
+    assert out["render_meta"]["word_cap_fallback_truncate"] is False
+
+
+def test_executor_word_cap_fallback_truncates_after_max_reruns():
+    long_text = " ".join([f"palabra{i}" for i in range(120)])
+    deps = _FakeDeps(
+        [
+            {
+                "schema_version": "executor_v2",
+                "response_text": long_text,
+                "asked_question": False,
+                "requested_info_slots": [],
+                "tone_used": "neutral",
+                "followup_intent": None,
+                "render_meta": {},
+            },
+            {
+                "schema_version": "executor_v2",
+                "response_text": long_text,
+                "asked_question": False,
+                "requested_info_slots": [],
+                "tone_used": "neutral",
+                "followup_intent": None,
+                "render_meta": {},
+            },
+            {
+                "schema_version": "executor_v2",
+                "response_text": long_text,
+                "asked_question": False,
+                "requested_info_slots": [],
+                "tone_used": "neutral",
+                "followup_intent": None,
+                "render_meta": {},
+            },
+        ]
+    )
+    out = render_executor_output(
+        {
+            "belief_state": default_belief_state(),
+            "progress_state": default_progress_state(),
+        },
+        deps=deps,
+        conversation_mode="negotiation",
+        policy_pack_active="universal",
+        policy_id="safe_neutral",
+        persona_profile={},
+        scene_profile={},
+        style_contract={"max_words": 200, "max_questions": 1},
+        constraints_struct={},
+        strategy_summary={"executor_instruction": {}},
+        memory_block="",
+        world_state=default_world_state(),
+        user_message="hola",
+    )
+
+    assert deps.calls == 3
+    assert len(out["response_text"].split()) == 80
+    assert out["render_meta"]["word_cap_reruns"] == 2
+    assert out["render_meta"]["word_cap_fallback_truncate"] is True

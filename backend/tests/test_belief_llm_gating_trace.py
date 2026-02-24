@@ -101,3 +101,32 @@ def test_live_trace_belief_changed_keys_include_belief_buckets_when_executed():
     event = build_trace_event(user_id="u1", session_id="s1", session=session, trace_index=0, trace_item=trace_item)
 
     assert "belief_buckets" in event["belief_changed_keys"]
+
+
+def test_belief_gate_world_diff_keys_uses_updated_buckets_not_domain():
+    deps = _Deps("{}")
+    prev_world = default_world_state()
+    world = default_world_state()
+    world["world_state_meta"]["updated_buckets"] = ["claims"]
+
+    out = belief_updater_node(
+        {
+            **_state_for_node(prev_world=prev_world, world=world, deps=deps),
+            "world_diff": {"domain": {"before": {}, "after": {}}},
+        }
+    )
+
+    gate = next(item for item in out["trace_runtime"]["gate_events"] if item.get("name") == "belief_gate")
+    assert gate["gate_inputs"]["world_diff_keys"] == ["claims"]
+
+
+def test_belief_gate_world_diff_keys_parse_updated_fields_bucket():
+    deps = _Deps("{}")
+    prev_world = default_world_state()
+    world = default_world_state()
+    world["world_state_meta"]["updated_fields"] = ["world_buckets.requests"]
+
+    out = belief_updater_node(_state_for_node(prev_world=prev_world, world=world, deps=deps))
+
+    gate = next(item for item in out["trace_runtime"]["gate_events"] if item.get("name") == "belief_gate")
+    assert gate["gate_inputs"]["world_diff_keys"] == ["requests"]

@@ -23,6 +23,9 @@ _BELIEF_SUMMARY_MAX_CHARS = 1500
 _BELIEF_SUMMARY_MAX_LIST = 6
 _BELIEF_SUMMARY_MAX_DICT_KEYS = 8
 _BELIEF_SUMMARY_MAX_STRING = 240
+_WORD_CAP_LIMIT = 80
+_WORD_CAP_MAX_RERUNS = 2
+_WORD_CAP_RETRY_INSTRUCTION = "REGLA CRÍTICA: response_text debe tener como máximo 80 palabras. Reescribe más corto manteniendo intención."
 
 
 def _get_nested(value: object, path: List[str]) -> object:
@@ -155,6 +158,25 @@ def safe_json_load(text: str) -> Dict[str, Any]:
             return {}
 
 
+
+
+def _word_count(text: str) -> int:
+    return len(str(text or "").split())
+
+
+def _truncate_words(text: str, limit: int) -> str:
+    words = str(text or "").split()
+    if len(words) <= limit:
+        return str(text or "").strip()
+    return " ".join(words[:limit]).strip()
+
+
+def _with_word_cap_instruction(prompt: str) -> str:
+    prompt_text = str(prompt or "").rstrip()
+    if _WORD_CAP_RETRY_INSTRUCTION in prompt_text:
+        return prompt_text
+    return f"{prompt_text}\n\n{_WORD_CAP_RETRY_INSTRUCTION}"
+
 def build_strategy_summary(
     state: dict, conversation_mode: str, policy_pack_active: str, policy_id: str
 ) -> dict:
@@ -276,6 +298,13 @@ def extract_last_counterparty_utterance(state: dict) -> str:
     if direct:
         return direct
 
+    recent_history_text = str(state.get("recent_history_text", "") or "").strip()
+    if recent_history_text:
+        for line in reversed([ln.strip() for ln in recent_history_text.splitlines() if ln.strip()]):
+            lowered = line.lower()
+            if lowered.startswith("vendedor:") or lowered.startswith("don joaquín:"):
+                return line
+
     speaker = str(
         state.get("speaker_of_user_message")
         or state.get("speaker_of_last_message")
@@ -363,4 +392,38 @@ def render_executor_output(
     raw = deps.execute(messages)
     text = raw if isinstance(raw, str) else getattr(raw, "content", "")
     data = safe_json_load(text)
-    return _enforce_executor_v2_contract(normalize_executor_output(data), style, constraints)
+    out = normalize_executor_output(data)
+
+    original_words = _word_count(str((data or {}).get("response_text", "")))
+    reruns = 0
+    fallback_truncate = False
+    retry_prompt = _with_word_cap_instruction(prompt)
+
+    while _word_count(out.get("response_text", "")) > _WORD_CAP_LIMIT and reruns < _WORD_CAP_MAX_RERUNS:
+        reruns += 1
+        retry_messages = [
+            SystemMessage(content=EXECUTOR_SYSTEM_PROMPT.strip()),
+            HumanMessage(content=retry_prompt.strip()),
+        ]
+        retry_raw = deps.execute(retry_messages)
+        retry_text = retry_raw if isinstance(retry_raw, str) else getattr(retry_raw, "content", "")
+        out = normalize_executor_output(safe_json_load(retry_text))
+
+    if _word_count(out.get("response_text", "")) > _WORD_CAP_LIMIT:
+        fallback_truncate = True
+        out = dict(out)
+        out["response_text"] = _truncate_words(str(out.get("response_text", "")), _WORD_CAP_LIMIT)
+
+    render_meta = dict(out.get("render_meta") or {}) if isinstance(out.get("render_meta"), dict) else {}
+    render_meta["word_cap_limit"] = _WORD_CAP_LIMIT
+    render_meta["word_cap_original_words"] = original_words
+    render_meta["word_cap_reruns"] = reruns
+    render_meta["word_cap_fallback_truncate"] = fallback_truncate
+    out["render_meta"] = render_meta
+
+    slots_now = out.get("requested_info_slots") if isinstance(out.get("requested_info_slots"), list) else []
+    if bool(out.get("asked_question")) and not [str(x).strip() for x in slots_now if str(x).strip()]:
+        out["asked_question"] = False
+        out["requested_info_slots"] = []
+
+    return _enforce_executor_v2_contract(normalize_executor_output(out), style, constraints)
