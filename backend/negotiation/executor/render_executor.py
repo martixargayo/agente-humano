@@ -393,6 +393,7 @@ def render_executor_output(
             constraints_struct=constraints,
         ),
         executor_instruction_json=json.dumps(strategy_summary.get("executor_instruction", {}), ensure_ascii=False),
+        advisor_recs_json=json.dumps(state.get("advisor_recs", {}) if isinstance(state.get("advisor_recs"), dict) else {}, ensure_ascii=False),
         last_counterparty_utterance=extract_last_counterparty_utterance(state),
         memory_short=str(state.get("short_memory", "") or ""),
         memory_long=str(state.get("long_memory", "") or ""),

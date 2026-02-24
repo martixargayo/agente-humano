@@ -198,6 +198,7 @@ def _compact_belief_summary(belief_state: dict) -> dict:
 
 
 def _normalize_advisor(payload: object) -> dict:
+    allowed_human_modes = {"none", "answer_then_bridge", "replan_required"}
     if not isinstance(payload, dict):
         return {
             "diagnosis": [],
@@ -206,7 +207,14 @@ def _normalize_advisor(payload: object) -> dict:
             "guardrails": [],
             "do_not_do": [],
             "suggested_utterances": [],
+            "human_mode": "none",
+            "answer_focus": "",
+            "bridge": "",
+            "dont_do": [],
         }
+    human_mode = str(payload.get("human_mode", "none") or "none").strip().lower()
+    if human_mode not in allowed_human_modes:
+        human_mode = "none"
     out = {
         "diagnosis": [str(x)[:160] for x in list(payload.get("diagnosis") or [])[:4]],
         "loop_or_waste_flags": [str(x)[:120] for x in list(payload.get("loop_or_waste_flags") or [])[:4]],
@@ -214,6 +222,10 @@ def _normalize_advisor(payload: object) -> dict:
         "guardrails": [],
         "do_not_do": [str(x)[:140] for x in list(payload.get("do_not_do") or [])[:4]],
         "suggested_utterances": [str(x)[:180] for x in list(payload.get("suggested_utterances") or [])[:1]],
+        "human_mode": human_mode,
+        "answer_focus": str(payload.get("answer_focus", "") or "")[:220],
+        "bridge": str(payload.get("bridge", "") or "")[:220],
+        "dont_do": [str(x)[:140] for x in list(payload.get("dont_do") or [])[:4]],
     }
     for item in list(payload.get("recommended_moves") or [])[:4]:
         if isinstance(item, dict):
