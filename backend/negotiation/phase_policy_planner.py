@@ -258,6 +258,7 @@ def plan_phase_policy(
     judge_result: dict | None = None,
     memory_short: str = "",
     memory_long: str = "",
+    pivot_required: bool = False,
 ) -> tuple[dict, PolicyDecision, dict]:
     del policy_plan_summary, constraints_struct, recent_context
     world_diff = world_diff if isinstance(world_diff, dict) else {}
@@ -324,6 +325,12 @@ def plan_phase_policy(
             plan_ledger_json=json.dumps(progress_state.get("plan_ledger", {}), ensure_ascii=False),
             judge_summary_json=json.dumps(judge_result or {}, ensure_ascii=False),
             reusable_policy_id=str((policy_state or {}).get("policy_id", "")),
+            pivot_required_json=json.dumps({"pivot_required": bool(pivot_required)}, ensure_ascii=False),
+            pivot_required_rules=(
+                "PIVOT_REQUIRED=true: debes cambiar intent o modalidad (pregunta cerrada/control) y no repetir ask/intent previo."
+                if pivot_required
+                else "PIVOT_REQUIRED=false"
+            ),
         )
         llm = get_planner_llm()
         structured = llm.with_structured_output(PlannerV2DecisionModel)
