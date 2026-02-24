@@ -229,3 +229,22 @@ def test_advisor_normalize_clamps_suggested_utterances_to_one():
     )
     assert len(recs["suggested_utterances"]) == 1
     assert recs["suggested_utterances"][0] == "Primera propuesta."
+
+
+def test_world_judge_prompt_mentions_explicit_goal_change_replan_rule():
+    assert "olvida X" in WORLD_JUDGE_V2_SYSTEM_PROMPT
+    assert "interrupted_replan" in WORLD_JUDGE_V2_SYSTEM_PROMPT
+
+
+def test_advisor_prompt_mentions_human_mode_contract():
+    assert "HUMAN_FIRST_OVERRIDE" in ADVISOR_V2_SYSTEM_PROMPT
+    assert "human_mode" in ADVISOR_V2_SYSTEM_PROMPT
+    assert "answer_then_bridge" in ADVISOR_V2_SYSTEM_PROMPT
+
+
+def test_advisor_normalize_human_mode_fields_defaults_and_clamp():
+    recs = advisor._normalize_advisor({"human_mode": "weird", "answer_focus": "a", "bridge": "b", "dont_do": ["x"]})
+    assert recs["human_mode"] == "none"
+    assert recs["answer_focus"] == "a"
+    assert recs["bridge"] == "b"
+    assert recs["dont_do"] == ["x"]

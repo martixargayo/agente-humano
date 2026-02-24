@@ -109,7 +109,7 @@ def test_executor_prompt_uses_render_state_profiles():
     executor_node(state)
     assert '"persona_id": "buyer_mustang67_v1"' in captured["prompt"]
     assert '"scene_id": "mustang67_in_person_viewing"' in captured["prompt"]
-    assert "D) MENSAJE_ACTUAL (DEL HABLANTE)" in captured["prompt"]
+    assert "E) MENSAJE_ACTUAL (DEL HABLANTE)" in captured["prompt"]
     assert "SPEAKER_OF_USER_MESSAGE: seller" in captured["prompt"]
 
 
@@ -143,7 +143,7 @@ def test_executor_prompt_omits_retry_hint_when_no_progress_zero_even_if_continue
 
     executor_node(state)
 
-    assert "I) RETRY_HINT (si aplica)" in captured["prompt"]
+    assert "J) RETRY_HINT (si aplica)" in captured["prompt"]
     assert "continue_same_step_detected" not in captured["prompt"]
 
 
@@ -177,7 +177,7 @@ def test_executor_prompt_includes_retry_hint_without_pivot_for_no_progress_one()
 
     executor_node(state)
 
-    assert "I) RETRY_HINT (si aplica)" in captured["prompt"]
+    assert "J) RETRY_HINT (si aplica)" in captured["prompt"]
     assert "continue_same_step_detected" in captured["prompt"]
     assert "NO repitas la misma pregunta" in captured["prompt"]
     assert "pivot obligatorio" not in captured["prompt"]
@@ -213,7 +213,41 @@ def test_executor_prompt_includes_retry_hint_with_pivot_for_no_progress_two():
 
     executor_node(state)
 
-    assert "I) RETRY_HINT (si aplica)" in captured["prompt"]
+    assert "J) RETRY_HINT (si aplica)" in captured["prompt"]
     assert "continue_same_step_detected" in captured["prompt"]
     assert "NO repitas la misma pregunta" in captured["prompt"]
     assert "pivot obligatorio" in captured["prompt"]
+
+
+def test_executor_prompt_includes_advisor_recs_json_even_when_planner_skipped():
+    captured = {"prompt": ""}
+
+    def _execute(messages):
+        captured["prompt"] = messages[1].content
+        return (
+            '{"response_text":"Ok, volviendo al coche, ¿qué kilometraje exacto tiene?",'
+            '"asked_question":true,"requested_info_slots":["kilometraje"],"tone_used":"neutral",'
+            '"followup_intent":null,"render_meta":{}}'
+        )
+
+    progress = default_progress_state()
+    state = {
+        "deps": SimpleNamespace(execute=_execute),
+        "long_memory": "",
+        "short_memory": "",
+        "user_message": "¿Cómo estás?",
+        "policy_decision": default_policy_decision(),
+        "progress_state": progress,
+        "world_state": default_world_state(),
+        "gate_meta": {"planner_skipped": True},
+        "advisor_recs": {
+            "human_mode": "answer_then_bridge",
+            "answer_focus": "Todo bien, gracias por preguntar.",
+            "bridge": "Vale, volviendo al coche...",
+        },
+    }
+
+    executor_node(state)
+
+    assert "ADVISOR_RECS_JSON" in captured["prompt"]
+    assert '"human_mode": "answer_then_bridge"' in captured["prompt"]

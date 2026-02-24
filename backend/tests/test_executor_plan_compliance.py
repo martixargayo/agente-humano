@@ -55,3 +55,29 @@ def test_executor_enforces_disallow_numbers_constraint():
     assert not any(ch.isdigit() for ch in state["assistant_message"])
     meta = state["executor_validator_meta"]
     assert "constraints:disallow_numbers" in meta.get("constraints_enforcement", [])
+
+
+def test_executor_allows_human_first_with_bridge_and_step_ask():
+    payload = (
+        '{"response_text":"Todo bien, gracias por preguntar. Vale, volviendo al coche, ¿qué kilometraje exacto tiene?",'
+        '"asked_question":true,"requested_info_slots":["kilometraje"],"tone_used":"neutral",'
+        '"followup_intent":null,"render_meta":{}}'
+    )
+    state = _state_with_response(payload)
+    state["executor_instruction"] = {
+        "instruction": "Responde breve y pregunta kilometraje",
+        "safe_mode": "normal",
+        "ask": ["¿qué kilometraje exacto tiene?"],
+    }
+    state["advisor_recs"] = {
+        "human_mode": "answer_then_bridge",
+        "answer_focus": "Todo bien, gracias por preguntar.",
+        "bridge": "Vale, volviendo al coche,",
+    }
+
+    executor_node(state)
+
+    meta = state["executor_validator_meta"]
+    assert meta["executor_followed_instruction"] is True
+    assert meta.get("deviation_reason", "") == ""
+    assert "missing_required_ask_slot" not in (meta.get("instruction_enforcement") or [])
