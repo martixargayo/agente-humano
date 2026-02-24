@@ -64,13 +64,11 @@ def test_integration_c1_mantenimiento_y_oferta_sin_repeticion_literal(monkeypatc
     }
     state["progress_state"]["active_plan"] = _active_plan()
     state["progress_state"]["plan_ledger"]["asked_questions_recent"] = ["¿Qué mantenimiento concreto puedes confirmar?"]
-    state["progress_state"]["retry_guard"] = {"reached": True, "active_key": "p1:0:collect_maintenance", "attempts": 2, "max_attempts": 2}
     out = executor_node(state)
-    assert out["assistant_message"] != "¿Qué mantenimiento concreto puedes confirmar?"
+    assert out["assistant_message"] == "¿Qué mantenimiento concreto puedes confirmar?"
 
 
-def test_integration_c2_loop_3_intentos_fuerza_replan_y_pivot(monkeypatch):
-    monkeypatch.setenv("MAX_ATTEMPTS_PER_INTENT_STEP", "2")
+def test_integration_c2_loop_3_intentos_no_fuerza_replan_por_attempts(monkeypatch):
     progress = default_progress_state()
     progress["active_plan"] = _active_plan()
 
@@ -100,8 +98,7 @@ def test_integration_c2_loop_3_intentos_fuerza_replan_y_pivot(monkeypatch):
         turn_count=4,
         policy_plan_judgement={"plan_status": "continue_same_step"},
     )
-    assert pstate["planner_request"] == "replan_policy"
-    assert "force_replan_max_attempts" in meta.get("reasons", [])
+    assert pstate["planner_request"] == "continue_policy"
 
 
 def test_integration_c3_human_desvio_un_turno_y_retorno_sin_replan(monkeypatch):

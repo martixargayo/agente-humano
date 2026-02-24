@@ -160,35 +160,6 @@ def _build_executor_instruction(active_plan: dict | None) -> dict:
     }
 
 
-def _retry_guard_state(progress_state: dict, active_plan: dict | None) -> tuple[bool, str, str]:
-    retry_guard = progress_state.get("retry_guard") if isinstance(progress_state.get("retry_guard"), dict) else {}
-    loop_flags = [str(x) for x in (progress_state.get("loop_flags") or []) if str(x).strip()]
-    plan_id = str((active_plan or {}).get("plan_id", "") or "").strip() if isinstance(active_plan, dict) else ""
-    steps = list((active_plan or {}).get("steps", [])) if isinstance(active_plan, dict) else []
-    cur = int((active_plan or {}).get("current_step_idx", 0) or 0) if isinstance(active_plan, dict) else 0
-    cur = max(0, min(cur, len(steps)-1)) if steps else max(0, cur)
-    step = steps[cur] if steps and isinstance(steps[cur], dict) else {}
-    intent_id = str(step.get("intent_id", "") or "").strip()[:64] or "__no_intent__"
-    active_key = f"{plan_id or '__no_plan__'}:{cur}:{intent_id}"
-    reached = bool(retry_guard.get("reached", False))
-    if not reached:
-        reached = any(flag == f"max_attempts_reached:{active_key}" for flag in loop_flags)
-    return reached, active_key, intent_id
-
-
-def _advance_changes_intent(active_plan: dict | None) -> bool:
-    if not isinstance(active_plan, dict):
-        return False
-    steps = active_plan.get("steps") if isinstance(active_plan.get("steps"), list) else []
-    if not steps:
-        return False
-    cur = max(0, min(int(active_plan.get("current_step_idx", 0) or 0), len(steps)-1))
-    nxt = cur + 1
-    if nxt >= len(steps):
-        return False
-    cur_step = steps[cur] if isinstance(steps[cur], dict) else {}
-    nxt_step = steps[nxt] if isinstance(steps[nxt], dict) else {}
-    return str(cur_step.get("intent_id", "") or "").strip() != str(nxt_step.get("intent_id", "") or "").strip()
 
 
 def phase_policy_planner_node(state: dict) -> dict:
@@ -204,8 +175,6 @@ def phase_policy_planner_node(state: dict) -> dict:
     policy_plan_judgement = state.get("policy_plan_judgement") if isinstance(state.get("policy_plan_judgement"), dict) else {}
     judgement_skip_planner = bool(policy_plan_judgement.get("skip_planner", False))
     previous_plan = progress_state.get("active_plan") if isinstance(progress_state.get("active_plan"), dict) else None
-    retry_guard_reached, retry_active_key, retry_intent_id = _retry_guard_state(progress_state, previous_plan)
-    pivot_required = False
 
     allowed_all, filtered_reasons = allowed_policy_ids_with_reasons(
         state["world_state"],
@@ -239,8 +208,6 @@ def phase_policy_planner_node(state: dict) -> dict:
             "active_plan_current_step_idx": step_idx_before,
             "policy_plan_judgement_plan_status": str((state.get("policy_plan_judgement") or {}).get("plan_status", "")),
             "policy_plan_judgement_degraded": bool((state.get("policy_plan_judgement") or {}).get("degraded", False)),
-            "retry_guard_reached": retry_guard_reached,
-            "retry_guard_active_key": retry_active_key,
         },
         "gate_decision": {"gate_path": "", "gate_reason_codes": []},
         "plan_handling": {},
@@ -269,63 +236,38 @@ def phase_policy_planner_node(state: dict) -> dict:
     active_plan = previous_plan
 
     if planner_request == "continue_policy" and previous_plan:
-        if retry_guard_reached:
-            planner_request = "replan_policy"
-            pivot_required = True
-            planner_meta["retry_guard_enforced"] = True
-            planner_meta["retry_guard_active_key"] = retry_active_key
-            planner_meta["retry_guard_intent_id"] = retry_intent_id
-            planner_meta["retry_guard_blocked_judge_skip"] = bool(judgement_skip_planner)
-            planner_debug["gate_decision"]["gate_path"] = "force_replan_retry_guard"
-            planner_debug["gate_decision"]["gate_reason_codes"] = ["max_attempts_reached"]
-
-    if planner_request == "continue_policy" and previous_plan:
         if advance_step:
-            if retry_guard_reached and not _advance_changes_intent(previous_plan):
+            steps = list(previous_plan.get("steps", [])) if isinstance(previous_plan, dict) else []
+            cur_idx = int(previous_plan.get("current_step_idx", 0) or 0) if isinstance(previous_plan, dict) else 0
+            last_idx = len(steps) - 1
+            if steps and cur_idx >= last_idx:
                 planner_request = "replan_policy"
-                pivot_required = True
-                planner_meta["retry_guard_blocked_advance_same_intent"] = True
-                planner_debug["gate_decision"]["gate_path"] = "force_replan_retry_guard_no_advance"
-                planner_debug["gate_decision"]["gate_reason_codes"] = ["max_attempts_reached", "advance_same_intent_blocked"]
+                planner_meta["advance_step_reached_last_step"] = True
+                planner_debug["gate_decision"]["gate_path"] = "replan_last_step_completed"
+                planner_debug["gate_decision"]["gate_reason_codes"] = ["advance_step_last_step"]
             else:
-                steps = list(previous_plan.get("steps", [])) if isinstance(previous_plan, dict) else []
-                cur_idx = int(previous_plan.get("current_step_idx", 0) or 0) if isinstance(previous_plan, dict) else 0
-                last_idx = len(steps) - 1
-                if steps and cur_idx >= last_idx:
-                    planner_request = "replan_policy"
-                    planner_meta["advance_step_reached_last_step"] = True
-                    planner_debug["gate_decision"]["gate_path"] = "replan_last_step_completed"
-                    planner_debug["gate_decision"]["gate_reason_codes"] = ["advance_step_last_step"]
+                advanced_plan, did_advance = _advance_step(previous_plan)
+                if did_advance and advanced_plan:
+                    active_plan = advanced_plan
+                    active_plan["updated_turn"] = turn_count
+                    active_plan_status = "active"
+                    planner_skipped = True
+                    skip_reason = "advance_step_without_planner"
+                    planner_debug["gate_decision"]["gate_path"] = "advance_step_no_llm"
+                    planner_debug["gate_decision"]["gate_reason_codes"] = ["advance_step_true"]
                 else:
-                    advanced_plan, did_advance = _advance_step(previous_plan)
-                    if did_advance and advanced_plan:
-                        active_plan = advanced_plan
-                        active_plan["updated_turn"] = turn_count
-                        active_plan_status = "active"
-                        planner_skipped = True
-                        skip_reason = "advance_step_without_planner"
-                        planner_debug["gate_decision"]["gate_path"] = "advance_step_no_llm"
-                        planner_debug["gate_decision"]["gate_reason_codes"] = ["advance_step_true"]
-                    else:
-                        planner_request = "replan_policy"
-                        planner_meta["advance_step_out_of_range"] = True
-                        planner_debug["gate_decision"]["gate_path"] = "replan_out_of_range"
-                        planner_debug["gate_decision"]["gate_reason_codes"] = ["step_out_of_range"]
+                    planner_request = "replan_policy"
+                    planner_meta["advance_step_out_of_range"] = True
+                    planner_debug["gate_decision"]["gate_path"] = "replan_out_of_range"
+                    planner_debug["gate_decision"]["gate_reason_codes"] = ["step_out_of_range"]
         elif judgement_skip_planner:
-            if retry_guard_reached:
-                planner_request = "replan_policy"
-                pivot_required = True
-                planner_meta["retry_guard_blocked_judge_skip"] = True
-                planner_debug["gate_decision"]["gate_path"] = "force_replan_retry_guard_skip_blocked"
-                planner_debug["gate_decision"]["gate_reason_codes"] = ["max_attempts_reached", "judge_skip_planner_blocked"]
-            else:
-                active_plan, _ = _clamp_step(previous_plan)
-                active_plan["updated_turn"] = turn_count
-                active_plan_status = "active"
-                planner_skipped = True
-                skip_reason = "judge_skip_planner"
-                planner_debug["gate_decision"]["gate_path"] = "skip_judge_flag"
-                planner_debug["gate_decision"]["gate_reason_codes"] = ["judge_skip_planner_true"]
+            active_plan, _ = _clamp_step(previous_plan)
+            active_plan["updated_turn"] = turn_count
+            active_plan_status = "active"
+            planner_skipped = True
+            skip_reason = "judge_skip_planner"
+            planner_debug["gate_decision"]["gate_path"] = "skip_judge_flag"
+            planner_debug["gate_decision"]["gate_reason_codes"] = ["judge_skip_planner_true"]
         else:
             active_plan, _ = _clamp_step(previous_plan)
             active_plan["updated_turn"] = turn_count
@@ -341,13 +283,7 @@ def phase_policy_planner_node(state: dict) -> dict:
             step_idx = max(0, min(step_idx, len(steps) - 1)) if steps else 0
             current_step = steps[step_idx] if steps and isinstance(steps[step_idx], dict) else {}
             step_has_intent = bool(str(current_step.get("intent_id", "") or "").strip())
-            if retry_guard_reached:
-                planner_request = "replan_policy"
-                pivot_required = True
-                planner_meta["retry_guard_blocked_continue_reuse"] = True
-                planner_debug["gate_decision"]["gate_path"] = "force_replan_retry_guard_reuse_blocked"
-                planner_debug["gate_decision"]["gate_reason_codes"] = ["max_attempts_reached", "continue_reuse_blocked"]
-            elif step_has_intent and reusable_policy_id and reusable_policy_id in allowed_all:
+            if step_has_intent and reusable_policy_id and reusable_policy_id in allowed_all:
                 policy_decision = default_policy_decision()
                 policy_decision["policy_id"] = reusable_policy_id
                 policy_decision["reason"] = "Se mantiene la policy activa sin replan."
@@ -407,7 +343,6 @@ def phase_policy_planner_node(state: dict) -> dict:
                 judge_result=state.get("policy_plan_judgement") if isinstance(state.get("policy_plan_judgement"), dict) else {},
                 memory_short=str(state.get("short_memory", "") or ""),
                 memory_long=str(state.get("long_memory", "") or ""),
-                pivot_required=pivot_required,
             )
             planner_meta.update(planner_call_meta)
             planner_debug["llm_call"]["planner_llm_called"] = True
@@ -484,7 +419,6 @@ def phase_policy_planner_node(state: dict) -> dict:
         active_plan_status = "active"
 
     planner_meta["planner_request"] = planner_request
-    planner_meta["pivot_required"] = pivot_required
     planner_meta["planner_skipped"] = planner_skipped
     planner_meta["planner_skip_reason"] = skip_reason
 

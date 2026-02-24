@@ -1,8 +1,6 @@
 # backend/negotiation/progress_updater.py
 from __future__ import annotations
 
-import os
-
 from .elementos.execution_definitions import OUTCOME_GOOD, OUTCOME_NEUTRAL
 from .schemas import (
     BeliefState,
@@ -33,32 +31,6 @@ def _evaluate_outcome(
         return OUTCOME_NEUTRAL
     world_diff = diff_world_state(prev_world_state, world_state)
     return OUTCOME_GOOD if bool(world_diff) else OUTCOME_NEUTRAL
-
-
-def _max_attempts_per_intent_step() -> int:
-    raw = os.getenv("MAX_ATTEMPTS_PER_INTENT_STEP", "2")
-    try:
-        return max(1, int(raw))
-    except Exception:
-        return 2
-
-
-def _extract_active_step_info(active_plan: dict | None) -> tuple[str, int, str, str]:
-    plan_id = str((active_plan or {}).get("plan_id", "") or "").strip()[:64]
-    steps = active_plan.get("steps") if isinstance(active_plan, dict) and isinstance(active_plan.get("steps"), list) else []
-    try:
-        step_idx = int((active_plan or {}).get("current_step_idx", 0) or 0)
-    except Exception:
-        step_idx = 0
-    if steps:
-        step_idx = max(0, min(step_idx, len(steps) - 1))
-    else:
-        step_idx = max(0, step_idx)
-    step = steps[step_idx] if steps and isinstance(steps[step_idx], dict) else {}
-    intent_id = str(step.get("intent_id", "") or "").strip()[:64] or "__no_intent__"
-    plan_key = plan_id or "__no_plan__"
-    active_key = f"{plan_key}:{step_idx}:{intent_id}"
-    return plan_id, step_idx, intent_id, active_key
 
 
 def _judge_has_evidence(policy_plan_judgement: dict | None) -> bool:
@@ -178,12 +150,10 @@ def _update_plan_ledger(
     out.setdefault("failed_intents", [])
     out.setdefault("asked_questions_recent", [])
     out.setdefault("attempt_counters", {})
-    out.setdefault("attempt_counters_by_key", {})
 
     _record_recent_question(out, executor_output, last_assistant_message)
 
     intent_id = _extract_current_intent_id(active_plan) or "__no_intent__"
-    plan_id, step_idx, _intent_safe, active_key = _extract_active_step_info(active_plan)
     if not isinstance(policy_plan_judgement, dict):
         return out
 
@@ -191,16 +161,11 @@ def _update_plan_ledger(
     has_evidence = _judge_has_evidence(policy_plan_judgement)
 
     counters = out.get("attempt_counters") if isinstance(out.get("attempt_counters"), dict) else {}
-    counters_by_key = out.get("attempt_counters_by_key") if isinstance(out.get("attempt_counters_by_key"), dict) else {}
 
     if status == "continue_same_step" and has_evidence:
         counters[intent_id] = int(counters.get(intent_id, 0) or 0) + 1
-        counters_by_key[active_key] = int(counters_by_key.get(active_key, 0) or 0) + 1
-    elif status in {"advance_step", "completed", "interrupted_replan"}:
-        counters_by_key[active_key] = 0
 
     out["attempt_counters"] = counters
-    out["attempt_counters_by_key"] = counters_by_key
     if status in {"advance_step", "completed"}:
         evidence = _best_judge_evidence(policy_plan_judgement, user_message)
         _upsert_resolved_intent(out, intent_id=intent_id, evidence=evidence, turn_idx=turn_count)
@@ -335,34 +300,6 @@ def update_progress_state(
         last_assistant_message=last_assistant_message,
     )
 
-    plan_id_rg, step_idx_rg, intent_id_rg, active_key_rg = _extract_active_step_info(active_plan)
-    max_attempts = _max_attempts_per_intent_step()
-    counters_by_key = (progress.get("plan_ledger") or {}).get("attempt_counters_by_key", {}) if isinstance(progress.get("plan_ledger"), dict) else {}
-    attempts_for_key = int(counters_by_key.get(active_key_rg, 0) or 0) if isinstance(counters_by_key, dict) else 0
-    status_rg = str((policy_plan_judgement or {}).get("plan_status", "") or "")
-    reached = attempts_for_key >= max_attempts
-    reason = ""
-    if status_rg == "continue_same_step" and _judge_has_evidence(policy_plan_judgement):
-        reason = "continue_same_step_in_line"
-    elif status_rg == "interrupted_replan":
-        reason = "interrupted_replan"
-
-    progress["retry_guard"] = {
-        "active_key": active_key_rg,
-        "intent_id": intent_id_rg,
-        "plan_id": plan_id_rg,
-        "step_idx": step_idx_rg,
-        "attempts": attempts_for_key,
-        "max_attempts": max_attempts,
-        "reached": reached,
-        "reason": reason,
-    }
-
-    max_flag = f"max_attempts_reached:{active_key_rg}"
-    loop_flags = [flag for flag in loop_flags if not str(flag).startswith("max_attempts_reached:")]
-    if reached:
-        loop_flags.append(max_flag)
-
     progress["loop_flags"] = loop_flags
     progress["last_progress_update_turn"] = turn_count
 
@@ -377,7 +314,6 @@ def update_progress_state(
             "replan_churn_window": int(progress.get("plan_id_changes_window", 0) or 0),
             "plan_id_changes_count": int(progress.get("plan_id_changes_window", 0) or 0),
             "judgement_missing_streak": int(progress.get("judgement_missing_streak", 0) or 0),
-            "retry_guard": dict(progress.get("retry_guard") or {}),
         },
         "plan_ledger": {
             "resolved_count": len((progress.get("plan_ledger") or {}).get("resolved_intents", [])),

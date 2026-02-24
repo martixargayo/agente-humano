@@ -512,18 +512,7 @@ class PlanLedger(TypedDict):
     failed_intents: List[PlanLedgerFailedIntent]
     asked_questions_recent: List[str]
     attempt_counters: Dict[str, int]
-    attempt_counters_by_key: Dict[str, int]
 
-
-class RetryGuardState(TypedDict):
-    active_key: str
-    intent_id: str
-    plan_id: str
-    step_idx: int
-    attempts: int
-    max_attempts: int
-    reached: bool
-    reason: str
 
 class ProgressState(TypedDict):
     conversation_mode: ConversationMode
@@ -552,7 +541,6 @@ class ProgressState(TypedDict):
     plan_id_changes_window: int
     last_progress_update_turn: int
     plan_ledger: PlanLedger
-    retry_guard: RetryGuardState
 
 
 class GateState(TypedDict):
@@ -699,21 +687,8 @@ def default_plan_ledger() -> PlanLedger:
         "failed_intents": [],
         "asked_questions_recent": [],
         "attempt_counters": {},
-        "attempt_counters_by_key": {},
     }
 
-
-def default_retry_guard_state() -> RetryGuardState:
-    return {
-        "active_key": "",
-        "intent_id": "",
-        "plan_id": "",
-        "step_idx": 0,
-        "attempts": 0,
-        "max_attempts": 2,
-        "reached": False,
-        "reason": "",
-    }
 
 
 def default_progress_state() -> ProgressState:
@@ -742,7 +717,6 @@ def default_progress_state() -> ProgressState:
         "plan_id_changes_window": 0,
         "last_progress_update_turn": 0,
         "plan_ledger": default_plan_ledger(),
-        "retry_guard": default_retry_guard_state(),
         "phase_state": {
             "phase": "climate",
             "phase_proposed": "",
