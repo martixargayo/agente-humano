@@ -5,6 +5,7 @@ from negotiation.nodes.world_node import world_judge_llm
 from negotiation.phase_policy_planner import plan_phase_policy
 from negotiation.progress_updater import update_progress_state
 from negotiation.schemas import default_belief_state, default_progress_state, default_world_state
+from negotiation.validation import normalize_world_buckets
 
 
 class _Raw:
@@ -243,3 +244,9 @@ def test_executor_prompt_uses_last_assistant_message_fallback():
     )
     rendered = "\n".join(str(getattr(m, "content", "")) for m in (deps.messages or []))
     assert "assistant_last_message: mensaje previo del asistente" in rendered
+
+
+def test_normalize_world_buckets_accepts_default_turn_kwarg():
+    out = normalize_world_buckets({"interaction": {}, "notes": {}}, default_turn=123)
+    assert isinstance(out, dict)
+    assert set(out.keys()) == {"interaction", "notes"}
