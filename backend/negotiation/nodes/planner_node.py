@@ -4,6 +4,7 @@ import time
 from datetime import datetime, timezone
 
 from ..schemas import default_policy_decision, default_progress_state
+from ..phase_map import get_phase_map_v1
 from ..state.deps import DEFAULT_DEPS
 from ..telemetry.trace_runtime import record_gate_event, record_llm_call
 
@@ -120,6 +121,9 @@ def phase_policy_planner_node(state: dict) -> dict:
     state["policy_decision"] = policy_decision
     state["planner_meta"] = planner_meta
     state["planner_semantic_output"] = planner_semantic_output
+
+    phase_map = planner_meta.get("phase_map_json") if isinstance(planner_meta.get("phase_map_json"), dict) else get_phase_map_v1()
+    state["phase_map_json"] = phase_map
 
     progress_state["phase_state"] = {
         "phase": planner_semantic_output.get("phase", "clima_humano"),

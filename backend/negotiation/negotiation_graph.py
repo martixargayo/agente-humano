@@ -17,6 +17,8 @@ from .schemas import (
     default_world_state,
 )
 from .state.deps import AgentDeps, DEFAULT_DEPS
+from .context_utils import build_memory_context
+from .phase_map import get_phase_map_v1
 
 
 @dataclass
@@ -55,6 +57,12 @@ def run_negotiation_agent(
     del explicit_preset_id
     add_message(state, "user", user_message)
 
+    long_memory, short_memory, memory_meta = build_memory_context(
+        state.history,
+        state.summary,
+        keep_last_n_turns=4,
+    )
+
     graph_state = {
         "user_message": user_message,
         "objective": state.negotiation_objective or "",
@@ -78,8 +86,10 @@ def run_negotiation_agent(
         "recent_history_text": "\n".join(f"{m.get('role','')}: {m.get('content','')}" for m in state.history[-12:]),
         "last_assistant_message": _last_assistant_message(state.history),
         "assistant_last_message": _last_assistant_message(state.history),
-        "short_memory": "",
-        "long_memory": state.summary or "",
+        "short_memory": short_memory or "SIN_MEMORIA_CORTA_AUN",
+        "long_memory": long_memory or "SIN_RESUMEN_AUN",
+        "memory_meta": memory_meta,
+        "phase_map_json": get_phase_map_v1(),
         "turn_count": state.turn_count,
         "deps": deps,
         "response": "",

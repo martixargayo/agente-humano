@@ -11,6 +11,7 @@ from ..elementos.render.executor_prompts import (
     EXECUTOR_SYSTEM_PROMPT,
     EXECUTOR_USER_PROMPT,
 )
+from ..phase_map import get_phase_map_v1
 
 ExecutorOutput = dict
 RenderConstraints = dict
@@ -149,15 +150,15 @@ def render_executor_output(
         semantic_ledger_json=json.dumps(semantic_ledger if isinstance(semantic_ledger, dict) else {}, ensure_ascii=False),
         advisor_recs_json=json.dumps(state.get("advisor_recs", {}) if isinstance(state.get("advisor_recs"), dict) else {}, ensure_ascii=False),
         last_counterparty_utterance=extract_last_counterparty_utterance(state),
-        memory_short=str(state.get("short_memory", "") or ""),
-        memory_long=str(state.get("long_memory", "") or ""),
+        memory_short=str(state.get("short_memory", "") or "").strip() or "SIN_MEMORIA_CORTA_AUN",
+        memory_long=str(state.get("long_memory", "") or "").strip() or "SIN_RESUMEN_AUN",
         world_json=json.dumps(world_state, ensure_ascii=False),
         belief_json=json.dumps(state.get("belief_state", {}), ensure_ascii=False),
         retry_hint="",
         user_message=user_message,
         assistant_last_message=assistant_last_message_ctx,
         recent_history_text=str(state.get("recent_history_text", "") or ""),
-        phase_map_json=json.dumps(state.get("phase_map_json", {}), ensure_ascii=False),
+        phase_map_json=json.dumps(state.get("phase_map_json") if isinstance(state.get("phase_map_json"), dict) else get_phase_map_v1(), ensure_ascii=False),
         speaker_of_user_message=str(state.get("speaker_of_user_message") or "seller").strip().lower(),
         output_schema=EXECUTOR_OUTPUT_SCHEMA.strip(),
     )

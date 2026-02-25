@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from typing import Dict
 
-from ...schemas import StyleContract
 from .carlos_buyer_preset import CARLOS_STYLE_CONTRACT
 
 
-_STYLES: Dict[str, StyleContract] = {
+_STYLES: Dict[str, dict] = {
     "default": {
         "style_id": "default",
         "target_length": "short",
@@ -38,7 +37,7 @@ _STYLES: Dict[str, StyleContract] = {
 }
 
 
-def get_style_contract(style_id: str | None) -> StyleContract:
+def get_style_contract(style_id: str | None) -> dict:
     if not style_id:
         return dict(_STYLES["default"])
     return dict(_STYLES.get(style_id, _STYLES["default"]))

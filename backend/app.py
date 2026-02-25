@@ -280,6 +280,16 @@ def negociar_endpoint(payload: ChatRequest):
         )
 
         reply, _ = run_negotiation_agent(state, payload.message)
+
+        if deferred_summary_enabled():
+            SUMMARY_JOBS.enqueue(
+                make_turn_job(
+                    state,
+                    context_limit_turns=DEFAULT_CONTEXT_LIMIT_TURNS,
+                    keep_last_n_turns=DEFAULT_KEEP_LAST_TURNS,
+                )
+            )
+
         return ChatResponse(reply=reply)
 
     except Exception as e:

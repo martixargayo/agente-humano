@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from typing import Dict
 
-from ...schemas import SceneProfile
 from .carlos_buyer_preset import CARLOS_SCENE_PROFILE
 
 
-_SCENES: Dict[str, SceneProfile] = {
+_SCENES: Dict[str, dict] = {
     "default_chat": {
         "scene_id": "default_chat",
         "setting": "chat app",
@@ -25,7 +24,7 @@ _SCENES: Dict[str, SceneProfile] = {
 }
 
 
-def get_scene_profile(scene_id: str | None) -> SceneProfile:
+def get_scene_profile(scene_id: str | None) -> dict:
     if not scene_id:
         return dict(_SCENES["default_chat"])
     return dict(_SCENES.get(scene_id, _SCENES["default_chat"]))

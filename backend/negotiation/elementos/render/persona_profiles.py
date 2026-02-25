@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from typing import Dict
 
-from ...schemas import PersonaProfile
 from .carlos_buyer_preset import CARLOS_PERSONA_PROFILE
 
 
-_PERSONAS: Dict[str, PersonaProfile] = {
+_PERSONAS: Dict[str, dict] = {
     "default": {
         "persona_id": "default",
         "role": "virtual assistant",
@@ -31,7 +30,7 @@ _PERSONAS: Dict[str, PersonaProfile] = {
 }
 
 
-def get_persona_profile(persona_id: str | None) -> PersonaProfile:
+def get_persona_profile(persona_id: str | None) -> dict:
     if not persona_id:
         return dict(_PERSONAS["default"])
     return dict(_PERSONAS.get(persona_id, _PERSONAS["default"]))
