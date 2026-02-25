@@ -5,6 +5,7 @@ from negotiation.nodes.world_node import world_judge_llm
 from negotiation.phase_policy_planner import plan_phase_policy
 from negotiation.progress_updater import update_progress_state
 from negotiation.schemas import default_belief_state, default_progress_state, default_world_state
+from negotiation.validation import normalize_world_buckets
 
 
 class _Raw:
@@ -243,3 +244,62 @@ def test_executor_prompt_uses_last_assistant_message_fallback():
     )
     rendered = "\n".join(str(getattr(m, "content", "")) for m in (deps.messages or []))
     assert "assistant_last_message: mensaje previo del asistente" in rendered
+
+
+def test_normalize_world_buckets_accepts_default_turn_kwarg():
+    out = normalize_world_buckets({"interaction": {}, "notes": {}}, default_turn=123)
+    assert isinstance(out, dict)
+    assert set(out.keys()) == {"interaction", "notes"}
+
+
+def test_executor_enforces_requested_slots_when_question_present():
+    from negotiation.executor.render_executor import render_executor_output
+
+    class _DepsExec:
+        def execute(self, _messages):
+            return json.dumps(
+                {
+                    "schema_version": "executor_v2",
+                    "response_text": "¿Cuál es el precio final?",
+                    "asked_question": True,
+                    "requested_info_slots": [],
+                    "tone_used": "neutral",
+                    "followup_intent": None,
+                    "render_meta": {},
+                },
+                ensure_ascii=False,
+            )
+
+    state = {
+        "progress_state": default_progress_state(),
+        "belief_state": default_belief_state(),
+        "advisor_recs": {},
+        "planner_semantic_output": {
+            "schema_version": "planner_semantic_v1",
+            "phase": "clima_humano",
+            "style": "Breve",
+            "next_move_hint": "Validar y seguir",
+            "what_not_to_repeat": [],
+        },
+        "last_assistant_message": "mensaje previo",
+        "recent_history_text": "assistant: mensaje previo",
+        "user_message": "ok",
+    }
+
+    out = render_executor_output(
+        state,
+        deps=_DepsExec(),
+        conversation_mode="negotiation",
+        policy_pack_active="universal",
+        policy_id="semantic_ledger",
+        persona_profile={},
+        scene_profile={},
+        style_contract={"max_words": 30, "max_questions": 1},
+        constraints_struct={"max_questions": 1},
+        strategy_summary={},
+        memory_block="",
+        world_state=default_world_state(),
+        user_message="ok",
+    )
+    assert out["asked_question"] is True
+    assert out["requested_info_slots"] == ["clarify_context"]

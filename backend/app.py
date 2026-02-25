@@ -61,7 +61,11 @@ from negotiation.negotiation_graph import run_negotiation_agent
 from negotiation.summary_jobs import SUMMARY_JOBS, deferred_summary_enabled, make_turn_job
 from negotiation.state.deps import DEFAULT_DEPS
 from negotiation.telemetry.live_trace import build_trace_event, list_recent_trace_events
-from negotiation.telemetry.live_trace2 import build_livetrace2_event, list_recent_livetrace2_events
+from negotiation.telemetry.live_trace2 import (
+    append_livetrace2_event,
+    build_livetrace2_event,
+    list_recent_livetrace2_events,
+)
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -350,39 +354,56 @@ def negotiation_trace_stream():
 
 
 def _livetrace2_sse_generator():
-    seen_counts: dict[tuple[str, str], int] = {
-        (event["user_id"], event["session_id"]): int(event["trace_index"]) + 1
-        for event in list_recent_livetrace2_events()
-    }
+    seen_counts: dict[tuple[str, str], int] = {}
 
-    for event in list_recent_livetrace2_events():
-        yield f"event: trace2\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
+    # Handshake inmediato para evitar timeout/buffering en proxies SSE.
+    yield ": connected\n\n"
 
-    while True:
-        sent = False
-        for (user_id, session_id), session in sorted(SESSIONS.items(), key=lambda item: item[1].last_updated):
-            trace = session.debug_trace or []
-            last_seen = seen_counts.get((user_id, session_id), 0)
-            if last_seen >= len(trace):
-                continue
-            for trace_index in range(last_seen, len(trace)):
-                event = build_livetrace2_event(
-                    user_id=user_id,
-                    session_id=session_id,
-                    session=session,
-                    trace_index=trace_index,
-                    trace_item=trace[trace_index],
-                )
-                yield f"event: trace2\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
-            seen_counts[(user_id, session_id)] = len(trace)
-            sent = True
-        if not sent:
-            yield "event: ping\ndata: {}\n\n"
-        time.sleep(1.0)
+    try:
+        for event in list_recent_livetrace2_events(limit=100):
+            uid = str(event.get("user_id") or "")
+            sid = str(event.get("session_id") or "")
+            idx = int(event.get("trace_index") or 0)
+            seen_counts[(uid, sid)] = max(seen_counts.get((uid, sid), 0), idx + 1)
+            yield f"event: trace2\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+        keepalive_every_s = 12.0
+        last_keepalive_ts = time.perf_counter()
+
+        while True:
+            sent = False
+            for (user_id, session_id), session in sorted(SESSIONS.items(), key=lambda item: item[1].last_updated):
+                trace = session.debug_trace or []
+                last_seen = seen_counts.get((user_id, session_id), 0)
+                if last_seen >= len(trace):
+                    continue
+                for trace_index in range(last_seen, len(trace)):
+                    event = build_livetrace2_event(
+                        user_id=user_id,
+                        session_id=session_id,
+                        session=session,
+                        trace_index=trace_index,
+                        trace_item=trace[trace_index],
+                    )
+                    append_livetrace2_event(event)
+                    yield f"event: trace2\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
+                seen_counts[(user_id, session_id)] = len(trace)
+                sent = True
+
+            now = time.perf_counter()
+            if (not sent) and (now - last_keepalive_ts >= keepalive_every_s):
+                yield ": ping\n\n"
+                last_keepalive_ts = now
+
+            time.sleep(1.0)
+    except GeneratorExit:
+        return
+    except Exception as exc:
+        logger.exception("livetrace2_stream_generator_error=%s", exc)
+        yield f"event: error\ndata: {json.dumps({'error': str(exc)[:200]}, ensure_ascii=False)}\n\n"
 
 
-@app.get("/negociacion/livetrace2/stream")
-def negotiation_livetrace2_stream():
+def _livetrace2_stream_response() -> StreamingResponse:
     return StreamingResponse(
         _livetrace2_sse_generator(),
         media_type="text/event-stream",
@@ -394,7 +415,18 @@ def negotiation_livetrace2_stream():
     )
 
 
+@app.get("/negociacion/livetrace2/stream")
+def negotiation_livetrace2_stream():
+    return _livetrace2_stream_response()
+
+
+@app.get("/livetrace2/stream")
+def livetrace2_stream_alias():
+    return _livetrace2_stream_response()
+
+
 @app.get("/negociacion/livetrace2", response_class=HTMLResponse)
+@app.get("/livetrace2", response_class=HTMLResponse)
 def negotiation_livetrace2_panel():
     return """
 <!DOCTYPE html>
@@ -575,11 +607,11 @@ function buildSummaryNodes(allNodes){
 
 
 function pickUserText(evt){
-  return String(evt.input_message || evt.user_message || evt.message || '').trim() || '—';
+  return String(evt.input_message || evt.user_message || evt.message || (evt.payload||{}).user_message || '').trim() || '—';
 }
 
 function pickIaText(evt){
-  return String(evt.final_reply || evt.output_text || evt.reply || '').trim() || '—';
+  return String(evt.assistant_message || evt.final_reply || evt.output_text || evt.reply || (((evt.payload||{}).executor_output||{}).response_text) || '').trim() || '—';
 }
 
 function renderDialogOnly(){

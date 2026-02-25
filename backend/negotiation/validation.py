@@ -7,7 +7,9 @@ def _as_dict(data: Any) -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def normalize_world_buckets(raw: object) -> dict:
+def normalize_world_buckets(raw: object, default_turn: int | None = None, **kwargs: Any) -> dict:
+    _ = default_turn
+    _ = kwargs
     data = _as_dict(raw)
     return {
         "interaction": _as_dict(data.get("interaction")),
