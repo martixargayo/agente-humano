@@ -308,6 +308,22 @@ def _normalize_plan_ledger(raw: object) -> dict:
         if len(counters) >= 120:
             break
 
+    blocked_in = raw.get("blocked_topics") if isinstance(raw.get("blocked_topics"), dict) else {}
+    blocked_topics: dict[str, int] = {}
+    for key, value in blocked_in.items():
+        topic = str(key or "").strip().lower()[:40]
+        if not topic:
+            continue
+        try:
+            ttl = max(0, int(value or 0))
+        except Exception:
+            ttl = 0
+        if ttl <= 0:
+            continue
+        blocked_topics[topic] = ttl
+        if len(blocked_topics) >= 40:
+            break
+
 
     return {
         "resolved_intents": resolved,
@@ -315,6 +331,7 @@ def _normalize_plan_ledger(raw: object) -> dict:
         "failed_intents": failed,
         "asked_questions_recent": asked,
         "attempt_counters": counters,
+        "blocked_topics": blocked_topics,
     }
 
 

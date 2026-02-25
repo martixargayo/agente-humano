@@ -211,6 +211,7 @@ def _normalize_advisor(payload: object) -> dict:
             "answer_focus": "",
             "bridge": "",
             "dont_do": [],
+            "replan_directive": {},
         }
     human_mode = str(payload.get("human_mode", "none") or "none").strip().lower()
     if human_mode not in allowed_human_modes:
@@ -226,6 +227,20 @@ def _normalize_advisor(payload: object) -> dict:
         "answer_focus": str(payload.get("answer_focus", "") or "")[:220],
         "bridge": str(payload.get("bridge", "") or "")[:220],
         "dont_do": [str(x)[:140] for x in list(payload.get("dont_do") or [])[:4]],
+        "replan_directive": {},
+    }
+
+    rd = payload.get("replan_directive") if isinstance(payload.get("replan_directive"), dict) else {}
+    blocked_topics = [str(x).strip().lower()[:40] for x in list(rd.get("blocked_topics") or []) if str(x).strip()]
+    try:
+        block_ttl_turns = max(1, int(rd.get("block_ttl_turns", 2) or 2))
+    except Exception:
+        block_ttl_turns = 2
+    out["replan_directive"] = {
+        "force_replan": bool(rd.get("force_replan", False)),
+        "blocked_topics": blocked_topics[:4],
+        "block_ttl_turns": block_ttl_turns,
+        "preferred_pivots": [str(x)[:40] for x in list(rd.get("preferred_pivots") or [])[:4]],
     }
     for item in list(payload.get("recommended_moves") or [])[:4]:
         if isinstance(item, dict):
@@ -245,6 +260,50 @@ def _normalize_advisor(payload: object) -> dict:
                 }
             )
     return out
+
+
+
+
+def derive_advisor_signals(advisor_recs: dict | None) -> dict:
+    recs = advisor_recs if isinstance(advisor_recs, dict) else {}
+    loop_flags = [str(x).strip().lower() for x in list(recs.get("loop_or_waste_flags") or []) if str(x).strip()]
+    directive = recs.get("replan_directive") if isinstance(recs.get("replan_directive"), dict) else {}
+
+    blocked_topics: list[str] = []
+    reason_codes: list[str] = []
+    for flag in loop_flags:
+        if flag.startswith("repeat_slot_2x:"):
+            topic = flag.split(":", 1)[1].strip().lower()[:40]
+            if topic:
+                blocked_topics.append(topic)
+                reason_codes.append(f"repeat_slot_2x:{topic}")
+        elif flag.startswith("force_replan:block_topic="):
+            topic = flag.split("=", 1)[1].strip().lower()[:40]
+            if topic:
+                blocked_topics.append(topic)
+                reason_codes.append(f"force_replan_block_topic:{topic}")
+
+    for topic in list(directive.get("blocked_topics") or []):
+        t = str(topic).strip().lower()[:40]
+        if t:
+            blocked_topics.append(t)
+
+    blocked_topics = sorted(set(blocked_topics))
+    force_replan = bool(directive.get("force_replan", False)) or bool(blocked_topics)
+    try:
+        block_ttl = max(1, int(directive.get("block_ttl_turns", 2) or 2))
+    except Exception:
+        block_ttl = 2
+
+    if force_replan and not reason_codes:
+        reason_codes = ["advisor_directive"]
+
+    return {
+        "force_replan": force_replan,
+        "blocked_topics": blocked_topics[:4],
+        "block_ttl_turns": block_ttl,
+        "reason_codes": reason_codes[:6],
+    }
 
 
 def build_advisor_recs(

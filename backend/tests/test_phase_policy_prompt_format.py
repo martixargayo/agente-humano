@@ -51,7 +51,10 @@ def test_planner_v2_prompt_template_renders_without_keyerror():
         phase_state_json="{}",
         active_plan_json="{}",
         progress_counters_json="{}",
+        plan_ledger_json="{}",
+        judge_summary_json="{}",
         reusable_policy_id="",
+        blocked_topics_json="{}",
     )
 
     assert messages

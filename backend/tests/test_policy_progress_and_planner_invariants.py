@@ -52,6 +52,7 @@ def test_planner_skips_on_continue_same_step_when_reusable_policy_exists():
     progress_state["active_plan"] = _minimal_active_plan()
 
     state = _planner_state(progress_state)
+    state["policy_plan_judgement"] = {"plan_status": "continue_same_step", "skip_planner": False}
     state["deps"] = SimpleNamespace(plan_phase_policy=fake_plan_phase_policy)
 
     result = phase_policy_planner_node(state)
@@ -62,7 +63,7 @@ def test_planner_skips_on_continue_same_step_when_reusable_policy_exists():
     assert result["planner_meta"].get("planner_llm_called", False) is False
 
 
-def test_planner_skipped_when_advance_step_true_with_active_plan():
+def test_planner_executes_when_judge_requires_change_even_with_advance_step():
     called = {"count": 0}
 
     def fake_plan_phase_policy(**_kwargs):
@@ -77,15 +78,13 @@ def test_planner_skipped_when_advance_step_true_with_active_plan():
     progress_state["active_plan"] = _minimal_active_plan()
 
     state = _planner_state(progress_state)
+    state["policy_plan_judgement"] = {"plan_status": "advance_step", "skip_planner": False}
     state["deps"] = SimpleNamespace(plan_phase_policy=fake_plan_phase_policy)
 
     result = phase_policy_planner_node(state)
 
-    assert called["count"] == 0
-    assert result["planner_meta"]["planner_skipped"] is True
-    assert result["planner_meta"]["planner_skip_reason"] == "advance_step_without_planner"
-    assert result["planner_meta"].get("planner_llm_called", False) is False
-    assert result["progress_state"]["active_plan"]["current_step_idx"] == 1
+    assert called["count"] == 1
+    assert result["planner_meta"]["planner_skipped"] is False
 
 
 def test_planner_runs_replan_when_advance_step_is_on_last_step():
@@ -105,13 +104,13 @@ def test_planner_runs_replan_when_advance_step_is_on_last_step():
     progress_state["active_plan"] = plan
 
     state = _planner_state(progress_state)
+    state["policy_plan_judgement"] = {"plan_status": "advance_step", "skip_planner": False}
     state["deps"] = SimpleNamespace(plan_phase_policy=fake_plan_phase_policy)
 
     result = phase_policy_planner_node(state)
 
     assert called["count"] == 1
     assert result["planner_meta"]["planner_skipped"] is False
-    assert result["planner_meta"].get("advance_step_reached_last_step") is True
 
 
 def test_planner_skipped_when_judge_skip_planner_true_with_active_plan():
@@ -228,3 +227,52 @@ def test_policy_progress_continue_same_step_can_force_replan_with_flag(monkeypat
     )
 
     assert updated["planner_request"] == "replan_policy"
+
+
+def test_planner_forces_replan_when_same_step_counter_reaches_threshold():
+    called = {"count": 0}
+
+    def fake_plan_phase_policy(**_kwargs):
+        called["count"] += 1
+        return {"phase": "climate"}, {"policy_id": "safe_neutral"}, {}
+
+    progress_state = default_progress_state()
+    progress_state["same_step_no_progress_turns"] = 1
+    policy_state = default_policy_state()
+    policy_state.update({"planner_request": "continue_policy", "policy_id": "safe_neutral"})
+    progress_state["policy_state"] = policy_state
+    progress_state["active_plan"] = _minimal_active_plan()
+
+    state = _planner_state(progress_state)
+    state["policy_plan_judgement"] = {"plan_status": "continue_same_step", "skip_planner": False}
+    state["deps"] = SimpleNamespace(plan_phase_policy=fake_plan_phase_policy)
+
+    out = phase_policy_planner_node(state)
+    assert called["count"] == 1
+    assert out["planner_meta"]["planner_skipped"] is False
+    assert "force_replan_no_progress_2nd_attempt" in out["planner_gate_debug"]["reason_codes"]
+
+
+def test_planner_forces_replan_when_advisor_repeat_slot_2x():
+    called = {"count": 0}
+
+    def fake_plan_phase_policy(**_kwargs):
+        called["count"] += 1
+        return {"phase": "climate"}, {"policy_id": "safe_neutral"}, {}
+
+    progress_state = default_progress_state()
+    policy_state = default_policy_state()
+    policy_state.update({"planner_request": "continue_policy", "policy_id": "safe_neutral"})
+    progress_state["policy_state"] = policy_state
+    progress_state["active_plan"] = _minimal_active_plan()
+
+    state = _planner_state(progress_state)
+    state["policy_plan_judgement"] = {"plan_status": "continue_same_step", "skip_planner": False}
+    state["advisor_recs"] = {"loop_or_waste_flags": ["repeat_slot_2x:documentacion"]}
+    state["advisor_signals"] = {"force_replan": True, "blocked_topics": ["documentacion"], "block_ttl_turns": 2}
+    state["deps"] = SimpleNamespace(plan_phase_policy=fake_plan_phase_policy)
+
+    out = phase_policy_planner_node(state)
+    assert called["count"] == 1
+    assert out["planner_meta"]["planner_skipped"] is False
+    assert "force_replan_advisor_repeat" in out["planner_gate_debug"]["reason_codes"]

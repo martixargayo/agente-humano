@@ -52,14 +52,14 @@ def test_ledger_advance_adds_resolved_with_evidence():
 
 def test_ledger_continue_increments_attempt_counters():
     progress = default_progress_state()
-    out = _update(progress, {"plan_status": "continue_same_step", "why": "sin detalle"})
+    out = _update(progress, {"plan_status": "continue_same_step", "why": "sin detalle", "evidence": [{"quote": "falta detalle"}]})
     assert out["plan_ledger"]["attempt_counters"]["owner_history"] == 1
 
 
 def test_ledger_continue_twice_adds_failed_intent():
     progress = default_progress_state()
-    out1 = _update(progress, {"plan_status": "continue_same_step", "why": "vago"}, turn=1)
-    out2 = _update(out1, {"plan_status": "continue_same_step", "why": "sigue vago"}, turn=2)
+    out1 = _update(progress, {"plan_status": "continue_same_step", "why": "vago", "evidence": [{"quote": "vago"}]}, turn=1)
+    out2 = _update(out1, {"plan_status": "continue_same_step", "why": "sigue vago", "evidence": [{"quote": "sigue vago"}]}, turn=2)
     failed = out2["plan_ledger"]["failed_intents"]
     assert failed and failed[0]["intent_id"] == "owner_history"
     assert failed[0]["attempts"] >= 2
@@ -70,10 +70,10 @@ def test_ledger_questions_recent_dedup_and_cap_10():
     out = progress
     for i in range(12):
         q = f"¿Pregunta {i}?"
-        out = _update(out, {"plan_status": "continue_same_step", "why": "x"}, turn=i + 1, last_assistant=q)
+        out = _update(out, {"plan_status": "continue_same_step", "why": "x", "evidence": [{"quote": "x"}]}, turn=i + 1, last_assistant=q)
     recent = out["plan_ledger"]["asked_questions_recent"]
     assert len(recent) == 10
-    out2 = _update(out, {"plan_status": "continue_same_step", "why": "x"}, turn=20, last_assistant="¿Pregunta 11?")
+    out2 = _update(out, {"plan_status": "continue_same_step", "why": "x", "evidence": [{"quote": "x"}]}, turn=20, last_assistant="¿Pregunta 11?")
     assert out2["plan_ledger"]["asked_questions_recent"].count("¿Pregunta 11?") == 1
 
 
