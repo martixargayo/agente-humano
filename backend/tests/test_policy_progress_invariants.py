@@ -165,16 +165,18 @@ def test_planner_skips_only_when_advance_step_true():
     }
 
     result = phase_policy_planner_node(dict(state))
-    assert called["planner"] == 0
-    assert result["planner_meta"]["planner_skipped"] is True
-    assert result["planner_meta"]["planner_skip_reason"] == "advance_step_without_planner"
+    assert called["planner"] == 1
+    assert result["planner_meta"]["planner_skipped"] is False
 
 
 def test_progress_updater_tracks_continue_loop_flag():
     prev_progress = default_progress_state()
     prev_progress["last_judgement_status"] = "continue_same_step"
+    prev_progress["same_step_no_progress_turns"] = 2
     prev_progress["no_progress_same_step_turns"] = 2
     decision = default_policy_decision()
+    prev_progress["last_judged_plan_id"] = "p1"
+    prev_progress["last_judged_step_idx"] = 0
     progress = update_progress_state(
         prev_progress=prev_progress,
         policy_decision=decision,
@@ -184,5 +186,7 @@ def test_progress_updater_tracks_continue_loop_flag():
         prev_belief_state=default_belief_state(),
         belief_state=default_belief_state(),
         turn_count=2,
+        policy_plan_judgement={"plan_presence": "active", "plan_status": "continue_same_step", "plan_id": "p1", "evaluated_step_idx": 0},
+        active_plan={"plan_id": "p1", "current_step_idx": 0, "steps": [{"intent_id": "x"}]},
     )
     assert "continue_loop" in progress["loop_flags"]

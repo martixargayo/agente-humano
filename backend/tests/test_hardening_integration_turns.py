@@ -68,7 +68,7 @@ def test_integration_c1_mantenimiento_y_oferta_sin_repeticion_literal(monkeypatc
     assert out["assistant_message"] == "¿Qué mantenimiento concreto puedes confirmar?"
 
 
-def test_integration_c2_loop_3_intentos_no_fuerza_replan_por_attempts(monkeypatch):
+def test_integration_c2_loop_3_intentos_fuerza_replan_en_gate(monkeypatch):
     progress = default_progress_state()
     progress["active_plan"] = _active_plan()
 
@@ -83,7 +83,7 @@ def test_integration_c2_loop_3_intentos_no_fuerza_replan_por_attempts(monkeypatc
             prev_belief_state=default_belief_state(),
             belief_state=default_belief_state(),
             turn_count=turn,
-            policy_plan_judgement={"plan_status": "continue_same_step", "evidence": [{"quote": "respuesta en línea"}]},
+            policy_plan_judgement={"plan_presence": "active", "plan_id": "p1", "evaluated_step_idx": 0, "plan_status": "continue_same_step", "evidence": [{"quote": "respuesta en línea"}]},
             active_plan=_active_plan(),
         )
 
@@ -99,6 +99,32 @@ def test_integration_c2_loop_3_intentos_no_fuerza_replan_por_attempts(monkeypatc
         policy_plan_judgement={"plan_status": "continue_same_step"},
     )
     assert pstate["planner_request"] == "continue_policy"
+
+    planner_called = {"count": 0}
+
+    def fake_plan(**_kwargs):
+        planner_called["count"] += 1
+        return {"phase": "climate"}, {"policy_id": "safe_neutral"}, {}
+
+    state = {
+        "deps": SimpleNamespace(plan_phase_policy=fake_plan),
+        "world_state": default_world_state(),
+        "belief_state": default_belief_state(),
+        "progress_state": progress,
+        "objective": "x",
+        "constraints": "",
+        "hard_constraints_struct": {},
+        "recent_history_text": "",
+        "turn_count": 4,
+        "world_diff": {},
+        "belief_diff": {},
+        "policy_plan_judgement": {"plan_status": "continue_same_step", "skip_planner": False},
+    }
+    state["progress_state"]["policy_state"] = pstate
+    out = phase_policy_planner_node(state)
+    assert planner_called["count"] == 1
+    assert out["planner_meta"]["planner_skipped"] is False
+    assert "force_replan_no_progress_3rd" in out["planner_gate_debug"]["reason_codes"]
 
 
 def test_integration_c3_human_desvio_un_turno_y_retorno_sin_replan(monkeypatch):
@@ -128,3 +154,53 @@ def test_integration_c3_human_desvio_un_turno_y_retorno_sin_replan(monkeypatch):
     assert "Estoy bien" in out["assistant_message"]
     assert out["assistant_message"].endswith("¿Cuántos propietarios ha tenido?")
     assert state["policy_plan_judgement"]["plan_status"] == "continue_same_step"
+
+
+def test_integration_advisor_repeat_slot_sets_blocked_topic_and_gate_forces_replan():
+    planner_called = {"count": 0}
+
+    def fake_plan(**_kwargs):
+        planner_called["count"] += 1
+        return {"phase": "climate"}, {"policy_id": "safe_neutral"}, {}
+
+    progress = default_progress_state()
+    progress["active_plan"] = _active_plan()
+    progress["policy_state"]["planner_request"] = "continue_policy"
+    progress["policy_state"]["policy_id"] = "safe_neutral"
+
+    progressed = update_progress_state(
+        prev_progress=progress,
+        policy_decision=default_policy_decision(),
+        last_policy_executed=None,
+        prev_world_state=default_world_state(),
+        world_state=default_world_state(),
+        prev_belief_state=default_belief_state(),
+        belief_state=default_belief_state(),
+        turn_count=1,
+        policy_plan_judgement={"plan_presence": "active", "plan_status": "continue_same_step", "plan_id": "p1", "evaluated_step_idx": 0, "evidence": [{"quote": "x"}]},
+        active_plan=_active_plan(),
+        advisor_signals={"force_replan": True, "blocked_topics": ["documentacion"], "block_ttl_turns": 2},
+    )
+    assert progressed["plan_ledger"]["blocked_topics"]["documentacion"] == 2
+
+    state = {
+        "deps": SimpleNamespace(plan_phase_policy=fake_plan),
+        "world_state": default_world_state(),
+        "belief_state": default_belief_state(),
+        "progress_state": progressed,
+        "objective": "x",
+        "constraints": "",
+        "hard_constraints_struct": {},
+        "recent_history_text": "",
+        "turn_count": 2,
+        "world_diff": {},
+        "belief_diff": {},
+        "policy_plan_judgement": {"plan_status": "continue_same_step", "skip_planner": False},
+        "advisor_recs": {"loop_or_waste_flags": ["repeat_slot_2x:documentacion"]},
+        "advisor_signals": {"force_replan": True, "blocked_topics": ["documentacion"], "block_ttl_turns": 2},
+    }
+
+    out = phase_policy_planner_node(state)
+    assert planner_called["count"] == 1
+    assert out["planner_meta"]["planner_skipped"] is False
+    assert "force_replan_advisor_repeat" in out["planner_gate_debug"]["reason_codes"]

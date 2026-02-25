@@ -512,6 +512,7 @@ class PlanLedger(TypedDict):
     failed_intents: List[PlanLedgerFailedIntent]
     asked_questions_recent: List[str]
     attempt_counters: Dict[str, int]
+    blocked_topics: Dict[str, int]
 
 
 class ProgressState(TypedDict):
@@ -536,7 +537,10 @@ class ProgressState(TypedDict):
     advance_step: bool
     judgement_missing_streak: int
     last_judgement_status: str
+    same_step_no_progress_turns: int
     no_progress_same_step_turns: int
+    last_judged_plan_id: str
+    last_judged_step_idx: int
     last_plan_id: str
     plan_id_changes_window: int
     last_progress_update_turn: int
@@ -687,6 +691,7 @@ def default_plan_ledger() -> PlanLedger:
         "failed_intents": [],
         "asked_questions_recent": [],
         "attempt_counters": {},
+        "blocked_topics": {},
     }
 
 
@@ -712,7 +717,10 @@ def default_progress_state() -> ProgressState:
         "advance_step": False,
         "judgement_missing_streak": 0,
         "last_judgement_status": "",
+        "same_step_no_progress_turns": 0,
         "no_progress_same_step_turns": 0,
+        "last_judged_plan_id": "",
+        "last_judged_step_idx": 0,
         "last_plan_id": "",
         "plan_id_changes_window": 0,
         "last_progress_update_turn": 0,

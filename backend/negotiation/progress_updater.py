@@ -205,6 +205,75 @@ def _update_plan_ledger(
     return out
 
 
+
+
+def _extract_judged_step_idx(policy_plan_judgement: dict | None, active_plan: dict | None) -> int:
+    if isinstance(policy_plan_judgement, dict):
+        try:
+            return max(0, int(policy_plan_judgement.get("evaluated_step_idx", 0) or 0))
+        except Exception:
+            pass
+    try:
+        return max(0, int((active_plan or {}).get("current_step_idx", 0) or 0))
+    except Exception:
+        return 0
+
+
+def _compute_same_step_no_progress_turns(prev_progress: dict, policy_plan_judgement: dict | None, active_plan: dict | None) -> tuple[int, str, int]:
+    prev = int(prev_progress.get("same_step_no_progress_turns", prev_progress.get("no_progress_same_step_turns", 0)) or 0)
+    status = str((policy_plan_judgement or {}).get("plan_status", "") or "")
+    plan_presence = str((policy_plan_judgement or {}).get("plan_presence", "") or "")
+    current_plan_id = str((policy_plan_judgement or {}).get("plan_id", "") or str((active_plan or {}).get("plan_id", "") or ""))
+    current_step_idx = _extract_judged_step_idx(policy_plan_judgement, active_plan)
+
+    prev_plan_id = str(prev_progress.get("last_judged_plan_id", "") or "")
+    prev_step_idx = int(prev_progress.get("last_judged_step_idx", 0) or 0)
+
+    if status in {"advance_step", "completed", "interrupted_replan"}:
+        return 0, current_plan_id, current_step_idx
+
+    if status == "continue_same_step" and plan_presence == "active":
+        if prev_plan_id and current_plan_id and prev_plan_id != current_plan_id:
+            return 0, current_plan_id, current_step_idx
+        if prev_plan_id and prev_step_idx != current_step_idx:
+            return 0, current_plan_id, current_step_idx
+        if prev_plan_id:
+            return prev + 1, current_plan_id, current_step_idx
+        return 1, current_plan_id, current_step_idx
+
+    return 0, current_plan_id, current_step_idx
+
+
+def _decay_and_apply_blocked_topics(ledger: dict, advisor_signals: dict | None) -> dict:
+    out = default_plan_ledger()
+    out.update(ledger if isinstance(ledger, dict) else {})
+    blocked = out.get("blocked_topics") if isinstance(out.get("blocked_topics"), dict) else {}
+
+    decayed: dict[str, int] = {}
+    for key, value in blocked.items():
+        topic = str(key or "").strip().lower()[:40]
+        if not topic:
+            continue
+        try:
+            ttl = int(value or 0) - 1
+        except Exception:
+            ttl = 0
+        if ttl > 0:
+            decayed[topic] = ttl
+
+    if isinstance(advisor_signals, dict):
+        topics = [str(x).strip().lower()[:40] for x in list(advisor_signals.get("blocked_topics") or []) if str(x).strip()]
+        try:
+            ttl = max(1, int(advisor_signals.get("block_ttl_turns", 2) or 2))
+        except Exception:
+            ttl = 2
+        for topic in topics:
+            decayed[topic] = max(int(decayed.get(topic, 0) or 0), ttl)
+
+    out["blocked_topics"] = decayed
+    return out
+
+
 def update_progress_state(
     prev_progress: ProgressState | None,
     policy_decision: PolicyDecision,
@@ -220,6 +289,7 @@ def update_progress_state(
     active_plan: dict | None = None,
     executor_output: dict | None = None,
     last_assistant_message: str = "",
+    advisor_signals: dict | None = None,
 ) -> ProgressState | tuple[ProgressState, dict]:
     progress = default_progress_state()
     if prev_progress:
@@ -272,13 +342,15 @@ def update_progress_state(
     if plan_changes < 2:
         loop_flags = [flag for flag in loop_flags if flag != "replan_churn"]
 
-    judgement = progress.get("last_judgement_status")
-    no_progress = int(progress.get("no_progress_same_step_turns", 0) or 0)
-    if judgement == "continue_same_step":
-        no_progress += 1
-    else:
-        no_progress = 0
+    no_progress, judged_plan_id, judged_step_idx = _compute_same_step_no_progress_turns(
+        progress,
+        policy_plan_judgement,
+        active_plan,
+    )
+    progress["same_step_no_progress_turns"] = no_progress
     progress["no_progress_same_step_turns"] = no_progress
+    progress["last_judged_plan_id"] = judged_plan_id
+    progress["last_judged_step_idx"] = judged_step_idx
     if no_progress >= 3 and "continue_loop" not in loop_flags:
         loop_flags.append("continue_loop")
     if no_progress < 3:
@@ -299,6 +371,7 @@ def update_progress_state(
         executor_output=executor_output,
         last_assistant_message=last_assistant_message,
     )
+    progress["plan_ledger"] = _decay_and_apply_blocked_topics(progress.get("plan_ledger", {}), advisor_signals)
 
     progress["loop_flags"] = loop_flags
     progress["last_progress_update_turn"] = turn_count
@@ -309,7 +382,7 @@ def update_progress_state(
     debug = {
         "anti_loop_signals": {
             "continue_loop_detected": "continue_loop" in loop_flags,
-            "continue_loop_counter": int(progress.get("no_progress_same_step_turns", 0) or 0),
+            "continue_loop_counter": int(progress.get("same_step_no_progress_turns", progress.get("no_progress_same_step_turns", 0)) or 0),
             "replan_churn_detected": "replan_churn" in loop_flags,
             "replan_churn_window": int(progress.get("plan_id_changes_window", 0) or 0),
             "plan_id_changes_count": int(progress.get("plan_id_changes_window", 0) or 0),

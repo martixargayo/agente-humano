@@ -286,6 +286,7 @@ class NegotiationTurn(TypedDict):
     gate_meta: dict
     advisor_recs: dict
     advisor_meta: dict
+    advisor_signals: dict
     deps: AgentDeps
 
     response: str
@@ -638,6 +639,7 @@ def run_negotiation_agent(
         "gate_meta": {},
         "advisor_recs": {},
         "advisor_meta": {},
+        "advisor_signals": {},
         "turn_count": state.turn_count,
         "deps": deps,
         "response": "",
@@ -753,6 +755,7 @@ def run_negotiation_agent(
             "planner_meta": new_graph_state.get("planner_meta", {}),
             "advisor_recs": new_graph_state.get("advisor_recs", {}),
             "advisor_meta": new_graph_state.get("advisor_meta", {}),
+            "advisor_signals": new_graph_state.get("advisor_signals", {}),
             "planner_debug": new_graph_state.get("planner_debug", {}),
             "gates": new_graph_state.get("gate_meta", {}),
             "belief_update_meta": new_graph_state.get("belief_update_meta", {}),
