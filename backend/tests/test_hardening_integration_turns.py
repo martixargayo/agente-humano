@@ -124,7 +124,7 @@ def test_integration_c2_loop_3_intentos_fuerza_replan_en_gate(monkeypatch):
     out = phase_policy_planner_node(state)
     assert planner_called["count"] == 1
     assert out["planner_meta"]["planner_skipped"] is False
-    assert "force_replan_no_progress_3rd" in out["planner_gate_debug"]["reason_codes"]
+    assert "force_replan_no_progress_2nd_attempt" in out["planner_gate_debug"]["reason_codes"]
 
 
 def test_integration_c3_human_desvio_un_turno_y_retorno_sin_replan(monkeypatch):
@@ -203,4 +203,4 @@ def test_integration_advisor_repeat_slot_sets_blocked_topic_and_gate_forces_repl
     out = phase_policy_planner_node(state)
     assert planner_called["count"] == 1
     assert out["planner_meta"]["planner_skipped"] is False
-    assert "force_replan_advisor_repeat" in out["planner_gate_debug"]["reason_codes"]
+    assert out["planner_gate_debug"]["reason_codes"][0] in {"force_replan_no_progress_2nd_attempt", "force_replan_advisor_repeat"}

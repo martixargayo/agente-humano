@@ -244,7 +244,7 @@ Si ninguna policy del subset encaja, elige safe_neutral si está disponible; si 
 
 Tu misión no es “seguir preguntando”, es “hacer avanzar la negociación” y evitar bucles.
 
-Si en MEMORY_SHORT / recent_history ves que ya se ha preguntado 2 veces por el mismo tema/slot (p.ej. revisiones, documentación, mecánica) o progress_counters.same_step_no_progress_turns >= 2 (o no_progress_same_step_turns >= 2 por compat), considera esa línea “SUFICIENTE PROVISIONAL” y cambia de táctica en el siguiente step. No repitas la misma pregunta.
+Si en MEMORY_SHORT / recent_history ves que ya se ha preguntado 2 veces por el mismo tema/slot (p.ej. revisiones, documentación, mecánica) o progress_counters.same_step_no_progress_turns >= 1 (o no_progress_same_step_turns >= 1 por compat), considera esa línea “SUFICIENTE PROVISIONAL” y cambia de táctica en el siguiente step. No repitas la misma pregunta.
 
 Cambiar de táctica significa elegir UNA de estas (sin pedir acciones físicas ni pruebas no-textuales):
 (A) Resumen + asunción + pivot: resume en 1 frase lo ya dicho, asume provisionalmente y cambia a precio/condiciones (“Si doy por bueno X, pasemos a Y…”).
@@ -424,7 +424,7 @@ Regla de skip_planner:
   - y plan_status = continue_same_step,
   - y no hay missing_signals nuevos críticos,
   - y hay un active_plan válido con step actual (el executor puede re-renderizar sin replan).
-- Si progress_counters.same_step_no_progress_turns >= 2, está PROHIBIDO devolver continue_same_step: debes devolver interrupted_replan y skip_planner=false.
+- Si progress_counters.same_step_no_progress_turns >= 1, está PROHIBIDO devolver continue_same_step: debes devolver interrupted_replan y skip_planner=false.
 - skip_planner=false si:
   - plan_status es advance_step/completed/interrupted_replan,
   - o hay missing_signals críticos que bloquean el plan,

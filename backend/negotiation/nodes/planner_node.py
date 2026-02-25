@@ -334,10 +334,10 @@ def phase_policy_planner_node(state: dict) -> dict:
         planner_request = "replan_policy"
         planner_debug["gate_decision"]["gate_path"] = "judge_requires_change"
         planner_debug["gate_decision"]["gate_reason_codes"] = ["judge_requires_change"]
-    elif same_step_no_progress_turns >= 2:
+    elif same_step_no_progress_turns >= 1:
         planner_request = "replan_policy"
-        planner_debug["gate_decision"]["gate_path"] = "force_replan_no_progress_3rd"
-        planner_debug["gate_decision"]["gate_reason_codes"] = ["force_replan_no_progress_3rd"]
+        planner_debug["gate_decision"]["gate_path"] = "force_replan_no_progress_2nd_attempt"
+        planner_debug["gate_decision"]["gate_reason_codes"] = ["force_replan_no_progress_2nd_attempt"]
     elif advisor_force_replan:
         planner_request = "replan_policy"
         planner_debug["gate_decision"]["gate_path"] = "force_replan_advisor_repeat"

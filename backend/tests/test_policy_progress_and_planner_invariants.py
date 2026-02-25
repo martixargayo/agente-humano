@@ -237,7 +237,7 @@ def test_planner_forces_replan_when_same_step_counter_reaches_threshold():
         return {"phase": "climate"}, {"policy_id": "safe_neutral"}, {}
 
     progress_state = default_progress_state()
-    progress_state["same_step_no_progress_turns"] = 2
+    progress_state["same_step_no_progress_turns"] = 1
     policy_state = default_policy_state()
     policy_state.update({"planner_request": "continue_policy", "policy_id": "safe_neutral"})
     progress_state["policy_state"] = policy_state
@@ -250,7 +250,7 @@ def test_planner_forces_replan_when_same_step_counter_reaches_threshold():
     out = phase_policy_planner_node(state)
     assert called["count"] == 1
     assert out["planner_meta"]["planner_skipped"] is False
-    assert "force_replan_no_progress_3rd" in out["planner_gate_debug"]["reason_codes"]
+    assert "force_replan_no_progress_2nd_attempt" in out["planner_gate_debug"]["reason_codes"]
 
 
 def test_planner_forces_replan_when_advisor_repeat_slot_2x():

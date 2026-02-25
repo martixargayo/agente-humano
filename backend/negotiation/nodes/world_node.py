@@ -423,11 +423,11 @@ def _normalize_judgement(candidate: object, *, active_plan: dict | None, turn_co
         skip_planner = False
 
     forced_replan = False
-    if status == "continue_same_step" and int(same_step_no_progress_turns or 0) >= 2:
+    if status == "continue_same_step" and int(same_step_no_progress_turns or 0) >= 1:
         status = "interrupted_replan"
         skip_planner = False
         forced_replan = True
-        why = f"forced_replan_third_attempt: {why}"[:280]
+        why = f"forced_replan_second_attempt: {why}"[:280]
 
     return {
         "schema_version": "v1",
@@ -444,7 +444,7 @@ def _normalize_judgement(candidate: object, *, active_plan: dict | None, turn_co
         "degraded": degraded,
         "degrade_reason": degrade_reason[:80],
         "skip_planner": skip_planner,
-        "forced_replan_reason": "same_step_no_progress_3rd" if forced_replan else "",
+        "forced_replan_reason": "same_step_no_progress_2nd" if forced_replan else "",
     }
 
 

@@ -45,7 +45,7 @@ def test_explicit_goal_change_forces_interrupted_replan_with_literal_evidence(mo
     assert "Olvida esto" in judgement["evidence"][0]["quote"]
 
 
-def test_normalize_judgement_forces_interrupted_replan_on_third_attempt():
+def test_normalize_judgement_forces_interrupted_replan_on_second_attempt():
     normalized = _normalize_judgement(
         {
             "plan_status": "continue_same_step",
@@ -55,9 +55,9 @@ def test_normalize_judgement_forces_interrupted_replan_on_third_attempt():
         },
         active_plan={"plan_id": "p1"},
         turn_count=9,
-        same_step_no_progress_turns=2,
+        same_step_no_progress_turns=1,
     )
     assert normalized is not None
     assert normalized["plan_status"] == "interrupted_replan"
     assert normalized["skip_planner"] is False
-    assert normalized["forced_replan_reason"] == "same_step_no_progress_3rd"
+    assert normalized["forced_replan_reason"] == "same_step_no_progress_2nd"
