@@ -4,6 +4,8 @@ import logging
 import time
 
 from ..executor import normalize_executor_output, render_executor_output
+from ..llm_planning_context import build_full_roleplay_profiles
+from ..phase_map import get_phase_map_v1
 from ..schemas import (
     default_constraints_struct,
     default_policy_decision,
@@ -33,6 +35,14 @@ def executor_node(state: dict) -> dict:
     policy_id = executed.get("policy_id", "semantic_ledger")
     progress_state = state.get("progress_state") if isinstance(state.get("progress_state"), dict) else default_progress_state()
 
+    persona_profile, scene_profile, style_contract, constraints_profile = build_full_roleplay_profiles(progress_state)
+    constraints_struct = (
+        progress_state.get("render_constraints_struct")
+        if isinstance(progress_state.get("render_constraints_struct"), dict)
+        else constraints_profile
+    )
+    state["phase_map_json"] = state.get("phase_map_json") if isinstance(state.get("phase_map_json"), dict) else get_phase_map_v1()
+
     llm_started = time.perf_counter()
     executor_output = render_executor_output(
         state,
@@ -40,10 +50,10 @@ def executor_node(state: dict) -> dict:
         conversation_mode=str(progress_state.get("conversation_mode", "general") or "general"),
         policy_pack_active="semantic",
         policy_id=policy_id,
-        persona_profile={},
-        scene_profile={},
-        style_contract={"max_words": 30, "max_questions": 1},
-        constraints_struct=progress_state.get("render_constraints_struct") if isinstance(progress_state.get("render_constraints_struct"), dict) else default_constraints_struct(),
+        persona_profile=persona_profile,
+        scene_profile=scene_profile,
+        style_contract=style_contract,
+        constraints_struct=constraints_struct if isinstance(constraints_struct, dict) else default_constraints_struct(),
         strategy_summary={},
         memory_block="",
         world_state=state.get("world_state", {}),

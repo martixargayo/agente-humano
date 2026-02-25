@@ -14,17 +14,11 @@ from .repo_prompts import (
 from .elementos.strategy_definitions import PlannerSemanticV1DecisionModel
 from .llm_clients import get_planner_llm
 from .schemas import BeliefState, PolicyDecision, ProgressState, WorldState, default_policy_decision
+from .phase_map import get_phase_map_v1
+from .llm_planning_context import build_objective_summary, build_planner_context_block_full, build_full_roleplay_profiles
 from .telemetry.llm_usage import extract_llm_usage
 
 logger = logging.getLogger(__name__)
-
-PHASE_MAP_V1 = {
-    "clima_humano": {"que_hacer": "crear conexión breve y natural", "estilo": "cálido"},
-    "descubrimiento_y_comprension": {"que_hacer": "entender contexto", "estilo": "claro"},
-    "propuesta_creativa": {"que_hacer": "proponer opciones", "estilo": "concreto"},
-    "concesiones_y_ajuste_final": {"que_hacer": "ajustar puntos finales", "estilo": "pragmático"},
-    "formalizacion_del_acuerdo": {"que_hacer": "confirmar cierre", "estilo": "sereno"},
-}
 
 
 def _semantic_fallback() -> dict:
@@ -77,21 +71,41 @@ def plan_phase_policy(
     started = time.perf_counter()
     started_wall = datetime.now(timezone.utc).isoformat()
     try:
-        objective_summary = str(objective or "")[:500]
         semantic_ledger = (progress_state or {}).get("semantic_ledger", {}) if isinstance(progress_state, dict) else {}
+        persona_profile, scene_profile, _style_contract, _constraints_struct = build_full_roleplay_profiles(progress_state)
+
+        objective_source = "state"
+        objective_summary = str(objective or "").strip()[:500]
+        if not objective_summary:
+            candidate = build_objective_summary(str(objective or ""), scene_profile, persona_profile).strip()[:500]
+            if candidate:
+                objective_summary = candidate
+                objective_source = "builder"
+        if not objective_summary:
+            objective_summary = "Objetivo: avanzar con claridad y bajo riesgo en la negociación."[:500]
+            objective_source = "default"
+
+        memory_short_text = str(memory_short or "").strip()[:1200] or "SIN_MEMORIA_CORTA_AUN"
+        memory_long_text = str(memory_long or "").strip()[:1200] or "SIN_RESUMEN_AUN"
+
+        phase_map = get_phase_map_v1()
+        full_profiles_block = build_planner_context_block_full(progress_state)
 
         user_prompt = PLANNER_SEMANTIC_V1_USER_PROMPT.format(
             user_message=str(user_message or "")[:1000],
             assistant_last_message=str(assistant_last_message or "")[:1000],
             recent_history_text=str(recent_context or "")[-1200:],
             objective_summary=objective_summary,
-            full_profiles_block="",
-            memory_short=str(memory_short or "")[-1200:],
-            memory_long=str(memory_long or "")[-1200:],
+            full_profiles_block=full_profiles_block,
+            memory_short=memory_short_text,
+            memory_long=memory_long_text,
             semantic_ledger_json=json.dumps(semantic_ledger or {}, ensure_ascii=False),
-            phase_map_json=json.dumps(PHASE_MAP_V1, ensure_ascii=False),
+            phase_map_json=json.dumps(phase_map, ensure_ascii=False),
             advisor_recs_json=json.dumps(advisor_recs or {}, ensure_ascii=False),
         )
+        meta["objective_source"] = objective_source
+        meta["objective_summary"] = objective_summary
+        meta["phase_map_json"] = phase_map
         messages = [
             SystemMessage(content=PLANNER_SEMANTIC_V1_SYSTEM_PROMPT),
             HumanMessage(content=user_prompt),

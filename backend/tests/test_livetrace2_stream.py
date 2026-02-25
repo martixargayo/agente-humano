@@ -128,3 +128,50 @@ def test_livetrace2_generator_emits_renderable_trace2_after_connected():
     assert first == ": connected\n\n"
     assert "event: trace2" in second
     assert '"user_message": "Hola"' in second
+
+
+def test_livetrace2_keeps_populated_planner_and_executor_prompts_in_nodes():
+    payload = {
+        "user_message": "Hola",
+        "assistant_message": "Seguimos",
+        "semantic_judge": {"schema_version": "judge_semantic_v1"},
+        "planner_semantic_output": {"schema_version": "planner_semantic_v1", "phase": "clima_humano"},
+        "executor_output": {"schema_version": "executor_v2", "response_text": "Seguimos"},
+        "trace_runtime": {
+            "llm_calls": [
+                {
+                    "name": "planner_llm",
+                    "node": "phase_policy_planner",
+                    "latency_ms": 9,
+                    "input_prompt_rendered": "OBJECTIVE_SUMMARY: Objetivo: avanzar.\nFULL_PROFILES_BLOCK: BLOQUE_PERFILES_COMPLETOS\nMEMORY_SHORT: SIN_MEMORIA_CORTA_AUN\nMEMORY_LONG: SIN_RESUMEN_AUN\nPHASE_MAP_JSON: {\"clima_humano\": {\"titulo\": \"Clima humano\"}}",
+                    "output_text_rendered": "{}",
+                },
+                {
+                    "name": "executor_llm",
+                    "node": "executor",
+                    "latency_ms": 11,
+                    "input_prompt_rendered": "A) BLOQUE_PERFILES_COMPLETOS\n{\"persona\": {\"persona_id\": \"buyer_mustang67_v1\"}, \"scene\": {\"scene_id\": \"mustang67_in_person_viewing\"}, \"style\": {\"style_id\": \"psyplay_compact\"}}\nL) PHASE_MAP_JSON (opcional)\n{\"clima_humano\": {\"titulo\": \"Clima humano\"}}",
+                    "output_text_rendered": "{}",
+                },
+            ]
+        },
+    }
+    event = build_semantic_turn_model(
+        user_id="u1",
+        session_id="s1",
+        turn_count=2,
+        trace_index=0,
+        payload=payload,
+        ts="2026-01-01T00:00:02Z",
+    )
+
+    nodes = {node["node_name"]: node for node in event["nodes"]}
+    planner_prompt = str(nodes["planner_llm"].get("input_prompt_rendered") or "")
+    executor_prompt = str(nodes["executor_llm"].get("input_prompt_rendered") or "")
+
+    assert "OBJECTIVE_SUMMARY: Objetivo: avanzar." in planner_prompt
+    assert "FULL_PROFILES_BLOCK: BLOQUE_PERFILES_COMPLETOS" in planner_prompt
+    assert "PHASE_MAP_JSON:" in planner_prompt
+    assert "buyer_mustang67_v1" in executor_prompt
+    assert "mustang67_in_person_viewing" in executor_prompt
+    assert "L) PHASE_MAP_JSON (opcional)" in executor_prompt

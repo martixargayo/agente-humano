@@ -6,6 +6,8 @@ from negotiation.phase_policy_planner import plan_phase_policy
 from negotiation.progress_updater import update_progress_state
 from negotiation.schemas import default_belief_state, default_progress_state, default_world_state
 from negotiation.validation import normalize_world_buckets
+from state import get_session_state
+from negotiation.negotiation_graph import run_negotiation_agent
 
 
 class _Raw:
@@ -303,3 +305,106 @@ def test_executor_enforces_requested_slots_when_question_present():
     )
     assert out["asked_question"] is True
     assert out["requested_info_slots"] == ["clarify_context"]
+
+
+class _RawMsg:
+    def __init__(self, content: str):
+        self.content = content
+
+
+class _PlannerStructuredForRuntime:
+    def invoke(self, _messages):
+        return PlannerSemanticV1DecisionModel(
+            schema_version="planner_semantic_v1",
+            phase="clima_humano",
+            style="Breve y natural.",
+            next_move_hint="Responder y avanzar con naturalidad.",
+            what_not_to_repeat=[],
+        )
+
+
+class _PlannerForRuntime:
+    model = "dummy-semantic-planner"
+    model_name = "dummy-semantic-planner"
+
+    def with_structured_output(self, _schema):
+        return _PlannerStructuredForRuntime()
+
+    def invoke(self, _messages):
+        return _RawMsg(
+            json.dumps(
+                {
+                    "schema_version": "judge_semantic_v1",
+                    "topic_alignment": "on_topic",
+                    "reason_short": "ok",
+                    "semantic_ledger": {
+                        "lo_que_ya_se_toco": ["inicio"],
+                        "lo_que_ya_pregunte": [],
+                        "lo_que_falta_pero_no_insistire": [],
+                    },
+                    "ledger_update_notes": "ok",
+                },
+                ensure_ascii=False,
+            )
+        )
+
+
+class _ExecutorForRuntime:
+    model = "dummy-semantic-executor"
+    model_name = "dummy-semantic-executor"
+
+    def invoke(self, _messages):
+        return _RawMsg(
+            json.dumps(
+                {
+                    "schema_version": "executor_v2",
+                    "response_text": "Perfecto, seguimos.",
+                    "asked_question": False,
+                    "requested_info_slots": [],
+                    "tone_used": "neutral",
+                    "followup_intent": None,
+                    "render_meta": {},
+                },
+                ensure_ascii=False,
+            )
+        )
+
+
+def _run_semantic_turn_capture(monkeypatch):
+    monkeypatch.setattr("negotiation.nodes.world_node.get_planner_llm", lambda: _PlannerForRuntime())
+    monkeypatch.setattr("negotiation.phase_policy_planner.get_planner_llm", lambda: _PlannerForRuntime())
+    monkeypatch.setattr("negotiation.state.deps.get_executor_llm", lambda: _ExecutorForRuntime())
+
+    state = get_session_state("test_user_ctx", "test_session_ctx")
+    run_negotiation_agent(state, "Hola, me interesa el Mustang")
+    trace = state.debug_trace[-1]
+    planner_prompt = ""
+    executor_prompt = ""
+    for call in (trace.get("trace_runtime") or {}).get("llm_calls", []):
+        if call.get("name") == "planner_llm":
+            planner_prompt = str(call.get("input_prompt_rendered") or "")
+        if call.get("name") == "executor_llm":
+            executor_prompt = str(call.get("input_prompt_rendered") or "")
+    return planner_prompt, executor_prompt
+
+
+def test_runtime_prompts_include_objective_profiles_phase_map_and_memory(monkeypatch):
+    planner_prompt, executor_prompt = _run_semantic_turn_capture(monkeypatch)
+
+    assert "OBJECTIVE_SUMMARY:" in planner_prompt
+    assert "OBJECTIVE_SUMMARY: \n" not in planner_prompt
+    assert "FULL_PROFILES_BLOCK:" in planner_prompt
+    assert "FULL_PROFILES_BLOCK: \n" not in planner_prompt
+    assert "PHASE_MAP_JSON:" in planner_prompt
+    assert "cordialidad real, sin estrategia" in planner_prompt
+    assert "MEMORY_SHORT:" in planner_prompt and "MEMORY_SHORT: \n" not in planner_prompt
+    assert "MEMORY_LONG:" in planner_prompt and "MEMORY_LONG: \n" not in planner_prompt
+
+    assert '"persona": {}' not in executor_prompt
+    assert '"scene": {}' not in executor_prompt
+    assert "buyer_mustang67_v1" in executor_prompt
+    assert "mustang67_in_person_viewing" in executor_prompt
+    assert "SIN_MEMORIA_CORTA_AUN" in executor_prompt or "Vendedor:" in executor_prompt
+    assert "SIN_RESUMEN_AUN" in executor_prompt or "facts" in executor_prompt
+    assert "L) PHASE_MAP_JSON (opcional)\n{}" not in executor_prompt
+    assert "cordialidad real, sin estrategia" in executor_prompt
