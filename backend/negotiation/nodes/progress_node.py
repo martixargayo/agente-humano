@@ -41,6 +41,7 @@ def progress_updater_node(state: dict) -> dict:
         active_plan=state.get("progress_state", {}).get("active_plan") if isinstance(state.get("progress_state"), dict) else None,
         executor_output=state.get("executor_output") if isinstance(state.get("executor_output"), dict) else None,
         last_assistant_message=str(state.get("last_assistant_message", "") or ""),
+        advisor_signals=state.get("advisor_signals") if isinstance(state.get("advisor_signals"), dict) else None,
     )
     render_state = progress_state.get("render_state") or default_render_state()
     persona, scene, style = resolve_render_profiles(render_state)
@@ -76,7 +77,7 @@ def progress_updater_node(state: dict) -> dict:
             **(progress_core_debug.get("anti_loop_signals") or {}),
         },
         "telemetry_updates": {
-            "counters_incremented": [p for p in persistence_paths if p.endswith("turns_in_same_mode") or p.endswith("plan_id_changes_window") or p.endswith("no_progress_same_step_turns")],
+            "counters_incremented": [p for p in persistence_paths if p.endswith("turns_in_same_mode") or p.endswith("plan_id_changes_window") or p.endswith("no_progress_same_step_turns") or p.endswith("same_step_no_progress_turns")],
             "next_turn_flags": loop_flags,
         },
         "persistence_summary": {

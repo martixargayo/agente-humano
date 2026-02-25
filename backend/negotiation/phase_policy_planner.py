@@ -324,6 +324,11 @@ def plan_phase_policy(
             plan_ledger_json=json.dumps(progress_state.get("plan_ledger", {}), ensure_ascii=False),
             judge_summary_json=json.dumps(judge_result or {}, ensure_ascii=False),
             reusable_policy_id=str((policy_state or {}).get("policy_id", "")),
+            blocked_topics_json=json.dumps({
+                str(k): int(v or 0)
+                for k, v in ((progress_state.get("plan_ledger", {}) or {}).get("blocked_topics", {}) or {}).items()
+                if int(v or 0) > 0
+            }, ensure_ascii=False),
         )
         llm = get_planner_llm()
         structured = llm.with_structured_output(PlannerV2DecisionModel)

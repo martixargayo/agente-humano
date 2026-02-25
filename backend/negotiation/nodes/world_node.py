@@ -28,7 +28,7 @@ from ..schemas import default_progress_state, default_world_state
 from ..world_state_updater import apply_world_skip_fallback, diff_world_state, update_world_state
 from ..telemetry.trace_runtime import record_gate_event, record_llm_call_ms, record_node_phase_ms
 from ..telemetry.llm_usage import extract_llm_usage
-from ..advisor import build_advisor_recs
+from ..advisor import build_advisor_recs, derive_advisor_signals
 from ..llm_planning_context import (
     build_full_roleplay_profiles,
     build_judge_context_block_full,
@@ -164,6 +164,7 @@ def _apply_judge_advisor_results(
 
     state["advisor_recs"] = advisor_recs
     state["advisor_meta"] = advisor_meta
+    state["advisor_signals"] = derive_advisor_signals(advisor_recs)
 
     record_llm_call_ms(
         state,
@@ -376,7 +377,7 @@ def _fallback_judgement(
     }
 
 
-def _normalize_judgement(candidate: object, *, active_plan: dict | None, turn_count: int) -> dict | None:
+def _normalize_judgement(candidate: object, *, active_plan: dict | None, turn_count: int, same_step_no_progress_turns: int = 0) -> dict | None:
     if not isinstance(candidate, dict):
         return None
     plan_presence = "active" if isinstance(active_plan, dict) else "none"
@@ -421,6 +422,13 @@ def _normalize_judgement(candidate: object, *, active_plan: dict | None, turn_co
     if status != "continue_same_step":
         skip_planner = False
 
+    forced_replan = False
+    if status == "continue_same_step" and int(same_step_no_progress_turns or 0) >= 2:
+        status = "interrupted_replan"
+        skip_planner = False
+        forced_replan = True
+        why = f"forced_replan_third_attempt: {why}"[:280]
+
     return {
         "schema_version": "v1",
         "turn_idx": turn_count,
@@ -436,6 +444,7 @@ def _normalize_judgement(candidate: object, *, active_plan: dict | None, turn_co
         "degraded": degraded,
         "degrade_reason": degrade_reason[:80],
         "skip_planner": skip_planner,
+        "forced_replan_reason": "same_step_no_progress_3rd" if forced_replan else "",
     }
 
 
@@ -613,6 +622,7 @@ def world_judge_llm(
         "memory_long": str(memory_long or "")[-1200:],
         "progress_counters": {
             "judgement_missing_streak": int(progress_state.get("judgement_missing_streak", 0) or 0),
+            "same_step_no_progress_turns": int(progress_state.get("same_step_no_progress_turns", progress_state.get("no_progress_same_step_turns", 0)) or 0),
             "no_progress_same_step_turns": int(progress_state.get("no_progress_same_step_turns", 0) or 0),
             "turns_in_same_mode": int(progress_state.get("turns_in_same_mode", 0) or 0),
             "plan_id_changes_window": int(progress_state.get("plan_id_changes_window", 0) or 0),
@@ -678,7 +688,12 @@ def world_judge_llm(
         llm_usage = extract_llm_usage(raw)
         text = getattr(raw, "content", str(raw))
         candidate = json.loads(text)
-        normalized = _normalize_judgement(candidate, active_plan=active_plan, turn_count=turn_count)
+        normalized = _normalize_judgement(
+            candidate,
+            active_plan=active_plan,
+            turn_count=turn_count,
+            same_step_no_progress_turns=int(progress_state.get("same_step_no_progress_turns", progress_state.get("no_progress_same_step_turns", 0)) or 0),
+        )
         if normalized is None:
             raise ValueError("judge_invalid_json_shape")
         normalized, evidence_meta = _post_normalize_evidence_guardrails(

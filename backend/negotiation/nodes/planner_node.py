@@ -162,6 +162,87 @@ def _build_executor_instruction(active_plan: dict | None) -> dict:
 
 
 
+
+
+def _extract_blocked_topics(progress_state: dict) -> dict[str, int]:
+    ledger = progress_state.get("plan_ledger") if isinstance(progress_state.get("plan_ledger"), dict) else {}
+    blocked = ledger.get("blocked_topics") if isinstance(ledger.get("blocked_topics"), dict) else {}
+    out: dict[str, int] = {}
+    for k, v in blocked.items():
+        topic = str(k or "").strip().lower()[:40]
+        if not topic:
+            continue
+        try:
+            ttl = int(v or 0)
+        except Exception:
+            ttl = 0
+        if ttl > 0:
+            out[topic] = ttl
+    return out
+
+
+def _topic_keywords(topic: str) -> list[str]:
+    table = {
+        "documentacion": ["document", "itv", "permiso", "ficha", "papel", "propietar"],
+        "mantenimiento": ["manten", "revision", "aceite", "taller"],
+        "mecanica": ["mecan", "motor", "aver", "falla"],
+    }
+    return table.get(topic, [topic])
+
+
+def _plan_hits_blocked_topic(active_plan: dict | None, executor_instruction: dict | None, blocked_topics: dict[str, int]) -> tuple[bool, str]:
+    if not blocked_topics:
+        return False, ""
+    text_parts: list[str] = []
+    if isinstance(active_plan, dict):
+        steps = active_plan.get("steps") if isinstance(active_plan.get("steps"), list) else []
+        for step in steps[:6]:
+            if not isinstance(step, dict):
+                continue
+            text_parts.append(str(step.get("intent_id", "")))
+            text_parts.append(str(step.get("what_to_do", "")))
+            text_parts.extend([str(x) for x in list(step.get("ask", []) or [])])
+    if isinstance(executor_instruction, dict):
+        text_parts.append(str(executor_instruction.get("instruction", "")))
+        text_parts.extend([str(x) for x in list(executor_instruction.get("ask", []) or [])])
+    haystack = " ".join(text_parts).lower()
+    for topic in blocked_topics:
+        for kw in _topic_keywords(topic):
+            if kw and kw in haystack:
+                return True, topic
+    return False, ""
+
+
+def _pivot_executor_instruction(turn_count: int, blocked_topic: str) -> tuple[dict, dict]:
+    pivot_question = "Si lo damos por bueno, ¿en qué cifra lo dejarías tú hoy?"
+    policy = default_policy_decision()
+    policy["policy_id"] = "safe_neutral"
+    policy["reason"] = f"pivot_blocked_topic:{blocked_topic}"
+    policy["why_short"] = "blocked_topic_pivot"
+    policy["micro_goal"] = "Pivotar a precio/proceso para salir del bucle."
+    active_plan = {
+        "schema_version": "v1",
+        "plan_id": f"plan_pivot_t{turn_count}",
+        "created_turn": turn_count,
+        "updated_turn": turn_count,
+        "current_step_idx": 0,
+        "global_goal": "Romper bucle y mover a decisión.",
+        "steps": [
+            {
+                "step_idx": 0,
+                "intent_id": "pivot_process_or_price",
+                "micro_goal": "Evitar tópico bloqueado y avanzar a precio/proceso.",
+                "what_to_do": "Pivot explícito a precio/proceso con una sola pregunta cerrada.",
+                "ask": [pivot_question],
+                "safe_mode": "normal",
+                "success_criteria": ["vendedor_da_cifra_o_proceso"],
+            }
+        ],
+        "plan_constraints": {"max_questions_per_turn": 1, "must_avoid": [], "stop_conditions": []},
+    }
+    return policy, active_plan
+
+
 def phase_policy_planner_node(state: dict) -> dict:
     deps = state.get("deps", DEFAULT_DEPS)
     _ensure_objective(state)
@@ -235,32 +316,34 @@ def phase_policy_planner_node(state: dict) -> dict:
     active_plan_status = "none"
     active_plan = previous_plan
 
-    if planner_request == "continue_policy" and previous_plan:
-        if advance_step:
-            steps = list(previous_plan.get("steps", [])) if isinstance(previous_plan, dict) else []
-            cur_idx = int(previous_plan.get("current_step_idx", 0) or 0) if isinstance(previous_plan, dict) else 0
-            last_idx = len(steps) - 1
-            if steps and cur_idx >= last_idx:
-                planner_request = "replan_policy"
-                planner_meta["advance_step_reached_last_step"] = True
-                planner_debug["gate_decision"]["gate_path"] = "replan_last_step_completed"
-                planner_debug["gate_decision"]["gate_reason_codes"] = ["advance_step_last_step"]
-            else:
-                advanced_plan, did_advance = _advance_step(previous_plan)
-                if did_advance and advanced_plan:
-                    active_plan = advanced_plan
-                    active_plan["updated_turn"] = turn_count
-                    active_plan_status = "active"
-                    planner_skipped = True
-                    skip_reason = "advance_step_without_planner"
-                    planner_debug["gate_decision"]["gate_path"] = "advance_step_no_llm"
-                    planner_debug["gate_decision"]["gate_reason_codes"] = ["advance_step_true"]
-                else:
-                    planner_request = "replan_policy"
-                    planner_meta["advance_step_out_of_range"] = True
-                    planner_debug["gate_decision"]["gate_path"] = "replan_out_of_range"
-                    planner_debug["gate_decision"]["gate_reason_codes"] = ["step_out_of_range"]
-        elif judgement_skip_planner:
+    judge_status = str(policy_plan_judgement.get("plan_status", "") or "")
+    same_step_no_progress_turns = int(progress_state.get("same_step_no_progress_turns", progress_state.get("no_progress_same_step_turns", 0)) or 0)
+    advisor_signals = state.get("advisor_signals") if isinstance(state.get("advisor_signals"), dict) else {}
+    advisor_loop_flags = [str(x).strip().lower() for x in list((state.get("advisor_recs") or {}).get("loop_or_waste_flags", []) or []) if str(x).strip()]
+    advisor_repeat_2x = any(flag.startswith("repeat_slot_2x:") for flag in advisor_loop_flags)
+    advisor_force_replan = bool(advisor_signals.get("force_replan", False)) or advisor_repeat_2x
+
+    planner_debug["inputs"]["same_step_no_progress_turns"] = same_step_no_progress_turns
+    planner_debug["inputs"]["advisor_force_replan"] = advisor_force_replan
+
+    if not previous_plan:
+        planner_request = "replan_policy"
+        planner_debug["gate_decision"]["gate_path"] = "no_active_plan"
+        planner_debug["gate_decision"]["gate_reason_codes"] = ["no_active_plan"]
+    elif judge_status and judge_status != "continue_same_step":
+        planner_request = "replan_policy"
+        planner_debug["gate_decision"]["gate_path"] = "judge_requires_change"
+        planner_debug["gate_decision"]["gate_reason_codes"] = ["judge_requires_change"]
+    elif same_step_no_progress_turns >= 2:
+        planner_request = "replan_policy"
+        planner_debug["gate_decision"]["gate_path"] = "force_replan_no_progress_3rd"
+        planner_debug["gate_decision"]["gate_reason_codes"] = ["force_replan_no_progress_3rd"]
+    elif advisor_force_replan:
+        planner_request = "replan_policy"
+        planner_debug["gate_decision"]["gate_path"] = "force_replan_advisor_repeat"
+        planner_debug["gate_decision"]["gate_reason_codes"] = ["force_replan_advisor_repeat"]
+    elif planner_request == "continue_policy" and previous_plan:
+        if judgement_skip_planner:
             active_plan, _ = _clamp_step(previous_plan)
             active_plan["updated_turn"] = turn_count
             active_plan_status = "active"
@@ -418,6 +501,16 @@ def phase_policy_planner_node(state: dict) -> dict:
                 planner_meta["plan_validation_errors"] = plan_errors + fallback_errors
         active_plan_status = "active"
 
+    blocked_topics = _extract_blocked_topics(progress_state)
+    blocked_hit, blocked_topic = _plan_hits_blocked_topic(active_plan, state.get("executor_instruction"), blocked_topics)
+    if blocked_hit:
+        planner_meta["blocked_topic_guard_triggered"] = True
+        planner_meta["blocked_topic"] = blocked_topic
+        planner_debug["gate_decision"]["gate_reason_codes"] = list(planner_debug["gate_decision"].get("gate_reason_codes", [])) + [f"blocked_topic_guard:{blocked_topic}"]
+        policy_decision, active_plan = _pivot_executor_instruction(turn_count, blocked_topic)
+        active_plan_status = "active"
+        state["executor_instruction"] = _build_executor_instruction(active_plan)
+
     planner_meta["planner_request"] = planner_request
     planner_meta["planner_skipped"] = planner_skipped
     planner_meta["planner_skip_reason"] = skip_reason
@@ -494,6 +587,11 @@ def phase_policy_planner_node(state: dict) -> dict:
         },
     }
     state["planner_debug"] = planner_debug
+    state["planner_gate_debug"] = {
+        "forced_replan": bool(planner_debug["gate_decision"]["gate_path"].startswith("force_replan") or planner_debug["gate_decision"]["gate_path"] == "judge_requires_change"),
+        "forced_replan_reason": planner_debug["gate_decision"]["gate_path"],
+        "reason_codes": list(planner_debug["gate_decision"].get("gate_reason_codes", [])),
+    }
     state["planner_debug_v2"] = planner_debug_v2
     state["progress_state"] = progress_state
     state["gate_meta"] = {
