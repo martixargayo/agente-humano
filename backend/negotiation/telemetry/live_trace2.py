@@ -67,6 +67,73 @@ def _find_runtime_gate(runtime: dict[str, Any], name: str) -> dict[str, Any]:
     return {}
 
 
+def _build_world_judge_node(runtime: dict[str, Any], payload: dict[str, Any], world_meta: dict[str, Any]) -> dict[str, Any] | None:
+    runtime_node = _find_runtime_llm(runtime, "world_judge_llm")
+    if runtime_node:
+        node = _llm_node_from_meta("world_judge_llm", runtime_node)
+    elif payload.get("semantic_judge") is not None:
+        node = {
+            "node_name": "world_judge_llm",
+            "node_type": "llm",
+            "status": "ok",
+            "latency_ms": _safe_int(world_meta.get("judge_latency_ms"), 0),
+            "started_at": str(world_meta.get("judge_start_ts") or ""),
+            "ended_at": str(world_meta.get("judge_end_ts") or ""),
+            "input_capture_state": "not_captured",
+            "output_capture_state": "captured",
+        }
+    else:
+        return None
+
+    judge_input = str(world_meta.get("judge_input_prompt_rendered") or "")
+    if judge_input:
+        node["input_prompt_rendered"] = judge_input
+        node["input_capture_state"] = "captured"
+
+    judge_raw_output = str(world_meta.get("judge_output_text_rendered") or "")
+    semantic_judge = payload.get("semantic_judge") if isinstance(payload.get("semantic_judge"), dict) else None
+    if judge_raw_output or semantic_judge is not None:
+        node["output_payload_parsed"] = {
+            "llm_raw_output_text": judge_raw_output,
+            "semantic_judge_final": semantic_judge or {},
+        }
+        node["output_text_rendered"] = ""
+        node["output_capture_state"] = "captured"
+
+    return node
+
+
+def _build_executor_node(runtime: dict[str, Any], executor_output: dict[str, Any]) -> dict[str, Any] | None:
+    runtime_node = _find_runtime_llm(runtime, "executor_llm")
+    if runtime_node:
+        node = _llm_node_from_meta("executor_llm", runtime_node)
+    elif executor_output:
+        node = {
+            "node_name": "executor_llm",
+            "node_type": "llm",
+            "status": "ok",
+            "latency_ms": 0,
+            "started_at": "",
+            "ended_at": "",
+            "input_capture_state": "not_captured",
+            "output_capture_state": "not_captured",
+        }
+    else:
+        return None
+
+    if executor_output:
+        node["output_payload_parsed"] = {
+            "final_executor_output": executor_output,
+            "llm_raw_output_text": str(node.get("output_text_rendered") or ""),
+            "llm_raw_output_payload": node.get("output_payload_raw"),
+        }
+        node["output_text_rendered"] = ""
+        node["output_payload_raw"] = executor_output
+        node["output_capture_state"] = "captured"
+
+    return node
+
+
 def build_semantic_turn_model(
     *,
     user_id: str,
@@ -94,23 +161,9 @@ def build_semantic_turn_model(
     if planner_gate:
         nodes.append(_gate_node_from_meta("planner_gate", planner_gate))
 
-    world_llm = _find_runtime_llm(runtime, "world_judge_llm")
-    if world_llm:
-        nodes.append(_llm_node_from_meta("world_judge_llm", world_llm))
-    elif payload.get("semantic_judge") is not None:
-        nodes.append(
-            {
-                "node_name": "world_judge_llm",
-                "node_type": "llm",
-                "status": "ok",
-                "latency_ms": _safe_int(world_meta.get("judge_latency_ms"), 0),
-                "started_at": str(world_meta.get("judge_start_ts") or ""),
-                "ended_at": str(world_meta.get("judge_end_ts") or ""),
-                "output_payload_raw": payload.get("semantic_judge"),
-                "input_capture_state": "not_captured",
-                "output_capture_state": "captured",
-            }
-        )
+    world_node = _build_world_judge_node(runtime, payload, world_meta)
+    if world_node is not None:
+        nodes.append(world_node)
 
     planner_llm = _find_runtime_llm(runtime, "planner_llm")
     if planner_llm:
@@ -130,24 +183,9 @@ def build_semantic_turn_model(
             }
         )
 
-    executor_llm = _find_runtime_llm(runtime, "executor_llm")
-    if executor_llm:
-        nodes.append(_llm_node_from_meta("executor_llm", executor_llm))
-    elif executor_output:
-        nodes.append(
-            {
-                "node_name": "executor_llm",
-                "node_type": "llm",
-                "status": "ok",
-                "latency_ms": 0,
-                "started_at": "",
-                "ended_at": "",
-                "output_payload_raw": executor_output,
-                "output_text_rendered": str(executor_output.get("response_text") or ""),
-                "input_capture_state": "not_captured",
-                "output_capture_state": "captured",
-            }
-        )
+    executor_node = _build_executor_node(runtime, executor_output)
+    if executor_node is not None:
+        nodes.append(executor_node)
 
     started_candidates = [n.get("started_at") for n in nodes if str(n.get("started_at") or "").strip()]
     ended_candidates = [n.get("ended_at") for n in nodes if str(n.get("ended_at") or "").strip()]
