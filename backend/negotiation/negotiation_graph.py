@@ -98,10 +98,16 @@ def run_negotiation_agent(
 
     state.debug_trace.append(
         {
+            "user_message": user_message,
+            "assistant_message": response,
             "semantic_judge": new_graph_state.get("semantic_judge", {}),
             "planner_semantic_output": new_graph_state.get("planner_semantic_output", {}),
             "executor_output": new_graph_state.get("executor_output", {}),
             "progress_state": new_graph_state.get("progress_state", {}),
+            "planner_meta": new_graph_state.get("planner_meta", {}),
+            "world_judge_meta": ((new_graph_state.get("world_debug") or {}).get("world_judge_meta", {}) if isinstance(new_graph_state.get("world_debug"), dict) else {}),
+            "trace_runtime": new_graph_state.get("trace_runtime", {}),
+            "turn_idx": int(state.turn_count or 0),
         }
     )
     return response, state

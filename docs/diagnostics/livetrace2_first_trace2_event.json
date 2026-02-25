@@ -1,0 +1,28 @@
+{
+  "user_id": "u-demo",
+  "session_id": "s-demo",
+  "trace_index": 1,
+  "turn_idx": 1,
+  "user_message": "Me interesa el coche",
+  "assistant_message": "Perfecto, ¿qué presupuesto tienes?",
+  "nodes": [
+    {
+      "node_name": "world_judge_llm",
+      "node_type": "llm",
+      "status": "ok",
+      "latency_ms": 11
+    },
+    {
+      "node_name": "planner_llm",
+      "node_type": "llm",
+      "status": "ok",
+      "latency_ms": 14
+    },
+    {
+      "node_name": "executor_llm",
+      "node_type": "llm",
+      "status": "ok",
+      "latency_ms": 19
+    }
+  ]
+}
