@@ -1,0 +1,969 @@
+E402 Module level import not at top of file
+  --> backend/app.py:28:1
+   |
+26 |       sys.path.insert(0, str(BASE_DIR))
+27 |
+28 | / from state import (
+29 | |     SESSIONS,
+30 | |     DEFAULT_CONTEXT_LIMIT_TURNS,
+31 | |     DEFAULT_KEEP_LAST_TURNS,
+32 | |     get_session_state,
+33 | | )
+   | |_^
+34 |   from agent import run_agent
+   |
+
+E402 Module level import not at top of file
+  --> backend/app.py:34:1
+   |
+32 |     get_session_state,
+33 | )
+34 | from agent import run_agent
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+
+E402 Module level import not at top of file
+  --> backend/app.py:60:1
+   |
+58 | _migrate_negotiation_env_aliases()
+59 |
+60 | from negotiation.negotiation_graph import run_negotiation_agent
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+61 | from negotiation.summary_jobs import SUMMARY_JOBS, deferred_summary_enabled, make_turn_job
+62 | from negotiation.state.deps import DEFAULT_DEPS
+   |
+
+E402 Module level import not at top of file
+  --> backend/app.py:61:1
+   |
+60 | from negotiation.negotiation_graph import run_negotiation_agent
+61 | from negotiation.summary_jobs import SUMMARY_JOBS, deferred_summary_enabled, make_turn_job
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+62 | from negotiation.state.deps import DEFAULT_DEPS
+63 | from negotiation.telemetry.live_trace import build_trace_event, list_recent_trace_events
+   |
+
+E402 Module level import not at top of file
+  --> backend/app.py:62:1
+   |
+60 | from negotiation.negotiation_graph import run_negotiation_agent
+61 | from negotiation.summary_jobs import SUMMARY_JOBS, deferred_summary_enabled, make_turn_job
+62 | from negotiation.state.deps import DEFAULT_DEPS
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+63 | from negotiation.telemetry.live_trace import build_trace_event, list_recent_trace_events
+64 | from negotiation.telemetry.live_trace2 import build_livetrace2_event, list_recent_livetrace2_events
+   |
+
+E402 Module level import not at top of file
+  --> backend/app.py:63:1
+   |
+61 | from negotiation.summary_jobs import SUMMARY_JOBS, deferred_summary_enabled, make_turn_job
+62 | from negotiation.state.deps import DEFAULT_DEPS
+63 | from negotiation.telemetry.live_trace import build_trace_event, list_recent_trace_events
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+64 | from negotiation.telemetry.live_trace2 import build_livetrace2_event, list_recent_livetrace2_events
+   |
+
+E402 Module level import not at top of file
+  --> backend/app.py:64:1
+   |
+62 | from negotiation.state.deps import DEFAULT_DEPS
+63 | from negotiation.telemetry.live_trace import build_trace_event, list_recent_trace_events
+64 | from negotiation.telemetry.live_trace2 import build_livetrace2_event, list_recent_livetrace2_events
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+65 |
+66 | from dotenv import load_dotenv
+   |
+
+E402 Module level import not at top of file
+  --> backend/app.py:66:1
+   |
+64 | from negotiation.telemetry.live_trace2 import build_livetrace2_event, list_recent_livetrace2_events
+65 |
+66 | from dotenv import load_dotenv
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+67 | load_dotenv()
+   |
+
+E402 Module level import not at top of file
+  --> backend/app.py:69:1
+   |
+67 | load_dotenv()
+68 |
+69 | from fastapi.middleware.cors import CORSMiddleware
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+70 |
+71 | import logging
+   |
+
+E402 Module level import not at top of file
+  --> backend/app.py:71:1
+   |
+69 | from fastapi.middleware.cors import CORSMiddleware
+70 |
+71 | import logging
+   | ^^^^^^^^^^^^^^
+72 |
+73 | logging.basicConfig(level=logging.INFO)
+   |
+
+F401 [*] `json` imported but unused
+ --> backend/lipsync_bfa.py:4:8
+  |
+2 | from __future__ import annotations
+3 |
+4 | import json
+  |        ^^^^
+5 | import os
+6 | import tempfile
+  |
+help: Remove unused import: `json`
+
+F401 `.llm_clients.reset_negotiation_llm_caches` imported but unused; consider removing, adding to `__all__`, or using a redundant alias
+ --> backend/negotiation/__init__.py:2:26
+  |
+2 | from .llm_clients import reset_negotiation_llm_caches
+  |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+help: Use an explicit re-export: `reset_negotiation_llm_caches as reset_negotiation_llm_caches`
+
+F401 [*] `pathlib.Path` imported but unused
+ --> backend/negotiation/config/models.py:6:21
+  |
+4 | import os
+5 | from dataclasses import dataclass
+6 | from pathlib import Path
+  |                     ^^^^
+7 | from typing import Any, Callable
+  |
+help: Remove unused import: `pathlib.Path`
+
+F401 [*] `typing.Any` imported but unused
+ --> backend/negotiation/context_utils.py:6:20
+  |
+4 | import hashlib
+5 | import json
+6 | from typing import Any, Callable, List, Tuple, TYPE_CHECKING
+  |                    ^^^
+7 |
+8 | from state import Message
+  |
+help: Remove unused import
+
+F401 [*] `typing.Callable` imported but unused
+ --> backend/negotiation/context_utils.py:6:25
+  |
+4 | import hashlib
+5 | import json
+6 | from typing import Any, Callable, List, Tuple, TYPE_CHECKING
+  |                         ^^^^^^^^
+7 |
+8 | from state import Message
+  |
+help: Remove unused import
+
+F401 `.executor_prompts.EXECUTOR_SYSTEM_PROMPT` imported but unused; consider removing, adding to `__all__`, or using a redundant alias
+ --> backend/negotiation/elementos/render/__init__.py:3:31
+  |
+1 | from copy import deepcopy
+2 |
+3 | from .executor_prompts import EXECUTOR_SYSTEM_PROMPT, EXECUTOR_USER_PROMPT, EXECUTOR_OUTPUT_SCHEMA
+  |                               ^^^^^^^^^^^^^^^^^^^^^^
+4 | from .persona_profiles import get_persona_profile
+5 | from .scene_profiles import get_scene_profile
+  |
+help: Use an explicit re-export: `EXECUTOR_SYSTEM_PROMPT as EXECUTOR_SYSTEM_PROMPT`
+
+F401 `.executor_prompts.EXECUTOR_USER_PROMPT` imported but unused; consider removing, adding to `__all__`, or using a redundant alias
+ --> backend/negotiation/elementos/render/__init__.py:3:55
+  |
+1 | from copy import deepcopy
+2 |
+3 | from .executor_prompts import EXECUTOR_SYSTEM_PROMPT, EXECUTOR_USER_PROMPT, EXECUTOR_OUTPUT_SCHEMA
+  |                                                       ^^^^^^^^^^^^^^^^^^^^
+4 | from .persona_profiles import get_persona_profile
+5 | from .scene_profiles import get_scene_profile
+  |
+help: Use an explicit re-export: `EXECUTOR_USER_PROMPT as EXECUTOR_USER_PROMPT`
+
+F401 `.executor_prompts.EXECUTOR_OUTPUT_SCHEMA` imported but unused; consider removing, adding to `__all__`, or using a redundant alias
+ --> backend/negotiation/elementos/render/__init__.py:3:77
+  |
+1 | from copy import deepcopy
+2 |
+3 | from .executor_prompts import EXECUTOR_SYSTEM_PROMPT, EXECUTOR_USER_PROMPT, EXECUTOR_OUTPUT_SCHEMA
+  |                                                                             ^^^^^^^^^^^^^^^^^^^^^^
+4 | from .persona_profiles import get_persona_profile
+5 | from .scene_profiles import get_scene_profile
+  |
+help: Use an explicit re-export: `EXECUTOR_OUTPUT_SCHEMA as EXECUTOR_OUTPUT_SCHEMA`
+
+F401 `.render_contracts.RENDER_LIMITS` imported but unused; consider removing, adding to `__all__`, or using a redundant alias
+ --> backend/negotiation/elementos/render/__init__.py:7:31
+  |
+5 | from .scene_profiles import get_scene_profile
+6 | from .style_contracts import get_style_contract
+7 | from .render_contracts import RENDER_LIMITS, CRITICAL_VIOLATION_CODES
+  |                               ^^^^^^^^^^^^^
+  |
+help: Use an explicit re-export: `RENDER_LIMITS as RENDER_LIMITS`
+
+F401 `.render_contracts.CRITICAL_VIOLATION_CODES` imported but unused; consider removing, adding to `__all__`, or using a redundant alias
+ --> backend/negotiation/elementos/render/__init__.py:7:46
+  |
+5 | from .scene_profiles import get_scene_profile
+6 | from .style_contracts import get_style_contract
+7 | from .render_contracts import RENDER_LIMITS, CRITICAL_VIOLATION_CODES
+  |                                              ^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+help: Use an explicit re-export: `CRITICAL_VIOLATION_CODES as CRITICAL_VIOLATION_CODES`
+
+F841 Local variable `belief_summary_json` is assigned to but never used
+   --> backend/negotiation/executor/render_executor.py:347:5
+    |
+346 |     belief_summary = summarize_belief_state_for_executor(state.get("belief_state"))
+347 |     belief_summary_json = _compact_json(belief_summary.get("summary", {}))
+    |     ^^^^^^^^^^^^^^^^^^^
+348 |     belief_summary_truncated = bool(belief_summary.get("truncated", False))
+349 |     belief_summary_keys = belief_summary.get("keys", [])
+    |
+help: Remove assignment to unused variable `belief_summary_json`
+
+F841 Local variable `belief_summary_truncated` is assigned to but never used
+   --> backend/negotiation/executor/render_executor.py:348:5
+    |
+346 |     belief_summary = summarize_belief_state_for_executor(state.get("belief_state"))
+347 |     belief_summary_json = _compact_json(belief_summary.get("summary", {}))
+348 |     belief_summary_truncated = bool(belief_summary.get("truncated", False))
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^
+349 |     belief_summary_keys = belief_summary.get("keys", [])
+    |
+help: Remove assignment to unused variable `belief_summary_truncated`
+
+F841 Local variable `belief_summary_keys` is assigned to but never used
+   --> backend/negotiation/executor/render_executor.py:349:5
+    |
+347 |     belief_summary_json = _compact_json(belief_summary.get("summary", {}))
+348 |     belief_summary_truncated = bool(belief_summary.get("truncated", False))
+349 |     belief_summary_keys = belief_summary.get("keys", [])
+    |     ^^^^^^^^^^^^^^^^^^^
+350 |
+351 |     if os.getenv("EXECUTOR_EPISTEMIC_CONTRACT_ENABLED", "0") == "1":
+    |
+help: Remove assignment to unused variable `belief_summary_keys`
+
+F841 Local variable `constraints_epistemic` is assigned to but never used
+   --> backend/negotiation/executor/render_executor.py:358:9
+    |
+356 |         }
+357 |     else:
+358 |         constraints_epistemic = {"epistemic_style": "neutral", "must_hedge": False, "verify_first": False}
+    |         ^^^^^^^^^^^^^^^^^^^^^
+359 |
+360 |     planner_semantic_output = state.get("planner_semantic_output") if isinstance(state.get("planner_semantic_output"), dict) else {}
+    |
+help: Remove assignment to unused variable `constraints_epistemic`
+
+F401 [*] `..perception.input_shape.ConversationMode` imported but unused
+ --> backend/negotiation/gating/shared.py:6:5
+  |
+5 | from ..perception.input_shape import (
+6 |     ConversationMode,
+  |     ^^^^^^^^^^^^^^^^
+7 |     VoiceModality,
+8 |     input_shape_changed_materially,
+  |
+help: Remove unused import
+
+F401 [*] `..perception.input_shape.VoiceModality` imported but unused
+ --> backend/negotiation/gating/shared.py:7:5
+  |
+5 | from ..perception.input_shape import (
+6 |     ConversationMode,
+7 |     VoiceModality,
+  |     ^^^^^^^^^^^^^
+8 |     input_shape_changed_materially,
+9 |     input_shape_features,
+  |
+help: Remove unused import
+
+F401 [*] `..perception.input_shape.input_shape_changed_materially` imported but unused
+  --> backend/negotiation/gating/shared.py:8:5
+   |
+ 6 |     ConversationMode,
+ 7 |     VoiceModality,
+ 8 |     input_shape_changed_materially,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 9 |     input_shape_features,
+10 | )
+   |
+help: Remove unused import
+
+F401 [*] `..perception.input_shape.input_shape_features` imported but unused
+  --> backend/negotiation/gating/shared.py:9:5
+   |
+ 7 |     VoiceModality,
+ 8 |     input_shape_changed_materially,
+ 9 |     input_shape_features,
+   |     ^^^^^^^^^^^^^^^^^^^^
+10 | )
+   |
+help: Remove unused import
+
+F401 [*] `normalizer.normalize_text` imported but unused
+  --> backend/negotiation/negotiation_graph.py:14:24
+   |
+12 | from langgraph.graph import StateGraph, START, END
+13 |
+14 | from normalizer import normalize_text
+   |                        ^^^^^^^^^^^^^^
+15 | from state import (
+16 |     SessionState,
+   |
+help: Remove unused import: `normalizer.normalize_text`
+
+F401 [*] `.context_utils.format_memory_block` imported but unused
+  --> backend/negotiation/negotiation_graph.py:33:5
+   |
+31 |     build_context_snippet,
+32 |     build_memory_context,
+33 |     format_memory_block,
+   |     ^^^^^^^^^^^^^^^^^^^
+34 |     maybe_refresh_summary,
+35 | )
+   |
+help: Remove unused import: `.context_utils.format_memory_block`
+
+F401 [*] `.gate_utils.gate_world` imported but unused
+  --> backend/negotiation/negotiation_graph.py:44:5
+   |
+42 | from .config import get_negotiation_model_config, negotiation_effective_model_params
+43 | from .gate_utils import (
+44 |     gate_world,
+   |     ^^^^^^^^^^
+45 |     input_shape_features,
+46 |     interaction_fingerprint,
+   |
+help: Remove unused import
+
+F401 [*] `.gate_utils.input_shape_features` imported but unused
+  --> backend/negotiation/negotiation_graph.py:45:5
+   |
+43 | from .gate_utils import (
+44 |     gate_world,
+45 |     input_shape_features,
+   |     ^^^^^^^^^^^^^^^^^^^^
+46 |     interaction_fingerprint,
+47 |     loop_flags_changed,
+   |
+help: Remove unused import
+
+F401 [*] `.gate_utils.interaction_fingerprint` imported but unused
+  --> backend/negotiation/negotiation_graph.py:46:5
+   |
+44 |     gate_world,
+45 |     input_shape_features,
+46 |     interaction_fingerprint,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+47 |     loop_flags_changed,
+48 | )
+   |
+help: Remove unused import
+
+F401 [*] `.gate_utils.loop_flags_changed` imported but unused
+  --> backend/negotiation/negotiation_graph.py:47:5
+   |
+45 |     input_shape_features,
+46 |     interaction_fingerprint,
+47 |     loop_flags_changed,
+   |     ^^^^^^^^^^^^^^^^^^
+48 | )
+49 | from .phase_policy_planner import plan_phase_policy
+   |
+help: Remove unused import
+
+F401 [*] `.phase_policy_planner.plan_phase_policy` imported but unused
+  --> backend/negotiation/negotiation_graph.py:49:35
+   |
+47 |     loop_flags_changed,
+48 | )
+49 | from .phase_policy_planner import plan_phase_policy
+   |                                   ^^^^^^^^^^^^^^^^^
+50 | from .phase_state_updater import postprocess_phase_candidate
+51 | from .policies import get_policy, list_policy_ids, policy_phase_catalog, safe_neutral_policy_id
+   |
+help: Remove unused import: `.phase_policy_planner.plan_phase_policy`
+
+F401 [*] `.phase_state_updater.postprocess_phase_candidate` imported but unused
+  --> backend/negotiation/negotiation_graph.py:50:34
+   |
+48 | )
+49 | from .phase_policy_planner import plan_phase_policy
+50 | from .phase_state_updater import postprocess_phase_candidate
+   |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+51 | from .policies import get_policy, list_policy_ids, policy_phase_catalog, safe_neutral_policy_id
+52 | from .policy_planner import (
+   |
+help: Remove unused import: `.phase_state_updater.postprocess_phase_candidate`
+
+F401 [*] `.policies.policy_phase_catalog` imported but unused
+  --> backend/negotiation/negotiation_graph.py:51:52
+   |
+49 | from .phase_policy_planner import plan_phase_policy
+50 | from .phase_state_updater import postprocess_phase_candidate
+51 | from .policies import get_policy, list_policy_ids, policy_phase_catalog, safe_neutral_policy_id
+   |                                                    ^^^^^^^^^^^^^^^^^^^^
+52 | from .policy_planner import (
+53 |     _required_inputs_met,
+   |
+help: Remove unused import
+
+F401 [*] `.policies.safe_neutral_policy_id` imported but unused
+  --> backend/negotiation/negotiation_graph.py:51:74
+   |
+49 | from .phase_policy_planner import plan_phase_policy
+50 | from .phase_state_updater import postprocess_phase_candidate
+51 | from .policies import get_policy, list_policy_ids, policy_phase_catalog, safe_neutral_policy_id
+   |                                                                          ^^^^^^^^^^^^^^^^^^^^^^
+52 | from .policy_planner import (
+53 |     _required_inputs_met,
+   |
+help: Remove unused import
+
+F401 [*] `.policy_planner._required_inputs_met` imported but unused
+  --> backend/negotiation/negotiation_graph.py:53:5
+   |
+51 | from .policies import get_policy, list_policy_ids, policy_phase_catalog, safe_neutral_policy_id
+52 | from .policy_planner import (
+53 |     _required_inputs_met,
+   |     ^^^^^^^^^^^^^^^^^^^^
+54 |     _violates_hard_constraints,
+55 |     allowed_policy_ids,
+   |
+help: Remove unused import
+
+F401 [*] `.policy_planner._violates_hard_constraints` imported but unused
+  --> backend/negotiation/negotiation_graph.py:54:5
+   |
+52 | from .policy_planner import (
+53 |     _required_inputs_met,
+54 |     _violates_hard_constraints,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+55 |     allowed_policy_ids,
+56 |     repair_policy_by_phase,
+   |
+help: Remove unused import
+
+F401 [*] `.policy_planner.allowed_policy_ids` imported but unused
+  --> backend/negotiation/negotiation_graph.py:55:5
+   |
+53 |     _required_inputs_met,
+54 |     _violates_hard_constraints,
+55 |     allowed_policy_ids,
+   |     ^^^^^^^^^^^^^^^^^^
+56 |     repair_policy_by_phase,
+57 | )
+   |
+help: Remove unused import
+
+F401 [*] `.policy_planner.repair_policy_by_phase` imported but unused
+  --> backend/negotiation/negotiation_graph.py:56:5
+   |
+54 |     _violates_hard_constraints,
+55 |     allowed_policy_ids,
+56 |     repair_policy_by_phase,
+   |     ^^^^^^^^^^^^^^^^^^^^^^
+57 | )
+58 | from .progress_updater import update_progress_state
+   |
+help: Remove unused import
+
+F401 [*] `.progress_updater.update_progress_state` imported but unused
+  --> backend/negotiation/negotiation_graph.py:58:31
+   |
+56 |     repair_policy_by_phase,
+57 | )
+58 | from .progress_updater import update_progress_state
+   |                               ^^^^^^^^^^^^^^^^^^^^^
+59 | from .executor import build_strategy_summary, normalize_executor_output, render_executor_output
+60 | from .elementos.render import resolve_render_profiles
+   |
+help: Remove unused import: `.progress_updater.update_progress_state`
+
+F401 [*] `.executor.build_strategy_summary` imported but unused
+  --> backend/negotiation/negotiation_graph.py:59:23
+   |
+57 | )
+58 | from .progress_updater import update_progress_state
+59 | from .executor import build_strategy_summary, normalize_executor_output, render_executor_output
+   |                       ^^^^^^^^^^^^^^^^^^^^^^
+60 | from .elementos.render import resolve_render_profiles
+61 | from .elementos.render.preset_registry import (
+   |
+help: Remove unused import
+
+F401 [*] `.executor.normalize_executor_output` imported but unused
+  --> backend/negotiation/negotiation_graph.py:59:47
+   |
+57 | )
+58 | from .progress_updater import update_progress_state
+59 | from .executor import build_strategy_summary, normalize_executor_output, render_executor_output
+   |                                               ^^^^^^^^^^^^^^^^^^^^^^^^^
+60 | from .elementos.render import resolve_render_profiles
+61 | from .elementos.render.preset_registry import (
+   |
+help: Remove unused import
+
+F401 [*] `.executor.render_executor_output` imported but unused
+  --> backend/negotiation/negotiation_graph.py:59:74
+   |
+57 | )
+58 | from .progress_updater import update_progress_state
+59 | from .executor import build_strategy_summary, normalize_executor_output, render_executor_output
+   |                                                                          ^^^^^^^^^^^^^^^^^^^^^^
+60 | from .elementos.render import resolve_render_profiles
+61 | from .elementos.render.preset_registry import (
+   |
+help: Remove unused import
+
+F401 [*] `.elementos.render.resolve_render_profiles` imported but unused
+  --> backend/negotiation/negotiation_graph.py:60:31
+   |
+58 | from .progress_updater import update_progress_state
+59 | from .executor import build_strategy_summary, normalize_executor_output, render_executor_output
+60 | from .elementos.render import resolve_render_profiles
+   |                               ^^^^^^^^^^^^^^^^^^^^^^^
+61 | from .elementos.render.preset_registry import (
+62 |     apply_buyer_preset_to_render_state,
+   |
+help: Remove unused import: `.elementos.render.resolve_render_profiles`
+
+F401 [*] `.elementos.render.constraints_builder.build_constraints_struct` imported but unused
+  --> backend/negotiation/negotiation_graph.py:65:51
+   |
+63 |     resolve_runtime_buyer_preset_choice,
+64 | )
+65 | from .elementos.render.constraints_builder import build_constraints_struct
+   |                                                   ^^^^^^^^^^^^^^^^^^^^^^^^
+66 | from .validator import validate_and_repair
+67 | from .schemas import (
+   |
+help: Remove unused import: `.elementos.render.constraints_builder.build_constraints_struct`
+
+F401 [*] `.validator.validate_and_repair` imported but unused
+  --> backend/negotiation/negotiation_graph.py:66:24
+   |
+64 | )
+65 | from .elementos.render.constraints_builder import build_constraints_struct
+66 | from .validator import validate_and_repair
+   |                        ^^^^^^^^^^^^^^^^^^^
+67 | from .schemas import (
+68 |     BeliefState,
+   |
+help: Remove unused import: `.validator.validate_and_repair`
+
+F401 [*] `.schemas.default_belief_state` imported but unused
+  --> backend/negotiation/negotiation_graph.py:72:5
+   |
+70 |     ProgressState,
+71 |     WorldState,
+72 |     default_belief_state,
+   |     ^^^^^^^^^^^^^^^^^^^^
+73 |     default_constraints_struct,
+74 |     default_policy_decision,
+   |
+help: Remove unused import
+
+F401 [*] `.schemas.default_constraints_struct` imported but unused
+  --> backend/negotiation/negotiation_graph.py:73:5
+   |
+71 |     WorldState,
+72 |     default_belief_state,
+73 |     default_constraints_struct,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+74 |     default_policy_decision,
+75 |     default_progress_state,
+   |
+help: Remove unused import
+
+F401 [*] `.schemas.default_progress_state` imported but unused
+  --> backend/negotiation/negotiation_graph.py:75:5
+   |
+73 |     default_constraints_struct,
+74 |     default_policy_decision,
+75 |     default_progress_state,
+   |     ^^^^^^^^^^^^^^^^^^^^^^
+76 |     default_render_state,
+77 |     default_world_state,
+   |
+help: Remove unused import
+
+F401 [*] `.schemas.default_render_state` imported but unused
+  --> backend/negotiation/negotiation_graph.py:76:5
+   |
+74 |     default_policy_decision,
+75 |     default_progress_state,
+76 |     default_render_state,
+   |     ^^^^^^^^^^^^^^^^^^^^
+77 |     default_world_state,
+78 | )
+   |
+help: Remove unused import
+
+F401 [*] `.schemas.default_world_state` imported but unused
+  --> backend/negotiation/negotiation_graph.py:77:5
+   |
+75 |     default_progress_state,
+76 |     default_render_state,
+77 |     default_world_state,
+   |     ^^^^^^^^^^^^^^^^^^^
+78 | )
+79 | from .mode_inference import update_conversation_mode
+   |
+help: Remove unused import
+
+F401 [*] `.mode_inference.update_conversation_mode` imported but unused
+  --> backend/negotiation/negotiation_graph.py:79:29
+   |
+77 |     default_world_state,
+78 | )
+79 | from .mode_inference import update_conversation_mode
+   |                             ^^^^^^^^^^^^^^^^^^^^^^^^
+80 | from .validation import (
+81 |     normalize_belief_state,
+   |
+help: Remove unused import: `.mode_inference.update_conversation_mode`
+
+F401 [*] `.world_state_updater.diff_world_state` imported but unused
+  --> backend/negotiation/negotiation_graph.py:87:34
+   |
+85 | )
+86 |
+87 | from .world_state_updater import diff_world_state, update_world_state
+   |                                  ^^^^^^^^^^^^^^^^
+88 | from .nodes.world_node import world_updater_node
+89 | from .nodes.belief_node import belief_updater_node
+   |
+help: Remove unused import
+
+F401 [*] `.world_state_updater.update_world_state` imported but unused
+  --> backend/negotiation/negotiation_graph.py:87:52
+   |
+85 | )
+86 |
+87 | from .world_state_updater import diff_world_state, update_world_state
+   |                                                    ^^^^^^^^^^^^^^^^^^
+88 | from .nodes.world_node import world_updater_node
+89 | from .nodes.belief_node import belief_updater_node
+   |
+help: Remove unused import
+
+F401 [*] `..llm_planning_context.build_full_roleplay_profiles` imported but unused
+  --> backend/negotiation/nodes/world_node.py:33:5
+   |
+31 | from ..advisor import build_advisor_recs, derive_advisor_signals
+32 | from ..llm_planning_context import (
+33 |     build_full_roleplay_profiles,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+34 |     build_judge_context_block_full,
+35 |     build_objective_summary,
+   |
+help: Remove unused import
+
+F401 [*] `..llm_planning_context.build_judge_context_block_full` imported but unused
+  --> backend/negotiation/nodes/world_node.py:34:5
+   |
+32 | from ..llm_planning_context import (
+33 |     build_full_roleplay_profiles,
+34 |     build_judge_context_block_full,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+35 |     build_objective_summary,
+36 |     build_world_digest,
+   |
+help: Remove unused import
+
+F401 [*] `..llm_planning_context.build_objective_summary` imported but unused
+  --> backend/negotiation/nodes/world_node.py:35:5
+   |
+33 |     build_full_roleplay_profiles,
+34 |     build_judge_context_block_full,
+35 |     build_objective_summary,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+36 |     build_world_digest,
+37 |     build_world_full_compact,
+   |
+help: Remove unused import
+
+F401 [*] `..llm_planning_context.build_world_digest` imported but unused
+  --> backend/negotiation/nodes/world_node.py:36:5
+   |
+34 |     build_judge_context_block_full,
+35 |     build_objective_summary,
+36 |     build_world_digest,
+   |     ^^^^^^^^^^^^^^^^^^
+37 |     build_world_full_compact,
+38 |     compact_json_for_prompt,
+   |
+help: Remove unused import
+
+F401 [*] `..llm_planning_context.build_world_full_compact` imported but unused
+  --> backend/negotiation/nodes/world_node.py:37:5
+   |
+35 |     build_objective_summary,
+36 |     build_world_digest,
+37 |     build_world_full_compact,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+38 |     compact_json_for_prompt,
+39 | )
+   |
+help: Remove unused import
+
+F401 [*] `..llm_planning_context.compact_json_for_prompt` imported but unused
+  --> backend/negotiation/nodes/world_node.py:38:5
+   |
+36 |     build_world_digest,
+37 |     build_world_full_compact,
+38 |     compact_json_for_prompt,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+39 | )
+40 | from ..repo_prompts import WORLD_JUDGE_V3_SYSTEM_PROMPT, WORLD_JUDGE_V3_USER_PROMPT
+   |
+help: Remove unused import
+
+E402 Module level import not at top of file
+  --> backend/scripts/validate_intent_demo.py:12:1
+   |
+10 | os.environ.setdefault("OPENAI_API_KEY", "dummy")
+11 |
+12 | from negotiation.negotiation_graph import AgentDeps, run_negotiation_agent
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+13 | from negotiation.schemas import (
+14 |     default_belief_state,
+   |
+
+E402 Module level import not at top of file
+  --> backend/scripts/validate_intent_demo.py:13:1
+   |
+12 |   from negotiation.negotiation_graph import AgentDeps, run_negotiation_agent
+13 | / from negotiation.schemas import (
+14 | |     default_belief_state,
+15 | |     default_intent_state,
+16 | |     default_policy_decision,
+17 | |     default_progress_state,
+18 | |     default_world_state,
+19 | | )
+   | |_^
+20 |   from state import SessionState
+21 |   import negotiation.negotiation_graph as negotiation_graph
+   |
+
+E402 Module level import not at top of file
+  --> backend/scripts/validate_intent_demo.py:20:1
+   |
+18 |     default_world_state,
+19 | )
+20 | from state import SessionState
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+21 | import negotiation.negotiation_graph as negotiation_graph
+   |
+
+E402 Module level import not at top of file
+  --> backend/scripts/validate_intent_demo.py:21:1
+   |
+19 | )
+20 | from state import SessionState
+21 | import negotiation.negotiation_graph as negotiation_graph
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+
+F401 [*] `typing.Callable` imported but unused
+  --> backend/tests/helpers/negotiation_harness.py:8:25
+   |
+ 6 | from copy import deepcopy
+ 7 | from dataclasses import dataclass, field
+ 8 | from typing import Any, Callable, Iterable
+   |                         ^^^^^^^^
+ 9 |
+10 | from negotiation.negotiation_graph import run_negotiation_agent
+   |
+help: Remove unused import: `typing.Callable`
+
+F401 [*] `negotiation.validation.normalize_phase_state` imported but unused
+  --> backend/tests/helpers/negotiation_harness.py:18:36
+   |
+16 |     default_world_state,
+17 | )
+18 | from negotiation.validation import normalize_phase_state, normalize_policy_decision, normalize_progress_state
+   |                                    ^^^^^^^^^^^^^^^^^^^^^
+19 | from state import SessionState
+   |
+help: Remove unused import: `negotiation.validation.normalize_phase_state`
+
+F401 [*] `negotiation.negotiation_graph.run_negotiation_agent` imported but unused
+ --> backend/tests/test_dead_code_cleanup.py:3:54
+  |
+1 | import warnings
+2 |
+3 | from negotiation.negotiation_graph import AgentDeps, run_negotiation_agent
+  |                                                      ^^^^^^^^^^^^^^^^^^^^^
+4 | from negotiation.schemas import default_belief_state, default_policy_decision, default_progress_state, default_world_state
+5 | from negotiation.validation import normalize_progress_state
+  |
+help: Remove unused import: `negotiation.negotiation_graph.run_negotiation_agent`
+
+F401 [*] `negotiation.schemas.default_progress_state` imported but unused
+ --> backend/tests/test_dead_code_cleanup.py:4:80
+  |
+3 | from negotiation.negotiation_graph import AgentDeps, run_negotiation_agent
+4 | from negotiation.schemas import default_belief_state, default_policy_decision, default_progress_state, default_world_state
+  |                                                                                ^^^^^^^^^^^^^^^^^^^^^^
+5 | from negotiation.validation import normalize_progress_state
+6 | from state import SessionState
+  |
+help: Remove unused import
+
+F401 [*] `negotiation.schemas.default_world_state` imported but unused
+ --> backend/tests/test_dead_code_cleanup.py:4:104
+  |
+3 | from negotiation.negotiation_graph import AgentDeps, run_negotiation_agent
+4 | from negotiation.schemas import default_belief_state, default_policy_decision, default_progress_state, default_world_state
+  |                                                                                                        ^^^^^^^^^^^^^^^^^^^
+5 | from negotiation.validation import normalize_progress_state
+6 | from state import SessionState
+  |
+help: Remove unused import
+
+F401 [*] `state.SessionState` imported but unused
+ --> backend/tests/test_dead_code_cleanup.py:6:19
+  |
+4 | from negotiation.schemas import default_belief_state, default_policy_decision, default_progress_state, default_world_state
+5 | from negotiation.validation import normalize_progress_state
+6 | from state import SessionState
+  |                   ^^^^^^^^^^^^
+  |
+help: Remove unused import: `state.SessionState`
+
+F841 Local variable `last` is assigned to but never used
+   --> backend/tests/test_e2e_negotiation_pipeline.py:495:9
+    |
+494 |     with trace_guard(tmp_path, "monkey_run", trace, graph_states):
+495 |         last = trace[-1]
+    |         ^^^^
+496 |         _assert_trace_invariants(trace, graph_states)
+497 |         assert len(trace) == len(turns)
+    |
+help: Remove assignment to unused variable `last`
+
+F401 [*] `types.SimpleNamespace` imported but unused
+ --> backend/tests/test_hybrid_trace_fields.py:1:19
+  |
+1 | from types import SimpleNamespace
+  |                   ^^^^^^^^^^^^^^^
+2 |
+3 | from negotiation.negotiation_graph import AgentDeps, run_negotiation_agent
+  |
+help: Remove unused import: `types.SimpleNamespace`
+
+F401 [*] `negotiation.world_state_updater.update_world_state` imported but unused
+  --> backend/tests/test_hybrid_trace_fields.py:10:45
+   |
+ 8 |     default_world_state,
+ 9 | )
+10 | from negotiation.world_state_updater import update_world_state, diff_world_state
+   |                                             ^^^^^^^^^^^^^^^^^^
+11 | from state import SessionState
+   |
+help: Remove unused import
+
+F401 [*] `negotiation.world_state_updater.diff_world_state` imported but unused
+  --> backend/tests/test_hybrid_trace_fields.py:10:65
+   |
+ 8 |     default_world_state,
+ 9 | )
+10 | from negotiation.world_state_updater import update_world_state, diff_world_state
+   |                                                                 ^^^^^^^^^^^^^^^^
+11 | from state import SessionState
+   |
+help: Remove unused import
+
+F401 [*] `os` imported but unused
+ --> backend/tests/test_negotiation_env_vars.py:2:8
+  |
+1 | import importlib
+2 | import os
+  |        ^^
+3 | import sys
+  |
+help: Remove unused import: `os`
+
+F401 [*] `negotiation.policies.get_policy` imported but unused
+ --> backend/tests/test_phase_policy_desfase_fix.py:6:34
+  |
+5 | from negotiation.nodes.planner_node import phase_policy_planner_node
+6 | from negotiation.policies import get_policy, policy_phase_catalog
+  |                                  ^^^^^^^^^^
+7 | from negotiation.policy_planner import allowed_policy_ids
+8 | from negotiation.schemas import (
+  |
+help: Remove unused import: `negotiation.policies.get_policy`
+
+F811 Redefinition of unused `test_planner_v2_system_prompt_includes_anti_loop_initiative_rules` from line 86
+   --> backend/tests/test_phase_policy_prompt_format.py:112:5
+    |
+112 | def test_planner_v2_system_prompt_includes_anti_loop_initiative_rules():
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `test_planner_v2_system_prompt_includes_anti_loop_initiative_rules` redefined here
+113 |     assert "INICIATIVA_Y_ANTI_LOOP" in PLANNER_V2_SYSTEM_PROMPT
+114 |     assert "SUFICIENTE PROVISIONAL" in PLANNER_V2_SYSTEM_PROMPT
+    |
+   ::: backend/tests/test_phase_policy_prompt_format.py:86:5
+    |
+ 86 | def test_planner_v2_system_prompt_includes_anti_loop_initiative_rules():
+    |     ----------------------------------------------------------------- previous definition of `test_planner_v2_system_prompt_includes_anti_loop_initiative_rules` here
+ 87 |     assert "INICIATIVA_Y_ANTI_LOOP" in PLANNER_V2_SYSTEM_PROMPT
+ 88 |     assert "SUFICIENTE PROVISIONAL" in PLANNER_V2_SYSTEM_PROMPT
+    |
+help: Remove definition: `test_planner_v2_system_prompt_includes_anti_loop_initiative_rules`
+
+E402 Module level import not at top of file
+  --> backend/tests/test_progress_updater.py:22:1
+   |
+22 | from negotiation.progress_updater import update_progress_state
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+23 | from negotiation.schemas import default_belief_state, default_policy_decision, default_progress_state, default_world_state
+   |
+
+E402 Module level import not at top of file
+  --> backend/tests/test_progress_updater.py:23:1
+   |
+22 | from negotiation.progress_updater import update_progress_state
+23 | from negotiation.schemas import default_belief_state, default_policy_decision, default_progress_state, default_world_state
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+
+F401 [*] `pytest` imported but unused
+ --> backend/tests/test_state_normalization.py:4:8
+  |
+2 | import os
+3 |
+4 | import pytest
+  |        ^^^^^^
+5 |
+6 | from negotiation.schemas import (
+  |
+help: Remove unused import: `pytest`
+
+E731 Do not assign a `lambda` expression, use a `def`
+  --> backend/tests/test_world_extractor_v4_multisignal_context_contradictions.py:31:5
+   |
+30 |   def test_multi_item_caps_global_max_items_per_turn():
+31 | /     make_items = lambda prefix, n: ",".join(
+32 | |         f'{{"text":"{prefix} {i}","confidence":0.8,"raw_text":"{prefix} {i}","source_turn":1}}' for i in range(1, n + 1)
+33 | |     )
+   | |_____^
+34 |       deps = _QueueDeps([
+35 |           '{"schema_version":"world_extractor_v4","world_buckets_patch":{' \
+   |
+help: Rewrite `make_items` as a `def`
+
+Found 84 errors.
+[*] 55 fixable with the `--fix` option (6 hidden fixes can be enabled with the `--unsafe-fixes` option).
