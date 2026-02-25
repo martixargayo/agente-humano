@@ -607,11 +607,11 @@ function buildSummaryNodes(allNodes){
 
 
 function pickUserText(evt){
-  return String(evt.input_message || evt.user_message || evt.message || '').trim() || '—';
+  return String(evt.input_message || evt.user_message || evt.message || (evt.payload||{}).user_message || '').trim() || '—';
 }
 
 function pickIaText(evt){
-  return String(evt.final_reply || evt.output_text || evt.reply || '').trim() || '—';
+  return String(evt.assistant_message || evt.final_reply || evt.output_text || evt.reply || (((evt.payload||{}).executor_output||{}).response_text) || '').trim() || '—';
 }
 
 function renderDialogOnly(){

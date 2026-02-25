@@ -99,6 +99,11 @@ def _enforce_executor_v2_contract(out: dict, style: dict, constraints: dict) -> 
         data["response_text"] = "?".join(parts[: max_questions + 1]).strip()
         if max_questions > 0 and not data["response_text"].endswith("?"):
             data["response_text"] = data["response_text"].rstrip(" .") + "?"
+
+    asked_question = bool(data.get("asked_question", False))
+    requested_slots = data.get("requested_info_slots") if isinstance(data.get("requested_info_slots"), list) else []
+    if asked_question and not requested_slots:
+        data["requested_info_slots"] = ["clarify_context"]
     return data
 
 

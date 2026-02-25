@@ -250,3 +250,56 @@ def test_normalize_world_buckets_accepts_default_turn_kwarg():
     out = normalize_world_buckets({"interaction": {}, "notes": {}}, default_turn=123)
     assert isinstance(out, dict)
     assert set(out.keys()) == {"interaction", "notes"}
+
+
+def test_executor_enforces_requested_slots_when_question_present():
+    from negotiation.executor.render_executor import render_executor_output
+
+    class _DepsExec:
+        def execute(self, _messages):
+            return json.dumps(
+                {
+                    "schema_version": "executor_v2",
+                    "response_text": "¿Cuál es el precio final?",
+                    "asked_question": True,
+                    "requested_info_slots": [],
+                    "tone_used": "neutral",
+                    "followup_intent": None,
+                    "render_meta": {},
+                },
+                ensure_ascii=False,
+            )
+
+    state = {
+        "progress_state": default_progress_state(),
+        "belief_state": default_belief_state(),
+        "advisor_recs": {},
+        "planner_semantic_output": {
+            "schema_version": "planner_semantic_v1",
+            "phase": "clima_humano",
+            "style": "Breve",
+            "next_move_hint": "Validar y seguir",
+            "what_not_to_repeat": [],
+        },
+        "last_assistant_message": "mensaje previo",
+        "recent_history_text": "assistant: mensaje previo",
+        "user_message": "ok",
+    }
+
+    out = render_executor_output(
+        state,
+        deps=_DepsExec(),
+        conversation_mode="negotiation",
+        policy_pack_active="universal",
+        policy_id="semantic_ledger",
+        persona_profile={},
+        scene_profile={},
+        style_contract={"max_words": 30, "max_questions": 1},
+        constraints_struct={"max_questions": 1},
+        strategy_summary={},
+        memory_block="",
+        world_state=default_world_state(),
+        user_message="ok",
+    )
+    assert out["asked_question"] is True
+    assert out["requested_info_slots"] == ["clarify_context"]
