@@ -304,7 +304,7 @@ def test_executor_enforces_requested_slots_when_question_present():
         user_message="ok",
     )
     assert out["asked_question"] is True
-    assert out["requested_info_slots"] == ["clarify_context"]
+    assert out["requested_info_slots"] == ["precio_objetivo"]
 
 
 class _RawMsg:
@@ -393,12 +393,12 @@ def test_runtime_prompts_include_objective_profiles_phase_map_and_memory(monkeyp
 
     assert "PHASE CONTROL" in planner_prompt
     assert "allowed_next_phases" in planner_prompt
-    assert "SEMANTIC_LEDGER (texto humano)" in planner_prompt
+    assert "SEMANTIC_LEDGER" in planner_prompt
     assert "PHASES_RESUMEN" in planner_prompt
 
-    assert "PHASE_CARD (solo la phase elegida)" in executor_prompt
+    assert "PHASE_CARD_EXTENDIDA" in executor_prompt
     assert "topic_selected:" in executor_prompt
-    assert "SEMANTIC_LEDGER (texto humano)" in executor_prompt
+    assert "SEMANTIC_LEDGER" in executor_prompt
     assert "phase_map_json" not in executor_prompt.lower()
 
 

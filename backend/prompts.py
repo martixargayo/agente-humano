@@ -65,18 +65,17 @@ Devuelve SOLO JSON con:
 WORLD_JUDGE_V4_USER_PROMPT = """
 TURN
 turn_idx: {turn_idx}
-speaker_of_user_message: {speaker_of_user_message}   # seller|buyer
+speaker_of_user_message: {speaker_of_user_message}
 USER_MESSAGE: {user_message}
 
 ASSISTANT_LAST_MESSAGE: {assistant_last_message}
-RECENT_HISTORY_TEXT: {recent_history_text_compact}   # 6–10 líneas máx
+RECENT_HISTORY_TEXT: {recent_history_text_compact}
 
 SEMANTIC_LEDGER_PREV: {semantic_ledger_prev_json}
 
 Output: JSON judge_semantic_v1
 """.strip()
 
-# backcompat aliases
 WORLD_JUDGE_V3_SYSTEM_PROMPT = WORLD_JUDGE_V4_SYSTEM_PROMPT
 WORLD_JUDGE_V3_USER_PROMPT = WORLD_JUDGE_V4_USER_PROMPT
 
@@ -88,63 +87,81 @@ Salida:
 - Sin texto extra. Sin claves extra.
 
 Prioridades (en este orden):
-1) HUMAN-FIRST: si USER_MESSAGE contiene una pregunta directa, next_move_hint DEBE empezar respondiéndola (1 frase).
-2) CONTROL DE FASE: phase DEBE estar dentro de allowed_next_phases. Prefiere mantener fase o avanzar 1 paso; evita saltos.
-   Fases oficiales válidas: clima_humano | descubrimiento_y_comprension | propuesta_creativa | concesiones_y_ajuste_final | formalizacion_del_acuerdo.
-3) STYLE: style DEBE ser EXACTAMENTE style_id (el que recibes en el input).
+1) HUMAN-FIRST: si USER_MESSAGE contiene una pregunta directa, next_move_hint DEBE empezar respondiéndola en 1 frase.
+2) CONTROL DE FASE: phase DEBE estar dentro de allowed_next_phases.
+   Regla por defecto: mantener fase o avanzar 1 paso.
+   Excepción permitida: si USER_MESSAGE adelanta claramente a precio/cierre/logística/confirmación, puedes saltar 2+ fases.
+3) STYLE: style DEBE ser EXACTAMENTE style_id.
 4) NO-REPEAT: respeta SEMANTIC_LEDGER. No reabras ideas/preguntas ya cubiertas.
-   what_not_to_repeat debe alinearse con lo_que_falta_pero_no_insistire y con lo ya preguntado.
-5) RITMO HUMANO: por defecto “validar + cerrar” (sin pregunta). Haz pregunta solo si desbloquea una decisión real.
-6) PROGRESO: cada turno debe avanzar (ancla/criterio/condición/siguiente paso) sin convertirlo en interrogatorio.
+5) RITMO HUMANO: por defecto validar + cerrar sin pregunta. Pregunta solo si desbloquea decisión real.
+6) PROGRESO: cada turno debe avanzar con criterio/condición/siguiente paso, sin interrogatorio.
 
-Contrato para next_move_hint (obligatorio):
-- Escribe como guía ejecutable en 1–4 líneas:
-  RESPUESTA: ...
-  MOVIMIENTO: ...
-  PREGUNTA (opcional): ...
-  TEMA: "<label exacto>"
-- Como máximo 1 pregunta en total.
+Formato obligatorio 3 o 4 líneas en next_move_hint:
+RESPUESTA: ...
+MOVIMIENTO: ...
+PREGUNTA: ...
+TEMA: "<label exacto de TOPICS_POR_FASE para la phase elegida>"
+
+Reglas estrictas del formato:
+- Usa saltos de línea reales entre cada marcador.
+- PREGUNTA es opcional; si no hay pregunta, omite la línea PREGUNTA.
+- Los signos ¿? solo pueden aparecer en PREGUNTA y TEMA.
+- RESPUESTA y MOVIMIENTO nunca contienen ¿?.
+- TEMA debe copiarse EXACTAMENTE de TOPICS_POR_FASE para la phase elegida.
+- Está prohibido usar el nombre de la phase como TEMA.
+- Longitud máxima recomendada por línea:
+  - RESPUESTA: 3–12 palabras o 1 frase corta.
+  - MOVIMIENTO: 5–14 palabras con intención táctica.
+  - PREGUNTA: 1 pregunta corta.
+  - TEMA: label exacto sin cambios.
+- Máximo 1 pregunta total.
 """.strip()
 
 PLANNER_SEMANTIC_V1_USER_PROMPT = """
 TURN
-SPEAKER: {speaker}                  # seller|buyer|system (si aplica)
+SPEAKER: {speaker}
 USER_MESSAGE: {user_message}
 ASSISTANT_LAST_MESSAGE: {assistant_last_message}
 
 CONSTRAINTS
-style_id: {style_id}                # ej: psyplay_compact
-max_words: {max_words}              # ej: 30
-max_questions: {max_questions}      # ej: 1
+style_id: {style_id}
+max_words: {max_words}
+max_questions: {max_questions}
 
-ROLE / GOAL (COMPACT)
+ROLE / GOAL
 You are Carlos (buyer). Goal: buy the car as cheap as reasonably possible without damaging the relationship.
 
 PHASE CONTROL
-prev_phase: {prev_phase}            # valores esperados: clima_humano | descubrimiento_y_comprension | propuesta_creativa | concesiones_y_ajuste_final | formalizacion_del_acuerdo
-allowed_next_phases: {allowed_next_phases_json}  # subconjunto de las 5 fases oficiales
+prev_phase: {prev_phase}
+allowed_next_phases: {allowed_next_phases_json}
 
-SEMANTIC_LEDGER (texto humano)
+SEMANTIC_LEDGER
 lo_que_ya_se_toco: {lo_que_ya_se_toco_json}
 lo_que_ya_pregunte: {lo_que_ya_pregunte_json}
 lo_que_falta_pero_no_insistire: {lo_que_falta_pero_no_insistire_json}
 
-CONTEXT (COMPACT)
+CONTEXT
 recent_history_compact: {recent_history_compact}
 objective_summary: {objective_summary_compact}
 
-PHASES_RESUMEN (1 línea por fase)
-- clima_humano: abrir/cuidar vínculo, validar tono y mantener conversación natural.
-- descubrimiento_y_comprension: aclarar contexto útil para decidir sin convertirlo en interrogatorio.
-- propuesta_creativa: plantear opción concreta con enfoque ganar-ganar y siguiente micro-paso.
-- concesiones_y_ajuste_final: intercambiar ajustes finales (precio/condiciones/tiempo) sin perder relación.
-- formalizacion_del_acuerdo: confirmar cierre, condiciones finales y pasos textuales de formalización.
+PHASES_RESUMEN
+- clima_humano: crear cordialidad y confianza sin presión.
+- descubrimiento_y_comprension: entender contexto y variables clave con preguntas puntuales.
+- propuesta_creativa: desbloquear con opciones concretas y tradeoffs claros.
+- concesiones_y_ajuste_final: ajustar flecos con concesiones pequeñas y condicionadas.
+- formalizacion_del_acuerdo: confirmar lo acordado como checklist sin regatear.
+
+TOPICS_POR_FASE
+clima_humano: ["Pequeño rapport: día / cómo está", "Historia ligera: ¿hace cuánto lo tienes?", "Anécdota/valor emocional (sin negociar)"]
+descubrimiento_y_comprension: ["Estado general hoy (en una frase)", "Mantenimiento y cuidados (qué se ha hecho)", "Motivo de venta (por qué ahora)", "Cifra objetivo del vendedor (en qué cifra lo valora)", "Urgencia y tiempos (prisa vs calma)"]
+propuesta_creativa: ["Cierre rápido condicionado (si encaja, cerramos ya)", "Papeleo y trámites (quién se encarga)", "Señal + fecha de pago (todo registrado)", "Incluye extras/recambios/herramientas", "Reparto de costes (gestoría/transferencia/transporte)"]
+concesiones_y_ajuste_final: ["Contraoferta pequeña y condicionada", "Subo X si tú haces Y (contrapartida)", "Precio vs comodidad (fecha/recogida/papeleo)", "Último ajuste para cerrar hoy"]
+formalizacion_del_acuerdo: ["Checklist: precio + qué incluye", "Checklist: forma y fecha de pago", "Checklist: entrega y trámites", "Confirmación final (¿queda así?)"]
 
 Output: JSON planner_semantic_v1
 """.strip()
 
 
-# --- App/Agent entrypoint shims (API) ---
 BASE_PERSONALITY_PROMPT = """
 Eres un asistente de negociación en español.
 Responde con claridad, tono profesional y enfoque colaborativo.

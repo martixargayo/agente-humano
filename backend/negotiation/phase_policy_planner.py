@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from datetime import datetime, timezone
 
@@ -15,7 +16,7 @@ from .elementos.strategy_definitions import PlannerSemanticV1DecisionModel
 from .llm_clients import get_planner_llm
 from .schemas import BeliefState, PolicyDecision, ProgressState, WorldState, default_policy_decision
 from .phase_map import get_phase_map_v1
-from .phase_cards_extended import OFFICIAL_PHASE_IDS
+from .phase_cards_extended import OFFICIAL_PHASE_IDS, default_topic_for_phase, extract_topic_selected, is_valid_topic_for_phase
 from .llm_planning_context import build_objective_summary, build_planner_context_block_full, build_full_roleplay_profiles
 from .telemetry.llm_usage import extract_llm_usage
 from .semantic_ledger_utils import build_effective_semantic_ledger, semantic_ledger_hash
@@ -28,9 +29,67 @@ def _semantic_fallback() -> dict:
         "schema_version": "planner_semantic_v1",
         "phase": "clima_humano",
         "style": "Breve, natural y sin insistencia.",
-        "next_move_hint": "Responder de forma humana y continuar sin repetir temas ya tratados.",
+        "next_move_hint": "RESPUESTA: Hola, gracias por escribir.\nMOVIMIENTO: Mantener tono cordial y avanzar sin repetir.\nTEMA: \"Pequeño rapport: día / cómo está\"",
         "what_not_to_repeat": [],
     }
+
+
+def _extract_line_value(text: str, label: str) -> str:
+    m = re.search(rf"(?im)^\s*{label}\s*:\s*(.+)$", text)
+    return m.group(1).strip() if m else ""
+
+
+def _normalize_next_move_hint(phase: str, hint: str) -> tuple[str, bool]:
+    text = str(hint or "").strip()
+    changed = False
+    if not text:
+        topic = default_topic_for_phase(phase)
+        return f'RESPUESTA: Entiendo.\nMOVIMIENTO: Avancemos con un paso concreto.\nTEMA: "{topic}"', True
+
+    if "\n" not in text:
+        text2 = re.sub(r"\s+(MOVIMIENTO:|PREGUNTA:|TEMA:)", r"\n\1", text, flags=re.IGNORECASE)
+        if text2 != text:
+            text = text2
+            changed = True
+
+    response = _extract_line_value(text, "RESPUESTA")
+    movement = _extract_line_value(text, "MOVIMIENTO")
+    question = _extract_line_value(text, "PREGUNTA")
+    topic, _topic_src = extract_topic_selected(text)
+
+    if not response:
+        response = "Entiendo tu punto."
+        changed = True
+    if not movement:
+        movement = "Avanzo con un siguiente paso concreto sin repetir temas."
+        changed = True
+
+    if "?" in response or "¿" in response:
+        question_from_response = re.search(r"[^?¿]*\?", response)
+        if question_from_response and not question:
+            question = question_from_response.group(0).replace("¿", "").strip()
+        response = response.replace("?", "").replace("¿", "").strip()
+        changed = True
+
+    if "?" in movement or "¿" in movement:
+        question_from_movement = re.search(r"[^?¿]*\?", movement)
+        if question_from_movement and not question:
+            question = question_from_movement.group(0).replace("¿", "").strip()
+        movement = movement.replace("?", "").replace("¿", "").strip()
+        changed = True
+
+    if not topic or not is_valid_topic_for_phase(phase, topic):
+        topic = default_topic_for_phase(phase)
+        changed = True
+
+    lines = [f"RESPUESTA: {response}", f"MOVIMIENTO: {movement}"]
+    if question:
+        lines.append(f"PREGUNTA: {question}")
+    lines.append(f'TEMA: "{topic}"')
+    rebuilt = "\n".join(lines)
+    if rebuilt != text:
+        changed = True
+    return rebuilt, changed
 
 
 def plan_phase_policy(
@@ -54,7 +113,7 @@ def plan_phase_policy(
     effective_semantic_ledger: dict | None = None,
 ) -> tuple[dict, PolicyDecision, dict]:
     del world_state, world_diff, belief_state, policy_state, policy_plan_summary, constraints, constraints_struct
-    del allowed_policy_ids
+    del allowed_policy_ids, advisor_recs
 
     meta = {
         "planner_llm_called": False,
@@ -69,6 +128,7 @@ def plan_phase_policy(
         "planner_output_text_rendered": "",
         "planner_output_payload_raw": None,
         "planner_semantic_output": None,
+        "planner_postcheck_normalized": False,
     }
 
     started = time.perf_counter()
@@ -93,11 +153,16 @@ def plan_phase_policy(
             objective_summary = "Objetivo: avanzar con claridad y bajo riesgo en la negociación."[:500]
             objective_source = "default"
 
-        memory_short_text = str(memory_short or "").strip()[:1200] or "SIN_MEMORIA_CORTA_AUN"
-        memory_long_text = str(memory_long or "").strip()[:1200] or "SIN_RESUMEN_AUN"
-
         phase_map = get_phase_map_v1()
         full_profiles_block = build_planner_context_block_full(progress_state)
+        del full_profiles_block, memory_short, memory_long
+
+        prev_phase = str((((progress_state or {}).get("phase_state") or {}).get("phase") or "clima_humano"))
+        allowed_next_phases = [p for p in phase_map.keys() if p in OFFICIAL_PHASE_IDS] or OFFICIAL_PHASE_IDS
+        style_id = str(((_style_contract or {}).get("style_id") or "psyplay_compact"))
+        lo_que_ya_se_toco = list((semantic_ledger or {}).get("lo_que_ya_se_toco", [])) if isinstance(semantic_ledger, dict) else []
+        lo_que_ya_pregunte = list((semantic_ledger or {}).get("lo_que_ya_pregunte", [])) if isinstance(semantic_ledger, dict) else []
+        lo_que_falta_pero_no_insistire = list((semantic_ledger or {}).get("lo_que_falta_pero_no_insistire", [])) if isinstance(semantic_ledger, dict) else []
 
         prev_phase = str((((progress_state or {}).get("phase_state") or {}).get("phase") or "clima_humano"))
         allowed_next_phases = [p for p in phase_map.keys() if p in OFFICIAL_PHASE_IDS] or OFFICIAL_PHASE_IDS
@@ -142,6 +207,11 @@ def plan_phase_policy(
         result = structured.invoke(messages)
         usage = extract_llm_usage(result)
         payload = result.model_dump()
+        phase = str(payload.get("phase") or "clima_humano")
+        normalized_hint, changed = _normalize_next_move_hint(phase, payload.get("next_move_hint", ""))
+        payload["next_move_hint"] = normalized_hint
+        meta["planner_postcheck_normalized"] = changed
+
         meta["planner_llm_called"] = True
         meta["planner_output_payload_raw"] = payload
         meta["planner_output_text_rendered"] = json.dumps(payload, ensure_ascii=False)
