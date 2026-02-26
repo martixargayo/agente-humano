@@ -41,7 +41,7 @@ CARLOS_PERSONA_PROFILE = {
         "openness": "high",
     },
     "trait_markers": [
-        "asks one focused question per turn about reliability, history, or paperwork",
+        "sometimes asks one focused question; other times validates and yields initiative",
         "shows enthusiasm briefly, then returns to practical concerns",
         "listens and paraphrases before proposing a counter-offer",
         "uses uncertainty honestly (not fake expertise) and asks for evidence (revisions, receipts)",

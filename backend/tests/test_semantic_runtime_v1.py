@@ -408,3 +408,26 @@ def test_runtime_prompts_include_objective_profiles_phase_map_and_memory(monkeyp
     assert "SIN_RESUMEN_AUN" in executor_prompt or "facts" in executor_prompt
     assert "L) PHASE_MAP_JSON (opcional)\n{}" not in executor_prompt
     assert "cordialidad real, sin estrategia" in executor_prompt
+
+
+def test_effective_ledger_is_shared_by_planner_and_executor(monkeypatch):
+    planner_prompt, executor_prompt = _run_semantic_turn_capture(monkeypatch)
+    assert 'SEMANTIC_LEDGER_JSON' in planner_prompt
+    assert 'SEMANTIC_LEDGER_JSON' in executor_prompt
+    assert '"inicio"' in planner_prompt
+    assert '"inicio"' in executor_prompt
+
+
+def test_trace_exposes_ledger_hash_observability(monkeypatch):
+    monkeypatch.setattr("negotiation.nodes.world_node.get_planner_llm", lambda: _PlannerForRuntime())
+    monkeypatch.setattr("negotiation.phase_policy_planner.get_planner_llm", lambda: _PlannerForRuntime())
+    monkeypatch.setattr("negotiation.state.deps.get_executor_llm", lambda: _ExecutorForRuntime())
+
+    state = get_session_state("test_user_hash", "test_session_hash")
+    run_negotiation_agent(state, "Hola, me interesa el Mustang")
+    trace = state.debug_trace[-1]
+    assert isinstance(trace.get("planner_ledger_hash"), str)
+    assert isinstance(trace.get("executor_ledger_hash"), str)
+    assert isinstance(trace.get("effective_ledger_hash"), str)
+    assert trace.get("planner_ledger_hash") == trace.get("executor_ledger_hash")
+    assert trace.get("ledger_mismatch_detected") is False
