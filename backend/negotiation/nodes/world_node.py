@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from ..llm_clients import get_planner_llm
-from ..repo_prompts import WORLD_JUDGE_V3_SYSTEM_PROMPT, WORLD_JUDGE_V3_USER_PROMPT
+from ..repo_prompts import WORLD_JUDGE_V4_SYSTEM_PROMPT, WORLD_JUDGE_V4_USER_PROMPT
 from ..schemas import default_progress_state, default_semantic_ledger, default_world_state
 from ..telemetry.llm_usage import extract_llm_usage
 
@@ -60,15 +60,16 @@ def world_judge_llm(
     try:
         model = get_planner_llm()
         model_name = getattr(model, "model_name", None) or getattr(model, "model", None)
-        user_prompt = WORLD_JUDGE_V3_USER_PROMPT.format(
+        user_prompt = WORLD_JUDGE_V4_USER_PROMPT.format(
+            turn_idx=int((state or {}).get("turn_count", 0) or 0),
+            speaker_of_user_message="seller",
             user_message=json.dumps(str(user_message or "")[:1000], ensure_ascii=False),
             assistant_last_message=json.dumps(str(assistant_last_message or "")[:1000], ensure_ascii=False),
-            recent_history_text=json.dumps(str(recent_history or "")[-1200:], ensure_ascii=False),
-            semantic_ledger_prev=json.dumps(ledger_prev, ensure_ascii=False),
-            speaker_of_last_message="seller",
+            recent_history_text_compact=json.dumps(str(recent_history or "")[-1200:], ensure_ascii=False),
+            semantic_ledger_prev_json=json.dumps(ledger_prev, ensure_ascii=False),
         )
         messages = [
-            SystemMessage(content=WORLD_JUDGE_V3_SYSTEM_PROMPT),
+            SystemMessage(content=WORLD_JUDGE_V4_SYSTEM_PROMPT),
             HumanMessage(content=user_prompt),
         ]
         rendered_prompt = "\n\n".join(
@@ -108,7 +109,7 @@ def world_judge_llm(
             "judge_input_prompt_rendered": rendered_prompt,
             "judge_output_text_rendered": str(text),
             "judge_output_payload_raw": candidate,
-            "judge_prompt_variant": "v3_semantic",
+            "judge_prompt_variant": "v4_semantic",
         }
     except Exception as exc:
         ended_wall = datetime.now(timezone.utc).isoformat()
@@ -127,7 +128,7 @@ def world_judge_llm(
             "judge_degraded": True,
             "judge_start_ts": started_wall,
             "judge_end_ts": ended_wall,
-            "judge_prompt_variant": "v3_semantic",
+            "judge_prompt_variant": "v4_semantic",
             "judge_model": model_name,
             "judge_input_prompt_rendered": rendered_prompt,
             "judge_output_text_rendered": str(text),

@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from copy import deepcopy
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from ..elementos.render.executor_prompts import (
-    EXECUTOR_OUTPUT_SCHEMA,
     EXECUTOR_SYSTEM_PROMPT,
     EXECUTOR_USER_PROMPT,
 )
-from ..phase_map import get_phase_map_v1
+from ..phase_cards_extended import get_phase_card_extended, extract_topic_selected, default_topic_for_phase, is_valid_topic_for_phase
 from ..semantic_ledger_utils import semantic_ledger_hash
 
 ExecutorOutput = dict
@@ -19,9 +19,10 @@ RenderConstraints = dict
 
 _WORD_CAP_LIMIT = int(os.getenv("NEGOTIATION_EXECUTOR_WORD_CAP", "40") or 40)
 _WORD_CAP_MAX_RERUNS = int(os.getenv("NEGOTIATION_EXECUTOR_WORD_CAP_MAX_RERUNS", "1") or 1)
-_WORD_CAP_RETRY_INSTRUCTION = (
-    f"REINTENTO_BREVEDAD: Devuelve JSON válido y limita response_text a máximo {_WORD_CAP_LIMIT} palabras."
-)
+_WORD_CAP_RETRY_INSTRUCTION = f"REINTENTO_BREVEDAD: Devuelve JSON válido y limita response_text a máximo {_WORD_CAP_LIMIT} palabras."
+_SCHEMA_RETRY_INSTRUCTION = "REINTENTO_ESQUEMA: Devuelve SOLO JSON executor_v2 con schema_version y response_text. Sin otras claves."
+_PROMPT_SWAP_V2_ENABLED = str(os.getenv("NEGOTIATION_PROMPT_SWAP_V2_ENABLED", "1") or "1").strip().lower() in {"1", "true", "yes", "on"}
+_TEXT_ONLY_FORBIDDEN_RE = re.compile(r"\b(muéstrame|muestrame|enséñame|ensename|envíame|enviame|adjunta|pásame|pasame|tráeme|traeme)\b", re.IGNORECASE)
 
 
 def _word_count(text: str) -> int:
@@ -35,15 +36,15 @@ def _truncate_words(text: str, limit: int) -> str:
     return " ".join(words[:limit]).strip()
 
 
-def _with_word_cap_instruction(prompt: str) -> str:
-    prompt_text = str(prompt or "").rstrip()
-    if _WORD_CAP_RETRY_INSTRUCTION in prompt_text:
-        return prompt_text
-    return f"{prompt_text}\n\n{_WORD_CAP_RETRY_INSTRUCTION}"
-
-
 def _safe_neutral_fallback() -> str:
     return "Puedo ayudarte, pero necesito un poco más de contexto para responder bien."
+
+
+def _with_retry_instruction(prompt: str, instruction: str) -> str:
+    prompt_text = str(prompt or "").rstrip()
+    if instruction in prompt_text:
+        return prompt_text
+    return f"{prompt_text}\n\n{instruction}"
 
 
 def safe_json_load(raw: object) -> dict:
@@ -56,6 +57,22 @@ def safe_json_load(raw: object) -> dict:
         return data if isinstance(data, dict) else {}
     except Exception:
         return {}
+
+
+def _is_valid_executor_v2_payload(data: dict) -> bool:
+    return isinstance(data, dict) and str(data.get("schema_version") or "") == "executor_v2" and bool(str(data.get("response_text") or "").strip())
+
+
+def _salvage_response_text(data: dict) -> tuple[dict, bool]:
+    if not isinstance(data, dict):
+        return {}, False
+    if not data.get("response_text") and isinstance(data.get("response"), str) and data.get("response").strip():
+        patched = dict(data)
+        patched["response_text"] = str(data.get("response")).strip()
+        if not patched.get("schema_version"):
+            patched["schema_version"] = "executor_v2"
+        return patched, True
+    return data, False
 
 
 def normalize_executor_output(raw: object) -> ExecutorOutput:
@@ -103,11 +120,74 @@ def _enforce_executor_v2_contract(out: dict, style: dict, constraints: dict) -> 
             data["response_text"] = data["response_text"].rstrip(" .") + "?"
 
     asked_question = bool(data.get("asked_question", False))
+    has_question_mark = "?" in data["response_text"] or "¿" in data["response_text"]
+    if has_question_mark:
+        asked_question = True
+
     requested_slots = data.get("requested_info_slots") if isinstance(data.get("requested_info_slots"), list) else []
-    if asked_question and not requested_slots:
-        data["requested_info_slots"] = ["clarify_context"]
+    requested_slots = [str(x).strip()[:32] for x in requested_slots if str(x).strip()][:3]
+
+    if asked_question:
+        if not requested_slots:
+            requested_slots = _infer_requested_slots(data["response_text"])
+        data["requested_info_slots"] = requested_slots[:3]
+    else:
+        data["requested_info_slots"] = []
+
+    data["asked_question"] = asked_question
     return data
 
+
+def _count_text_only_violations(text: str) -> int:
+    return len(_TEXT_ONLY_FORBIDDEN_RE.findall(str(text or "")))
+
+
+def _build_retry_hint_for_text_only() -> str:
+    return "REINTENTO_CANAL: reformula 100% a texto; no uses verbos mostrar/enviar/adjuntar."
+
+
+def _compact_profile_card(persona: dict) -> str:
+    if not isinstance(persona, dict):
+        return "comprador prudente, respetuoso y orientado a cierre claro"
+    name = str(persona.get("name") or "Carlos")
+    traits = [
+        str(persona.get("role") or "comprador"),
+        "prudente",
+        "relacional",
+    ]
+    hard = "no revelar BATNA/presupuesto máximo, evitar presión"
+    return f"{name}: {', '.join(traits)}. Hard limits: {hard}."
+
+
+def _compact_scene_card(scene: dict) -> str:
+    if not isinstance(scene, dict):
+        return "primera conversación comprador-vendedor; canal solo texto"
+    counterpart = str(scene.get("counterparty") or "vendedor")
+    setting = str(scene.get("setting") or "negociación por chat")
+    return f"Escena: {setting}. Interlocutor: {counterpart}. Canal: solo texto."
+
+
+
+
+def _infer_requested_slots(response_text: str) -> list[str]:
+    lowered = str(response_text or "").lower()
+    slots: list[str] = []
+    mapping = [
+        ("saludo", ["qué tal", "como estas", "cómo estás", "hola"]),
+        ("precio_objetivo", ["precio", "cuánto", "cuanto"]),
+        ("motivo_venta", ["motivo", "por qué", "porque lo vendes"]),
+        ("estado_general", ["estado", "general"]),
+        ("mantenimiento", ["mantenimiento", "revisión", "revision"]),
+        ("documentacion", ["documentación", "documentacion", "papeles", "trámites", "tramites"]),
+        ("pago_fecha", ["pago", "fecha", "entrega"]),
+        ("contexto", ["detalles", "contexto"])
+    ]
+    for slot, keys in mapping:
+        if any(k in lowered for k in keys):
+            slots.append(slot)
+    if not slots:
+        slots.append("contexto")
+    return slots[:3]
 
 def extract_last_counterparty_utterance(state: dict) -> str:
     recent_history_text = str(state.get("recent_history_text", "") or "").strip()
@@ -135,7 +215,7 @@ def render_executor_output(
     world_state: dict,
     user_message: str,
 ) -> ExecutorOutput:
-    del conversation_mode, policy_pack_active, policy_id, strategy_summary, memory_block
+    del conversation_mode, policy_pack_active, policy_id, strategy_summary, memory_block, world_state
     persona = deepcopy(persona_profile)
     scene = deepcopy(scene_profile)
     style = deepcopy(style_contract)
@@ -146,24 +226,49 @@ def render_executor_output(
     state["executor_ledger_hash"] = semantic_ledger_hash(semantic_ledger if isinstance(semantic_ledger, dict) else {})
     assistant_last_message_ctx = str(state.get("assistant_last_message") or state.get("last_assistant_message") or "")
 
+    phase_id = str((planner_semantic_output or {}).get("phase") or "clima_humano")
+    next_move_hint = str((planner_semantic_output or {}).get("next_move_hint") or "")
+    topic_selected, topic_source = extract_topic_selected(next_move_hint)
+    if not topic_selected:
+        topic_selected = default_topic_for_phase(phase_id)
+        topic_source = "phase_default" if topic_selected != "sin_tema" else "none"
+    elif not is_valid_topic_for_phase(phase_id, topic_selected):
+        topic_selected = default_topic_for_phase(phase_id)
+        topic_source = "invalid_fallback" if topic_selected != "sin_tema" else "none"
+    phase_card, phase_card_lookup_status = get_phase_card_extended(phase_id)
+
+    lo_que_ya_se_toco = list((semantic_ledger or {}).get("lo_que_ya_se_toco", [])) if isinstance(semantic_ledger, dict) else []
+    lo_que_ya_pregunte = list((semantic_ledger or {}).get("lo_que_ya_pregunte", [])) if isinstance(semantic_ledger, dict) else []
+    lo_que_falta_pero_no_insistire = list((semantic_ledger or {}).get("lo_que_falta_pero_no_insistire", [])) if isinstance(semantic_ledger, dict) else []
+
     prompt = EXECUTOR_USER_PROMPT.format(
-        full_profiles_block=json.dumps({"persona": persona, "scene": scene, "style": style}, ensure_ascii=False),
-        planner_semantic_output_json=json.dumps(planner_semantic_output, ensure_ascii=False),
-        semantic_ledger_json=json.dumps(semantic_ledger if isinstance(semantic_ledger, dict) else {}, ensure_ascii=False),
-        advisor_recs_json=json.dumps(state.get("advisor_recs", {}) if isinstance(state.get("advisor_recs"), dict) else {}, ensure_ascii=False),
-        last_counterparty_utterance=extract_last_counterparty_utterance(state),
-        memory_short=str(state.get("short_memory", "") or "").strip() or "SIN_MEMORIA_CORTA_AUN",
-        memory_long=str(state.get("long_memory", "") or "").strip() or "SIN_RESUMEN_AUN",
-        world_json=json.dumps(world_state, ensure_ascii=False),
-        belief_json=json.dumps(state.get("belief_state", {}), ensure_ascii=False),
-        retry_hint="",
+        speaker=str(state.get("speaker_of_user_message") or "seller").strip().lower(),
         user_message=user_message,
+        last_seller_utterance=extract_last_counterparty_utterance(state),
         assistant_last_message=assistant_last_message_ctx,
-        recent_history_text=str(state.get("recent_history_text", "") or ""),
-        phase_map_json=json.dumps(state.get("phase_map_json") if isinstance(state.get("phase_map_json"), dict) else get_phase_map_v1(), ensure_ascii=False),
-        speaker_of_user_message=str(state.get("speaker_of_user_message") or "seller").strip().lower(),
-        output_schema=EXECUTOR_OUTPUT_SCHEMA.strip(),
+        profile_card_compact_text=_compact_profile_card(persona),
+        scene_card_compact_text=_compact_scene_card(scene),
+        style_id=str(style.get("style_id", "psyplay_compact")),
+        max_words=int(style.get("max_words", _WORD_CAP_LIMIT) or _WORD_CAP_LIMIT),
+        max_questions=int(style.get("max_questions", constraints.get("max_questions", 1)) or 1),
+        planner_semantic_output_json=json.dumps(planner_semantic_output, ensure_ascii=False),
+        phase=phase_card.get("phase_id", phase_id),
+        phase_do_text=phase_card.get("do_text", ""),
+        phase_tecnicas_text=phase_card.get("tecnicas_text", ""),
+        phase_evitar_text=phase_card.get("evitar_text", ""),
+        phase_question_policy=phase_card.get("question_policy", ""),
+        phase_topics_json=json.dumps(phase_card.get("topics", []), ensure_ascii=False),
+        topic_selected=topic_selected,
+        lo_que_ya_se_toco_json=json.dumps(lo_que_ya_se_toco, ensure_ascii=False),
+        lo_que_ya_pregunte_json=json.dumps(lo_que_ya_pregunte, ensure_ascii=False),
+        lo_que_falta_pero_no_insistire_json=json.dumps(lo_que_falta_pero_no_insistire, ensure_ascii=False),
+        recent_history_compact=str(state.get("recent_history_text", "") or "").strip()[-1200:] or "SIN_MEMORIA_CORTA_AUN",
+        memory_long_compact=str(state.get("long_memory", "") or "").strip() or "SIN_RESUMEN_AUN",
+        retry_hint="",
     )
+    state["topic_selected"] = topic_selected
+    state["topic_selected_source"] = topic_source
+    state["phase_card_lookup_status"] = phase_card_lookup_status
 
     messages = [
         SystemMessage(content=EXECUTOR_SYSTEM_PROMPT.strip()),
@@ -171,35 +276,65 @@ def render_executor_output(
     ]
 
     raw = deps.execute(messages)
-    text = raw if isinstance(raw, str) else getattr(raw, "content", "")
-    data = safe_json_load(text)
-    out = normalize_executor_output(data)
+    data = safe_json_load(raw if isinstance(raw, str) else getattr(raw, "content", ""))
+    data, schema_salvage = _salvage_response_text(data)
 
-    original_words = _word_count(str((data or {}).get("response_text", "")))
-    reruns = 0
-    fallback_truncate = False
-    retry_prompt = _with_word_cap_instruction(prompt)
-
-    while _word_count(out.get("response_text", "")) > _WORD_CAP_LIMIT and reruns < _WORD_CAP_MAX_RERUNS:
-        reruns += 1
+    schema_retry_count = 0
+    if not _is_valid_executor_v2_payload(data):
+        schema_retry_count = 1
+        schema_retry_prompt = _with_retry_instruction(prompt, _SCHEMA_RETRY_INSTRUCTION)
         retry_messages = [
             SystemMessage(content=EXECUTOR_SYSTEM_PROMPT.strip()),
-            HumanMessage(content=retry_prompt.strip()),
+            HumanMessage(content=schema_retry_prompt.strip()),
         ]
         retry_raw = deps.execute(retry_messages)
-        retry_text = retry_raw if isinstance(retry_raw, str) else getattr(retry_raw, "content", "")
-        out = normalize_executor_output(safe_json_load(retry_text))
+        retry_data = safe_json_load(retry_raw if isinstance(retry_raw, str) else getattr(retry_raw, "content", ""))
+        retry_data, schema_salvage_retry = _salvage_response_text(retry_data)
+        schema_salvage = schema_salvage or schema_salvage_retry
+        data = retry_data
+
+    out = normalize_executor_output(data)
+    original_words = _word_count(str(out.get("response_text", "")))
+
+    text_retry_count = 0
+    text_only_violations_count = _count_text_only_violations(out.get("response_text", ""))
+    fallback_truncate = False
+    needs_retry = (_word_count(out.get("response_text", "")) > _WORD_CAP_LIMIT) or (_PROMPT_SWAP_V2_ENABLED and text_only_violations_count > 0)
+    retry_prompt = _with_retry_instruction(prompt, _WORD_CAP_RETRY_INSTRUCTION)
+
+    while needs_retry and text_retry_count < _WORD_CAP_MAX_RERUNS + 1:
+        text_retry_count += 1
+        extra_hint = _build_retry_hint_for_text_only() if text_only_violations_count > 0 else ""
+        retry_messages = [
+            SystemMessage(content=EXECUTOR_SYSTEM_PROMPT.strip()),
+            HumanMessage(content=(retry_prompt + "\n\n" + extra_hint).strip()),
+        ]
+        retry_raw = deps.execute(retry_messages)
+        retry_data = safe_json_load(retry_raw if isinstance(retry_raw, str) else getattr(retry_raw, "content", ""))
+        retry_data, schema_salvage_retry = _salvage_response_text(retry_data)
+        schema_salvage = schema_salvage or schema_salvage_retry
+        out = normalize_executor_output(retry_data)
+        text_only_violations_count = _count_text_only_violations(out.get("response_text", ""))
+        needs_retry = (_word_count(out.get("response_text", "")) > _WORD_CAP_LIMIT) or (_PROMPT_SWAP_V2_ENABLED and text_only_violations_count > 0)
 
     if _word_count(out.get("response_text", "")) > _WORD_CAP_LIMIT:
         fallback_truncate = True
         out = dict(out)
         out["response_text"] = _truncate_words(str(out.get("response_text", "")), _WORD_CAP_LIMIT)
 
+    total_retry_count = schema_retry_count + text_retry_count
     render_meta = dict(out.get("render_meta") or {}) if isinstance(out.get("render_meta"), dict) else {}
     render_meta["word_cap_limit"] = _WORD_CAP_LIMIT
     render_meta["word_cap_original_words"] = original_words
-    render_meta["word_cap_reruns"] = reruns
+    render_meta["word_cap_reruns"] = text_retry_count
     render_meta["word_cap_fallback_truncate"] = fallback_truncate
+    render_meta["executor_retry_count"] = total_retry_count
+    render_meta["schema_retry_count"] = schema_retry_count
+    render_meta["schema_salvage"] = bool(schema_salvage)
+    render_meta["text_only_violations_count"] = text_only_violations_count
+    render_meta["topic_selected"] = state.get("topic_selected", "")
+    render_meta["topic_selected_source"] = state.get("topic_selected_source", "none")
+    render_meta["phase_card_lookup_status"] = state.get("phase_card_lookup_status", "missing")
     out["render_meta"] = render_meta
 
     return _enforce_executor_v2_contract(normalize_executor_output(out), style, constraints)

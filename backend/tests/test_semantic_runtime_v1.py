@@ -304,7 +304,7 @@ def test_executor_enforces_requested_slots_when_question_present():
         user_message="ok",
     )
     assert out["asked_question"] is True
-    assert out["requested_info_slots"] == ["clarify_context"]
+    assert out["requested_info_slots"] == ["precio_objetivo"]
 
 
 class _RawMsg:
@@ -391,29 +391,21 @@ def _run_semantic_turn_capture(monkeypatch):
 def test_runtime_prompts_include_objective_profiles_phase_map_and_memory(monkeypatch):
     planner_prompt, executor_prompt = _run_semantic_turn_capture(monkeypatch)
 
-    assert "OBJECTIVE_SUMMARY:" in planner_prompt
-    assert "OBJECTIVE_SUMMARY: \n" not in planner_prompt
-    assert "FULL_PROFILES_BLOCK:" in planner_prompt
-    assert "FULL_PROFILES_BLOCK: \n" not in planner_prompt
-    assert "PHASE_MAP_JSON:" in planner_prompt
-    assert "cordialidad real, sin estrategia" in planner_prompt
-    assert "MEMORY_SHORT:" in planner_prompt and "MEMORY_SHORT: \n" not in planner_prompt
-    assert "MEMORY_LONG:" in planner_prompt and "MEMORY_LONG: \n" not in planner_prompt
+    assert "PHASE CONTROL" in planner_prompt
+    assert "allowed_next_phases" in planner_prompt
+    assert "SEMANTIC_LEDGER" in planner_prompt
+    assert "PHASES_RESUMEN" in planner_prompt
 
-    assert '"persona": {}' not in executor_prompt
-    assert '"scene": {}' not in executor_prompt
-    assert "buyer_mustang67_v1" in executor_prompt
-    assert "mustang67_in_person_viewing" in executor_prompt
-    assert "SIN_MEMORIA_CORTA_AUN" in executor_prompt or "Vendedor:" in executor_prompt
-    assert "SIN_RESUMEN_AUN" in executor_prompt or "facts" in executor_prompt
-    assert "L) PHASE_MAP_JSON (opcional)\n{}" not in executor_prompt
-    assert "cordialidad real, sin estrategia" in executor_prompt
+    assert "PHASE_CARD_EXTENDIDA" in executor_prompt
+    assert "topic_selected:" in executor_prompt
+    assert "SEMANTIC_LEDGER" in executor_prompt
+    assert "phase_map_json" not in executor_prompt.lower()
 
 
 def test_effective_ledger_is_shared_by_planner_and_executor(monkeypatch):
     planner_prompt, executor_prompt = _run_semantic_turn_capture(monkeypatch)
-    assert 'SEMANTIC_LEDGER_JSON' in planner_prompt
-    assert 'SEMANTIC_LEDGER_JSON' in executor_prompt
+    assert 'lo_que_ya_se_toco' in planner_prompt
+    assert 'lo_que_ya_se_toco' in executor_prompt
     assert '"inicio"' in planner_prompt
     assert '"inicio"' in executor_prompt
 
