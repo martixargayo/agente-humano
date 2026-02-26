@@ -232,7 +232,7 @@ def get_negotiation_model_config(
     )
     planner = _read_component(
         "planner",
-        default_model="gpt-4.1-nano",
+        default_model="gpt-5-nano",
         default_temperature=0.0,
         default_timeout_s=18,
         default_max_tokens=1200,
