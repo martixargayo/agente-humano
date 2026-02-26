@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from copy import deepcopy
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -12,6 +13,7 @@ from ..elementos.render.executor_prompts import (
     EXECUTOR_USER_PROMPT,
 )
 from ..phase_map import get_phase_map_v1
+from ..phase_cards_extended import get_phase_card_extended, extract_topic_selected, default_topic_for_phase, is_valid_topic_for_phase
 from ..semantic_ledger_utils import semantic_ledger_hash
 
 ExecutorOutput = dict
@@ -22,6 +24,8 @@ _WORD_CAP_MAX_RERUNS = int(os.getenv("NEGOTIATION_EXECUTOR_WORD_CAP_MAX_RERUNS",
 _WORD_CAP_RETRY_INSTRUCTION = (
     f"REINTENTO_BREVEDAD: Devuelve JSON válido y limita response_text a máximo {_WORD_CAP_LIMIT} palabras."
 )
+_PROMPT_SWAP_V2_ENABLED = str(os.getenv("NEGOTIATION_PROMPT_SWAP_V2_ENABLED", "1") or "1").strip().lower() in {"1","true","yes","on"}
+_TEXT_ONLY_FORBIDDEN_RE = re.compile(r"\b(muéstrame|muestrame|enséñame|ensename|envíame|enviame|adjunta|pásame|pasame|tráeme|traeme)\b", re.IGNORECASE)
 
 
 def _word_count(text: str) -> int:
@@ -109,6 +113,15 @@ def _enforce_executor_v2_contract(out: dict, style: dict, constraints: dict) -> 
     return data
 
 
+
+
+def _count_text_only_violations(text: str) -> int:
+    return len(_TEXT_ONLY_FORBIDDEN_RE.findall(str(text or "")))
+
+
+def _build_retry_hint_for_text_only() -> str:
+    return "REINTENTO_CANAL: reformula 100% a texto; no uses verbos mostrar/enviar/adjuntar."
+
 def extract_last_counterparty_utterance(state: dict) -> str:
     recent_history_text = str(state.get("recent_history_text", "") or "").strip()
     if recent_history_text:
@@ -146,24 +159,47 @@ def render_executor_output(
     state["executor_ledger_hash"] = semantic_ledger_hash(semantic_ledger if isinstance(semantic_ledger, dict) else {})
     assistant_last_message_ctx = str(state.get("assistant_last_message") or state.get("last_assistant_message") or "")
 
+    phase_id = str((planner_semantic_output or {}).get("phase") or "clima_humano")
+    next_move_hint = str((planner_semantic_output or {}).get("next_move_hint") or "")
+    topic_selected, topic_source = extract_topic_selected(next_move_hint)
+    if not topic_selected:
+        topic_selected = default_topic_for_phase(phase_id)
+        topic_source = "phase_default" if topic_selected != "sin_tema" else "none"
+    elif not is_valid_topic_for_phase(phase_id, topic_selected):
+        topic_selected = default_topic_for_phase(phase_id)
+        topic_source = "invalid_fallback" if topic_selected != "sin_tema" else "none"
+    phase_card, phase_card_lookup_status = get_phase_card_extended(phase_id)
+
+    lo_que_ya_se_toco = list((semantic_ledger or {}).get("lo_que_ya_se_toco", [])) if isinstance(semantic_ledger, dict) else []
+    lo_que_ya_pregunte = list((semantic_ledger or {}).get("lo_que_ya_pregunte", [])) if isinstance(semantic_ledger, dict) else []
+    lo_que_falta_pero_no_insistire = list((semantic_ledger or {}).get("lo_que_falta_pero_no_insistire", [])) if isinstance(semantic_ledger, dict) else []
+
     prompt = EXECUTOR_USER_PROMPT.format(
-        full_profiles_block=json.dumps({"persona": persona, "scene": scene, "style": style}, ensure_ascii=False),
-        planner_semantic_output_json=json.dumps(planner_semantic_output, ensure_ascii=False),
-        semantic_ledger_json=json.dumps(semantic_ledger if isinstance(semantic_ledger, dict) else {}, ensure_ascii=False),
-        advisor_recs_json=json.dumps(state.get("advisor_recs", {}) if isinstance(state.get("advisor_recs"), dict) else {}, ensure_ascii=False),
-        last_counterparty_utterance=extract_last_counterparty_utterance(state),
-        memory_short=str(state.get("short_memory", "") or "").strip() or "SIN_MEMORIA_CORTA_AUN",
-        memory_long=str(state.get("long_memory", "") or "").strip() or "SIN_RESUMEN_AUN",
-        world_json=json.dumps(world_state, ensure_ascii=False),
-        belief_json=json.dumps(state.get("belief_state", {}), ensure_ascii=False),
-        retry_hint="",
+        speaker=str(state.get("speaker_of_user_message") or "seller").strip().lower(),
         user_message=user_message,
+        last_seller_utterance=extract_last_counterparty_utterance(state),
         assistant_last_message=assistant_last_message_ctx,
-        recent_history_text=str(state.get("recent_history_text", "") or ""),
-        phase_map_json=json.dumps(state.get("phase_map_json") if isinstance(state.get("phase_map_json"), dict) else get_phase_map_v1(), ensure_ascii=False),
-        speaker_of_user_message=str(state.get("speaker_of_user_message") or "seller").strip().lower(),
-        output_schema=EXECUTOR_OUTPUT_SCHEMA.strip(),
+        profile_card_compact_text=json.dumps(persona, ensure_ascii=False),
+        scene_card_compact_text=json.dumps(scene, ensure_ascii=False),
+        style_id=str(style.get("style_id", "psyplay_compact")),
+        max_words=int(style.get("max_words", _WORD_CAP_LIMIT) or _WORD_CAP_LIMIT),
+        max_questions=int(style.get("max_questions", constraints.get("max_questions", 1)) or 1),
+        planner_semantic_output_json=json.dumps(planner_semantic_output, ensure_ascii=False),
+        phase=phase_card.get("phase", phase_id),
+        phase_do_short=phase_card.get("do", ""),
+        phase_avoid_short=phase_card.get("avoid", ""),
+        phase_question_policy=phase_card.get("question_policy", ""),
+        topic_selected=topic_selected,
+        lo_que_ya_se_toco_json=json.dumps(lo_que_ya_se_toco, ensure_ascii=False),
+        lo_que_ya_pregunte_json=json.dumps(lo_que_ya_pregunte, ensure_ascii=False),
+        lo_que_falta_pero_no_insistire_json=json.dumps(lo_que_falta_pero_no_insistire, ensure_ascii=False),
+        recent_history_compact=str(state.get("recent_history_text", "") or "").strip()[-1200:] or "SIN_MEMORIA_CORTA_AUN",
+        memory_long_compact=str(state.get("long_memory", "") or "").strip() or "SIN_RESUMEN_AUN",
+        retry_hint="",
     )
+    state["topic_selected"] = topic_selected
+    state["topic_selected_source"] = topic_source
+    state["phase_card_lookup_status"] = phase_card_lookup_status
 
     messages = [
         SystemMessage(content=EXECUTOR_SYSTEM_PROMPT.strip()),
@@ -177,18 +213,23 @@ def render_executor_output(
 
     original_words = _word_count(str((data or {}).get("response_text", "")))
     reruns = 0
+    text_only_violations_count = _count_text_only_violations(out.get("response_text", ""))
     fallback_truncate = False
     retry_prompt = _with_word_cap_instruction(prompt)
 
-    while _word_count(out.get("response_text", "")) > _WORD_CAP_LIMIT and reruns < _WORD_CAP_MAX_RERUNS:
+    needs_retry = (_word_count(out.get("response_text", "")) > _WORD_CAP_LIMIT) or (_PROMPT_SWAP_V2_ENABLED and text_only_violations_count > 0)
+    while needs_retry and reruns < _WORD_CAP_MAX_RERUNS + 1:
         reruns += 1
+        extra_hint = _build_retry_hint_for_text_only() if text_only_violations_count > 0 else ""
         retry_messages = [
             SystemMessage(content=EXECUTOR_SYSTEM_PROMPT.strip()),
-            HumanMessage(content=retry_prompt.strip()),
+            HumanMessage(content=(retry_prompt + "\n\n" + extra_hint).strip()),
         ]
         retry_raw = deps.execute(retry_messages)
         retry_text = retry_raw if isinstance(retry_raw, str) else getattr(retry_raw, "content", "")
         out = normalize_executor_output(safe_json_load(retry_text))
+        text_only_violations_count = _count_text_only_violations(out.get("response_text", ""))
+        needs_retry = (_word_count(out.get("response_text", "")) > _WORD_CAP_LIMIT) or (_PROMPT_SWAP_V2_ENABLED and text_only_violations_count > 0)
 
     if _word_count(out.get("response_text", "")) > _WORD_CAP_LIMIT:
         fallback_truncate = True
@@ -200,6 +241,11 @@ def render_executor_output(
     render_meta["word_cap_original_words"] = original_words
     render_meta["word_cap_reruns"] = reruns
     render_meta["word_cap_fallback_truncate"] = fallback_truncate
+    render_meta["executor_retry_count"] = reruns
+    render_meta["text_only_violations_count"] = text_only_violations_count
+    render_meta["topic_selected"] = state.get("topic_selected", "")
+    render_meta["topic_selected_source"] = state.get("topic_selected_source", "none")
+    render_meta["phase_card_lookup_status"] = state.get("phase_card_lookup_status", "missing")
     out["render_meta"] = render_meta
 
     return _enforce_executor_v2_contract(normalize_executor_output(out), style, constraints)
