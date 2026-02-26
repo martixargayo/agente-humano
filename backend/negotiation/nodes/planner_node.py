@@ -7,6 +7,7 @@ from ..schemas import default_policy_decision, default_progress_state
 from ..phase_map import get_phase_map_v1
 from ..state.deps import DEFAULT_DEPS
 from ..telemetry.trace_runtime import record_gate_event, record_llm_call
+from ..semantic_ledger_utils import build_effective_semantic_ledger, semantic_ledger_hash
 
 
 def _ensure_objective(state: dict) -> None:
@@ -19,6 +20,13 @@ def phase_policy_planner_node(state: dict) -> dict:
     _ensure_objective(state)
 
     progress_state = state.get("progress_state") if isinstance(state.get("progress_state"), dict) else default_progress_state()
+
+    effective_ledger = build_effective_semantic_ledger(
+        progress_state,
+        state.get("semantic_judge") if isinstance(state.get("semantic_judge"), dict) else {},
+    )
+    state["effective_semantic_ledger"] = effective_ledger
+    state["effective_ledger_hash"] = semantic_ledger_hash(effective_ledger)
 
     state["assistant_last_message"] = state.get("assistant_last_message") or state.get("last_assistant_message") or ""
 
@@ -60,6 +68,7 @@ def phase_policy_planner_node(state: dict) -> dict:
             memory_long=str(state.get("long_memory", "") or ""),
             user_message=str(state.get("user_message", "") or ""),
             assistant_last_message=str(state.get("assistant_last_message") or state.get("last_assistant_message") or ""),
+            effective_semantic_ledger=effective_ledger,
         )
     except Exception as exc:
         phase_candidate = {
@@ -121,6 +130,7 @@ def phase_policy_planner_node(state: dict) -> dict:
     state["policy_decision"] = policy_decision
     state["planner_meta"] = planner_meta
     state["planner_semantic_output"] = planner_semantic_output
+    state["planner_ledger_hash"] = planner_meta.get("planner_ledger_hash") or state.get("effective_ledger_hash", "")
 
     phase_map = planner_meta.get("phase_map_json") if isinstance(planner_meta.get("phase_map_json"), dict) else get_phase_map_v1()
     state["phase_map_json"] = phase_map

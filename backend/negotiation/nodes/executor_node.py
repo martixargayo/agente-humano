@@ -84,6 +84,16 @@ def executor_node(state: dict) -> dict:
     state["response"] = state["assistant_message"]
     state["progress_state"] = progress_state
 
+    planner_hash = str(state.get("planner_ledger_hash", "") or "")
+    executor_hash = str(state.get("executor_ledger_hash", "") or "")
+    effective_hash = str(state.get("effective_ledger_hash", "") or "")
+    state["ledger_observability"] = {
+        "planner_ledger_hash": planner_hash,
+        "executor_ledger_hash": executor_hash,
+        "effective_ledger_hash": effective_hash,
+        "ledger_mismatch_detected": bool(planner_hash and executor_hash and planner_hash != executor_hash),
+    }
+
     state["executor_debug_v2"] = {
         "output_meta": {
             "response_length": len(state.get("assistant_message", "")),
