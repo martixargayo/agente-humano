@@ -117,6 +117,10 @@ def run_negotiation_agent(
             "planner_meta": new_graph_state.get("planner_meta", {}),
             "world_judge_meta": ((new_graph_state.get("world_debug") or {}).get("world_judge_meta", {}) if isinstance(new_graph_state.get("world_debug"), dict) else {}),
             "trace_runtime": new_graph_state.get("trace_runtime", {}),
+            "planner_ledger_hash": new_graph_state.get("planner_ledger_hash", ""),
+            "executor_ledger_hash": new_graph_state.get("executor_ledger_hash", ""),
+            "effective_ledger_hash": new_graph_state.get("effective_ledger_hash", ""),
+            "ledger_mismatch_detected": ((new_graph_state.get("ledger_observability") or {}).get("ledger_mismatch_detected", False) if isinstance(new_graph_state.get("ledger_observability"), dict) else False),
             "turn_idx": int(state.turn_count or 0),
         }
     )

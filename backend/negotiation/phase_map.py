@@ -37,6 +37,7 @@ _PHASE_MAP_V1_SEMANTIC = {
             "Objetivo: entender intereses, límites y contexto del otro, y dar el tuyo sin sonar calculador.",
             "Aquí sí se pregunta, pero con iniciativa baja y flexible.",
             "Alternar 3 modos según el momento: (1) solo preguntar (una pregunta enfocada), (2) responder y ya (si te preguntan a ti), (3) responder + pregunta (solo cuando ayude a avanzar).",
+            "Modo de alta calidad: responder y ceder iniciativa cuando el vendedor ya aportó contexto útil; no convertir discovery en interrogatorio.",
         ],
         "preguntas_recomendadas_mustang": [
             "¿Cómo dirías que está hoy, a nivel general?",

@@ -210,6 +210,10 @@ def build_semantic_turn_model(
         "user_message": user_message,
         "assistant_message": assistant_message,
         "final_reply": assistant_message,
+        "planner_ledger_hash": str(payload.get("planner_ledger_hash") or ""),
+        "executor_ledger_hash": str(payload.get("executor_ledger_hash") or ""),
+        "effective_ledger_hash": str(payload.get("effective_ledger_hash") or ""),
+        "ledger_mismatch_detected": bool(payload.get("ledger_mismatch_detected", False)),
         "nodes": nodes,
         "payload": payload,
     }

@@ -12,6 +12,7 @@ from ..elementos.render.executor_prompts import (
     EXECUTOR_USER_PROMPT,
 )
 from ..phase_map import get_phase_map_v1
+from ..semantic_ledger_utils import semantic_ledger_hash
 
 ExecutorOutput = dict
 RenderConstraints = dict
@@ -141,7 +142,8 @@ def render_executor_output(
     constraints = deepcopy(constraints_struct)
 
     planner_semantic_output = state.get("planner_semantic_output") if isinstance(state.get("planner_semantic_output"), dict) else {}
-    semantic_ledger = ((state.get("progress_state") or {}).get("semantic_ledger") if isinstance(state.get("progress_state"), dict) else {})
+    semantic_ledger = state.get("effective_semantic_ledger") if isinstance(state.get("effective_semantic_ledger"), dict) else ((state.get("progress_state") or {}).get("semantic_ledger") if isinstance(state.get("progress_state"), dict) else {})
+    state["executor_ledger_hash"] = semantic_ledger_hash(semantic_ledger if isinstance(semantic_ledger, dict) else {})
     assistant_last_message_ctx = str(state.get("assistant_last_message") or state.get("last_assistant_message") or "")
 
     prompt = EXECUTOR_USER_PROMPT.format(

@@ -17,6 +17,7 @@ from .schemas import BeliefState, PolicyDecision, ProgressState, WorldState, def
 from .phase_map import get_phase_map_v1
 from .llm_planning_context import build_objective_summary, build_planner_context_block_full, build_full_roleplay_profiles
 from .telemetry.llm_usage import extract_llm_usage
+from .semantic_ledger_utils import build_effective_semantic_ledger, semantic_ledger_hash
 
 logger = logging.getLogger(__name__)
 
@@ -49,9 +50,10 @@ def plan_phase_policy(
     memory_long: str = "",
     user_message: str = "",
     assistant_last_message: str = "",
+    effective_semantic_ledger: dict | None = None,
 ) -> tuple[dict, PolicyDecision, dict]:
     del world_state, world_diff, belief_state, policy_state, policy_plan_summary, constraints, constraints_struct
-    del allowed_policy_ids, judge_result
+    del allowed_policy_ids
 
     meta = {
         "planner_llm_called": False,
@@ -71,7 +73,12 @@ def plan_phase_policy(
     started = time.perf_counter()
     started_wall = datetime.now(timezone.utc).isoformat()
     try:
-        semantic_ledger = (progress_state or {}).get("semantic_ledger", {}) if isinstance(progress_state, dict) else {}
+        semantic_ledger = (
+            effective_semantic_ledger
+            if isinstance(effective_semantic_ledger, dict)
+            else build_effective_semantic_ledger(progress_state if isinstance(progress_state, dict) else {}, judge_result if isinstance(judge_result, dict) else {})
+        )
+        meta["planner_ledger_hash"] = semantic_ledger_hash(semantic_ledger)
         persona_profile, scene_profile, _style_contract, _constraints_struct = build_full_roleplay_profiles(progress_state)
 
         objective_source = "state"
