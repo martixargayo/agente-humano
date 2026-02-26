@@ -12,6 +12,10 @@
 - `V09_Phase_map_discovery_allows_answer_and_yield_mode.md`
 - `V10_Replay_suite_and_tests_evidence.md`
 - `V11_Known_risks_inconsistencies_duplicates_and_token_pressure.md`
+- `V12_Executor_prompt_compaction_second_pass.md`
+- `V13_Word_cap_updated_to_40.md`
+- `V14_Summary_prompt_deduplicated.md`
+- `V15_Objective_summary_spanish_only.md`
 
 ## Qué se verificó
 1. P0 ledger sync: fuente única `effective_semantic_ledger` para planner/executor.
@@ -47,3 +51,7 @@ rg -n "REGLAS_MEMORIA_LARGA|NOVEDAD_Y_REPETICION|SEMANTIC_LEDGER_QUALITY_RULES" 
 - [ ] V09: discovery incluye explícitamente “responder y ceder”.
 - [ ] V10: tests/replay ejecutados y resultados documentados.
 - [ ] V11: riesgos e inconsistencias documentados con evidencia.
+- [ ] V12: prompt executor compactado sin duplicidades críticas.
+- [ ] V13: `max_words` por defecto subido a 40 en style/prompt/runtime.
+- [ ] V14: `SUMMARY_*` deduplicado a una sola definición canónica.
+- [ ] V15: `OBJECTIVE_SUMMARY` de fallback en español 100%.

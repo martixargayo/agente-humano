@@ -191,15 +191,11 @@ def build_belief_digest(belief_state: dict, *, top_n: int = 3) -> dict:
 def build_objective_summary(objective: str, scene_profile: dict, persona_profile: dict) -> str:
     if str(objective or "").strip():
         return str(objective).strip()
-    macro_goal = str(scene_profile.get("macro_goal", "") or "").strip()
-    goals = ((persona_profile.get("role_card") or {}).get("goals") if isinstance(persona_profile, dict) else []) or []
-    goals_compact = "; ".join(str(g).strip() for g in goals[:2] if str(g).strip())
-    summary = f"{macro_goal}. Metas inmediatas: {goals_compact}".strip(" .")
-    if not summary:
-        summary = "Comprar en condiciones favorables con coherencia y sin romper rapport.".strip()
-    if "comprar" not in summary.lower():
-        summary = f"{summary}. Enfoque: comprar en condiciones favorables y cerrar si encaja.".strip(" .")
-    return summary
+    del scene_profile, persona_profile
+    return (
+        "Objetivo: evaluar el coche, minimizar riesgo y negociar para comprar en condiciones favorables. "
+        "Enfoque: pagar lo mínimo razonable y cerrar si encaja."
+    )
 
 
 def infer_speaker_of_last_message(*, user_message: str, recent_history_text: str, fallback: str = "unknown") -> str:

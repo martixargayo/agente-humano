@@ -4,8 +4,8 @@
 
 ### System prompt
 ```text
-Eres un sintetizador de conversación en español.
-Resume de forma breve, fiel y sin añadir información nueva.
+Eres un sintetizador de conversación.
+Resume en español, breve y fiel a los hechos.
 ```
 
 ### User prompt
@@ -52,29 +52,17 @@ Devuelve un único resumen actualizado en texto plano.
 ```
 
 ## B) Dónde se renderiza
-- Archivo: `backend/agent.py`
-- Camino real ejecutado: `_maybe_trim_and_summarize -> _summarize_prefix_into_state`
-- Snippet:
-```python
-messages = summary_prompt.format_messages(existing_summary=..., new_block=...)
-result = summary_llm.invoke(messages)
-```
+- `backend/agent.py::_summarize_prefix_into_state`
 
 ## C) Payload/messages al LLM
-- `SystemMessage(content=<system literal arriba>)`
-- `HumanMessage(content=<user literal arriba>)`
+- SystemMessage(content=...)
+- HumanMessage(content=...)
 
 ## D) Evidencia reproducible
 ```bash
 python scripts/dump_literal_prompts.py
-python - <<'PY'
-import json
-obj=json.load(open('docs/diagnostics/live_trace_findings/verification_prompts_literal/prompt_capture.json'))
-for m in obj['summary']['messages']:
-    print(f"[{m['role']}]\n{m['content']}\n")
-PY
 ```
 
-## E) Confirmación de “no duplicados”
-- `backend/prompts.py` contiene 2 definiciones de `SUMMARY_USER_PROMPT` (count=2).
-- Este dump demuestra el camino real ejecutado vía `backend/agent.py` con mensajes capturados.
+## E) Confirmación de uso y duplicados
+- En `backend/prompts.py` hay 1 definición de SUMMARY_SYSTEM_PROMPT y 1 de SUMMARY_USER_PROMPT tras cleanup.
+- El dump se captura ejecutando el camino real de resumen en `backend/agent.py`.

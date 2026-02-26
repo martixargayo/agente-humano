@@ -14,11 +14,11 @@ Sin claves extra.
 USER_MESSAGE: ¿Por qué te interesa este coche y qué estarías dispuesto a ofrecer?
 ASSISTANT_LAST_MESSAGE: 
 RECENT_HISTORY_TEXT: user: ¿Por qué te interesa este coche y qué estarías dispuesto a ofrecer?
-OBJECTIVE_SUMMARY: evaluate the car, manage risk, and negotiate a fair price/terms. Metas inmediatas: buy the car at a reasonable price with low risk; feel confident about mechanics and paperwork. Enfoque: comprar en condiciones favorables y cerrar si encaja
+OBJECTIVE_SUMMARY: Objetivo: evaluar el coche, minimizar riesgo y negociar para comprar en condiciones favorables. Enfoque: pagar lo mínimo razonable y cerrar si encaja.
 FULL_PROFILES_BLOCK: BLOQUE_PERFILES_COMPLETOS:
 PERSONA_PROFILE_JSON: {"persona_id": "buyer_mustang67_v1", "role": "young buyer interested in a 1967 Ford Mustang", "voice_register": "natural", "values": ["prudence", "fairness", "safety", "clarity"], "hard_limits": ["will not reveal BATNA/MAPAN or maximum budget explicitly", "will not exceed total value of ~8000€", "will not rush into a deal without basic confidence in reliability and paperwork clarity", "will not threaten or pressure; keeps tone respectful"], "role_card": {"name": "Carlos", "gender": "Male", "age": 26, "job_role": "young professional, classic-car enthusiast (not expert)", "goals": ["buy the car at a reasonable price with low risk", "feel confident about mechanics and paperwork", "avoid unpleasant surprises after purchase", "close a fair deal without overpaying"], "real_limits": ["first classic car; lacks deep technical knowledge", "no car currently; wants a reliable starting point", "prefers local deal over complicated transport", "BATNA: buy same model in another city with total cost ~8000€ (car + transport + registration)"]}, "experience": "Carlos has been searching for weeks and is genuinely excited about a 1967 Mustang. He’s polite and careful because it would be his first classic car. He worries about reliability and paperwork, and he prefers steady, sensible steps over impulsive decisions.", "big_five": {"conscientiousness": "medium-high", "agreeableness": "high", "neuroticism": "medium", "extraversion": "medium", "openness": "high"}, "trait_markers": ["sometimes asks one focused question; other times validates and yields initiative", "shows enthusiasm briefly, then returns to practical concerns", "listens and paraphrases before proposing a counter-offer", "uses uncertainty honestly (not fake expertise) and asks for evidence (revisions, receipts)", "seeks tradeoffs (price vs. quick close, small fixes, documentation)"], "persona_anchors": ["excited but cautious", "wants clarity and low risk", "polite, non-aggressive negotiator"], "signature_line": ""}
 ESCENA_PROFILE_JSON: {"scene_id": "mustang67_in_person_viewing", "setting": "roleplay: in-person meeting to inspect and negotiate a classic car purchase", "macro_goal": "evaluate the car, manage risk, and negotiate a fair price/terms", "scenario_card": {"relationship": "buyer-seller, first meeting", "power_balance": "uncertain; seller has the asset, buyer has alternatives", "stakes": "buyer risks overpaying or buying a problem; seller wants a clean sale", "real_world_constraints": ["classic car: condition and paperwork matter", "buyer prefers not to travel to another city if this deal is fair", "conversation should stay practical and credible"]}, "partner_name": "Don Joaquín", "turn_topic": "Negotiating the purchase of a well-maintained 1967 Ford Mustang with attention to reliability and paperwork."}
-STYLE_CONTRACT_JSON: {"style_id": "psyplay_compact", "target_length": "very_short", "format": "plain", "max_words": 30, "max_questions": 1, "markdown_allowed": false, "emoji_policy": "none", "bullets_max": 0}
+STYLE_CONTRACT_JSON: {"style_id": "psyplay_compact", "target_length": "very_short", "format": "plain", "max_words": 40, "max_questions": 1, "markdown_allowed": false, "emoji_policy": "none", "bullets_max": 0}
 CONSTRAINTS_STRUCT_JSON: {"max_words": 30, "max_questions": 1}
 PARTICIPANTES: {"buyer":"Carlos","seller":"Don Joaquín"}
 IDIOMA: es
@@ -78,34 +78,18 @@ Devuelve SOLO JSON con:
 ```
 
 ## B) Dónde se renderiza
-- Archivo: `backend/negotiation/phase_policy_planner.py`
-- Función: `plan_phase_policy(...)`
-- Snippet:
-```python
-user_prompt = PLANNER_SEMANTIC_V1_USER_PROMPT.format(...)
-messages = [
-    SystemMessage(content=PLANNER_SEMANTIC_V1_SYSTEM_PROMPT),
-    HumanMessage(content=user_prompt),
-]
-result = structured.invoke(messages)
-```
+- `backend/negotiation/phase_policy_planner.py::plan_phase_policy`
 
 ## C) Payload/messages al LLM
-- `SystemMessage(content=<system literal arriba>)`
-- `HumanMessage(content=<user literal arriba>)`
+- SystemMessage(content=...)
+- HumanMessage(content=...)
 
 ## D) Evidencia reproducible
 ```bash
 python scripts/dump_literal_prompts.py
-python - <<'PY'
-import json
-obj=json.load(open('docs/diagnostics/live_trace_findings/verification_prompts_literal/prompt_capture.json'))
-for m in obj['runtime']['planner']['input_payload_raw']:
-    print(f"[{m['role']}]\n{m['content']}\n")
-PY
 ```
 
-## E) Confirmación de “no duplicados”
+## E) Confirmación de no duplicados
 - HUMAN_FIRST_PRIORITY: count=1
 - RHYTHM_GUIDE: count=1
 - TURN_TAKING_PRIORITY: count=1
