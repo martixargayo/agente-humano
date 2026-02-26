@@ -79,7 +79,7 @@ CARLOS_STYLE_CONTRACT = {
     "style_id": "psyplay_compact",
     "target_length": "very_short",
     "format": "plain",
-    "max_words": 30,
+    "max_words": 40,
     "max_questions": 1,
     "markdown_allowed": False,
     "emoji_policy": "none",

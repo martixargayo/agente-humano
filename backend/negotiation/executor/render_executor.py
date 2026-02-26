@@ -17,7 +17,7 @@ from ..semantic_ledger_utils import semantic_ledger_hash
 ExecutorOutput = dict
 RenderConstraints = dict
 
-_WORD_CAP_LIMIT = int(os.getenv("NEGOTIATION_EXECUTOR_WORD_CAP", "30") or 30)
+_WORD_CAP_LIMIT = int(os.getenv("NEGOTIATION_EXECUTOR_WORD_CAP", "40") or 40)
 _WORD_CAP_MAX_RERUNS = int(os.getenv("NEGOTIATION_EXECUTOR_WORD_CAP_MAX_RERUNS", "1") or 1)
 _WORD_CAP_RETRY_INSTRUCTION = (
     f"REINTENTO_BREVEDAD: Devuelve JSON válido y limita response_text a máximo {_WORD_CAP_LIMIT} palabras."

@@ -132,34 +132,6 @@ No describas acciones físicas ni gestos; céntrate en lenguaje conversacional.
 No reveles ni infieras BATNA en tus respuestas.
 """.strip()
 
-SUMMARY_SYSTEM_PROMPT = """
-Eres un sintetizador de conversación en español.
-Resume de forma breve, fiel y sin añadir información nueva.
-""".strip()
-
-SUMMARY_USER_PROMPT = """
-Resumen previo:
-{existing_summary}
-
-Bloque nuevo:
-{new_block}
-
-REGLAS_MEMORIA_LARGA:
-- Resume por IDEAS conversacionales útiles para próximos turnos.
-- Incluye explícitamente:
-  1) hechos relevantes ya acordados o aclarados,
-  2) preguntas ya respondidas,
-  3) sensibilidad del interlocutor (temas donde insistir molestó),
-  4) estado de negociación actual (sin inventar).
-- Evita detalle redundante y evita copiar frases literales largas.
-
-NOVEDAD_Y_REPETICION:
-- Marca en el resumen qué ideas ya quedaron suficientemente tratadas.
-- Señala qué temas no conviene volver a preguntar salvo nueva información.
-
-Devuelve un único resumen actualizado en texto plano.
-""".strip()
-
 CONVERSATION_USER_TEMPLATE = """
 Resumen de la conversación:
 {summary_text}
