@@ -164,6 +164,13 @@ def plan_phase_policy(
         lo_que_ya_pregunte = list((semantic_ledger or {}).get("lo_que_ya_pregunte", [])) if isinstance(semantic_ledger, dict) else []
         lo_que_falta_pero_no_insistire = list((semantic_ledger or {}).get("lo_que_falta_pero_no_insistire", [])) if isinstance(semantic_ledger, dict) else []
 
+        prev_phase = str((((progress_state or {}).get("phase_state") or {}).get("phase") or "clima_humano"))
+        allowed_next_phases = [p for p in phase_map.keys() if p in OFFICIAL_PHASE_IDS] or OFFICIAL_PHASE_IDS
+        style_id = str(((_style_contract or {}).get("style_id") or "psyplay_compact"))
+        lo_que_ya_se_toco = list((semantic_ledger or {}).get("lo_que_ya_se_toco", [])) if isinstance(semantic_ledger, dict) else []
+        lo_que_ya_pregunte = list((semantic_ledger or {}).get("lo_que_ya_pregunte", [])) if isinstance(semantic_ledger, dict) else []
+        lo_que_falta_pero_no_insistire = list((semantic_ledger or {}).get("lo_que_falta_pero_no_insistire", [])) if isinstance(semantic_ledger, dict) else []
+
         user_prompt = PLANNER_SEMANTIC_V1_USER_PROMPT.format(
             speaker="seller",
             user_message=str(user_message or "")[:1000],
