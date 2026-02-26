@@ -15,6 +15,7 @@ from .elementos.strategy_definitions import PlannerSemanticV1DecisionModel
 from .llm_clients import get_planner_llm
 from .schemas import BeliefState, PolicyDecision, ProgressState, WorldState, default_policy_decision
 from .phase_map import get_phase_map_v1
+from .phase_cards_extended import OFFICIAL_PHASE_IDS
 from .llm_planning_context import build_objective_summary, build_planner_context_block_full, build_full_roleplay_profiles
 from .telemetry.llm_usage import extract_llm_usage
 from .semantic_ledger_utils import build_effective_semantic_ledger, semantic_ledger_hash
@@ -98,17 +99,27 @@ def plan_phase_policy(
         phase_map = get_phase_map_v1()
         full_profiles_block = build_planner_context_block_full(progress_state)
 
+        prev_phase = str((((progress_state or {}).get("phase_state") or {}).get("phase") or "clima_humano"))
+        allowed_next_phases = [p for p in phase_map.keys() if p in OFFICIAL_PHASE_IDS] or OFFICIAL_PHASE_IDS
+        style_id = str(((_style_contract or {}).get("style_id") or "psyplay_compact"))
+        lo_que_ya_se_toco = list((semantic_ledger or {}).get("lo_que_ya_se_toco", [])) if isinstance(semantic_ledger, dict) else []
+        lo_que_ya_pregunte = list((semantic_ledger or {}).get("lo_que_ya_pregunte", [])) if isinstance(semantic_ledger, dict) else []
+        lo_que_falta_pero_no_insistire = list((semantic_ledger or {}).get("lo_que_falta_pero_no_insistire", [])) if isinstance(semantic_ledger, dict) else []
+
         user_prompt = PLANNER_SEMANTIC_V1_USER_PROMPT.format(
+            speaker="seller",
             user_message=str(user_message or "")[:1000],
             assistant_last_message=str(assistant_last_message or "")[:1000],
-            recent_history_text=str(recent_context or "")[-1200:],
-            objective_summary=objective_summary,
-            full_profiles_block=full_profiles_block,
-            memory_short=memory_short_text,
-            memory_long=memory_long_text,
-            semantic_ledger_json=json.dumps(semantic_ledger or {}, ensure_ascii=False),
-            phase_map_json=json.dumps(phase_map, ensure_ascii=False),
-            advisor_recs_json=json.dumps(advisor_recs or {}, ensure_ascii=False),
+            style_id=style_id,
+            max_words=int((_constraints_struct or {}).get("max_words", 30) or 30),
+            max_questions=int((_constraints_struct or {}).get("max_questions", 1) or 1),
+            prev_phase=prev_phase,
+            allowed_next_phases_json=json.dumps(allowed_next_phases, ensure_ascii=False),
+            lo_que_ya_se_toco_json=json.dumps(lo_que_ya_se_toco, ensure_ascii=False),
+            lo_que_ya_pregunte_json=json.dumps(lo_que_ya_pregunte, ensure_ascii=False),
+            lo_que_falta_pero_no_insistire_json=json.dumps(lo_que_falta_pero_no_insistire, ensure_ascii=False),
+            recent_history_compact=str(recent_context or "")[-1200:],
+            objective_summary_compact=objective_summary,
         )
         meta["objective_source"] = objective_source
         meta["objective_summary"] = objective_summary
