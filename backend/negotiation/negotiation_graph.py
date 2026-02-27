@@ -89,6 +89,17 @@ def _format_turn_blocks(blocks: list[dict[str, str]]) -> str:
     return "\n".join(lines).strip()
 
 
+def _build_short_memory_tail(messages: list[dict], *, short_turns: int) -> tuple[str, int, int | None]:
+    blocks = _build_turn_blocks(messages)
+    complete_blocks = [b for b in blocks if str(b.get("assistant") or "").strip()]
+    if not complete_blocks:
+        return "", 0, None
+    short_turns = max(1, int(short_turns or 4))
+    tail = complete_blocks[-short_turns:]
+    text = _format_turn_blocks(tail)
+    return text, len(tail), len(complete_blocks)
+
+
 def _refresh_dual_memory(state: SessionState, deps: AgentDeps, *, short_turns: int) -> dict:
     progress_state = state.progress_state if isinstance(state.progress_state, dict) else default_progress_state()
     turn_buffer = _build_turn_blocks(state.history)
@@ -121,12 +132,8 @@ def _refresh_dual_memory(state: SessionState, deps: AgentDeps, *, short_turns: i
             memory_long_updated = True
             summarized_turn_count = overflow_count
 
-    if total_turns <= 1:
-        short_blocks = turn_buffer
-    else:
-        end_idx = total_turns - 1
-        start_idx = max(0, end_idx - short_turns)
-        short_blocks = turn_buffer[start_idx:end_idx]
+    start_idx = max(0, total_turns - short_turns)
+    short_blocks = turn_buffer[start_idx:total_turns]
     short_text = _format_turn_blocks(short_blocks)
     long_text = str(previous_summary or "").strip()
 
@@ -167,22 +174,42 @@ def run_negotiation_agent(
     add_message(state, "user", user_message)
 
     progress_state_for_memory = state.progress_state if isinstance(state.progress_state, dict) else {}
+    progress_keys_at_turn_start = sorted(str(k) for k in progress_state_for_memory.keys())
+    has_persisted_short = "memory_short" in progress_state_for_memory or "turn_buffer" in progress_state_for_memory
     persisted_long = str(progress_state_for_memory.get("memory_long") or "").strip()
-    persisted_short = str(progress_state_for_memory.get("memory_short") or "").strip()
-    if persisted_long or persisted_short:
-        long_memory, short_memory = persisted_long, persisted_short
-        memory_meta = {
-            "chars_long": len(long_memory),
-            "chars_short": len(short_memory),
-            "turns_total": int(progress_state_for_memory.get("memory_long_turns_summarized") or 0) + int(progress_state_for_memory.get("memory_short_turns") or 0),
-            "turns_short": int(progress_state_for_memory.get("memory_short_turns") or _MEMORY_SHORT_TURNS),
-        }
+
+    if has_persisted_short:
+        short_memory = str(progress_state_for_memory.get("memory_short") or "").strip()
+        short_turns_rendered = sum(1 for line in short_memory.splitlines() if line.startswith("user:"))
+        short_source = "progress_state"
+        fallback_used = False
     else:
-        long_memory, short_memory, memory_meta = build_memory_context(
+        short_memory, short_turns_rendered, _ = _build_short_memory_tail(state.history, short_turns=_MEMORY_SHORT_TURNS)
+        short_source = "fallback_build_memory_context"
+        fallback_used = True
+
+    if persisted_long:
+        long_memory = persisted_long
+        long_source = "progress_state"
+    else:
+        long_memory, _legacy_short, _legacy_meta = build_memory_context(
             state.history,
             state.summary,
             keep_last_n_turns=_MEMORY_SHORT_TURNS,
         )
+        long_source = "fallback_build_memory_context"
+
+    memory_meta = {
+        "chars_long": len(long_memory),
+        "chars_short": len(short_memory),
+        "turns_total": int(progress_state_for_memory.get("memory_long_turns_summarized") or 0) + int(progress_state_for_memory.get("memory_short_turns") or short_turns_rendered),
+        "turns_short": int(progress_state_for_memory.get("memory_short_turns") or _MEMORY_SHORT_TURNS),
+        "memory_short_source": short_source,
+        "memory_long_source": long_source,
+        "memory_short_turns_rendered": short_turns_rendered,
+        "progress_state_keys_at_turn_start": progress_keys_at_turn_start,
+        "memory_short_fallback_used": fallback_used,
+    }
 
     graph_state = {
         "user_message": user_message,
@@ -219,10 +246,19 @@ def run_negotiation_agent(
     new_graph_state = negotiation_app.invoke(graph_state)
     response = str(new_graph_state.get("response") or new_graph_state.get("assistant_message") or "")
 
+    progress_state_out = new_graph_state.get("progress_state") or {}
+    if not isinstance(progress_state_out, dict):
+        progress_state_out = dict(progress_state_out)
+    state.progress_state = progress_state_out
+
     if response:
         add_message(state, "assistant", response)
 
     refresh_meta = _refresh_dual_memory(state, deps, short_turns=_MEMORY_SHORT_TURNS)
+    new_graph_state["progress_state"] = state.progress_state if isinstance(state.progress_state, dict) else {}
+    new_graph_state["short_memory"] = str((state.progress_state or {}).get("memory_short") or "")
+    new_graph_state["long_memory"] = str((state.progress_state or {}).get("memory_long") or "")
+    new_graph_state["summary"] = new_graph_state["long_memory"]
 
     state.world_state = new_graph_state.get("world_state") if isinstance(new_graph_state.get("world_state"), dict) else state.world_state
     state.belief_state = new_graph_state.get("belief_state") if isinstance(new_graph_state.get("belief_state"), dict) else state.belief_state
