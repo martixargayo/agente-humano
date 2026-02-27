@@ -441,7 +441,7 @@ def test_normalize_next_move_hint_uses_necesita_info_and_no_questions_outside_te
         assert "?" not in ln and "¿" not in ln
 
 
-def test_executor_questionless_retry_when_no_need_info_and_user_not_asking():
+def test_interrogative_without_question_mark_blocked():
     from negotiation.executor.render_executor import render_executor_output
 
     class _DepsExec:
@@ -453,7 +453,7 @@ def test_executor_questionless_retry_when_no_need_info_and_user_not_asking():
             if self.calls == 1:
                 payload = {
                     "schema_version": "executor_v2",
-                    "response_text": "¿Quieres que avancemos con esto?",
+                    "response_text": "Cómo has estado manejando la venta hasta ahora",
                     "asked_question": True,
                     "requested_info_slots": ["contexto"],
                     "tone_used": "neutral",
@@ -463,9 +463,9 @@ def test_executor_questionless_retry_when_no_need_info_and_user_not_asking():
             else:
                 payload = {
                     "schema_version": "executor_v2",
-                    "response_text": "Perfecto, avancemos con una propuesta concreta y clara.",
-                    "asked_question": False,
-                    "requested_info_slots": [],
+                    "response_text": "Me gustaría saber cómo prefieres continuar",
+                    "asked_question": True,
+                    "requested_info_slots": ["contexto"],
                     "tone_used": "neutral",
                     "followup_intent": None,
                     "render_meta": {},
@@ -505,7 +505,67 @@ def test_executor_questionless_retry_when_no_need_info_and_user_not_asking():
         user_message="ok",
     )
     assert deps.calls == 2
-    assert "?" not in out["response_text"]
+    assert "cómo has estado" not in out["response_text"].lower()
     assert out["asked_question"] is False
     assert out["requested_info_slots"] == []
-    assert out["render_meta"]["questionless_retry_count"] == 1
+    assert out["render_meta"]["interrogative_retry_count"] == 1
+    assert out["render_meta"]["question_forced_removed"] is True
+
+
+def test_planner_retry_when_info_intent_without_necesita_info(monkeypatch):
+    class _PlannerStructuredRetry:
+        def __init__(self):
+            self.calls = 0
+
+        def invoke(self, _messages):
+            self.calls += 1
+            if self.calls == 1:
+                return PlannerSemanticV1DecisionModel(
+                    schema_version="planner_semantic_v1",
+                    phase="descubrimiento_y_comprension",
+                    style="Breve",
+                    next_move_hint='RESPUESTA: preguntar por el estado general\nMOVIMIENTO: avanzar con claridad\nTEMA: "Estado general hoy (en una frase)"',
+                    what_not_to_repeat=[],
+                )
+            return PlannerSemanticV1DecisionModel(
+                schema_version="planner_semantic_v1",
+                phase="descubrimiento_y_comprension",
+                style="Breve",
+                next_move_hint='RESPUESTA: validar y avanzar\nMOVIMIENTO: comprender estado actual\nTEMA: "Estado general hoy (en una frase)"\nNECESITA_INFO: estado_general',
+                what_not_to_repeat=[],
+            )
+
+    class _PlannerRetryLlm:
+        def __init__(self):
+            self.structured = _PlannerStructuredRetry()
+
+        def with_structured_output(self, _schema):
+            return self.structured
+
+    llm = _PlannerRetryLlm()
+    monkeypatch.setattr("negotiation.phase_policy_planner.get_planner_llm", lambda: llm)
+
+    _phase, _policy, meta = plan_phase_policy(
+        world_state=default_world_state(),
+        world_diff={},
+        belief_state=default_belief_state(),
+        progress_state=default_progress_state(),
+        policy_state={},
+        policy_plan_summary={},
+        objective="",
+        constraints="",
+        constraints_struct={"max_questions": 1},
+        recent_context="",
+        allowed_policy_ids=[],
+        advisor_recs={},
+        judge_result={},
+        memory_short="",
+        memory_long="",
+        user_message="ok",
+        assistant_last_message="",
+        effective_semantic_ledger=None,
+    )
+
+    assert llm.structured.calls == 2
+    assert meta["planner_need_info_slots"] == ["estado_general"]
+    assert "NECESITA_INFO: estado_general" in meta["planner_semantic_output"]["next_move_hint"]

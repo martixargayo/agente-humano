@@ -138,11 +138,15 @@ REGLA DE TRANSICIÓN (obligatoria):
 SIGNIFICADO DE LAS LÍNEAS (anti-copy, anti-preguntas):
 - RESPUESTA / MOVIMIENTO son guías semánticas (INTENCIÓN), NO redacción final.
 - RESPUESTA: intención en infinitivos/etiquetas semánticas (sin narrativa elaborada).
-  Ej: "RESPUESTA: validar motivo de venta, tono cercano."
 - MOVIMIENTO: intención táctica (y TRANSICION si aplica), sin texto final bonito.
 - NECESITA_INFO (opcional): SOLO si falta información imprescindible, declara 1–2 slots.
-  NO redactes preguntas aquí. Es una lista de slots, no una frase.
-  Ej: "NECESITA_INFO: precio_objetivo" o "NECESITA_INFO: documentacion, pago_fecha"
+
+REGLA HARD (obligatoria):
+- Está PROHIBIDO usar verbos/frases de pedir info en RESPUESTA o MOVIMIENTO:
+  "preguntar", "pregunta", "saber", "quisiera saber", "me gustaría saber", "necesito saber", "dime".
+- Si necesitas datos del vendedor, SOLO puedes expresarlo como:
+  NECESITA_INFO: slot1, slot2
+  (máximo 2 slots; sin signos ¿?; sin frase, solo slots).
 
 FORMATO OBLIGATORIO DE next_move_hint:
 - Siempre 3 líneas:

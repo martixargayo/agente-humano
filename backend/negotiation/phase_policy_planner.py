@@ -50,6 +50,10 @@ _ALLOWED_NEED_INFO_SLOTS = {
     "pago_fecha",
 }
 
+_INFO_INTENT_RE = re.compile(
+    r"(?i)\b(preguntar|pregunta|saber|quisiera saber|me gustaría saber|necesito saber|aclarar)\b"
+)
+
 
 def _extract_need_info_slots(text: str) -> list[str]:
     m = re.search(r"(?im)^\s*NECESITA_INFO\s*:\s*(.+)$", text)
@@ -89,6 +93,19 @@ def _remove_questions_outside_tema(text: str) -> tuple[str, bool]:
             changed = True
         new_lines.append(ln2)
     return "\n".join(new_lines), changed
+
+
+def _contains_info_intent(text: str) -> bool:
+    return bool(_INFO_INTENT_RE.search(str(text or "")))
+
+
+def _sanitize_info_intent_text(text: str) -> str:
+    t = str(text or "")
+    t = re.sub(r"(?i)preguntar\s+por", "comprender", t)
+    t = re.sub(r"(?i)preguntar", "comprender", t)
+    t = re.sub(r"(?i)pregunta", "aclaración", t)
+    t = re.sub(r"(?i)quisiera saber|me gustaría saber|necesito saber|saber", "comprender", t)
+    return re.sub(r"\s+", " ", t).strip()
 
 
 def _normalize_next_move_hint(phase: str, hint: str) -> tuple[str, bool]:
@@ -267,9 +284,46 @@ def plan_phase_policy(
         payload = result.model_dump()
         phase = str(payload.get("phase") or "clima_humano")
         normalized_hint, changed = _normalize_next_move_hint(phase, payload.get("next_move_hint", ""))
+        need_slots = _extract_need_info_slots(normalized_hint)
+        response_line = _extract_line_value(normalized_hint, "RESPUESTA")
+        movement_line = _extract_line_value(normalized_hint, "MOVIMIENTO")
+        info_intent = _contains_info_intent(f"{response_line} {movement_line}")
+
+        planner_retry_count = 0
+        if info_intent and not need_slots:
+            planner_retry_count = 1
+            retry_user_prompt = user_prompt + "\n\nREINTENTO_CONTRATO: No uses 'preguntar/saber' en RESPUESTA/MOVIMIENTO. Si necesitas datos, usa NECESITA_INFO: <slot>."
+            retry_messages = [
+                SystemMessage(content=PLANNER_SEMANTIC_V1_SYSTEM_PROMPT),
+                HumanMessage(content=retry_user_prompt),
+            ]
+            retry_result = structured.invoke(retry_messages)
+            payload = retry_result.model_dump()
+            phase = str(payload.get("phase") or phase)
+            normalized_hint, changed_retry = _normalize_next_move_hint(phase, payload.get("next_move_hint", ""))
+            changed = changed or changed_retry
+            need_slots = _extract_need_info_slots(normalized_hint)
+            response_line = _extract_line_value(normalized_hint, "RESPUESTA")
+            movement_line = _extract_line_value(normalized_hint, "MOVIMIENTO")
+            info_intent = _contains_info_intent(f"{response_line} {movement_line}")
+
+        if info_intent and not need_slots:
+            response_line = _sanitize_info_intent_text(response_line)
+            movement_line = _sanitize_info_intent_text(movement_line)
+            topic, _ = extract_topic_selected(normalized_hint)
+            if not topic or not is_valid_topic_for_phase(phase, topic):
+                topic = default_topic_for_phase(phase)
+            normalized_hint = "\n".join([
+                f"RESPUESTA: {response_line or 'validar y avanzar sin pedir datos.'}",
+                f"MOVIMIENTO: {movement_line or 'dar un siguiente paso concreto.'}",
+                f'TEMA: "{topic}"',
+            ])
+            changed = True
+
         payload["next_move_hint"] = normalized_hint
         meta["planner_postcheck_normalized"] = changed
-        meta["planner_need_info_slots"] = _extract_need_info_slots(normalized_hint)
+        meta["planner_need_info_slots"] = need_slots
+        meta["planner_retry_count"] = planner_retry_count
 
         meta["planner_llm_called"] = True
         meta["planner_output_payload_raw"] = payload

@@ -186,11 +186,12 @@ def test_executor_schema_retry_first_invalid_second_valid():
     assert out["schema_version"] == "executor_v2"
     assert deps.calls == 3
     assert out["render_meta"]["schema_retry_count"] == 1
-    assert out["render_meta"]["questionless_retry_count"] == 1
+    assert out["render_meta"]["interrogative_retry_count"] == 1
 
 
 def test_executor_schema_salvage_response_to_response_text():
     state = _base_state('RESPUESTA: Hola\nMOVIMIENTO: avanzar\nTEMA: "Pequeño rapport: día / cómo está"')
+    state["planner_need_info_slots"] = ["saludo"]
     deps = _DepsSingle(
         [
             {
