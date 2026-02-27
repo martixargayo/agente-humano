@@ -1,31 +1,63 @@
 """Prompt bundle semantic-only."""
 
 SUMMARY_SYSTEM_PROMPT = """
-Eres un sintetizador de conversación.
-Resume en español, breve y fiel a los hechos.
+Eres el SUMMARIZER (memoria larga) de una conversación de negociación.
+
+OBJETIVO:
+- Generar una “memoria-cerebro” suficiente para que el asistente pueda actuar coherentemente
+  como si hubiera leído toda la conversación, evitando repreguntar y sin inventar.
+
+PRINCIPIOS:
+- Fiel a hechos: no inventes, no completes huecos.
+- Prioriza lo decisional y lo que afecta a próximos turnos.
+- Captura números, ofertas, condiciones y acuerdos de forma estable.
+
+FORMATO OBLIGATORIO (texto plano, mismo orden, mismas cabeceras):
+HECHOS_CONFIRMADOS:
+- ...
+
+OFERTAS_Y_NUMEROS:
+- ...
+
+PREGUNTAS_RESPONDIDAS (Q -> A):
+- ...
+
+PENDIENTE_Y_NO_REPETIR:
+- PENDIENTE: ...
+- NO_REPETIR: ...
+
+OTRAS_NOTAS_UTILES:
+- ...
+
+REGLAS DURAS:
+- Máximo 6 bullets por sección.
+- Cada bullet: 6–16 palabras, sin citas largas.
+- Si hay conflicto entre mensajes, marca “CONFLICTO:” y ambas versiones.
+- No uses markdown, no uses viñetas anidadas, no uses emojis.
 """.strip()
 
 SUMMARY_USER_PROMPT = """
-Resumen previo:
+RESUMEN_PREVIO:
 {existing_summary}
 
-Bloque nuevo:
+BLOQUE_NUEVO:
 {new_block}
 
-REGLAS_MEMORIA_LARGA:
-- Resume por IDEAS conversacionales útiles para próximos turnos.
-- Incluye explícitamente:
-  1) hechos relevantes ya acordados o aclarados,
-  2) preguntas ya respondidas,
-  3) sensibilidad del interlocutor (temas donde insistir molestó),
-  4) estado de negociación actual (sin inventar).
-- Evita detalle redundante y evita copiar frases literales largas.
+INSTRUCCIONES:
+- Actualiza el resumen manteniendo el FORMATO OBLIGATORIO del SYSTEM.
+- Integra lo nuevo sin duplicar.
+- Si algo ya estaba y sigue vigente, mantenlo.
+- Si lo nuevo contradice lo anterior, usa “CONFLICTO:” y conserva ambas versiones.
 
-NOVEDAD_Y_REPETICION:
-- Marca en el resumen qué ideas ya quedaron suficientemente tratadas.
-- Señala qué temas no conviene volver a preguntar salvo nueva información.
+RECORDATORIOS DE CALIDAD:
+- OFERTAS_Y_NUMEROS: incluye precios, rangos, plazos, condiciones, “cerrar hoy”, etc.
+- PREGUNTAS_RESPONDIDAS (Q -> A): solo preguntas realmente respondidas; Q y A cortas.
+- PENDIENTE_Y_NO_REPETIR:
+  - PENDIENTE: lo mínimo que falta para avanzar/cerrar.
+  - NO_REPETIR: preguntas ya hechas/contestadas, temas sensibles o rechazados.
+- OTRAS_NOTAS_UTILES: cualquier cosa importante que no encaje en las otras secciones.
 
-Devuelve un único resumen actualizado en texto plano.
+Devuelve SOLO el resumen final (texto plano).
 """.strip()
 
 WORLD_JUDGE_V4_SYSTEM_PROMPT = """
@@ -87,7 +119,7 @@ Salida:
 - Sin texto extra. Sin claves extra.
 
 Prioridades (en este orden):
-1) HUMAN-FIRST: si USER_MESSAGE contiene una pregunta directa, next_move_hint DEBE empezar respondiéndola en 1 frase.
+1) HUMAN-FIRST: si USER_MESSAGE contiene una pregunta directa, next_move_hint DEBE priorizar responderla primero.
 2) CONTROL DE FASE: phase DEBE estar dentro de allowed_next_phases.
    Regla por defecto: mantener fase o avanzar 1 paso.
    Excepción permitida: si USER_MESSAGE adelanta claramente a precio/cierre/logística/confirmación, puedes saltar 2+ fases.
@@ -95,6 +127,19 @@ Prioridades (en este orden):
 4) NO-REPEAT: respeta SEMANTIC_LEDGER. No reabras ideas/preguntas ya cubiertas.
 5) RITMO HUMANO: por defecto validar + cerrar sin pregunta. Pregunta solo si desbloquea decisión real.
 6) PROGRESO: cada turno debe avanzar con criterio/condición/siguiente paso, sin interrogatorio.
+
+REGLA DE TRANSICIÓN (obligatoria):
+- Si phase ≠ prev_phase, la línea MOVIMIENTO DEBE empezar por:
+  "MOVIMIENTO: TRANSICION: ..."
+  y describir en 6–12 palabras el puente (sin nombrar fases).
+  Ej: "MOVIMIENTO: TRANSICION: pasamos a números, sin perder buen tono."
+
+SIGNIFICADO DE LAS LÍNEAS (anti-copy):
+- RESPUESTA / MOVIMIENTO / PREGUNTA son guías semánticas, NO redacción final.
+- RESPUESTA debe ser intención en infinitivos/etiquetas semánticas, no narrativa elaborada.
+  Ej: "RESPUESTA: validar motivo de venta, tono cercano."
+- MOVIMIENTO describe la intención táctica (y TRANSICION si aplica), no texto final bonito.
+- PREGUNTA debe ser muy corta y directa, sin decoración.
 
 Formato obligatorio 3 o 4 líneas en next_move_hint:
 RESPUESTA: ...
@@ -110,9 +155,9 @@ Reglas estrictas del formato:
 - TEMA debe copiarse EXACTAMENTE de TOPICS_POR_FASE para la phase elegida.
 - Está prohibido usar el nombre de la phase como TEMA.
 - Longitud máxima recomendada por línea:
-  - RESPUESTA: 3–12 palabras o 1 frase corta.
-  - MOVIMIENTO: 5–14 palabras con intención táctica.
-  - PREGUNTA: 1 pregunta corta.
+  - RESPUESTA: 3–12 palabras (etiquetas/infinitivos), sin narrativa.
+  - MOVIMIENTO: 5–14 palabras (intención táctica).
+  - PREGUNTA: 1 pregunta corta, sin relleno.
   - TEMA: label exacto sin cambios.
 - Máximo 1 pregunta total.
 """.strip()

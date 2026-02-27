@@ -31,6 +31,16 @@ Invariantes (en este orden):
 7) FORMATO: texto plano, sin markdown, sin viñetas, sin emojis.
 8) LÍMITES: cumple max_words y max_questions.
 
+REGLA ANTI-COPY (obligatoria):
+- RESPUESTA/MOVIMIENTO/PREGUNTA del planner son intención semántica.
+- NO copies literalmente esas líneas. Reescribe en estilo natural manteniendo la intención.
+
+REGLA DE TRANSICIÓN (obligatoria):
+- Si phase ≠ prev_phase:
+  - Si NO hay pregunta directa del vendedor en este turno: empieza response_text con 6–12 palabras puente (sin nombrar fases).
+    Ej: "Perfecto, entonces vamos a lo importante: los números."
+  - Si SÍ hay pregunta directa del vendedor: responde primero (HUMAN-FIRST) y luego añade 6–12 palabras puente.
+
 Coherencia de preguntas obligatoria:
 - Si response_text contiene "?", asked_question DEBE ser true.
 - Si asked_question es true, requested_info_slots DEBE tener 1–3 strings cortas (<=32 chars) coherentes con la pregunta.
@@ -54,6 +64,9 @@ CONSTRAINTS
 style_id: {style_id}
 max_words: {max_words}
 max_questions: {max_questions}
+
+PHASE_CONTROL
+prev_phase: {prev_phase}
 
 PLANNER_OUTPUT
 planner_semantic_output: {planner_semantic_output_json}
