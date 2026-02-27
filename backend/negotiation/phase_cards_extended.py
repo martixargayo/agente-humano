@@ -47,7 +47,7 @@ TOPICS_BY_PHASE = {
 
 _PHASE_CARDS_EXTENDED = {
     "clima_humano": {
-        "phase_id": "clima_humano",
+        "phase": "clima_humano",
         "do_text": """- Cálido y breve. “Persona primero”: 1 frase amable + (a veces) 1 pregunta ligera.
 - Cero negociación y cero checklist del coche. No empujar objetivos.
 - Si el otro está seco: valida y cede iniciativa (“Claro, te escucho”).""",
@@ -61,7 +61,7 @@ _PHASE_CARDS_EXTENDED = {
         "topics": TOPICS_BY_PHASE["clima_humano"],
     },
     "descubrimiento_y_comprension": {
-        "phase_id": "descubrimiento_y_comprension",
+        "phase": "descubrimiento_y_comprension",
         "do_text": """- Objetivo: sacar 1 dato útil por turno sin interrogatorio.
 - Alterna: (1) responder y cerrar, (2) validar + 1 pregunta enfocada.
 - Si el vendedor ya dio contexto: valida y no “repreguntes con sinónimos”.""",
@@ -75,7 +75,7 @@ _PHASE_CARDS_EXTENDED = {
         "topics": TOPICS_BY_PHASE["descubrimiento_y_comprension"],
     },
     "propuesta_creativa": {
-        "phase_id": "propuesta_creativa",
+        "phase": "propuesta_creativa",
         "do_text": """- Proponer 1 opción concreta (o 2 como máximo) con intercambio claro.
 - Hablar en términos de “cómo lo cerramos” más que “cuánto vale”.
 - Ofrecer comodidad a cambio de precio/condición (sin presión).""",
@@ -89,7 +89,7 @@ _PHASE_CARDS_EXTENDED = {
         "topics": TOPICS_BY_PHASE["propuesta_creativa"],
     },
     "concesiones_y_ajuste_final": {
-        "phase_id": "concesiones_y_ajuste_final",
+        "phase": "concesiones_y_ajuste_final",
         "do_text": """- Movimientos pequeños y condicionados (subo/bajo X si tú haces Y).
 - Mantener tono justo y práctico; sin regateo infinito.
 - Si hay choque: volver a “tradeoff” (comodidad vs €) en vez de discutir.""",
@@ -103,7 +103,7 @@ _PHASE_CARDS_EXTENDED = {
         "topics": TOPICS_BY_PHASE["concesiones_y_ajuste_final"],
     },
     "formalizacion_del_acuerdo": {
-        "phase_id": "formalizacion_del_acuerdo",
+        "phase": "formalizacion_del_acuerdo",
         "do_text": """- Resumir lo acordado como mini-checklist en frase(s) corta(s).
 - Pedir confirmación final + siguiente paso (pago/fecha/entrega).
 - Aquí no se renegocia: se confirma.""",
@@ -124,18 +124,8 @@ _TOPIC_FALLBACK_REGEX = re.compile(r'(?i)TEMA\s*:\s*([^\n]+)')
 def get_phase_card_extended(phase_id: str) -> tuple[dict, str]:
     pid = str(phase_id or "").strip()
     if pid in _PHASE_CARDS_EXTENDED:
-        card = deepcopy(_PHASE_CARDS_EXTENDED[pid])
-        card["phase"] = card["phase_id"]
-        card["do"] = card["do_text"]
-        card["tecnicas"] = card["tecnicas_text"]
-        card["avoid"] = card["evitar_text"]
-        return card, "ok"
-    fallback = deepcopy(_PHASE_CARDS_EXTENDED["clima_humano"])
-    fallback["phase"] = fallback["phase_id"]
-    fallback["do"] = fallback["do_text"]
-    fallback["tecnicas"] = fallback["tecnicas_text"]
-    fallback["avoid"] = fallback["evitar_text"]
-    return fallback, "fallback"
+        return deepcopy(_PHASE_CARDS_EXTENDED[pid]), "ok"
+    return deepcopy(_PHASE_CARDS_EXTENDED["clima_humano"]), "fallback"
 
 
 def extract_topic_selected(next_move_hint: str) -> tuple[str, str]:

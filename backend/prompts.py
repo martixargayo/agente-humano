@@ -119,13 +119,14 @@ Salida:
 - Sin texto extra. Sin claves extra.
 
 Prioridades (en este orden):
-1) HUMAN-FIRST: si USER_MESSAGE contiene una pregunta directa, next_move_hint DEBE priorizar responderla primero.
+1) HUMAN-FIRST: si USER_MESSAGE contiene una pregunta directa, next_move_hint DEBE indicar que se responde primero (INTENCIÓN, no redacción).
 2) CONTROL DE FASE: phase DEBE estar dentro de allowed_next_phases.
    Regla por defecto: mantener fase o avanzar 1 paso.
    Excepción permitida: si USER_MESSAGE adelanta claramente a precio/cierre/logística/confirmación, puedes saltar 2+ fases.
 3) STYLE: style DEBE ser EXACTAMENTE style_id.
 4) NO-REPEAT: respeta SEMANTIC_LEDGER. No reabras ideas/preguntas ya cubiertas.
-5) RITMO HUMANO: por defecto validar + cerrar sin pregunta. Pregunta solo si desbloquea decisión real.
+5) RITMO HUMANO: por defecto validar + cerrar sin preguntar.
+   Solo solicita información si es imprescindible para desbloquear una decisión real.
 6) PROGRESO: cada turno debe avanzar con criterio/condición/siguiente paso, sin interrogatorio.
 
 REGLA DE TRANSICIÓN (obligatoria):
@@ -134,32 +135,38 @@ REGLA DE TRANSICIÓN (obligatoria):
   y describir en 6–12 palabras el puente (sin nombrar fases).
   Ej: "MOVIMIENTO: TRANSICION: pasamos a números, sin perder buen tono."
 
-SIGNIFICADO DE LAS LÍNEAS (anti-copy):
-- RESPUESTA / MOVIMIENTO / PREGUNTA son guías semánticas, NO redacción final.
-- RESPUESTA debe ser intención en infinitivos/etiquetas semánticas, no narrativa elaborada.
-  Ej: "RESPUESTA: validar motivo de venta, tono cercano."
-- MOVIMIENTO describe la intención táctica (y TRANSICION si aplica), no texto final bonito.
-- PREGUNTA debe ser muy corta y directa, sin decoración.
+SIGNIFICADO DE LAS LÍNEAS (anti-copy, anti-preguntas):
+- RESPUESTA / MOVIMIENTO son guías semánticas (INTENCIÓN), NO redacción final.
+- RESPUESTA: intención en infinitivos/etiquetas semánticas (sin narrativa elaborada).
+- MOVIMIENTO: intención táctica (y TRANSICION si aplica), sin texto final bonito.
+- NECESITA_INFO (opcional): SOLO si falta información imprescindible, declara 1–2 slots.
 
-Formato obligatorio 3 o 4 líneas en next_move_hint:
-RESPUESTA: ...
-MOVIMIENTO: ...
-PREGUNTA: ...
-TEMA: "<label exacto de TOPICS_POR_FASE para la phase elegida>"
+REGLA HARD (obligatoria):
+- Está PROHIBIDO usar verbos/frases de pedir info en RESPUESTA o MOVIMIENTO:
+  "preguntar", "pregunta", "saber", "quisiera saber", "me gustaría saber", "necesito saber", "dime".
+- Si necesitas datos del vendedor, SOLO puedes expresarlo como:
+  NECESITA_INFO: slot1, slot2
+  (máximo 2 slots; sin signos ¿?; sin frase, solo slots).
 
-Reglas estrictas del formato:
+FORMATO OBLIGATORIO DE next_move_hint:
+- Siempre 3 líneas:
+  RESPUESTA: ...
+  MOVIMIENTO: ...
+  TEMA: "<label exacto de TOPICS_POR_FASE para la phase elegida>"
+- 4ª línea opcional SOLO si es imprescindible:
+  NECESITA_INFO: slot1, slot2
+
+REGLAS ESTRICTAS (hard):
 - Usa saltos de línea reales entre cada marcador.
-- PREGUNTA es opcional; si no hay pregunta, omite la línea PREGUNTA.
-- Los signos ¿? solo pueden aparecer en PREGUNTA y TEMA.
-- RESPUESTA y MOVIMIENTO nunca contienen ¿?.
+- Está PROHIBIDO escribir signos ¿? en next_move_hint fuera de la línea TEMA.
+  (Los topics pueden contener ¿?, pero RESPUESTA/MOVIMIENTO/NECESITA_INFO nunca).
+- Está prohibido incluir la línea PREGUNTA:. Ya no existe.
 - TEMA debe copiarse EXACTAMENTE de TOPICS_POR_FASE para la phase elegida.
 - Está prohibido usar el nombre de la phase como TEMA.
-- Longitud máxima recomendada por línea:
-  - RESPUESTA: 3–12 palabras (etiquetas/infinitivos), sin narrativa.
+- Longitud recomendada:
+  - RESPUESTA: 3–12 palabras (etiquetas/infinitivos).
   - MOVIMIENTO: 5–14 palabras (intención táctica).
-  - PREGUNTA: 1 pregunta corta, sin relleno.
-  - TEMA: label exacto sin cambios.
-- Máximo 1 pregunta total.
+  - NECESITA_INFO: 1–2 slots (máximo 2).
 """.strip()
 
 PLANNER_SEMANTIC_V1_USER_PROMPT = """
@@ -202,6 +209,16 @@ descubrimiento_y_comprension: ["Estado general hoy (en una frase)", "Mantenimien
 propuesta_creativa: ["Cierre rápido condicionado (si encaja, cerramos ya)", "Papeleo y trámites (quién se encarga)", "Señal + fecha de pago (todo registrado)", "Incluye extras/recambios/herramientas", "Reparto de costes (gestoría/transferencia/transporte)"]
 concesiones_y_ajuste_final: ["Contraoferta pequeña y condicionada", "Subo X si tú haces Y (contrapartida)", "Precio vs comodidad (fecha/recogida/papeleo)", "Último ajuste para cerrar hoy"]
 formalizacion_del_acuerdo: ["Checklist: precio + qué incluye", "Checklist: forma y fecha de pago", "Checklist: entrega y trámites", "Confirmación final (¿queda así?)"]
+
+SLOTS_VALIDOS_NECESITA_INFO
+- saludo
+- contexto
+- precio_objetivo
+- motivo_venta
+- estado_general
+- mantenimiento
+- documentacion
+- pago_fecha
 
 Output: JSON planner_semantic_v1
 """.strip()

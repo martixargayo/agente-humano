@@ -23,6 +23,22 @@ _WORD_CAP_RETRY_INSTRUCTION = f"REINTENTO_BREVEDAD: Devuelve JSON válido y limi
 _SCHEMA_RETRY_INSTRUCTION = "REINTENTO_ESQUEMA: Devuelve SOLO JSON executor_v2 con schema_version y response_text. Sin otras claves."
 _PROMPT_SWAP_V2_ENABLED = str(os.getenv("NEGOTIATION_PROMPT_SWAP_V2_ENABLED", "1") or "1").strip().lower() in {"1", "true", "yes", "on"}
 _TEXT_ONLY_FORBIDDEN_RE = re.compile(r"\b(muéstrame|muestrame|enséñame|ensename|envíame|enviame|adjunta|pásame|pasame|tráeme|traeme)\b", re.IGNORECASE)
+_INTERROGATIVE_START_RE = re.compile(
+    r'(?i)(^|[.!]\s+)\s*(cómo|como|qué|que|cuándo|cuando|dónde|donde|por qué|porque|cuánto|cuanto|cuál|cual|quién|quien)\b'
+)
+_INTERROGATIVE_PHRASE_RE = re.compile(
+    r'(?i)\b(me gustaría saber|quisiera saber|podrías decirme|me puedes decir|necesito saber|dime si)\b'
+)
+_ALLOWED_NEED_INFO_SLOTS = {
+    "saludo",
+    "contexto",
+    "precio_objetivo",
+    "motivo_venta",
+    "estado_general",
+    "mantenimiento",
+    "documentacion",
+    "pago_fecha",
+}
 
 
 def _word_count(text: str) -> int:
@@ -105,7 +121,14 @@ def normalize_executor_output(raw: object) -> ExecutorOutput:
     return out
 
 
-def _enforce_executor_v2_contract(out: dict, style: dict, constraints: dict) -> dict:
+def _enforce_executor_v2_contract(
+    out: dict,
+    style: dict,
+    constraints: dict,
+    *,
+    need_info_slots: list[str] | None = None,
+    question_allowed: bool = True,
+) -> dict:
     data = normalize_executor_output(out)
     max_words = int((style or {}).get("max_words") or _WORD_CAP_LIMIT)
     if _word_count(data["response_text"]) > max_words:
@@ -119,16 +142,26 @@ def _enforce_executor_v2_contract(out: dict, style: dict, constraints: dict) -> 
         if max_questions > 0 and not data["response_text"].endswith("?"):
             data["response_text"] = data["response_text"].rstrip(" .") + "?"
 
-    asked_question = bool(data.get("asked_question", False))
-    has_question_mark = "?" in data["response_text"] or "¿" in data["response_text"]
-    if has_question_mark:
-        asked_question = True
+    asked_question = bool(data.get("asked_question", False)) or _looks_like_question_es(data["response_text"])
 
     requested_slots = data.get("requested_info_slots") if isinstance(data.get("requested_info_slots"), list) else []
     requested_slots = [str(x).strip()[:32] for x in requested_slots if str(x).strip()][:3]
 
+    if question_allowed is False:
+        data["asked_question"] = False
+        data["requested_info_slots"] = []
+        if _looks_like_question_es(data["response_text"]):
+            cleaned = _remove_interrogative_sentences_es(str(data["response_text"]))
+            data["response_text"] = cleaned or _safe_neutral_fallback()
+            meta = dict(data.get("render_meta") or {}) if isinstance(data.get("render_meta"), dict) else {}
+            meta["question_forced_removed"] = True
+            data["render_meta"] = meta
+        return data
+
     if asked_question:
-        if not requested_slots:
+        if need_info_slots:
+            requested_slots = [str(x).strip()[:32] for x in need_info_slots if str(x).strip()][:3]
+        elif not requested_slots:
             requested_slots = _infer_requested_slots(data["response_text"])
         data["requested_info_slots"] = requested_slots[:3]
     else:
@@ -144,6 +177,44 @@ def _count_text_only_violations(text: str) -> int:
 
 def _build_retry_hint_for_text_only() -> str:
     return "REINTENTO_CANAL: reformula 100% a texto; no uses verbos mostrar/enviar/adjuntar."
+
+
+def _extract_need_info_slots(text: str) -> list[str]:
+    m = re.search(r"(?im)^\s*NECESITA_INFO\s*:\s*(.+)$", str(text or ""))
+    if not m:
+        return []
+    raw = m.group(1).strip()
+    if not raw:
+        return []
+    slots = []
+    for part in raw.split(","):
+        slot = re.sub(r"\s+", "_", part.strip().lower()).strip("_")
+        if slot in _ALLOWED_NEED_INFO_SLOTS and slot not in slots:
+            slots.append(slot)
+    return slots[:2]
+
+
+def _user_asked_direct_question(msg: str) -> bool:
+    return _looks_like_question_es(msg)
+
+
+def _looks_like_question_es(text: str) -> bool:
+    t = str(text or "").strip()
+    if not t:
+        return False
+    if "?" in t or "¿" in t:
+        return True
+    if _INTERROGATIVE_START_RE.search(t):
+        return True
+    if _INTERROGATIVE_PHRASE_RE.search(t):
+        return True
+    return False
+
+
+def _remove_interrogative_sentences_es(text: str) -> str:
+    chunks = re.split(r"(?<=[.!])\s+", str(text or "").strip())
+    kept = [chunk.strip() for chunk in chunks if chunk.strip() and not _looks_like_question_es(chunk)]
+    return " ".join(kept).strip()
 
 
 def _compact_profile_card(persona: dict) -> str:
@@ -227,6 +298,7 @@ def render_executor_output(
     assistant_last_message_ctx = str(state.get("assistant_last_message") or state.get("last_assistant_message") or "")
 
     phase_id = str((planner_semantic_output or {}).get("phase") or "clima_humano")
+    prev_phase = str((((state.get("progress_state") or {}).get("phase_state") or {}).get("phase")) or "clima_humano")
     next_move_hint = str((planner_semantic_output or {}).get("next_move_hint") or "")
     topic_selected, topic_source = extract_topic_selected(next_move_hint)
     if not topic_selected:
@@ -240,6 +312,12 @@ def render_executor_output(
     lo_que_ya_se_toco = list((semantic_ledger or {}).get("lo_que_ya_se_toco", [])) if isinstance(semantic_ledger, dict) else []
     lo_que_ya_pregunte = list((semantic_ledger or {}).get("lo_que_ya_pregunte", [])) if isinstance(semantic_ledger, dict) else []
     lo_que_falta_pero_no_insistire = list((semantic_ledger or {}).get("lo_que_falta_pero_no_insistire", [])) if isinstance(semantic_ledger, dict) else []
+    need_info_slots = []
+    if isinstance(state.get("planner_need_info_slots"), list):
+        need_info_slots = [str(x).strip() for x in state.get("planner_need_info_slots") if str(x).strip()]
+    else:
+        hint_text = str(planner_semantic_output.get("next_move_hint") or "") if isinstance(planner_semantic_output, dict) else ""
+        need_info_slots = _extract_need_info_slots(hint_text)
 
     prompt = EXECUTOR_USER_PROMPT.format(
         speaker=str(state.get("speaker_of_user_message") or "seller").strip().lower(),
@@ -252,7 +330,9 @@ def render_executor_output(
         max_words=int(style.get("max_words", _WORD_CAP_LIMIT) or _WORD_CAP_LIMIT),
         max_questions=int(style.get("max_questions", constraints.get("max_questions", 1)) or 1),
         planner_semantic_output_json=json.dumps(planner_semantic_output, ensure_ascii=False),
-        phase=phase_card.get("phase_id", phase_id),
+        prev_phase=prev_phase,
+        need_info_slots_json=json.dumps(need_info_slots, ensure_ascii=False),
+        phase=phase_card.get("phase", phase_id),
         phase_do_text=phase_card.get("do_text", ""),
         phase_tecnicas_text=phase_card.get("tecnicas_text", ""),
         phase_evitar_text=phase_card.get("evitar_text", ""),
@@ -262,7 +342,7 @@ def render_executor_output(
         lo_que_ya_se_toco_json=json.dumps(lo_que_ya_se_toco, ensure_ascii=False),
         lo_que_ya_pregunte_json=json.dumps(lo_que_ya_pregunte, ensure_ascii=False),
         lo_que_falta_pero_no_insistire_json=json.dumps(lo_que_falta_pero_no_insistire, ensure_ascii=False),
-        recent_history_compact=str(state.get("recent_history_text", "") or "").strip()[-1200:] or "SIN_MEMORIA_CORTA_AUN",
+        recent_history_compact=str(state.get("short_memory") or state.get("recent_history_text", "") or "").strip() or "SIN_MEMORIA_CORTA_AUN",
         memory_long_compact=str(state.get("long_memory", "") or "").strip() or "SIN_RESUMEN_AUN",
         retry_hint="",
     )
@@ -296,6 +376,31 @@ def render_executor_output(
     out = normalize_executor_output(data)
     original_words = _word_count(str(out.get("response_text", "")))
 
+    question_allowed = bool(need_info_slots)
+    interrogative_retry_count = 0
+    if _looks_like_question_es(str(out.get("response_text", ""))) and (not question_allowed):
+        interrogative_retry_count = 1
+        retry_hint_q = "RETRY_HINT: No hagas preguntas ni frases interrogativas. Responde declarativamente y devuelve SOLO JSON executor_v2."
+        retry_prompt_q = _with_retry_instruction(prompt, retry_hint_q)
+        retry_messages_q = [
+            SystemMessage(content=EXECUTOR_SYSTEM_PROMPT.strip()),
+            HumanMessage(content=retry_prompt_q.strip()),
+        ]
+        retry_raw_q = deps.execute(retry_messages_q)
+        retry_data_q = safe_json_load(retry_raw_q if isinstance(retry_raw_q, str) else getattr(retry_raw_q, "content", ""))
+        retry_data_q, schema_salvage_retry = _salvage_response_text(retry_data_q)
+        schema_salvage = schema_salvage or schema_salvage_retry
+        out = normalize_executor_output(retry_data_q)
+
+    question_forced_removed = False
+    if _looks_like_question_es(str(out.get("response_text", ""))) and (not question_allowed):
+        question_forced_removed = True
+        cleaned = _remove_interrogative_sentences_es(str(out.get("response_text", "")))
+        out = dict(out)
+        out["response_text"] = cleaned or _safe_neutral_fallback()
+        out["asked_question"] = False
+        out["requested_info_slots"] = []
+
     text_retry_count = 0
     text_only_violations_count = _count_text_only_violations(out.get("response_text", ""))
     fallback_truncate = False
@@ -322,7 +427,7 @@ def render_executor_output(
         out = dict(out)
         out["response_text"] = _truncate_words(str(out.get("response_text", "")), _WORD_CAP_LIMIT)
 
-    total_retry_count = schema_retry_count + text_retry_count
+    total_retry_count = schema_retry_count + interrogative_retry_count + text_retry_count
     render_meta = dict(out.get("render_meta") or {}) if isinstance(out.get("render_meta"), dict) else {}
     render_meta["word_cap_limit"] = _WORD_CAP_LIMIT
     render_meta["word_cap_original_words"] = original_words
@@ -331,10 +436,23 @@ def render_executor_output(
     render_meta["executor_retry_count"] = total_retry_count
     render_meta["schema_retry_count"] = schema_retry_count
     render_meta["schema_salvage"] = bool(schema_salvage)
+    render_meta["interrogative_retry_count"] = interrogative_retry_count
+    render_meta["prev_phase"] = prev_phase
+    render_meta["phase"] = phase_id
+    render_meta["memory_short_turns"] = int((((state.get("progress_state") or {}).get("memory_short_turns")) or 0))
+    render_meta["memory_long_updated"] = bool((state.get("memory_meta") or {}).get("memory_long_updated", False))
+    if question_forced_removed:
+        render_meta["question_forced_removed"] = True
     render_meta["text_only_violations_count"] = text_only_violations_count
     render_meta["topic_selected"] = state.get("topic_selected", "")
     render_meta["topic_selected_source"] = state.get("topic_selected_source", "none")
     render_meta["phase_card_lookup_status"] = state.get("phase_card_lookup_status", "missing")
     out["render_meta"] = render_meta
 
-    return _enforce_executor_v2_contract(normalize_executor_output(out), style, constraints)
+    return _enforce_executor_v2_contract(
+        normalize_executor_output(out),
+        style,
+        constraints,
+        need_info_slots=need_info_slots,
+        question_allowed=question_allowed,
+    )
