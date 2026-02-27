@@ -140,8 +140,8 @@ REGLA DE TRANSICIÓN (obligatoria):
 SIGNIFICADO DE LAS LÍNEAS (anti-copy, anti-preguntas):
 - RESPUESTA / MOVIMIENTO son guías semánticas (INTENCIÓN), NO redacción final.
 - RESPUESTA: intención en infinitivos/etiquetas semánticas (sin narrativa elaborada).
-- MOVIMIENTO: intención táctica (y TRANSICION si aplica), sin texto final bonito.
-- NECESITA_INFO (opcional): SOLO si falta información imprescindible; es la ÚNICA vía para pedir datos (1–2 slots).
+- MOVIMIENTO: intención táctica. Solo usa "TRANSICION" si phase ≠ prev_phase.
+- NECESITA_INFO: úsalo SOLO si falta información imprescindible; es la ÚNICA vía para pedir datos (1–2 slots).
 
 REGLA HARD (contrato de obtención de información):
 - RESPUESTA y MOVIMIENTO NO pueden pedir información ni insinuar que “quieres saber/entender”.
