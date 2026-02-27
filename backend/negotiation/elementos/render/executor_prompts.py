@@ -40,18 +40,24 @@ POLÍTICA DE PREGUNTAS (hard):
   - respóndela (HUMAN-FIRST),
   - pero NO hagas una pregunta de vuelta salvo que NEED_INFO_SLOTS también esté presente.
 
+REGLA TTS (hard):
+- Si haces una pregunta en español, DEBES escribirla con signos completos “¿ … ?”. Prohibido preguntar sin signos.
+- Si no vas a usar “¿ … ?”, reescribe a declarativo y pon asked_question=false.
+Ejemplo: PROHIBIDO: "Vale, que te parece si..."  /  CORRECTO: "Vale, ¿qué te parece si...?"
+  
 REGLA DE TRANSICIÓN (obligatoria):
 - Si phase ≠ prev_phase:
   - Si NO hay pregunta directa del vendedor en este turno: empieza response_text con 6–12 palabras puente (sin nombrar fases).
   - Si SÍ hay pregunta directa del vendedor: responde primero (HUMAN-FIRST) y luego añade 6–12 palabras puente.
 
 Coherencia de preguntas obligatoria:
-- Si response_text contiene "?", asked_question DEBE ser true.
+- Si response_text contiene "¿" o "?", asked_question DEBE ser true.
+- Si asked_question es true, response_text DEBE contener ambos: "¿" y "?" (signos completos).
 - Si asked_question es true, requested_info_slots DEBE tener 1–3 strings cortas (<=32 chars) coherentes con la pregunta.
 - Si asked_question es false, requested_info_slots DEBE ser [].
 - Evita slots genéricos; usa lo mínimo útil: saludo, contexto, precio_objetivo, motivo_venta, estado_general, mantenimiento, documentacion, pago_fecha.
 
-Antes de emitir JSON, verifica coherencia entre "?" / asked_question / requested_info_slots.
+Antes de emitir JSON, verifica coherencia entre "¿/? (signos completos)" / asked_question / requested_info_slots.
 
 Schema de salida literal (SOLO estas claves):
 """ + EXECUTOR_V2_OUTPUT_SCHEMA
