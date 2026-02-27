@@ -569,3 +569,166 @@ def test_planner_retry_when_info_intent_without_necesita_info(monkeypatch):
     assert llm.structured.calls == 2
     assert meta["planner_need_info_slots"] == ["estado_general"]
     assert "NECESITA_INFO: estado_general" in meta["planner_semantic_output"]["next_move_hint"]
+
+
+def test_planner_postcheck_detects_soft_info_intent_and_adds_necesita_info(monkeypatch):
+    class _PlannerStructuredSoftIntent:
+        def __init__(self):
+            self.calls = 0
+
+        def invoke(self, _messages):
+            self.calls += 1
+            return PlannerSemanticV1DecisionModel(
+                schema_version="planner_semantic_v1",
+                phase="descubrimiento_y_comprension",
+                style="Breve",
+                next_move_hint='RESPUESTA: entender el motivo de venta\nMOVIMIENTO: avanzar con claridad\nTEMA: "Motivo de venta (por qué ahora)"',
+                what_not_to_repeat=[],
+            )
+
+    class _PlannerSoftIntentLlm:
+        def __init__(self):
+            self.structured = _PlannerStructuredSoftIntent()
+
+        def with_structured_output(self, _schema):
+            return self.structured
+
+    llm = _PlannerSoftIntentLlm()
+    monkeypatch.setattr("negotiation.phase_policy_planner.get_planner_llm", lambda: llm)
+
+    _phase, _policy, meta = plan_phase_policy(
+        world_state=default_world_state(),
+        world_diff={},
+        belief_state=default_belief_state(),
+        progress_state=default_progress_state(),
+        policy_state={},
+        policy_plan_summary={},
+        objective="",
+        constraints="",
+        constraints_struct={"max_questions": 1},
+        recent_context="",
+        allowed_policy_ids=[],
+        advisor_recs={},
+        judge_result={},
+        memory_short="",
+        memory_long="",
+        user_message="pues perfecto, dime: ¿qué te gustaría saber?",
+        assistant_last_message="",
+        effective_semantic_ledger=None,
+    )
+
+    assert llm.structured.calls == 2
+    assert meta["planner_postcheck_requested_info_detected"] is True
+    assert meta["planner_postcheck_missing_necesita_info_retry"] is True
+    assert meta["planner_postcheck_forced_necesita_info"] == "motivo_venta"
+    assert meta["planner_need_info_slots"] == ["motivo_venta"]
+    assert "NECESITA_INFO: motivo_venta" in meta["planner_semantic_output"]["next_move_hint"]
+
+
+
+
+def test_planner_postcheck_detects_me_puedes_decir_pattern(monkeypatch):
+    class _PlannerStructuredPuedes:
+        def __init__(self):
+            self.calls = 0
+
+        def invoke(self, _messages):
+            self.calls += 1
+            return PlannerSemanticV1DecisionModel(
+                schema_version="planner_semantic_v1",
+                phase="descubrimiento_y_comprension",
+                style="Breve",
+                next_move_hint='RESPUESTA: me puedes decir el motivo\nMOVIMIENTO: podrías explicarme contexto\nTEMA: "Motivo de venta (por qué ahora)"',
+                what_not_to_repeat=[],
+            )
+
+    class _PlannerPuedesLlm:
+        def __init__(self):
+            self.structured = _PlannerStructuredPuedes()
+
+        def with_structured_output(self, _schema):
+            return self.structured
+
+    llm = _PlannerPuedesLlm()
+    monkeypatch.setattr("negotiation.phase_policy_planner.get_planner_llm", lambda: llm)
+
+    _phase, _policy, meta = plan_phase_policy(
+        world_state=default_world_state(),
+        world_diff={},
+        belief_state=default_belief_state(),
+        progress_state=default_progress_state(),
+        policy_state={},
+        policy_plan_summary={},
+        objective="",
+        constraints="",
+        constraints_struct={"max_questions": 1},
+        recent_context="",
+        allowed_policy_ids=[],
+        advisor_recs={},
+        judge_result={},
+        memory_short="",
+        memory_long="",
+        user_message="ok",
+        assistant_last_message="",
+        effective_semantic_ledger=None,
+    )
+
+    hint = meta["planner_semantic_output"]["next_move_hint"]
+    assert llm.structured.calls == 2
+    assert meta["planner_postcheck_requested_info_detected"] is True
+    assert meta["planner_postcheck_forced_necesita_info"] == "motivo_venta"
+    assert "RESPUESTA: validar y avanzar con tono colaborativo." in hint
+    assert "MOVIMIENTO: dar un siguiente paso concreto." in hint
+    assert "NECESITA_INFO: motivo_venta" in hint
+
+def test_planner_postcheck_forces_slot_by_topic_when_retry_still_missing(monkeypatch):
+    class _PlannerStructuredMissingSlots:
+        def __init__(self):
+            self.calls = 0
+
+        def invoke(self, _messages):
+            self.calls += 1
+            return PlannerSemanticV1DecisionModel(
+                schema_version="planner_semantic_v1",
+                phase="descubrimiento_y_comprension",
+                style="Breve",
+                next_move_hint='RESPUESTA: explorar motivo de venta\nMOVIMIENTO: para entender mejor el contexto\nTEMA: "Motivo de venta (por qué ahora)"',
+                what_not_to_repeat=[],
+            )
+
+    class _PlannerMissingSlotsLlm:
+        def __init__(self):
+            self.structured = _PlannerStructuredMissingSlots()
+
+        def with_structured_output(self, _schema):
+            return self.structured
+
+    llm = _PlannerMissingSlotsLlm()
+    monkeypatch.setattr("negotiation.phase_policy_planner.get_planner_llm", lambda: llm)
+
+    _phase, _policy, meta = plan_phase_policy(
+        world_state=default_world_state(),
+        world_diff={},
+        belief_state=default_belief_state(),
+        progress_state=default_progress_state(),
+        policy_state={},
+        policy_plan_summary={},
+        objective="",
+        constraints="",
+        constraints_struct={"max_questions": 1},
+        recent_context="",
+        allowed_policy_ids=[],
+        advisor_recs={},
+        judge_result={},
+        memory_short="",
+        memory_long="",
+        user_message="ok",
+        assistant_last_message="",
+        effective_semantic_ledger=None,
+    )
+
+    hint = meta["planner_semantic_output"]["next_move_hint"]
+    assert llm.structured.calls == 2
+    assert "NECESITA_INFO: motivo_venta" in hint
+    assert "explorar" not in hint.lower()
+    assert "entender" not in hint.lower()
