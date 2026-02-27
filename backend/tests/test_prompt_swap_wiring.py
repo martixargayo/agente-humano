@@ -184,14 +184,13 @@ def test_executor_schema_retry_first_invalid_second_valid():
     )
     out = _render_with_deps(state, deps)
     assert out["schema_version"] == "executor_v2"
-    assert deps.calls == 3
+    assert deps.calls == 2
     assert out["render_meta"]["schema_retry_count"] == 1
-    assert out["render_meta"]["interrogative_retry_count"] == 1
+    assert out["render_meta"]["interrogative_retry_count"] == 0
 
 
 def test_executor_schema_salvage_response_to_response_text():
     state = _base_state('RESPUESTA: Hola\nMOVIMIENTO: avanzar\nTEMA: "Pequeño rapport: día / cómo está"')
-    state["planner_need_info_slots"] = ["saludo"]
     deps = _DepsSingle(
         [
             {
@@ -209,9 +208,8 @@ def test_executor_schema_salvage_response_to_response_text():
     assert out["render_meta"]["schema_salvage"] is True
 
 
-def test_executor_question_slots_coherence_enforced_when_need_info_present():
-    state = _base_state('RESPUESTA: Hola\nMOVIMIENTO: avanzar\nTEMA: "Pequeño rapport: día / cómo está"\nNECESITA_INFO: precio_objetivo')
-    state["planner_need_info_slots"] = ["precio_objetivo"]
+def test_executor_question_slots_coherence_enforced_when_question_present():
+    state = _base_state('OBJECTIVE_DELTA: improve_price\nTACTIC: tradeoff\nRESPUESTA: Hola\nMOVIMIENTO: avanzar\nTEMA: "Pequeño rapport: día / cómo está"')
     out = _render_with_deps(
         state,
         _DepsSingle(
@@ -267,23 +265,25 @@ def test_planner_postcheck_removes_questions_outside_tema():
             assert "?" not in line and "¿" not in line
 
 
-def test_planner_postcheck_keeps_three_lines_when_no_question():
+def test_planner_postcheck_keeps_five_lines_when_no_question():
     normalized, _ = _normalize_next_move_hint(
         "clima_humano",
         'RESPUESTA: Gracias por escribir\nMOVIMIENTO: Mantengo tono cordial y avanzo\nTEMA: "Pequeño rapport: día / cómo está"',
     )
     lines = normalized.splitlines()
-    assert len(lines) == 3
+    assert len(lines) == 5
+    assert lines[0].startswith("OBJECTIVE_DELTA:")
+    assert lines[1].startswith("TACTIC:")
     assert all(not ln.startswith("PREGUNTA:") for ln in lines)
-    assert all(not ln.startswith("NECESITA_INFO:") for ln in lines)
 
 
-def test_planner_postcheck_preserves_valid_necesita_info_slots():
+def test_planner_postcheck_normalizes_objective_delta_and_tactic():
     normalized, _ = _normalize_next_move_hint(
         "propuesta_creativa",
-        'RESPUESTA: validar paso MOVIMIENTO: avanzar cierre TEMA: "Señal + fecha de pago (todo registrado)" NECESITA_INFO: documentacion, pago_fecha, ruido',
+        'RESPUESTA: validar paso MOVIMIENTO: avanzar cierre TEMA: "Señal + fecha de pago (todo registrado)"',
     )
-    assert "NECESITA_INFO: documentacion, pago_fecha" in normalized
+    assert "OBJECTIVE_DELTA:" in normalized
+    assert "TACTIC:" in normalized
 
 
 def test_planner_phase_jump_not_forced_to_plus_one():

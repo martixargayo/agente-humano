@@ -134,6 +134,36 @@ def _build_executor_node(runtime: dict[str, Any], executor_output: dict[str, Any
     return node
 
 
+
+def _build_executor_finalizer_node(runtime: dict[str, Any], executor_output: dict[str, Any]) -> dict[str, Any] | None:
+    runtime_node = _find_runtime_llm(runtime, "executor_finalizer_llm")
+    if not runtime_node:
+        if not executor_output:
+            return None
+        meta = executor_output.get("render_meta") if isinstance(executor_output.get("render_meta"), dict) else {}
+        if not meta.get("finalizer_called"):
+            return None
+        runtime_node = {
+            "latency_ms": meta.get("latency_ms_finalizer", 0),
+            "output_payload_raw": {
+                "finalizer_called": bool(meta.get("finalizer_called", False)),
+                "finalizer_changed_from_draft": bool(meta.get("finalizer_changed_from_draft", False)),
+                "finalizer_fixes": list(meta.get("finalizer_fixes", [])) if isinstance(meta.get("finalizer_fixes"), list) else [],
+                "latency_ms_finalizer": int(meta.get("latency_ms_finalizer", 0) or 0),
+            },
+        }
+
+    node = _llm_node_from_meta("executor_finalizer_llm", runtime_node)
+    meta = executor_output.get("render_meta") if isinstance(executor_output.get("render_meta"), dict) else {}
+    node["output_payload_parsed"] = {
+        "finalizer_called": bool(meta.get("finalizer_called", False)),
+        "finalizer_changed_from_draft": bool(meta.get("finalizer_changed_from_draft", False)),
+        "finalizer_fixes": list(meta.get("finalizer_fixes", [])) if isinstance(meta.get("finalizer_fixes"), list) else [],
+        "latency_ms_finalizer": int(meta.get("latency_ms_finalizer", 0) or 0),
+    }
+    node["output_capture_state"] = "captured"
+    return node
+
 def build_semantic_turn_model(
     *,
     user_id: str,
@@ -186,6 +216,10 @@ def build_semantic_turn_model(
     executor_node = _build_executor_node(runtime, executor_output)
     if executor_node is not None:
         nodes.append(executor_node)
+
+    executor_finalizer_node = _build_executor_finalizer_node(runtime, executor_output)
+    if executor_finalizer_node is not None:
+        nodes.append(executor_finalizer_node)
 
     started_candidates = [n.get("started_at") for n in nodes if str(n.get("started_at") or "").strip()]
     ended_candidates = [n.get("ended_at") for n in nodes if str(n.get("ended_at") or "").strip()]

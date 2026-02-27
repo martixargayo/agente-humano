@@ -1,0 +1,59 @@
+EXECUTOR_V2_USER_PROMPT = """
+TURN
+speaker: {speaker}
+user_message: {user_message}
+last_seller_utterance: {last_seller_utterance}
+assistant_last_message: {assistant_last_message}
+
+CONSTRAINTS
+style_id: {style_id}
+max_words: {max_words}
+max_questions: {max_questions}
+
+PHASE_CONTROL
+prev_phase: {prev_phase}
+
+PLANNER_OUTPUT
+planner_semantic_output: {planner_semantic_output_json}
+
+PHASE_CARD_EXTENDIDA
+phase: {phase}
+DO:
+{phase_do_text}
+
+TECNICAS:
+{phase_tecnicas_text}
+
+EVITAR:
+{phase_evitar_text}
+
+QUESTION_POLICY:
+{phase_question_policy}
+
+TOPICS_VALIDOS:
+{phase_topics_json}
+
+topic_selected: {topic_selected}
+
+PROFILE_CARD
+{profile_card_compact_text}
+
+SCENE_CARD
+{scene_card_compact_text}
+
+SEMANTIC_LEDGER
+lo_que_ya_se_toco: {lo_que_ya_se_toco_json}
+lo_que_ya_pregunte: {lo_que_ya_pregunte_json}
+lo_que_falta_pero_no_insistire: {lo_que_falta_pero_no_insistire_json}
+
+MEMORY_SHORT
+recent_history_compact: {recent_history_compact}
+
+MEMORY_LONG
+memory_long_compact: {memory_long_compact}
+
+RETRY_HINT
+{retry_hint}
+
+Output: JSON executor_v2
+""".strip()

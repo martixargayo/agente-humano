@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from negotiation.elementos.strategy_definitions import PlannerSemanticV1DecisionModel
 from negotiation.nodes.world_node import world_judge_llm
 from negotiation.phase_policy_planner import _normalize_next_move_hint, plan_phase_policy
@@ -397,7 +399,7 @@ def test_runtime_prompts_include_objective_profiles_phase_map_and_memory(monkeyp
     assert "PHASES_RESUMEN" in planner_prompt
 
     assert "PHASE_CARD_EXTENDIDA" in executor_prompt
-    assert "NEED_INFO_SLOTS" in executor_prompt
+    assert "NEED_INFO_SLOTS" not in executor_prompt
     assert "topic_selected:" in executor_prompt
     assert "SEMANTIC_LEDGER" in executor_prompt
     assert "phase_map_json" not in executor_prompt.lower()
@@ -426,15 +428,16 @@ def test_trace_exposes_ledger_hash_observability(monkeypatch):
     assert trace.get("ledger_mismatch_detected") is False
 
 
-def test_normalize_next_move_hint_uses_necesita_info_and_no_questions_outside_tema():
+def test_normalize_next_move_hint_uses_markers_and_no_questions_outside_tema():
     phase = "clima_humano"
-    raw = 'RESPUESTA: Hola, ¿cómo estás?\nMOVIMIENTO: abrir clima\nPREGUNTA: ¿Qué tal?\nTEMA: "Pequeño rapport: día / cómo está"\nNECESITA_INFO: contexto, ruido'
+    raw = 'RESPUESTA: Hola, ¿cómo estás?\nMOVIMIENTO: abrir clima\nPREGUNTA: ¿Qué tal?\nTEMA: "Pequeño rapport: día / cómo está"'
     normalized, changed = _normalize_next_move_hint(phase, raw)
     assert changed is True
     assert "PREGUNTA:" not in normalized
-    assert 'TEMA: "Pequeño rapport: día / cómo está"' in normalized
-    assert "NECESITA_INFO: contexto" in normalized
+    assert "OBJECTIVE_DELTA:" in normalized
+    assert "TACTIC:" in normalized
     lines = normalized.splitlines()
+    assert len(lines) == 5
     for ln in lines:
         if ln.strip().lower().startswith("tema:"):
             continue
@@ -504,14 +507,13 @@ def test_interrogative_without_question_mark_blocked():
         world_state=default_world_state(),
         user_message="ok",
     )
-    assert deps.calls == 2
-    assert "cómo has estado" not in out["response_text"].lower()
-    assert out["asked_question"] is False
-    assert out["requested_info_slots"] == []
-    assert out["render_meta"]["interrogative_retry_count"] == 1
-    assert out["render_meta"]["question_forced_removed"] is True
+    assert deps.calls == 1
+    assert out["asked_question"] is True
+    assert out["requested_info_slots"]
+    assert out["render_meta"]["interrogative_retry_count"] == 0
 
 
+@pytest.mark.skip(reason="Legacy NECESITA_INFO behavior removed in planner v2")
 def test_planner_retry_when_info_intent_without_necesita_info(monkeypatch):
     class _PlannerStructuredRetry:
         def __init__(self):
@@ -571,6 +573,7 @@ def test_planner_retry_when_info_intent_without_necesita_info(monkeypatch):
     assert "NECESITA_INFO: estado_general" in meta["planner_semantic_output"]["next_move_hint"]
 
 
+@pytest.mark.skip(reason="Legacy NECESITA_INFO behavior removed in planner v2")
 def test_planner_postcheck_detects_soft_info_intent_and_adds_necesita_info(monkeypatch):
     class _PlannerStructuredSoftIntent:
         def __init__(self):
@@ -627,6 +630,7 @@ def test_planner_postcheck_detects_soft_info_intent_and_adds_necesita_info(monke
 
 
 
+@pytest.mark.skip(reason="Legacy NECESITA_INFO behavior removed in planner v2")
 def test_planner_postcheck_detects_me_puedes_decir_pattern(monkeypatch):
     class _PlannerStructuredPuedes:
         def __init__(self):
@@ -681,6 +685,7 @@ def test_planner_postcheck_detects_me_puedes_decir_pattern(monkeypatch):
     assert "MOVIMIENTO: dar un siguiente paso concreto." in hint
     assert "NECESITA_INFO: motivo_venta" in hint
 
+@pytest.mark.skip(reason="Legacy NECESITA_INFO behavior removed in planner v2")
 def test_planner_postcheck_forces_slot_by_topic_when_retry_still_missing(monkeypatch):
     class _PlannerStructuredMissingSlots:
         def __init__(self):
