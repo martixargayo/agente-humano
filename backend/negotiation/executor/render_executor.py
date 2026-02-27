@@ -332,8 +332,25 @@ def render_executor_output(
         hint_text = str(planner_semantic_output.get("next_move_hint") or "") if isinstance(planner_semantic_output, dict) else ""
         need_info_slots = _extract_need_info_slots(hint_text)
 
-    recent_history_compact = str(state.get("short_memory") or state.get("recent_history_text", "") or "").strip() or "SIN_MEMORIA_CORTA_AUN"
+    progress_state = state.get("progress_state") if isinstance(state.get("progress_state"), dict) else {}
+    memory_short_raw = str(state.get("short_memory") or "").strip()
+    if memory_short_raw:
+        recent_history_compact = memory_short_raw
+        memory_short_source = "progress_state"
+    elif ("memory_short" in progress_state) or ("turn_buffer" in progress_state):
+        recent_history_compact = "SIN_MEMORIA_CORTA_AUN"
+        memory_short_source = "progress_state"
+    elif str(state.get("recent_history_text", "") or "").strip():
+        recent_history_compact = str(state.get("recent_history_text", "") or "").strip()
+        memory_short_source = "legacy_recent_history"
+    else:
+        recent_history_compact = "SIN_MEMORIA_CORTA_AUN"
+        memory_short_source = "fallback_build_memory_context"
+
     memory_long_compact = str(state.get("long_memory", "") or "").strip() or "SIN_RESUMEN_AUN"
+    memory_short_turns_rendered = sum(1 for line in recent_history_compact.splitlines() if line.startswith("user:"))
+    long_turns_summarized = int(progress_state.get("memory_long_turns_summarized") or 0)
+    memory_short_last_turn_idx = (long_turns_summarized + memory_short_turns_rendered) if memory_short_turns_rendered > 0 else None
 
     prompt = EXECUTOR_USER_PROMPT.format(
         speaker=str(state.get("speaker_of_user_message") or "seller").strip().lower(),
@@ -455,7 +472,10 @@ def render_executor_output(
     render_meta["interrogative_retry_count"] = interrogative_retry_count
     render_meta["prev_phase"] = prev_phase
     render_meta["phase"] = phase_id
-    render_meta["memory_short_turns"] = int((((state.get("progress_state") or {}).get("memory_short_turns")) or 0))
+    render_meta["memory_short_turns"] = int((progress_state.get("memory_short_turns") or 0))
+    render_meta["memory_short_source"] = memory_short_source
+    render_meta["memory_short_turns_rendered"] = int(memory_short_turns_rendered)
+    render_meta["memory_short_last_turn_idx"] = memory_short_last_turn_idx
     render_meta["memory_long_len"] = len(memory_long_compact or "")
     render_meta["memory_long_updated"] = bool((state.get("memory_meta") or {}).get("memory_long_updated", False))
     if question_forced_removed:
