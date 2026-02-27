@@ -20,6 +20,7 @@ def phase_policy_planner_node(state: dict) -> dict:
     _ensure_objective(state)
 
     progress_state = state.get("progress_state") if isinstance(state.get("progress_state"), dict) else default_progress_state()
+    state["phase_prev"] = str((((progress_state or {}).get("phase_state") or {}).get("phase")) or "clima_humano")
 
     effective_ledger = build_effective_semantic_ledger(
         progress_state,
@@ -130,18 +131,14 @@ def phase_policy_planner_node(state: dict) -> dict:
     state["policy_decision"] = policy_decision
     state["planner_meta"] = planner_meta
     state["planner_semantic_output"] = planner_semantic_output
+    if isinstance(planner_meta.get("planner_need_info_slots"), list):
+        state["planner_need_info_slots"] = [str(x).strip() for x in planner_meta.get("planner_need_info_slots") if str(x).strip()]
+    else:
+        state["planner_need_info_slots"] = []
     state["planner_ledger_hash"] = planner_meta.get("planner_ledger_hash") or state.get("effective_ledger_hash", "")
 
     phase_map = planner_meta.get("phase_map_json") if isinstance(planner_meta.get("phase_map_json"), dict) else get_phase_map_v1()
     state["phase_map_json"] = phase_map
-
-    progress_state["phase_state"] = {
-        "phase": planner_semantic_output.get("phase", "clima_humano"),
-        "phase_effective": planner_semantic_output.get("phase", "clima_humano"),
-        "confidence": float((phase_candidate or {}).get("confidence", 0.7) or 0.7),
-        "reasons": list((phase_candidate or {}).get("reasons", []) or [])[:6],
-        "last_updated_turn": int(state.get("turn_count", 0) or 0),
-    }
 
     state["progress_state"] = progress_state
     state["planner_debug"] = {

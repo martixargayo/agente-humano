@@ -2,7 +2,7 @@ import json
 
 from negotiation.elementos.strategy_definitions import PlannerSemanticV1DecisionModel
 from negotiation.nodes.world_node import world_judge_llm
-from negotiation.phase_policy_planner import plan_phase_policy
+from negotiation.phase_policy_planner import _normalize_next_move_hint, plan_phase_policy
 from negotiation.progress_updater import update_progress_state
 from negotiation.schemas import default_belief_state, default_progress_state, default_world_state
 from negotiation.validation import normalize_world_buckets
@@ -222,7 +222,7 @@ def test_executor_prompt_uses_last_assistant_message_fallback():
             "schema_version": "planner_semantic_v1",
             "phase": "clima_humano",
             "style": "Breve",
-            "next_move_hint": "Validar y seguir",
+            "next_move_hint": "Validar y seguir\nNECESITA_INFO: precio_objetivo",
             "what_not_to_repeat": [],
         },
         "last_assistant_message": "mensaje previo del asistente",
@@ -254,7 +254,7 @@ def test_normalize_world_buckets_accepts_default_turn_kwarg():
     assert set(out.keys()) == {"interaction", "notes"}
 
 
-def test_executor_enforces_requested_slots_when_question_present():
+def test_executor_enforces_requested_slots_when_question_allowed_by_need_info():
     from negotiation.executor.render_executor import render_executor_output
 
     class _DepsExec:
@@ -280,7 +280,7 @@ def test_executor_enforces_requested_slots_when_question_present():
             "schema_version": "planner_semantic_v1",
             "phase": "clima_humano",
             "style": "Breve",
-            "next_move_hint": "Validar y seguir",
+            "next_move_hint": "Validar y seguir\nNECESITA_INFO: precio_objetivo",
             "what_not_to_repeat": [],
         },
         "last_assistant_message": "mensaje previo",
@@ -397,6 +397,7 @@ def test_runtime_prompts_include_objective_profiles_phase_map_and_memory(monkeyp
     assert "PHASES_RESUMEN" in planner_prompt
 
     assert "PHASE_CARD_EXTENDIDA" in executor_prompt
+    assert "NEED_INFO_SLOTS" in executor_prompt
     assert "topic_selected:" in executor_prompt
     assert "SEMANTIC_LEDGER" in executor_prompt
     assert "phase_map_json" not in executor_prompt.lower()
@@ -423,3 +424,88 @@ def test_trace_exposes_ledger_hash_observability(monkeypatch):
     assert isinstance(trace.get("effective_ledger_hash"), str)
     assert trace.get("planner_ledger_hash") == trace.get("executor_ledger_hash")
     assert trace.get("ledger_mismatch_detected") is False
+
+
+def test_normalize_next_move_hint_uses_necesita_info_and_no_questions_outside_tema():
+    phase = "clima_humano"
+    raw = 'RESPUESTA: Hola, ¿cómo estás?\nMOVIMIENTO: abrir clima\nPREGUNTA: ¿Qué tal?\nTEMA: "Pequeño rapport: día / cómo está"\nNECESITA_INFO: contexto, ruido'
+    normalized, changed = _normalize_next_move_hint(phase, raw)
+    assert changed is True
+    assert "PREGUNTA:" not in normalized
+    assert 'TEMA: "Pequeño rapport: día / cómo está"' in normalized
+    assert "NECESITA_INFO: contexto" in normalized
+    lines = normalized.splitlines()
+    for ln in lines:
+        if ln.strip().lower().startswith("tema:"):
+            continue
+        assert "?" not in ln and "¿" not in ln
+
+
+def test_executor_questionless_retry_when_no_need_info_and_user_not_asking():
+    from negotiation.executor.render_executor import render_executor_output
+
+    class _DepsExec:
+        def __init__(self):
+            self.calls = 0
+
+        def execute(self, _messages):
+            self.calls += 1
+            if self.calls == 1:
+                payload = {
+                    "schema_version": "executor_v2",
+                    "response_text": "¿Quieres que avancemos con esto?",
+                    "asked_question": True,
+                    "requested_info_slots": ["contexto"],
+                    "tone_used": "neutral",
+                    "followup_intent": None,
+                    "render_meta": {},
+                }
+            else:
+                payload = {
+                    "schema_version": "executor_v2",
+                    "response_text": "Perfecto, avancemos con una propuesta concreta y clara.",
+                    "asked_question": False,
+                    "requested_info_slots": [],
+                    "tone_used": "neutral",
+                    "followup_intent": None,
+                    "render_meta": {},
+                }
+            return json.dumps(payload, ensure_ascii=False)
+
+    state = {
+        "progress_state": default_progress_state(),
+        "belief_state": default_belief_state(),
+        "advisor_recs": {},
+        "planner_semantic_output": {
+            "schema_version": "planner_semantic_v1",
+            "phase": "clima_humano",
+            "style": "Breve",
+            "next_move_hint": 'RESPUESTA: validar\nMOVIMIENTO: avanzar\nTEMA: "Pequeño rapport: día / cómo está"',
+            "what_not_to_repeat": [],
+        },
+        "last_assistant_message": "mensaje previo",
+        "recent_history_text": "assistant: mensaje previo",
+        "user_message": "ok",
+    }
+
+    deps = _DepsExec()
+    out = render_executor_output(
+        state,
+        deps=deps,
+        conversation_mode="negotiation",
+        policy_pack_active="universal",
+        policy_id="semantic_ledger",
+        persona_profile={},
+        scene_profile={},
+        style_contract={"max_words": 30, "max_questions": 1},
+        constraints_struct={"max_questions": 1},
+        strategy_summary={},
+        memory_block="",
+        world_state=default_world_state(),
+        user_message="ok",
+    )
+    assert deps.calls == 2
+    assert "?" not in out["response_text"]
+    assert out["asked_question"] is False
+    assert out["requested_info_slots"] == []
+    assert out["render_meta"]["questionless_retry_count"] == 1
