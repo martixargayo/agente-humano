@@ -50,8 +50,32 @@ _ALLOWED_NEED_INFO_SLOTS = {
     "pago_fecha",
 }
 
+_TOPIC_TO_REQUIRED_SLOT = {
+    "Motivo de venta (por qué ahora)": "motivo_venta",
+    "Estado general hoy (en una frase)": "estado_general",
+    "Mantenimiento y cuidados (qué se ha hecho)": "mantenimiento",
+    "Cifra objetivo del vendedor (en qué cifra lo valora)": "precio_objetivo",
+    "Checklist: forma y fecha de pago": "pago_fecha",
+    "Checklist: entrega y trámites": "documentacion",
+}
+
 _INFO_INTENT_RE = re.compile(
-    r"(?i)\b(preguntar|pregunta|saber|quisiera saber|me gustaría saber|necesito saber|aclarar)\b"
+    r"(?i)\b("
+    r"preguntar|pregunta|saber|entender|explorar|profundizar|conocer|aclarar|"
+    r"comprender|averiguar|confirmar|concretar|contextualizar|"
+    r"indagar|consultar|pedir|solicitar|"
+    r"me\s+gustar[ií]a|quisiera|necesito|ser[ií]a\s+[uú]til|"
+    r"podr[ií]as"
+    r")\b"
+)
+
+_INFO_INTENT_COMPOUND_RE = re.compile(
+    r"(?i)("
+    r"para\s+entender\s+mejor|para\s+poder|(?:para|a)\s+(entender|conocer|aclarar)|"
+    r"que\s+me\s+(cuentes|digas|expliques)|"
+    r"me\s+puedes\s+(decir|contar|explicar)|"
+    r"podr[ií]as\s+((?:decir|contar|explicar)me|decirme|contarme|explicarme)"
+    r")"
 )
 
 
@@ -95,17 +119,9 @@ def _remove_questions_outside_tema(text: str) -> tuple[str, bool]:
     return "\n".join(new_lines), changed
 
 
-def _contains_info_intent(text: str) -> bool:
-    return bool(_INFO_INTENT_RE.search(str(text or "")))
-
-
-def _sanitize_info_intent_text(text: str) -> str:
-    t = str(text or "")
-    t = re.sub(r"(?i)preguntar\s+por", "comprender", t)
-    t = re.sub(r"(?i)preguntar", "comprender", t)
-    t = re.sub(r"(?i)pregunta", "aclaración", t)
-    t = re.sub(r"(?i)quisiera saber|me gustaría saber|necesito saber|saber", "comprender", t)
-    return re.sub(r"\s+", " ", t).strip()
+def _looks_like_requesting_info_es(text: str) -> bool:
+    text_norm = str(text or "")
+    return bool(_INFO_INTENT_RE.search(text_norm) or _INFO_INTENT_COMPOUND_RE.search(text_norm))
 
 
 def _normalize_next_move_hint(phase: str, hint: str) -> tuple[str, bool]:
@@ -204,6 +220,9 @@ def plan_phase_policy(
         "planner_output_payload_raw": None,
         "planner_semantic_output": None,
         "planner_postcheck_normalized": False,
+        "planner_postcheck_requested_info_detected": False,
+        "planner_postcheck_missing_necesita_info_retry": False,
+        "planner_postcheck_forced_necesita_info": None,
     }
 
     started = time.perf_counter()
@@ -287,12 +306,14 @@ def plan_phase_policy(
         need_slots = _extract_need_info_slots(normalized_hint)
         response_line = _extract_line_value(normalized_hint, "RESPUESTA")
         movement_line = _extract_line_value(normalized_hint, "MOVIMIENTO")
-        info_intent = _contains_info_intent(f"{response_line} {movement_line}")
+        info_intent = _looks_like_requesting_info_es(f"{response_line} {movement_line}")
+        meta["planner_postcheck_requested_info_detected"] = bool(info_intent)
 
         planner_retry_count = 0
         if info_intent and not need_slots:
             planner_retry_count = 1
-            retry_user_prompt = user_prompt + "\n\nREINTENTO_CONTRATO: No uses 'preguntar/saber' en RESPUESTA/MOVIMIENTO. Si necesitas datos, usa NECESITA_INFO: <slot>."
+            meta["planner_postcheck_missing_necesita_info_retry"] = True
+            retry_user_prompt = user_prompt + "\n\nREINTENTO_CONTRATO: Falta NECESITA_INFO. Si necesitas datos, usa NECESITA_INFO: <slot>."
             retry_messages = [
                 SystemMessage(content=PLANNER_SEMANTIC_V1_SYSTEM_PROMPT),
                 HumanMessage(content=retry_user_prompt),
@@ -305,18 +326,29 @@ def plan_phase_policy(
             need_slots = _extract_need_info_slots(normalized_hint)
             response_line = _extract_line_value(normalized_hint, "RESPUESTA")
             movement_line = _extract_line_value(normalized_hint, "MOVIMIENTO")
-            info_intent = _contains_info_intent(f"{response_line} {movement_line}")
+            info_intent = _looks_like_requesting_info_es(f"{response_line} {movement_line}")
+            meta["planner_postcheck_requested_info_detected"] = bool(info_intent)
 
         if info_intent and not need_slots:
-            response_line = _sanitize_info_intent_text(response_line)
-            movement_line = _sanitize_info_intent_text(movement_line)
+            # No "sanitizamos" con reemplazos raros: usamos fallback limpio y forzamos slot por topic.
             topic, _ = extract_topic_selected(normalized_hint)
             if not topic or not is_valid_topic_for_phase(phase, topic):
                 topic = default_topic_for_phase(phase)
+
+            forced_slot = _TOPIC_TO_REQUIRED_SLOT.get(topic)
+            if forced_slot in _ALLOWED_NEED_INFO_SLOTS:
+                need_slots = [forced_slot]
+                meta["planner_postcheck_forced_necesita_info"] = forced_slot
+
+            # Hint final minimalista y natural (sin verbos de pedir info)
+            base_response = "validar y avanzar con tono colaborativo."
+            base_movement = "dar un siguiente paso concreto."
+
             normalized_hint = "\n".join([
-                f"RESPUESTA: {response_line or 'validar y avanzar sin pedir datos.'}",
-                f"MOVIMIENTO: {movement_line or 'dar un siguiente paso concreto.'}",
+                f"RESPUESTA: {base_response}",
+                f"MOVIMIENTO: {base_movement}",
                 f'TEMA: "{topic}"',
+                *( [f"NECESITA_INFO: {', '.join(need_slots)}"] if need_slots else [] ),
             ])
             changed = True
 
