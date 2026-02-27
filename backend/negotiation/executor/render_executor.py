@@ -168,6 +168,19 @@ def _enforce_executor_v2_contract(
         data["requested_info_slots"] = []
 
     data["asked_question"] = asked_question
+
+    if not question_allowed:
+        data["asked_question"] = False
+        data["requested_info_slots"] = []
+        if "?" in data["response_text"] or "¿" in data["response_text"]:
+            cleaned = str(data["response_text"]).replace("¿", "")
+            if "?" in cleaned:
+                cleaned = cleaned.split("?", 1)[0]
+            cleaned = cleaned.strip().rstrip(".,;:")
+            data["response_text"] = cleaned or _safe_neutral_fallback()
+            meta = dict(data.get("render_meta") or {}) if isinstance(data.get("render_meta"), dict) else {}
+            meta["question_forced_removed"] = True
+            data["render_meta"] = meta
     return data
 
 
