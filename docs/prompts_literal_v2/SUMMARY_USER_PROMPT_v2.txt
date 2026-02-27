@@ -1,0 +1,38 @@
+SUMMARY_USER_PROMPT = """
+RESUMEN_PREVIO:
+{existing_summary}
+
+BLOQUE_NUEVO:
+{new_block}
+
+INSTRUCCIONES:
+- Actualiza el resumen manteniendo el FORMATO OBLIGATORIO del SYSTEM (mismo orden, mismas cabeceras).
+- Integra lo nuevo sin duplicar.
+- Si algo ya estaba y sigue vigente, mantenlo.
+- Si lo nuevo contradice lo anterior, usa “CONFLICTO:” y conserva ambas versiones.
+
+GUIA DE SECCIONES:
+- HECHOS_CONFIRMADOS: hechos claros y verificables (sin suposiciones).
+- OFERTAS_Y_NUMEROS: precios del vendedor, rangos, plazos, condiciones explícitas.
+- BOUNDARIES_Y_COMPROMISOS:
+  - límites reafirmados (“no hablar de máximo”, “no decidir con prisa”),
+  - condiciones para seguir o cerrar (“si X está claro, cerramos”),
+  - recordatorios de “LÍMITE_PRIVADO_NO_REVELADO” si aplica.
+- CONCESIONES_Y_CONDICIONES:
+  - tradeoffs “yo X si tú Y”, qué incluye, reparto de costes, facilidades.
+- BANDERAS_DEL_VENDEDOR:
+  - presión/ultimátum, evasivas, incoherencias, o transparencia/buena fe.
+- PREGUNTAS_RESPONDIDAS (Q -> A): solo preguntas realmente contestadas; Q y A cortas.
+- PENDIENTE_Y_NO_REPETIR:
+  - PENDIENTE: lo mínimo que falta para avanzar/cerrar.
+  - NO_REPETIR: preguntas ya hechas/contestadas, temas sensibles o rechazados.
+- LECCIONES_DE_CONDUCTA:
+  - 1–3 reglas operativas del comprador (ej: “si presiona, límite+alternativa”).
+- OTRAS_NOTAS_UTILES: cualquier cosa importante que no encaje en las otras secciones.
+
+RECORDATORIO DE PRIVACIDAD:
+- Nunca escribas cifras sensibles del comprador (techo/BATNA/MAPAN).
+- Usa “LÍMITE_PRIVADO_NO_REVELADO / EVITA_REVELAR_TECHO/ALTERNATIVA”.
+
+Devuelve SOLO el resumen final (texto plano).
+""".strip()

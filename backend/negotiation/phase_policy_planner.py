@@ -23,91 +23,35 @@ from .semantic_ledger_utils import build_effective_semantic_ledger, semantic_led
 
 logger = logging.getLogger(__name__)
 
+_ALLOWED_OBJECTIVE_DELTAS = {"reduce_risk", "improve_price", "gain_commitment", "test_consistency", "move_to_close"}
+_ALLOWED_TACTICS = {"frame", "anchor", "conditional_offer", "tradeoff", "boundary", "silence"}
+
 
 def _semantic_fallback() -> dict:
     return {
         "schema_version": "planner_semantic_v1",
         "phase": "clima_humano",
         "style": "Breve, natural y sin insistencia.",
-        "next_move_hint": "RESPUESTA: Hola, gracias por escribir.\nMOVIMIENTO: Mantener tono cordial y avanzar sin repetir.\nTEMA: \"Pequeño rapport: día / cómo está\"",
+        "next_move_hint": (
+            "OBJECTIVE_DELTA: reduce_risk\n"
+            "TACTIC: frame\n"
+            "RESPUESTA: validar y avanzar con tono colaborativo.\n"
+            "MOVIMIENTO: dar un siguiente paso concreto.\n"
+            'TEMA: "Pequeño rapport: día / cómo está"'
+        ),
         "what_not_to_repeat": [],
     }
 
 
 def _extract_line_value(text: str, label: str) -> str:
-    m = re.search(rf"(?im)^\s*{label}\s*:\s*(.+)$", text)
+    m = re.search(rf"(?im)^\s*{label}\s*:\s*(.+)$", str(text or ""))
     return m.group(1).strip() if m else ""
 
 
-_ALLOWED_NEED_INFO_SLOTS = {
-    "saludo",
-    "contexto",
-    "precio_objetivo",
-    "motivo_venta",
-    "estado_general",
-    "mantenimiento",
-    "documentacion",
-    "pago_fecha",
-}
-
-_TOPIC_TO_REQUIRED_SLOT = {
-    "Motivo de venta (por qué ahora)": "motivo_venta",
-    "Estado general hoy (en una frase)": "estado_general",
-    "Mantenimiento y cuidados (qué se ha hecho)": "mantenimiento",
-    "Cifra objetivo del vendedor (en qué cifra lo valora)": "precio_objetivo",
-    "Checklist: forma y fecha de pago": "pago_fecha",
-    "Checklist: entrega y trámites": "documentacion",
-}
-
-_INFO_INTENT_RE = re.compile(
-    r"(?i)\b("
-    r"preguntar|pregunta|saber|entender|explorar|profundizar|conocer|aclarar|"
-    r"comprender|averiguar|confirmar|concretar|contextualizar|"
-    r"indagar|consultar|pedir|solicitar|"
-    r"me\s+gustar[ií]a|quisiera|necesito|ser[ií]a\s+[uú]til|"
-    r"podr[ií]as"
-    r")\b"
-)
-
-_INFO_INTENT_COMPOUND_RE = re.compile(
-    r"(?i)("
-    r"para\s+entender\s+mejor|para\s+poder|(?:para|a)\s+(entender|conocer|aclarar)|"
-    r"que\s+me\s+(cuentes|digas|expliques)|"
-    r"me\s+puedes\s+(decir|contar|explicar)|"
-    r"podr[ií]as\s+((?:decir|contar|explicar)me|decirme|contarme|explicarme)"
-    r")"
-)
-
-
-def _extract_need_info_slots(text: str) -> list[str]:
-    m = re.search(r"(?im)^\s*NECESITA_INFO\s*:\s*(.+)$", text)
-    if not m:
-        return []
-    raw = m.group(1).strip()
-    if not raw:
-        return []
-    parts = [p.strip() for p in raw.split(",")]
-    slots = []
-    for p in parts:
-        s = re.sub(r"\s+", "_", p.strip().lower())
-        s = s.strip("_")
-        if s and s in _ALLOWED_NEED_INFO_SLOTS:
-            slots.append(s)
-    out = []
-    for s in slots:
-        if s not in out:
-            out.append(s)
-    return out[:2]
-
-
 def _remove_questions_outside_tema(text: str) -> tuple[str, bool]:
-    """
-    Hard rule: forbid '?' and '¿' outside TEMA line.
-    We only sanitize RESPUESTA/MOVIMIENTO/NECESITA_INFO lines.
-    """
     changed = False
-    lines = text.splitlines()
-    new_lines = []
+    lines = str(text or "").splitlines()
+    new_lines: list[str] = []
     for ln in lines:
         if re.search(r"(?im)^\s*TEMA\s*:", ln):
             new_lines.append(ln)
@@ -119,63 +63,65 @@ def _remove_questions_outside_tema(text: str) -> tuple[str, bool]:
     return "\n".join(new_lines), changed
 
 
-def _looks_like_requesting_info_es(text: str) -> bool:
-    text_norm = str(text or "")
-    return bool(_INFO_INTENT_RE.search(text_norm) or _INFO_INTENT_COMPOUND_RE.search(text_norm))
-
-
 def _normalize_next_move_hint(phase: str, hint: str) -> tuple[str, bool]:
-    """
-    Normaliza next_move_hint al contrato:
-      RESPUESTA
-      MOVIMIENTO
-      TEMA
-      (opcional) NECESITA_INFO
-    y asegura que no haya '?' fuera de TEMA.
-    """
     text = str(hint or "").strip()
     changed = False
 
     if not text:
         topic = default_topic_for_phase(phase)
-        rebuilt = f'RESPUESTA: validar y avanzar sin preguntar.\nMOVIMIENTO: mantener tono y dar siguiente paso.\nTEMA: "{topic}"'
+        rebuilt = (
+            "OBJECTIVE_DELTA: reduce_risk\n"
+            "TACTIC: frame\n"
+            "RESPUESTA: validar y avanzar con tono colaborativo.\n"
+            "MOVIMIENTO: dar un siguiente paso concreto.\n"
+            f'TEMA: "{topic}"'
+        )
         return rebuilt, True
 
     if "\n" not in text:
-        text2 = re.sub(r"\s+(MOVIMIENTO:|TEMA:|NECESITA_INFO:|PREGUNTA:)", r"\n\1", text, flags=re.IGNORECASE)
+        text2 = re.sub(r"\s+(TACTIC:|RESPUESTA:|MOVIMIENTO:|TEMA:|OBJECTIVE_DELTA:|PREGUNTA:)", r"\n\1", text, flags=re.IGNORECASE)
         if text2 != text:
             text = text2
             changed = True
 
-    lines_wo_question = [ln for ln in text.splitlines() if not re.match(r"(?i)^\s*PREGUNTA\s*:", ln)]
-    text_no_question = "\n".join(lines_wo_question)
-    if text_no_question != text:
-        text = text_no_question
+    lines_wo_pregunta = [ln for ln in text.splitlines() if not re.match(r"(?i)^\s*PREGUNTA\s*:", ln)]
+    text_no_pregunta = "\n".join(lines_wo_pregunta)
+    if text_no_pregunta != text:
+        text = text_no_pregunta
         changed = True
 
     text, ch2 = _remove_questions_outside_tema(text)
     changed = changed or ch2
 
+    objective_delta = _extract_line_value(text, "OBJECTIVE_DELTA").lower().strip()
+    tactic = _extract_line_value(text, "TACTIC").lower().strip()
     response = _extract_line_value(text, "RESPUESTA")
     movement = _extract_line_value(text, "MOVIMIENTO")
     topic, _topic_src = extract_topic_selected(text)
-    need_slots = _extract_need_info_slots(text)
 
+    if objective_delta not in _ALLOWED_OBJECTIVE_DELTAS:
+        objective_delta = "reduce_risk"
+        changed = True
+    if tactic not in _ALLOWED_TACTICS:
+        tactic = "frame"
+        changed = True
     if not response:
-        response = "validar y avanzar sin preguntar."
+        response = "validar y avanzar con tono colaborativo."
         changed = True
     if not movement:
         movement = "dar un siguiente paso concreto."
         changed = True
-
     if not topic or not is_valid_topic_for_phase(phase, topic):
         topic = default_topic_for_phase(phase)
         changed = True
 
-    lines = [f"RESPUESTA: {response}", f"MOVIMIENTO: {movement}", f'TEMA: "{topic}"']
-    if need_slots:
-        lines.append("NECESITA_INFO: " + ", ".join(need_slots))
-    rebuilt = "\n".join(lines)
+    rebuilt = "\n".join([
+        f"OBJECTIVE_DELTA: {objective_delta}",
+        f"TACTIC: {tactic}",
+        f"RESPUESTA: {response}",
+        f"MOVIMIENTO: {movement}",
+        f'TEMA: "{topic}"',
+    ])
 
     if rebuilt != text:
         changed = True
@@ -220,9 +166,9 @@ def plan_phase_policy(
         "planner_output_payload_raw": None,
         "planner_semantic_output": None,
         "planner_postcheck_normalized": False,
-        "planner_postcheck_requested_info_detected": False,
-        "planner_postcheck_missing_necesita_info_retry": False,
-        "planner_postcheck_forced_necesita_info": None,
+        "planner_objective_delta": "reduce_risk",
+        "planner_tactic": "frame",
+        "planner_hint_contract_ok": False,
     }
 
     started = time.perf_counter()
@@ -250,13 +196,6 @@ def plan_phase_policy(
         phase_map = get_phase_map_v1()
         full_profiles_block = build_planner_context_block_full(progress_state)
         del full_profiles_block, memory_short, memory_long
-
-        prev_phase = str((((progress_state or {}).get("phase_state") or {}).get("phase") or "clima_humano"))
-        allowed_next_phases = [p for p in phase_map.keys() if p in OFFICIAL_PHASE_IDS] or OFFICIAL_PHASE_IDS
-        style_id = str(((_style_contract or {}).get("style_id") or "psyplay_compact"))
-        lo_que_ya_se_toco = list((semantic_ledger or {}).get("lo_que_ya_se_toco", [])) if isinstance(semantic_ledger, dict) else []
-        lo_que_ya_pregunte = list((semantic_ledger or {}).get("lo_que_ya_pregunte", [])) if isinstance(semantic_ledger, dict) else []
-        lo_que_falta_pero_no_insistire = list((semantic_ledger or {}).get("lo_que_falta_pero_no_insistire", [])) if isinstance(semantic_ledger, dict) else []
 
         prev_phase = str((((progress_state or {}).get("phase_state") or {}).get("phase") or "clima_humano"))
         allowed_next_phases = [p for p in phase_map.keys() if p in OFFICIAL_PHASE_IDS] or OFFICIAL_PHASE_IDS
@@ -303,59 +242,18 @@ def plan_phase_policy(
         payload = result.model_dump()
         phase = str(payload.get("phase") or "clima_humano")
         normalized_hint, changed = _normalize_next_move_hint(phase, payload.get("next_move_hint", ""))
-        need_slots = _extract_need_info_slots(normalized_hint)
-        response_line = _extract_line_value(normalized_hint, "RESPUESTA")
-        movement_line = _extract_line_value(normalized_hint, "MOVIMIENTO")
-        info_intent = _looks_like_requesting_info_es(f"{response_line} {movement_line}")
-        meta["planner_postcheck_requested_info_detected"] = bool(info_intent)
-
-        planner_retry_count = 0
-        if info_intent and not need_slots:
-            planner_retry_count = 1
-            meta["planner_postcheck_missing_necesita_info_retry"] = True
-            retry_user_prompt = user_prompt + "\n\nREINTENTO_CONTRATO: Falta NECESITA_INFO. Si necesitas datos, usa NECESITA_INFO: <slot>."
-            retry_messages = [
-                SystemMessage(content=PLANNER_SEMANTIC_V1_SYSTEM_PROMPT),
-                HumanMessage(content=retry_user_prompt),
-            ]
-            retry_result = structured.invoke(retry_messages)
-            payload = retry_result.model_dump()
-            phase = str(payload.get("phase") or phase)
-            normalized_hint, changed_retry = _normalize_next_move_hint(phase, payload.get("next_move_hint", ""))
-            changed = changed or changed_retry
-            need_slots = _extract_need_info_slots(normalized_hint)
-            response_line = _extract_line_value(normalized_hint, "RESPUESTA")
-            movement_line = _extract_line_value(normalized_hint, "MOVIMIENTO")
-            info_intent = _looks_like_requesting_info_es(f"{response_line} {movement_line}")
-            meta["planner_postcheck_requested_info_detected"] = bool(info_intent)
-
-        if info_intent and not need_slots:
-            # No "sanitizamos" con reemplazos raros: usamos fallback limpio y forzamos slot por topic.
-            topic, _ = extract_topic_selected(normalized_hint)
-            if not topic or not is_valid_topic_for_phase(phase, topic):
-                topic = default_topic_for_phase(phase)
-
-            forced_slot = _TOPIC_TO_REQUIRED_SLOT.get(topic)
-            if forced_slot in _ALLOWED_NEED_INFO_SLOTS:
-                need_slots = [forced_slot]
-                meta["planner_postcheck_forced_necesita_info"] = forced_slot
-
-            # Hint final minimalista y natural (sin verbos de pedir info)
-            base_response = "validar y avanzar con tono colaborativo."
-            base_movement = "dar un siguiente paso concreto."
-
-            normalized_hint = "\n".join([
-                f"RESPUESTA: {base_response}",
-                f"MOVIMIENTO: {base_movement}",
-                f'TEMA: "{topic}"',
-                *( [f"NECESITA_INFO: {', '.join(need_slots)}"] if need_slots else [] ),
-            ])
-            changed = True
+        objective_delta = _extract_line_value(normalized_hint, "OBJECTIVE_DELTA").lower().strip() or "reduce_risk"
+        tactic = _extract_line_value(normalized_hint, "TACTIC").lower().strip() or "frame"
 
         payload["next_move_hint"] = normalized_hint
         meta["planner_postcheck_normalized"] = changed
-        meta["planner_need_info_slots"] = need_slots
-        meta["planner_retry_count"] = planner_retry_count
+        meta["planner_retry_count"] = 0
+        meta["planner_objective_delta"] = objective_delta
+        meta["planner_tactic"] = tactic
+        meta["planner_hint_contract_ok"] = all(
+            bool(_extract_line_value(normalized_hint, label))
+            for label in ["OBJECTIVE_DELTA", "TACTIC", "RESPUESTA", "MOVIMIENTO", "TEMA"]
+        )
 
         meta["planner_llm_called"] = True
         meta["planner_output_payload_raw"] = payload
@@ -397,6 +295,8 @@ def plan_phase_policy(
         meta["planner_output_payload_raw"] = payload
         meta["planner_output_text_rendered"] = json.dumps(payload, ensure_ascii=False)
         meta["planner_semantic_output"] = payload
+        meta["planner_objective_delta"] = "reduce_risk"
+        meta["planner_tactic"] = "frame"
 
         phase_candidate = {
             "phase": payload.get("phase", "clima_humano"),

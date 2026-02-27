@@ -54,6 +54,19 @@ def get_executor_llm() -> ChatOpenAI:
 
 
 @lru_cache(maxsize=1)
+def get_executor_finalizer_llm() -> ChatOpenAI:
+    cfg = get_negotiation_model_config()
+    kwargs = build_chat_openai_kwargs(cfg.executor)
+    finalizer_model = str(os.getenv("NEGOTIATION_EXECUTOR_FINALIZER_MODEL", "") or "").strip()
+    if finalizer_model:
+        kwargs["model"] = finalizer_model
+    finalizer_temp = os.getenv("NEGOTIATION_EXECUTOR_FINALIZER_TEMPERATURE", "")
+    if finalizer_temp.strip():
+        kwargs["temperature"] = float(finalizer_temp)
+    return ChatOpenAI(**kwargs)
+
+
+@lru_cache(maxsize=1)
 def get_summary_llm() -> ChatOpenAI:
     cfg = get_negotiation_model_config()
     return ChatOpenAI(**build_chat_openai_kwargs(cfg.summary))
@@ -65,4 +78,5 @@ def reset_negotiation_llm_caches() -> None:
     get_planner_llm.cache_clear()
     get_advisor_llm.cache_clear()
     get_executor_llm.cache_clear()
+    get_executor_finalizer_llm.cache_clear()
     get_summary_llm.cache_clear()

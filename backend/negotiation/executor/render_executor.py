@@ -29,18 +29,6 @@ _INTERROGATIVE_START_RE = re.compile(
 _INTERROGATIVE_PHRASE_RE = re.compile(
     r'(?i)\b(me gustaría saber|quisiera saber|podrías decirme|me puedes decir|necesito saber|dime si)\b'
 )
-_ALLOWED_NEED_INFO_SLOTS = {
-    "saludo",
-    "contexto",
-    "precio_objetivo",
-    "motivo_venta",
-    "estado_general",
-    "mantenimiento",
-    "documentacion",
-    "pago_fecha",
-}
-
-
 def _word_count(text: str) -> int:
     return len(str(text or "").split())
 
@@ -126,7 +114,6 @@ def _enforce_executor_v2_contract(
     style: dict,
     constraints: dict,
     *,
-    need_info_slots: list[str] | None = None,
     question_allowed: bool = True,
 ) -> dict:
     data = normalize_executor_output(out)
@@ -159,9 +146,7 @@ def _enforce_executor_v2_contract(
         return data
 
     if asked_question:
-        if need_info_slots:
-            requested_slots = [str(x).strip()[:32] for x in need_info_slots if str(x).strip()][:3]
-        elif not requested_slots:
+        if not requested_slots:
             requested_slots = _infer_requested_slots(data["response_text"])
         data["requested_info_slots"] = requested_slots[:3]
     else:
@@ -192,19 +177,19 @@ def _build_retry_hint_for_text_only() -> str:
     return "REINTENTO_CANAL: reformula 100% a texto; no uses verbos mostrar/enviar/adjuntar."
 
 
-def _extract_need_info_slots(text: str) -> list[str]:
-    m = re.search(r"(?im)^\s*NECESITA_INFO\s*:\s*(.+)$", str(text or ""))
-    if not m:
-        return []
-    raw = m.group(1).strip()
-    if not raw:
-        return []
-    slots = []
-    for part in raw.split(","):
-        slot = re.sub(r"\s+", "_", part.strip().lower()).strip("_")
-        if slot in _ALLOWED_NEED_INFO_SLOTS and slot not in slots:
-            slots.append(slot)
-    return slots[:2]
+def _extract_plan_marker(text: str, marker: str) -> str:
+    m = re.search(rf"(?im)^\s*{marker}\s*:\s*(.+)$", str(text or ""))
+    return m.group(1).strip() if m else ""
+
+
+def _extract_objective_delta_and_tactic(next_move_hint: str) -> tuple[str, str]:
+    objective_delta = _extract_plan_marker(next_move_hint, "OBJECTIVE_DELTA").lower().strip()
+    tactic = _extract_plan_marker(next_move_hint, "TACTIC").lower().strip()
+    if objective_delta not in {"reduce_risk", "improve_price", "gain_commitment", "test_consistency", "move_to_close"}:
+        objective_delta = "reduce_risk"
+    if tactic not in {"frame", "anchor", "conditional_offer", "tradeoff", "boundary", "silence"}:
+        tactic = "frame"
+    return objective_delta, tactic
 
 
 def _user_asked_direct_question(msg: str) -> bool:
@@ -325,12 +310,7 @@ def render_executor_output(
     lo_que_ya_se_toco = list((semantic_ledger or {}).get("lo_que_ya_se_toco", [])) if isinstance(semantic_ledger, dict) else []
     lo_que_ya_pregunte = list((semantic_ledger or {}).get("lo_que_ya_pregunte", [])) if isinstance(semantic_ledger, dict) else []
     lo_que_falta_pero_no_insistire = list((semantic_ledger or {}).get("lo_que_falta_pero_no_insistire", [])) if isinstance(semantic_ledger, dict) else []
-    need_info_slots = []
-    if isinstance(state.get("planner_need_info_slots"), list):
-        need_info_slots = [str(x).strip() for x in state.get("planner_need_info_slots") if str(x).strip()]
-    else:
-        hint_text = str(planner_semantic_output.get("next_move_hint") or "") if isinstance(planner_semantic_output, dict) else ""
-        need_info_slots = _extract_need_info_slots(hint_text)
+    objective_delta, tactic = _extract_objective_delta_and_tactic(next_move_hint)
 
     progress_state = state.get("progress_state") if isinstance(state.get("progress_state"), dict) else {}
     memory_short_raw = str(state.get("short_memory") or "").strip()
@@ -364,7 +344,6 @@ def render_executor_output(
         max_questions=int(style.get("max_questions", constraints.get("max_questions", 1)) or 1),
         planner_semantic_output_json=json.dumps(planner_semantic_output, ensure_ascii=False),
         prev_phase=prev_phase,
-        need_info_slots_json=json.dumps(need_info_slots, ensure_ascii=False),
         phase=phase_card.get("phase", phase_id),
         phase_do_text=phase_card.get("do_text", ""),
         phase_tecnicas_text=phase_card.get("tecnicas_text", ""),
@@ -409,7 +388,7 @@ def render_executor_output(
     out = normalize_executor_output(data)
     original_words = _word_count(str(out.get("response_text", "")))
 
-    question_allowed = bool(need_info_slots)
+    question_allowed = True
     interrogative_retry_count = 0
     if _looks_like_question_es(str(out.get("response_text", ""))) and (not question_allowed):
         interrogative_retry_count = 1
@@ -484,12 +463,13 @@ def render_executor_output(
     render_meta["topic_selected"] = state.get("topic_selected", "")
     render_meta["topic_selected_source"] = state.get("topic_selected_source", "none")
     render_meta["phase_card_lookup_status"] = state.get("phase_card_lookup_status", "missing")
+    render_meta["objective_delta"] = objective_delta
+    render_meta["tactic"] = tactic
     out["render_meta"] = render_meta
 
     return _enforce_executor_v2_contract(
         normalize_executor_output(out),
         style,
         constraints,
-        need_info_slots=need_info_slots,
         question_allowed=question_allowed,
     )

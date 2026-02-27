@@ -175,3 +175,48 @@ def test_livetrace2_keeps_populated_planner_and_executor_prompts_in_nodes():
     assert "buyer_mustang67_v1" in executor_prompt
     assert "mustang67_in_person_viewing" in executor_prompt
     assert "L) PHASE_MAP_JSON (opcional)" in executor_prompt
+
+
+def test_livetrace2_includes_executor_finalizer_node_when_present():
+    payload = {
+        "user_message": "Hola",
+        "executor_output": {
+            "schema_version": "executor_v2",
+            "response_text": "Seguimos.",
+            "asked_question": False,
+            "requested_info_slots": [],
+            "render_meta": {
+                "finalizer_called": True,
+                "finalizer_changed_from_draft": True,
+                "finalizer_fixes": ["brevity", "dialogue_fit"],
+                "latency_ms_finalizer": 22,
+            },
+        },
+        "trace_runtime": {
+            "llm_calls": [
+                {
+                    "name": "executor_finalizer_llm",
+                    "node": "executor_finalizer",
+                    "latency_ms": 22,
+                    "output_text_rendered": '{"schema_version":"executor_v2","response_text":"ok"}',
+                    "output_payload_raw": {"schema_version": "executor_v2", "response_text": "ok"},
+                }
+            ]
+        },
+    }
+    event = build_semantic_turn_model(
+        user_id="u1",
+        session_id="s1",
+        turn_count=2,
+        trace_index=0,
+        payload=payload,
+        ts="2026-01-01T00:00:02Z",
+    )
+    node_by_name = {node["node_name"]: node for node in event["nodes"]}
+    assert "executor_finalizer_llm" in node_by_name
+    finalizer_node = node_by_name["executor_finalizer_llm"]
+    parsed = finalizer_node.get("output_payload_parsed") or {}
+    assert parsed.get("finalizer_called") is True
+    assert parsed.get("finalizer_changed_from_draft") is True
+    assert parsed.get("finalizer_fixes") == ["brevity", "dialogue_fit"]
+    assert parsed.get("latency_ms_finalizer") == 22

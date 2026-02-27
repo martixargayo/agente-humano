@@ -13,6 +13,7 @@ NODE_NAMES = (
     "phase_policy_planner",
     "progress_updater",
     "executor",
+    "executor_finalizer",
 )
 
 

@@ -131,10 +131,8 @@ def phase_policy_planner_node(state: dict) -> dict:
     state["policy_decision"] = policy_decision
     state["planner_meta"] = planner_meta
     state["planner_semantic_output"] = planner_semantic_output
-    if isinstance(planner_meta.get("planner_need_info_slots"), list):
-        state["planner_need_info_slots"] = [str(x).strip() for x in planner_meta.get("planner_need_info_slots") if str(x).strip()]
-    else:
-        state["planner_need_info_slots"] = []
+    state["planner_objective_delta"] = str(planner_meta.get("planner_objective_delta") or "reduce_risk")
+    state["planner_tactic"] = str(planner_meta.get("planner_tactic") or "frame")
     state["planner_ledger_hash"] = planner_meta.get("planner_ledger_hash") or state.get("effective_ledger_hash", "")
 
     phase_map = planner_meta.get("phase_map_json") if isinstance(planner_meta.get("phase_map_json"), dict) else get_phase_map_v1()
