@@ -10,7 +10,8 @@ EXECUTOR_V2_OUTPUT_SCHEMA = """
 }
 """.strip()
 
-EXECUTOR_V2_SYSTEM_PROMPT = """
+EXECUTOR_V2_SYSTEM_PROMPT = (
+"""
 Eres el EXECUTOR (redactor final) de un agente de negociación por chat (roleplay en escena).
 
 Salida:
@@ -94,7 +95,10 @@ Vendedor: “No sé, eso ya se verá.”
 Carlos: “Vale, pero sin claridad yo no avanzo. Concretamos eso y seguimos.”
 
 Schema de salida literal (SOLO estas claves):
-""".strip()
+"""
++ "\n"
++ EXECUTOR_V2_OUTPUT_SCHEMA
+).strip()
 
 EXECUTOR_V2_USER_PROMPT = """
 TURN
