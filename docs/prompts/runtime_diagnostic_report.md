@@ -105,3 +105,19 @@ Resultado:
 ```text
 27 passed
 ```
+
+## Before/After (no-preguntar por defecto)
+### Before
+- Input user: `hola`
+- Planner hint (legacy): incluía línea `PREGUNTA:` por defecto.
+- Executor output típico: `¿Cómo estás?` (interrogatorio innecesario).
+
+### After
+- Input user: `hola`
+- Planner hint normalizado:
+  - `RESPUESTA: ...`
+  - `MOVIMIENTO: ...`
+  - `TEMA: "..."`
+  - sin `NECESITA_INFO` cuando no hace falta.
+- Executor output esperado: declarativo, sin `?`.
+- Guardrail runtime: si el modelo devuelve `?` sin pregunta del usuario y sin `need_info_slots`, hace retry 1 vez; si persiste, remueve pregunta forzadamente y marca `render_meta.question_forced_removed=true`.

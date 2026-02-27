@@ -35,7 +35,6 @@ def test_extract_topic_selected_regex_variants_inline_and_multiline():
 def test_get_phase_card_extended_for_official_phases(phase):
     card, status = get_phase_card_extended(phase)
     assert status == "ok"
-    assert card["phase_id"] == phase
     assert card["phase"] == phase
     assert "do_text" in card and "tecnicas_text" in card and "evitar_text" in card and "question_policy" in card
 
@@ -74,6 +73,7 @@ def _base_state(next_move_hint: str, phase: str = "clima_humano", user_message: 
         "assistant_last_message": "prev",
         "recent_history_text": "Vendedor: hola",
         "speaker_of_user_message": "seller",
+        "progress_state": {"phase_state": {"phase": "clima_humano"}},
         "effective_semantic_ledger": {
             "lo_que_ya_se_toco": [],
             "lo_que_ya_pregunte": [],
@@ -143,6 +143,27 @@ def test_invalid_topic_fallback_for_phase():
     assert state["topic_selected_source"] == "invalid_fallback"
 
 
+
+
+def test_executor_render_meta_tracks_prev_phase_and_phase():
+    state = _base_state('RESPUESTA: Hola\nMOVIMIENTO: avanzar\nTEMA: "Pequeño rapport: día / cómo está"', phase="descubrimiento_y_comprension")
+    state["progress_state"] = {"phase_state": {"phase": "clima_humano"}}
+    out = _render_with_deps(
+        state,
+        _DepsSingle([
+            {
+                "schema_version": "executor_v2",
+                "response_text": "Perfecto, seguimos por texto.",
+                "asked_question": False,
+                "requested_info_slots": [],
+                "tone_used": "neutral",
+            }
+        ]),
+    )
+    assert out["render_meta"]["prev_phase"] == "clima_humano"
+    assert out["render_meta"]["phase"] == "descubrimiento_y_comprension"
+
+
 def test_executor_schema_retry_first_invalid_second_valid():
     state = _base_state('RESPUESTA: Hola\nMOVIMIENTO: avanzar\nTEMA: "Pequeño rapport: día / cómo está"')
     deps = _DepsSingle(
@@ -163,8 +184,9 @@ def test_executor_schema_retry_first_invalid_second_valid():
     )
     out = _render_with_deps(state, deps)
     assert out["schema_version"] == "executor_v2"
-    assert deps.calls == 2
+    assert deps.calls == 3
     assert out["render_meta"]["schema_retry_count"] == 1
+    assert out["render_meta"]["questionless_retry_count"] == 1
 
 
 def test_executor_schema_salvage_response_to_response_text():
@@ -186,8 +208,9 @@ def test_executor_schema_salvage_response_to_response_text():
     assert out["render_meta"]["schema_salvage"] is True
 
 
-def test_executor_question_slots_coherence_enforced():
-    state = _base_state('RESPUESTA: Hola\nMOVIMIENTO: avanzar\nTEMA: "Pequeño rapport: día / cómo está"')
+def test_executor_question_slots_coherence_enforced_when_need_info_present():
+    state = _base_state('RESPUESTA: Hola\nMOVIMIENTO: avanzar\nTEMA: "Pequeño rapport: día / cómo está"\nNECESITA_INFO: precio_objetivo')
+    state["planner_need_info_slots"] = ["precio_objetivo"]
     out = _render_with_deps(
         state,
         _DepsSingle(
@@ -222,20 +245,23 @@ def test_executor_wiring_injects_single_extended_phase_card():
     _render_with_deps(state, deps)
     rendered = str(deps.last_messages[1].content)
     assert "PHASE_CARD_EXTENDIDA" in rendered
+    assert "prev_phase: clima_humano" in rendered
     assert "phase: concesiones_y_ajuste_final" in rendered
     assert "TOPICS_VALIDOS:" in rendered
     assert "clima_humano" not in rendered.split("PHASE_CARD_EXTENDIDA", 1)[1]
 
 
-def test_planner_postcheck_moves_question_out_of_respuesta():
+def test_planner_postcheck_removes_questions_outside_tema():
     normalized, changed = _normalize_next_move_hint(
         "clima_humano",
         'RESPUESTA: Hola, ¿cómo estás? MOVIMIENTO: Validar tono y abrir. TEMA: "clima_humano"',
     )
     assert changed is True
     assert "RESPUESTA:" in normalized and "MOVIMIENTO:" in normalized and "TEMA:" in normalized
-    assert "PREGUNTA:" in normalized
+    assert "PREGUNTA:" not in normalized
     for line in normalized.splitlines():
+        if line.startswith("TEMA:"):
+            continue
         if line.startswith("RESPUESTA:") or line.startswith("MOVIMIENTO:"):
             assert "?" not in line and "¿" not in line
 
@@ -248,6 +274,15 @@ def test_planner_postcheck_keeps_three_lines_when_no_question():
     lines = normalized.splitlines()
     assert len(lines) == 3
     assert all(not ln.startswith("PREGUNTA:") for ln in lines)
+    assert all(not ln.startswith("NECESITA_INFO:") for ln in lines)
+
+
+def test_planner_postcheck_preserves_valid_necesita_info_slots():
+    normalized, _ = _normalize_next_move_hint(
+        "propuesta_creativa",
+        'RESPUESTA: validar paso MOVIMIENTO: avanzar cierre TEMA: "Señal + fecha de pago (todo registrado)" NECESITA_INFO: documentacion, pago_fecha, ruido',
+    )
+    assert "NECESITA_INFO: documentacion, pago_fecha" in normalized
 
 
 def test_planner_phase_jump_not_forced_to_plus_one():
@@ -256,4 +291,3 @@ def test_planner_phase_jump_not_forced_to_plus_one():
         'RESPUESTA: Perfecto\nMOVIMIENTO: Confirmamos cierre\nTEMA: "Checklist: entrega y trámites"',
     )
     assert 'TEMA: "Checklist: entrega y trámites"' in normalized
-

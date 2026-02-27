@@ -79,6 +79,17 @@ def executor_node(state: dict) -> dict:
     )
 
     executor_output = normalize_executor_output(executor_output)
+    planner_semantic_output = state.get("planner_semantic_output") if isinstance(state.get("planner_semantic_output"), dict) else {}
+    phase_effective = str(planner_semantic_output.get("phase", "clima_humano") or "clima_humano")
+    phase_candidate = state.get("phase_candidate") if isinstance(state.get("phase_candidate"), dict) else {}
+    progress_state["phase_state"] = {
+        "phase": phase_effective,
+        "phase_effective": phase_effective,
+        "confidence": float((phase_candidate or {}).get("confidence", 0.7) or 0.7),
+        "reasons": list((phase_candidate or {}).get("reasons", []) or [])[:6],
+        "last_updated_turn": int(state.get("turn_count", 0) or 0),
+    }
+
     state["executor_output"] = executor_output
     state["assistant_message"] = executor_output.get("response_text", "")
     state["response"] = state["assistant_message"]
