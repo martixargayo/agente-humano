@@ -219,10 +219,19 @@ def run_negotiation_agent(
     new_graph_state = negotiation_app.invoke(graph_state)
     response = str(new_graph_state.get("response") or new_graph_state.get("assistant_message") or "")
 
+    progress_state_out = new_graph_state.get("progress_state") or {}
+    if not isinstance(progress_state_out, dict):
+        progress_state_out = dict(progress_state_out)
+    state.progress_state = progress_state_out
+
     if response:
         add_message(state, "assistant", response)
 
     refresh_meta = _refresh_dual_memory(state, deps, short_turns=_MEMORY_SHORT_TURNS)
+    new_graph_state["progress_state"] = state.progress_state if isinstance(state.progress_state, dict) else {}
+    new_graph_state["short_memory"] = str((state.progress_state or {}).get("memory_short") or "")
+    new_graph_state["long_memory"] = str((state.progress_state or {}).get("memory_long") or "")
+    new_graph_state["summary"] = new_graph_state["long_memory"]
 
     state.world_state = new_graph_state.get("world_state") if isinstance(new_graph_state.get("world_state"), dict) else state.world_state
     state.belief_state = new_graph_state.get("belief_state") if isinstance(new_graph_state.get("belief_state"), dict) else state.belief_state

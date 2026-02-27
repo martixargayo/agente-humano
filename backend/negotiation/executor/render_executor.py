@@ -332,6 +332,9 @@ def render_executor_output(
         hint_text = str(planner_semantic_output.get("next_move_hint") or "") if isinstance(planner_semantic_output, dict) else ""
         need_info_slots = _extract_need_info_slots(hint_text)
 
+    recent_history_compact = str(state.get("short_memory") or state.get("recent_history_text", "") or "").strip() or "SIN_MEMORIA_CORTA_AUN"
+    memory_long_compact = str(state.get("long_memory", "") or "").strip() or "SIN_RESUMEN_AUN"
+
     prompt = EXECUTOR_USER_PROMPT.format(
         speaker=str(state.get("speaker_of_user_message") or "seller").strip().lower(),
         user_message=user_message,
@@ -355,8 +358,8 @@ def render_executor_output(
         lo_que_ya_se_toco_json=json.dumps(lo_que_ya_se_toco, ensure_ascii=False),
         lo_que_ya_pregunte_json=json.dumps(lo_que_ya_pregunte, ensure_ascii=False),
         lo_que_falta_pero_no_insistire_json=json.dumps(lo_que_falta_pero_no_insistire, ensure_ascii=False),
-        recent_history_compact=str(state.get("short_memory") or state.get("recent_history_text", "") or "").strip() or "SIN_MEMORIA_CORTA_AUN",
-        memory_long_compact=str(state.get("long_memory", "") or "").strip() or "SIN_RESUMEN_AUN",
+        recent_history_compact=recent_history_compact,
+        memory_long_compact=memory_long_compact,
         retry_hint="",
     )
     state["topic_selected"] = topic_selected
@@ -453,6 +456,7 @@ def render_executor_output(
     render_meta["prev_phase"] = prev_phase
     render_meta["phase"] = phase_id
     render_meta["memory_short_turns"] = int((((state.get("progress_state") or {}).get("memory_short_turns")) or 0))
+    render_meta["memory_long_len"] = len(memory_long_compact or "")
     render_meta["memory_long_updated"] = bool((state.get("memory_meta") or {}).get("memory_long_updated", False))
     if question_forced_removed:
         render_meta["question_forced_removed"] = True
