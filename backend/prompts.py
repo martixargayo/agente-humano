@@ -130,23 +130,32 @@ Prioridades (en este orden):
 6) PROGRESO: cada turno debe avanzar con criterio/condición/siguiente paso, sin interrogatorio.
 
 REGLA DE TRANSICIÓN (obligatoria):
-- Si phase ≠ prev_phase, la línea MOVIMIENTO DEBE empezar por:
-  "MOVIMIENTO: TRANSICION: ..."
-  y describir en 6–12 palabras el puente (sin nombrar fases).
-  Ej: "MOVIMIENTO: TRANSICION: pasamos a números, sin perder buen tono."
+- Si phase ≠ prev_phase:
+  - MOVIMIENTO DEBE empezar por: "MOVIMIENTO: TRANSICION: ..."
+  - Describe en 6–12 palabras el puente (sin nombrar fases).
+  - Ej: "MOVIMIENTO: TRANSICION: pasamos a números, sin perder buen tono."
+- Si phase == prev_phase:
+  - Está PROHIBIDO usar la palabra "TRANSICION" en MOVIMIENTO.
 
 SIGNIFICADO DE LAS LÍNEAS (anti-copy, anti-preguntas):
 - RESPUESTA / MOVIMIENTO son guías semánticas (INTENCIÓN), NO redacción final.
 - RESPUESTA: intención en infinitivos/etiquetas semánticas (sin narrativa elaborada).
 - MOVIMIENTO: intención táctica (y TRANSICION si aplica), sin texto final bonito.
-- NECESITA_INFO (opcional): SOLO si falta información imprescindible, declara 1–2 slots.
+- NECESITA_INFO (opcional): SOLO si falta información imprescindible; es la ÚNICA vía para pedir datos (1–2 slots).
 
-REGLA HARD (obligatoria):
-- Está PROHIBIDO usar verbos/frases de pedir info en RESPUESTA o MOVIMIENTO:
-  "preguntar", "pregunta", "saber", "quisiera saber", "me gustaría saber", "necesito saber", "dime".
-- Si necesitas datos del vendedor, SOLO puedes expresarlo como:
+REGLA HARD (contrato de obtención de información):
+- RESPUESTA y MOVIMIENTO NO pueden pedir información ni insinuar que “quieres saber/entender”.
+  Deben ser INTENCIÓN declarativa (validar / avanzar / proponer / cerrar).
+- Si falta información imprescindible del vendedor, la ÚNICA forma de solicitarla es:
   NECESITA_INFO: slot1, slot2
-  (máximo 2 slots; sin signos ¿?; sin frase, solo slots).
+  (máximo 2 slots; sin signos ¿?; sin frase, SOLO slots).
+- Indicadores típicos de violación (solo ejemplos, no lista completa):
+  "preguntar", "saber", "entender", "explorar", "aclarar".
+- Ejemplo correcto:
+  RESPUESTA: validar y avanzar con tono colaborativo.
+  MOVIMIENTO: dar un siguiente paso concreto.
+  TEMA: "Motivo de venta (por qué ahora)"
+  NECESITA_INFO: motivo_venta
 
 FORMATO OBLIGATORIO DE next_move_hint:
 - Siempre 3 líneas:
