@@ -177,7 +177,7 @@ def test_livetrace2_keeps_populated_planner_and_executor_prompts_in_nodes():
     assert "L) PHASE_MAP_JSON (opcional)" in executor_prompt
 
 
-def test_livetrace2_includes_executor_finalizer_node_when_present():
+def test_livetrace2_includes_finalizer_node_when_present():
     payload = {
         "user_message": "Hola",
         "executor_output": {
@@ -195,7 +195,7 @@ def test_livetrace2_includes_executor_finalizer_node_when_present():
         "trace_runtime": {
             "llm_calls": [
                 {
-                    "name": "executor_finalizer_llm",
+                    "name": "finalizer_llm",
                     "node": "executor_finalizer",
                     "latency_ms": 22,
                     "output_text_rendered": '{"schema_version":"executor_v2","response_text":"ok"}',
@@ -213,10 +213,127 @@ def test_livetrace2_includes_executor_finalizer_node_when_present():
         ts="2026-01-01T00:00:02Z",
     )
     node_by_name = {node["node_name"]: node for node in event["nodes"]}
-    assert "executor_finalizer_llm" in node_by_name
-    finalizer_node = node_by_name["executor_finalizer_llm"]
+    assert "finalizer_llm" in node_by_name
+    finalizer_node = node_by_name["finalizer_llm"]
     parsed = finalizer_node.get("output_payload_parsed") or {}
     assert parsed.get("finalizer_called") is True
     assert parsed.get("finalizer_changed_from_draft") is True
     assert parsed.get("finalizer_fixes") == ["brevity", "dialogue_fit"]
     assert parsed.get("latency_ms_finalizer") == 22
+
+
+def test_livetrace2_supports_legacy_executor_finalizer_name_for_backfill_compat():
+    payload = {
+        "user_message": "Hola",
+        "executor_output": {
+            "schema_version": "executor_v2",
+            "response_text": "Seguimos.",
+            "render_meta": {"finalizer_called": True},
+        },
+        "trace_runtime": {
+            "llm_calls": [
+                {
+                    "name": "executor_finalizer_llm",
+                    "node": "executor_finalizer",
+                    "latency_ms": 7,
+                    "status": "ok",
+                }
+            ]
+        },
+    }
+    event = build_semantic_turn_model(
+        user_id="u1",
+        session_id="s1",
+        turn_count=1,
+        trace_index=0,
+        payload=payload,
+        ts="2026-01-01T00:00:02Z",
+    )
+
+    node_by_name = {node["node_name"]: node for node in event["nodes"]}
+    assert "finalizer_llm" in node_by_name
+    assert node_by_name["finalizer_llm"]["status"] == "ok"
+
+
+def test_livetrace2_finalizer_node_exposes_clear_input_and_output_payloads():
+    payload = {
+        "user_message": "¿Puedes mejorar el precio?",
+        "executor_output": {
+            "schema_version": "executor_v2",
+            "response_text": "Podría ajustar un poco si cerramos esta semana.",
+            "asked_question": False,
+            "requested_info_slots": [],
+            "render_meta": {
+                "finalizer_called": True,
+                "finalizer_changed_from_draft": False,
+                "finalizer_fixes": [],
+                "latency_ms_finalizer": 15,
+            },
+        },
+        "trace_runtime": {
+            "llm_calls": [
+                {
+                    "name": "finalizer_llm",
+                    "node": "executor_finalizer",
+                    "latency_ms": 15,
+                    "status": "ok",
+                    "input_prompt_rendered": "[system] finalizer system\n[user] finalizer user",
+                    "input_payload_raw": {"system": "finalizer system", "user": "finalizer user"},
+                    "output_text_rendered": '{"schema_version":"executor_v2","response_text":"ajustada"}',
+                    "output_payload_raw": {"schema_version": "executor_v2", "response_text": "ajustada"},
+                }
+            ]
+        },
+    }
+
+    event = build_semantic_turn_model(
+        user_id="u1",
+        session_id="s1",
+        turn_count=1,
+        trace_index=0,
+        payload=payload,
+        ts="2026-01-01T00:00:02Z",
+    )
+
+    node_by_name = {node["node_name"]: node for node in event["nodes"]}
+    finalizer = node_by_name["finalizer_llm"]
+
+    assert finalizer["status"] == "ok"
+    assert finalizer["input_capture_state"] == "captured"
+    assert finalizer["output_capture_state"] == "captured"
+    assert "[system] finalizer system" in str(finalizer.get("input_prompt_rendered") or "")
+    assert finalizer.get("input_payload_raw") == {"system": "finalizer system", "user": "finalizer user"}
+    assert finalizer.get("output_payload_raw") == {"schema_version": "executor_v2", "response_text": "ajustada"}
+
+
+def test_livetrace2_finalizer_supports_skipped_status_from_runtime():
+    payload = {
+        "user_message": "ok",
+        "executor_output": {
+            "schema_version": "executor_v2",
+            "response_text": "respuesta draft",
+            "render_meta": {"finalizer_called": True, "latency_ms_finalizer": 0},
+        },
+        "trace_runtime": {
+            "llm_calls": [
+                {
+                    "name": "finalizer_llm",
+                    "node": "executor_finalizer",
+                    "latency_ms": 0,
+                    "status": "skipped",
+                }
+            ]
+        },
+    }
+
+    event = build_semantic_turn_model(
+        user_id="u1",
+        session_id="s1",
+        turn_count=1,
+        trace_index=0,
+        payload=payload,
+        ts="2026-01-01T00:00:02Z",
+    )
+
+    node_by_name = {node["node_name"]: node for node in event["nodes"]}
+    assert node_by_name["finalizer_llm"]["status"] == "skipped"
