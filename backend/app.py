@@ -609,13 +609,19 @@ function buildSummaryNodes(allNodes){
   const byName = new Map();
   for(const node of allNodes){
     const name = String(node.node_name || '');
-    if(!byName.has(name)) byName.set(name, node);
+    if(!name || byName.has(name)) continue;
+    byName.set(name, node);
   }
-  return SUMMARY_NODE_ORDER.map((name)=>{
-    const raw = byName.get(name);
-    if(raw) return raw;
-    return { node_name:name, latency_ms:'—', status:'missing', node_type:'unknown', started_at:'', ended_at:'' };
-  });
+
+  const ordered = [];
+  for(const name of SUMMARY_NODE_ORDER){
+    if(byName.has(name)) ordered.push(byName.get(name));
+  }
+
+  for(const [name, node] of byName.entries()){
+    if(!SUMMARY_NODE_ORDER.includes(name)) ordered.push(node);
+  }
+  return ordered;
 }
 
 
@@ -678,7 +684,7 @@ function renderTurns(){
           ? `<div class="nodes">${visibleNodes.map((node)=>`<div class="node">${detail(node)}</div>`).join('')}</div>`
           : '<div class="meta-small" style="margin-top:8px;">No hay nodos visibles con los filtros actuales.</div>')
       : (()=>{
-          const summaryNodes = buildSummaryNodes(renderableNodes).filter((node)=>activeFilters.has(String(node.node_name || '')));
+          const summaryNodes = buildSummaryNodes(renderableNodes).filter((node)=>isNodeVisible(node));
           const strip = summaryNodes.length
             ? `<div class="summary-strip">${summaryNodes.map((node)=>`<div class="summary-box ${selectedNodeName===node.node_name?'active':''}" data-turn-id="${id}" data-node-name="${node.node_name}"><div class="t">${escapeHtml(node.node_name)}</div><div class="m"><span>${escapeHtml(String(node.latency_ms ?? '—'))} ms</span><span class="${statusClass(node.status)}">${escapeHtml(String(node.status || 'missing'))}</span></div></div>`).join('')}</div>`
             : '<div class="meta-small" style="margin-top:8px;">No hay nodos visibles con los filtros actuales.</div>';
