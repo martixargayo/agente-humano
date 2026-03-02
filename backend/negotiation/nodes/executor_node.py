@@ -58,7 +58,7 @@ def _safe_json_load(raw: str) -> dict:
 
 
 def _finalizer_enabled() -> bool:
-    return str(os.getenv("NEGOTIATION_EXECUTOR_FINALIZER_ENABLED", "0") or "1").strip().lower() in {"1", "true", "yes", "on"}
+    return str(os.getenv("NEGOTIATION_EXECUTOR_FINALIZER_ENABLED", "1") or "1").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _finalizer_mode() -> str:
