@@ -511,16 +511,19 @@ def negotiation_livetrace2_panel():
 </div>
 
 <script>
+const HIDDEN_TRACE_NODES = new Set([
+  'world_gate',
+  'belief_gate',
+  'world_extractor_llm',
+  'belief_llm',
+]);
 const FILTER_NODE_ORDER = [
   'advisor_llm',
   'world_judge_llm',
-  'world_gate',
-  'world_extractor_llm',
-  'belief_gate',
-  'belief_llm',
   'planner_gate',
   'planner_llm',
   'executor_llm',
+  'finalizer_llm',
 ];
 const SUMMARY_NODE_ORDER = FILTER_NODE_ORDER;
 
@@ -606,13 +609,19 @@ function buildSummaryNodes(allNodes){
   const byName = new Map();
   for(const node of allNodes){
     const name = String(node.node_name || '');
-    if(!byName.has(name)) byName.set(name, node);
+    if(!name || byName.has(name)) continue;
+    byName.set(name, node);
   }
-  return SUMMARY_NODE_ORDER.map((name)=>{
-    const raw = byName.get(name);
-    if(raw) return raw;
-    return { node_name:name, latency_ms:'—', status:'missing', node_type:'unknown', started_at:'', ended_at:'' };
-  });
+
+  const ordered = [];
+  for(const name of SUMMARY_NODE_ORDER){
+    if(byName.has(name)) ordered.push(byName.get(name));
+  }
+
+  for(const [name, node] of byName.entries()){
+    if(!SUMMARY_NODE_ORDER.includes(name)) ordered.push(node);
+  }
+  return ordered;
 }
 
 
@@ -665,7 +674,8 @@ function renderTurns(){
   turnsList.innerHTML = turns.map((evt)=>{
     const id = turnId(evt);
     const allNodes = Array.isArray(evt.nodes) ? evt.nodes : [];
-    const visibleNodes = orderNodesForDisplay(allNodes.filter(isNodeVisible));
+    const renderableNodes = allNodes.filter((node)=>!HIDDEN_TRACE_NODES.has(String(node.node_name || '')));
+    const visibleNodes = orderNodesForDisplay(renderableNodes.filter(isNodeVisible));
     const expanded = expandAll || localExpanded.has(id);
     const selectedNodeName = expandedNodeByTurn.get(id) || null;
 
@@ -674,7 +684,7 @@ function renderTurns(){
           ? `<div class="nodes">${visibleNodes.map((node)=>`<div class="node">${detail(node)}</div>`).join('')}</div>`
           : '<div class="meta-small" style="margin-top:8px;">No hay nodos visibles con los filtros actuales.</div>')
       : (()=>{
-          const summaryNodes = buildSummaryNodes(allNodes).filter((node)=>activeFilters.has(String(node.node_name || '')));
+          const summaryNodes = buildSummaryNodes(renderableNodes).filter((node)=>isNodeVisible(node));
           const strip = summaryNodes.length
             ? `<div class="summary-strip">${summaryNodes.map((node)=>`<div class="summary-box ${selectedNodeName===node.node_name?'active':''}" data-turn-id="${id}" data-node-name="${node.node_name}"><div class="t">${escapeHtml(node.node_name)}</div><div class="m"><span>${escapeHtml(String(node.latency_ms ?? '—'))} ms</span><span class="${statusClass(node.status)}">${escapeHtml(String(node.status || 'missing'))}</span></div></div>`).join('')}</div>`
             : '<div class="meta-small" style="margin-top:8px;">No hay nodos visibles con los filtros actuales.</div>';
@@ -687,7 +697,7 @@ function renderTurns(){
       ? '<button class="pill" disabled title="Desactiva Desplegar todo para usarlo">Desplegar</button>'
       : `<button class="pill local-toggle" data-turn-id="${id}">${localExpanded.has(id) ? 'Ocultar' : 'Desplegar'}</button>`;
 
-    return `<div class="turn-card"><div class="turn-head"><div><strong>Turno ${Number(evt.turn_idx || 0)}</strong> · session=${escapeHtml(evt.session_id || 'n/a')} · trace=${Number(evt.trace_index || 0)}<div class="meta-small">${ts(evt.started_at)} → ${ts(evt.ended_at)} · visibles=${visibleNodes.length}/${allNodes.length} · latencia=${evt.total_latency_ms ?? '-'} ms</div><div class="meta-small" style="margin-top:4px"><strong>User:</strong> ${escapeHtml(pickUserText(evt))}</div><div class="meta-small" style="margin-top:2px"><strong>IA:</strong> ${escapeHtml(pickIaText(evt))}</div></div><div>${localBtn}</div></div>${details}</div>`;
+    return `<div class="turn-card"><div class="turn-head"><div><strong>Turno ${Number(evt.turn_idx || 0)}</strong> · session=${escapeHtml(evt.session_id || 'n/a')} · trace=${Number(evt.trace_index || 0)}<div class="meta-small">${ts(evt.started_at)} → ${ts(evt.ended_at)} · visibles=${visibleNodes.length}/${renderableNodes.length} · latencia=${evt.total_latency_ms ?? '-'} ms</div><div class="meta-small" style="margin-top:4px"><strong>User:</strong> ${escapeHtml(pickUserText(evt))}</div><div class="meta-small" style="margin-top:2px"><strong>IA:</strong> ${escapeHtml(pickIaText(evt))}</div></div><div>${localBtn}</div></div>${details}</div>`;
   }).join('');
 
   for(const btn of turnsList.querySelectorAll('.local-toggle')){
