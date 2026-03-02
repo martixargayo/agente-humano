@@ -18,10 +18,13 @@ def _safe_int(value: Any, default: int = 0) -> int:
 def _llm_node_from_meta(name: str, meta: dict[str, Any]) -> dict[str, Any]:
     started = meta.get("start_ts")
     ended = meta.get("end_ts")
+    status = str(meta.get("status") or ("ok" if not meta.get("error") else "error")).strip().lower()
+    if status not in {"ok", "error", "skipped"}:
+        status = "ok" if not meta.get("error") else "error"
     return {
         "node_name": name,
         "node_type": "llm",
-        "status": "ok" if not meta.get("error") else "error",
+        "status": status,
         "latency_ms": _safe_int(meta.get("latency_ms"), 0),
         "started_at": started or "",
         "ended_at": ended or "",
@@ -136,7 +139,7 @@ def _build_executor_node(runtime: dict[str, Any], executor_output: dict[str, Any
 
 
 def _build_executor_finalizer_node(runtime: dict[str, Any], executor_output: dict[str, Any]) -> dict[str, Any] | None:
-    runtime_node = _find_runtime_llm(runtime, "executor_finalizer_llm")
+    runtime_node = _find_runtime_llm(runtime, "finalizer_llm") or _find_runtime_llm(runtime, "executor_finalizer_llm")
     if not runtime_node:
         if not executor_output:
             return None
@@ -153,7 +156,7 @@ def _build_executor_finalizer_node(runtime: dict[str, Any], executor_output: dic
             },
         }
 
-    node = _llm_node_from_meta("executor_finalizer_llm", runtime_node)
+    node = _llm_node_from_meta("finalizer_llm", runtime_node)
     meta = executor_output.get("render_meta") if isinstance(executor_output.get("render_meta"), dict) else {}
     node["output_payload_parsed"] = {
         "finalizer_called": bool(meta.get("finalizer_called", False)),

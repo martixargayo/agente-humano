@@ -190,7 +190,7 @@ def executor_node(state: dict) -> dict:
 
         record_llm_call(
             state,
-            name="executor_finalizer_llm",
+            name="finalizer_llm",
             node="executor_finalizer",
             started=finalizer_started,
             ok=True,
