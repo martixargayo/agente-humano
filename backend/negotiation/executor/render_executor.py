@@ -13,6 +13,7 @@ from ..elementos.render.executor_prompts import (
 )
 from ..phase_cards_extended import get_phase_card_extended, extract_topic_selected, default_topic_for_phase, is_valid_topic_for_phase
 from ..semantic_ledger_utils import semantic_ledger_hash
+from ..negotiation_profiles import NEGOTIATION_PROFILE_PRIVATE_EXECUTOR_V1
 
 ExecutorOutput = dict
 RenderConstraints = dict
@@ -356,6 +357,7 @@ def render_executor_output(
         lo_que_falta_pero_no_insistire_json=json.dumps(lo_que_falta_pero_no_insistire, ensure_ascii=False),
         recent_history_compact=recent_history_compact,
         memory_long_compact=memory_long_compact,
+        negotiation_profile_private_executor=str(NEGOTIATION_PROFILE_PRIVATE_EXECUTOR_V1 or ""),
         retry_hint="",
     )
     state["topic_selected"] = topic_selected

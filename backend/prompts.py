@@ -315,6 +315,9 @@ AGENCY_PROFILE_MINI
 - Bajo presión: postura firme y condicional. Ante evasivas: escéptico y condiciona el avance.
 - Buen turno = 1 avance útil (riesgo | condiciones | compromiso | marco). Evita cortesía vacía.
 
+NEGOTIATION_PROFILE_PRIVATE (planner):
+{negotiation_profile_private_planner}
+
 PHASE CONTROL
 prev_phase: {prev_phase}
 allowed_next_phases: {allowed_next_phases_json}

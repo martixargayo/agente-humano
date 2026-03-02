@@ -9,6 +9,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from ..executor import normalize_executor_output, render_executor_output
 from ..llm_clients import get_executor_finalizer_llm
+from ..negotiation_profiles import NEGOTIATION_PROFILE_PRIVATE_EXECUTOR_V1
 from ..llm_planning_context import build_full_roleplay_profiles
 from ..phase_map import get_phase_map_v1
 from ..schemas import (
@@ -166,6 +167,7 @@ def executor_node(state: dict) -> dict:
             semantic_ledger_json=json.dumps(semantic_ledger or {}, ensure_ascii=False),
             memory_short_compact=memory_short_compact,
             memory_long_compact=memory_long_compact,
+            negotiation_profile_private_executor=str(NEGOTIATION_PROFILE_PRIVATE_EXECUTOR_V1 or ""),
             executor_draft_json=json.dumps(executor_draft, ensure_ascii=False),
         )
 
