@@ -1,3 +1,5 @@
+from ...negotiation_profiles import NEGOTIATION_PROFILE_PRIVATE_EXECUTOR_V1
+
 EXECUTOR_V2_OUTPUT_SCHEMA = """
 {
   "schema_version": "executor_v2",
@@ -177,6 +179,9 @@ topic_selected: {topic_selected}
 PROFILE_CARD
 {profile_card_compact_text}
 
+NEGOTIATION_PROFILE_PRIVATE (executor):
+{negotiation_profile_private_executor}
+
 SCENE_CARD
 {scene_card_compact_text}
 
@@ -336,6 +341,9 @@ CONTEXT
 semantic_ledger: {semantic_ledger_json}
 memory_short: {memory_short_compact}
 memory_long: {memory_long_compact}
+
+NEGOTIATION_PROFILE_PRIVATE (finalizer):
+{negotiation_profile_private_executor}
 
 DRAFT
 executor_draft_json: {executor_draft_json}

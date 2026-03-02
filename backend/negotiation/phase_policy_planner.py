@@ -20,6 +20,7 @@ from .phase_cards_extended import OFFICIAL_PHASE_IDS, default_topic_for_phase, e
 from .llm_planning_context import build_objective_summary, build_planner_context_block_full, build_full_roleplay_profiles
 from .telemetry.llm_usage import extract_llm_usage
 from .semantic_ledger_utils import build_effective_semantic_ledger, semantic_ledger_hash
+from .negotiation_profiles import NEGOTIATION_PROFILE_PRIVATE_PLANNER_V1
 
 logger = logging.getLogger(__name__)
 
@@ -218,6 +219,7 @@ def plan_phase_policy(
             lo_que_falta_pero_no_insistire_json=json.dumps(lo_que_falta_pero_no_insistire, ensure_ascii=False),
             recent_history_compact=str(recent_context or "")[-1200:],
             objective_summary_compact=objective_summary,
+            negotiation_profile_private_planner=str(NEGOTIATION_PROFILE_PRIVATE_PLANNER_V1 or ""),
         )
         meta["objective_source"] = objective_source
         meta["objective_summary"] = objective_summary
