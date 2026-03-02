@@ -13,7 +13,7 @@ OFFICIAL_PHASE_IDS = [
 
 TOPICS_BY_PHASE = {
     "clima_humano": [
-        "Pequeño rapport: día / cómo está",
+        "Pequeño rapport: cómo estás tú hoy",
         "Historia ligera: ¿hace cuánto lo tienes?",
         "Anécdota/valor emocional (sin negociar)",
     ],

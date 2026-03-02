@@ -125,7 +125,11 @@ INVARIANTES (hard, en este orden):
    - lo_que_ya_se_toco: hechos/posiciones/ofertas/condiciones nuevas (del usuario).
    - lo_que_ya_pregunte: preguntas/intenciones preguntadas por el asistente (desde ASSISTANT_LAST_MESSAGE).
    - lo_que_falta_pero_no_insistire: temas que el usuario evita/rechaza/no puede dar (no perseguir).
-5) HIGIENE:
+5) REGLA DE CONSERVACIÓN (hard):
+- semantic_ledger DEBE empezar como copia exacta de SEMANTIC_LEDGER_PREV.
+- Luego aplica SOLO adds/updates necesarios (y si hace falta, truncado a máx 6).
+- Está PROHIBIDO “resetear” listas por estilo o reescritura.
+6) HIGIENE:
    - Deduplica y mantén orden estable.
    - Máximo 6 items por lista. Prioriza lo más reciente y útil.
    - Evita frases genéricas tipo “saludo/cortesía”. Prefiere frases accionables.
@@ -168,6 +172,7 @@ CÓMO DETECTAR “CIERRE” (semántico):
 
 topic_alignment:
 - on_topic si encaja con negociación / interacción social normal.
+- Saludos/cortesía vacía: on_topic + no_update.
 - off_topic si es claramente ajeno.
 
 Devuelve SOLO JSON con:
@@ -268,7 +273,9 @@ REGLA DE TRANSICIÓN (obligatoria):
 - Si phase ≠ prev_phase:
   - MOVIMIENTO DEBE empezar por: "MOVIMIENTO: TRANSICION: ..."
   - Describe en 6–12 palabras el puente (sin nombrar fases).
-  - Ej: "MOVIMIENTO: TRANSICION: pasamos a números, sin perder buen tono."
+  - EXCEPCIÓN COMPATIBILIDAD (hard):
+    Si “modo números” está activo, tras el puente añade "; <intención_numérica>".
+    Ej: "MOVIMIENTO: TRANSICION: pasamos a números sin perder buen tono; contraoferta 6500 ..."
 - Si phase == prev_phase:
   - Está PROHIBIDO usar la palabra "TRANSICION" en MOVIMIENTO.
 
@@ -301,11 +308,10 @@ DETECTOR “MODO NUMEROS” (hard):
      "lo dejo en", "por X", "cerramos", "cierre", "último", "rebaja".
 
 REGLA (hard):
-- Si “modo números” está activo, MOVIMIENTO DEBE incluir una (y solo una) de estas intenciones (muy compacto):
-  - "anclar 6200 ..."        (primera cifra propia)
-  - "contraoferta 6500 ..."  (rechazar y proponer cifra)
-  - "paquetes 6700 ..."      (2 opciones tipo MESO alrededor de esa cifra)
-  - "aceptar 6800 ..." o "cerrar ..." (si ya toca)
+- Si “modo números” está activo, MOVIMIENTO DEBE incluir exactamente una intención numérica:
+  - "anclar 6200 ..." | "contraoferta 6500 ..." | "paquetes 6700 ..." | "aceptar 6800 ..." | "cerrar ..."
+- Si además phase ≠ prev_phase:
+  - esa intención DEBE ir después de un ";" tras "MOVIMIENTO: TRANSICION: ...".
 - Puedes incluir UNA cifra (la propuesta del comprador). NUNCA incluyas techo/BATNA.
 - Mantén MOVIMIENTO dentro de 5–14 palabras, pero debe quedar inequívoco qué acción toca.
 """.strip()
@@ -355,7 +361,7 @@ PHASES_RESUMEN
 - formalizacion_del_acuerdo: confirmar lo acordado como checklist operativo.
 
 TOPICS_POR_FASE
-clima_humano: ["Pequeño rapport: día / cómo está", "Historia ligera: ¿hace cuánto lo tienes?", "Anécdota/valor emocional (sin negociar)"]
+clima_humano: ["Pequeño rapport: cómo estás tú hoy", "Historia ligera: ¿hace cuánto lo tienes?", "Anécdota/valor emocional (sin negociar)"]
 descubrimiento_y_comprension: ["Estado general hoy (en una frase)", "Mantenimiento y cuidados (qué se ha hecho)", "Motivo de venta (por qué ahora)", "Cifra objetivo del vendedor (en qué cifra lo valora)", "Urgencia y tiempos (prisa vs calma)"]
 propuesta_creativa: ["Paquetes (2 opciones): precio vs concesiones (MESO)", "Cierre rápido condicionado (si encaja, cerramos ya)", "Papeleo y trámites (quién se encarga)", "Garantía razonable / asunción de riesgos", "Incluye extras/recambios/herramientas"]
 concesiones_y_ajuste_final: ["Contraoferta pequeña y condicionada", "Subo X si tú haces Y (contrapartida)", "Precio vs comodidad (fecha/recogida/papeleo)", "Último ajuste para cerrar (sin regalar)"]
