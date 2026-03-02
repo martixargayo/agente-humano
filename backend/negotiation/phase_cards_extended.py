@@ -25,17 +25,17 @@ TOPICS_BY_PHASE = {
         "Urgencia y tiempos (prisa vs calma)",
     ],
     "propuesta_creativa": [
+        "Paquetes (2 opciones): precio vs concesiones (MESO)",
         "Cierre rápido condicionado (si encaja, cerramos ya)",
         "Papeleo y trámites (quién se encarga)",
-        "Señal + fecha de pago (todo registrado)",
-        "Incluye extras/recambios/herramientas",
-        "Reparto de costes (gestoría/transferencia/transporte)",
+        "Garantía razonable / asunción de riesgos",
+        "Incluye extras/recambios/herramientas"
     ],
     "concesiones_y_ajuste_final": [
         "Contraoferta pequeña y condicionada",
         "Subo X si tú haces Y (contrapartida)",
         "Precio vs comodidad (fecha/recogida/papeleo)",
-        "Último ajuste para cerrar hoy",
+        "Último ajuste para cerrar (sin regalar)",
     ],
     "formalizacion_del_acuerdo": [
         "Checklist: precio + qué incluye",
@@ -76,32 +76,39 @@ _PHASE_CARDS_EXTENDED = {
     },
     "propuesta_creativa": {
         "phase": "propuesta_creativa",
-        "do_text": """- Proponer 1 opción concreta (o 2 como máximo) con intercambio claro.
-- Hablar en términos de “cómo lo cerramos” más que “cuánto vale”.
-- Ofrecer comodidad a cambio de precio/condición (sin presión).""",
-        "tecnicas_text": """- “Cierre condicional”: si X es cierto, yo hago Y hoy/esta semana.
-- “Concesión bonita” que te cuesta poco (rapidez, flexibilidad, asumir trámites) y pides algo a cambio.
-- “Dos puertas”: opción A (mejor para ti) y opción B (aceptable), y preguntas cuál prefiere.""",
-        "evitar_text": """- Creatividad ilegal (pagos en negro, evasión).
-- Amenazas o ultimátums (“o esto o nada”).
-- Meter 3–4 opciones (abruma).""",
-        "question_policy": "- Máx 1 pregunta para elegir entre opciones o confirmar condición.",
+        "do_text": """- Objetivo: convertir “me interesa” en “cómo lo cerramos” con opciones claras.
+- Propón 1 idea concreta (o 2 como máximo) con tradeoff explícito, siempre dentro del coche.
+- Usa paquetes (MESO) cuando haya fricción: 2 opciones equivalentes para ti (precio vs concesiones).
+- Ofrece comodidad que te cuesta poco (rapidez/flexibilidad) solo a cambio de algo (precio/papeles/garantía/extras).""",
+        "tecnicas_text": """- “Paquetes A/B (MESO)”: dos rutas: una mejor para ti, otra aceptable, ambas defendibles.
+- “Cierre condicional”: “Si X queda claro / si tú haces Y, yo cierro esta semana”.
+- “Reciprocidad”: das facilidad (pago rápido/horarios) para pedir ajuste en € o papeles.
+- “Persuasión social suave”: buenas manos + criterio (“comparables/riesgo/papeles”) sin sonar técnico.""",
+        "evitar_text": """- Más de 2 opciones (abruma) o explicar contabilidad interna.
+- Meter bienes externos (lavadora/furgoneta) o inventar extras no relacionados.
+- Creatividad ilegal/opaca (pagos en negro, evasión).
+- Ceder precio sin contrapartida (“vale, lo pago”) solo por avanzar.""",
+        "question_policy": "- 0 preguntas por defecto. Máx 1 para elegir A/B o confirmar condición.",
         "topics": TOPICS_BY_PHASE["propuesta_creativa"],
     },
     "concesiones_y_ajuste_final": {
         "phase": "concesiones_y_ajuste_final",
-        "do_text": """- Movimientos pequeños y condicionados (subo/bajo X si tú haces Y).
-- Mantener tono justo y práctico; sin regateo infinito.
-- Si hay choque: volver a “tradeoff” (comodidad vs €) en vez de discutir.""",
-        "tecnicas_text": """- “Cierre hoy con detalle”: “Si lo dejamos en X, lo cerramos y fijamos fecha ahora”.
-- “Partir la diferencia” solo si te conviene y siempre pidiendo algo a cambio.
-- “Último empujón elegante”: una concesión + una condición (papeleo, fecha, extras).""",
-        "evitar_text": """- Volver a discovery (preguntas largas) cuando ya hay base.
-- Cambiar de tema si el otro está ofreciendo cerrar.
-- Sonar duro o chantajista.""",
-        "question_policy": "- 0–1 pregunta, idealmente de confirmación (“¿te encaja si…?”).",
+        "do_text": """- Objetivo: apretar sin romper el trato: mejoras pequeñas, siempre condicionadas.
+- Nunca aceptes “de primeras” una cifra solo porque esté dentro del techo: intenta mejorar 1–2 rondas.
+- Si el precio está alto: baja con contraoferta o exige concesiones (papeles/garantía/extras/entrega).
+- Si subes, hazlo en escalera (grande→pequeño) y siempre con contrapartida fuerte.""",
+        "tecnicas_text": """- “Tradeoff obligatorio”: “Yo subo a X si tú haces Y (papeles/garantía/extras/entrega)”.
+- “Paso pequeño”: movimientos cortos (+300, +200, +100) para no regalar margen.
+- “Último empujón elegante”: una concesión final + condición operativa (fecha/pago/papeles) + cierre.
+- “Partir diferencia” solo si te conviene y añades algo de valor (no por inercia).""",
+        "evitar_text": """- Concesiones gratis (subir sin pedir nada).
+- Volver a discovery (preguntas largas) cuando ya hay base para decidir.
+- Regateo infinito: más de 2 rondas si no hay nueva palanca.
+- Sonar agresivo/chantajista o justificar de más (“porque mi máximo es…”).""",
+        "question_policy": "- 0–1 pregunta, idealmente de confirmación operativa (“¿lo dejamos así?”).",
         "topics": TOPICS_BY_PHASE["concesiones_y_ajuste_final"],
     },
+
     "formalizacion_del_acuerdo": {
         "phase": "formalizacion_del_acuerdo",
         "do_text": """- Resumir lo acordado como mini-checklist en frase(s) corta(s).

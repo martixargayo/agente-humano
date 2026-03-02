@@ -292,6 +292,22 @@ REGLAS ESTRICTAS (hard):
 - Está prohibido incluir la línea PREGUNTA:. Ya no existe.
 - TEMA debe copiarse EXACTAMENTE de TOPICS_POR_FASE para la phase elegida.
 - Está prohibido usar el nombre de la phase como TEMA.
+
+CODIFICACION DE ACCION NEGOCIADORA (hard, sin cambiar schema):
+DETECTOR “MODO NUMEROS” (hard):
+- Activa esta codificación SIEMPRE que USER_MESSAGE contenga:
+  a) un número con o sin "€" (ej: "7000", "7.000", "7000€"), O
+  b) lenguaje de oferta/cierre: "precio", "oferta", "contraoferta", "te lo dejo en",
+     "lo dejo en", "por X", "cerramos", "cierre", "último", "rebaja".
+
+REGLA (hard):
+- Si “modo números” está activo, MOVIMIENTO DEBE incluir una (y solo una) de estas intenciones (muy compacto):
+  - "anclar 6200 ..."        (primera cifra propia)
+  - "contraoferta 6500 ..."  (rechazar y proponer cifra)
+  - "paquetes 6700 ..."      (2 opciones tipo MESO alrededor de esa cifra)
+  - "aceptar 6800 ..." o "cerrar ..." (si ya toca)
+- Puedes incluir UNA cifra (la propuesta del comprador). NUNCA incluyas techo/BATNA.
+- Mantén MOVIMIENTO dentro de 5–14 palabras, pero debe quedar inequívoco qué acción toca.
 """.strip()
 
 PLANNER_SEMANTIC_V1_USER_PROMPT = """
@@ -340,9 +356,9 @@ PHASES_RESUMEN
 
 TOPICS_POR_FASE
 clima_humano: ["Pequeño rapport: día / cómo está", "Historia ligera: ¿hace cuánto lo tienes?", "Anécdota/valor emocional (sin negociar)"]
-descubrimiento_y_comprension: ["Estado general hoy (en una frase)", "Mantenimiento y cuidados (qué se ha hecho)", "Motivo de venta (por qué ahora)", "Precio objetivo del vendedor (en qué cifra lo valora)", "Urgencia y tiempos (prisa vs calma)"]
-propuesta_creativa: ["Cierre rápido condicionado (si encaja, cerramos ya)", "Papeleo y trámites (quién se encarga)", "Señal + fecha de pago (todo registrado)", "Incluye extras/recambios/herramientas", "Reparto de costes (gestoría/transferencia/transporte)"]
-concesiones_y_ajuste_final: ["Contraoferta pequeña y condicionada", "Subo X si tú haces Y (contrapartida)", "Precio vs comodidad (fecha/recogida/papeleo)", "Último ajuste para cerrar hoy"]
+descubrimiento_y_comprension: ["Estado general hoy (en una frase)", "Mantenimiento y cuidados (qué se ha hecho)", "Motivo de venta (por qué ahora)", "Cifra objetivo del vendedor (en qué cifra lo valora)", "Urgencia y tiempos (prisa vs calma)"]
+propuesta_creativa: ["Paquetes (2 opciones): precio vs concesiones (MESO)", "Cierre rápido condicionado (si encaja, cerramos ya)", "Papeleo y trámites (quién se encarga)", "Garantía razonable / asunción de riesgos", "Incluye extras/recambios/herramientas"]
+concesiones_y_ajuste_final: ["Contraoferta pequeña y condicionada", "Subo X si tú haces Y (contrapartida)", "Precio vs comodidad (fecha/recogida/papeleo)", "Último ajuste para cerrar (sin regalar)"]
 formalizacion_del_acuerdo: ["Checklist: precio + qué incluye", "Checklist: forma y fecha de pago", "Checklist: entrega y trámites", "Confirmación final (¿queda así?)"]
 
 Output: JSON planner_semantic_v1
