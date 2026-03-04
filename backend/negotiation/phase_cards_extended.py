@@ -25,11 +25,12 @@ TOPICS_BY_PHASE = {
         "Urgencia y tiempos (prisa vs calma)",
     ],
     "propuesta_creativa": [
-        "Paquetes (2 opciones): precio vs concesiones (MESO)",
-        "Cierre rápido condicionado (si encaja, cerramos ya)",
+        "Oferta única con tradeoff (precio + contrapartida)",
+        "Cierre rápido condicionado (sin regateo extra)",
         "Papeleo y trámites (quién se encarga)",
-        "Garantía razonable / asunción de riesgos",
-        "Incluye extras/recambios/herramientas"
+        "Garantía razonable / reparto de riesgos",
+        "Incluye extras/recambios/herramientas",
+        "Paquetes (2 opciones) SOLO si hay bloqueo"
     ],
     "concesiones_y_ajuste_final": [
         "Contraoferta pequeña y condicionada",
@@ -76,19 +77,20 @@ _PHASE_CARDS_EXTENDED = {
     },
     "propuesta_creativa": {
         "phase": "propuesta_creativa",
-        "do_text": """- Objetivo: convertir “me interesa” en “cómo lo cerramos” con opciones claras.
-- Propón 1 idea concreta (o 2 como máximo) con tradeoff explícito, siempre dentro del coche.
-- Usa paquetes (MESO) cuando haya fricción: 2 opciones equivalentes para ti (precio vs concesiones).
-- Ofrece comodidad que te cuesta poco (rapidez/flexibilidad) solo a cambio de algo (precio/papeles/garantía/extras).""",
-        "tecnicas_text": """- “Paquetes A/B (MESO)”: dos rutas: una mejor para ti, otra aceptable, ambas defendibles.
-- “Cierre condicional”: “Si X queda claro / si tú haces Y, yo cierro esta semana”.
-- “Reciprocidad”: das facilidad (pago rápido/horarios) para pedir ajuste en € o papeles.
-- “Persuasión social suave”: buenas manos + criterio (“comparables/riesgo/papeles”) sin sonar técnico.""",
-        "evitar_text": """- Más de 2 opciones (abruma) o explicar contabilidad interna.
-- Meter bienes externos (lavadora/furgoneta) o inventar extras no relacionados.
-- Creatividad ilegal/opaca (pagos en negro, evasión).
-- Ceder precio sin contrapartida (“vale, lo pago”) solo por avanzar.""",
-        "question_policy": "- 0 preguntas por defecto. Máx 1 para elegir A/B o confirmar condición.",
+        "do_text": """- Objetivo: pasar de “interés” a “acuerdo” con UNA oferta clara y coherente.
+    - Por defecto: UNA oferta única con tradeoff explícito (yo doy algo útil ⇄ tú ajustas algo).
+    - Paquetes (A/B) SOLO si hay bloqueo real (rechazo explícito o 2 idas y vueltas sin avance).
+    - La contrapartida preferida es NO económica: rapidez, certeza, flexibilidad, asumir trámites, etc.""",
+        "tecnicas_text": """- “Oferta única con reciprocidad”: pides 1 cosa y ofreces 1 cosa.
+    - “Cierre sin fricción”: ofreces rapidez/certeza a cambio de ajuste en € o trámites.
+    - “Tradeoff limpio”: evita pedir rebaja + pedir más cosas sin dar nada.
+    - “Ancla defendible”: una cifra razonable + una condición suave, sin agresividad.""",
+        "evitar_text": """- Más de 1 oferta por turno (salvo bloqueo real).
+    - Paquetes A/B por inercia cuando aún no hay rechazo.
+    - Pedir rebaja + pedir garantías/papeleo/extras sin ofrecer contrapartida.
+    - Meter bienes externos o inventar extras no relacionados.
+    - Creatividad ilegal/opaca (pagos en negro, evasión).""",
+        "question_policy": "- 0 preguntas por defecto. Máx 1 SOLO si desbloquea una decisión operativa.",
         "topics": TOPICS_BY_PHASE["propuesta_creativa"],
     },
     "concesiones_y_ajuste_final": {
