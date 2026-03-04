@@ -132,6 +132,9 @@ INVARIANTES (hard, en este orden):
 6) HIGIENE:
    - Deduplica y mantén orden estable.
    - Máximo 6 items por lista. Prioriza lo más reciente y útil.
+   - TRUNCADO CON PRIORIDAD:
+     - Conserva primero: ofertas/números/condiciones, límites (“no insistir”), cierres definitivos.
+     - Elimina primero: contexto blando y descripciones genéricas.
    - Evita frases genéricas tipo “saludo/cortesía”. Prefiere frases accionables.
 
 HIGIENE DE PREGUNTAS (hard):
@@ -259,7 +262,8 @@ ANTI-INSISTENCIA (hard):
   (p. ej.: documentacion / motivo_venta / cifra objetivo del vendedor / urgencia y tiempos).
 
 SELECCIÓN POR DEFECTO:
-- Si no hay info crítica todavía: objective_delta=reduce_risk.
+- Si phase == clima_humano: objective_delta=gain_commitment y tactic=silence o frame.
+- Si no hay info crítica todavía (fuera de clima_humano): objective_delta=reduce_risk.
 - Si el vendedor habla de precio o valor: objective_delta=improve_price.
 - Si el vendedor presiona/amenaza/ultimátum: objective_delta=gain_commitment y tactic=boundary o conditional_offer.
 - Si detectas evasivas/incoherencias: objective_delta=test_consistency y tactic=boundary o conditional_offer.
@@ -307,13 +311,16 @@ DETECTOR “MODO NUMEROS” (hard):
   b) lenguaje de oferta/cierre: "precio", "oferta", "contraoferta", "te lo dejo en",
      "lo dejo en", "por X", "cerramos", "cierre", "último", "rebaja".
 
-REGLA (hard):
+REGLA (modo números):
 - Si “modo números” está activo, MOVIMIENTO DEBE incluir exactamente una intención numérica:
   - "anclar 6200 ..." | "contraoferta 6500 ..." | "paquetes 6700 ..." | "aceptar 6800 ..." | "cerrar ..."
-- Si además phase ≠ prev_phase:
-  - esa intención DEBE ir después de un ";" tras "MOVIMIENTO: TRANSICION: ...".
-- Puedes incluir UNA cifra (la propuesta del comprador). NUNCA incluyas techo/BATNA.
-- Mantén MOVIMIENTO dentro de 5–14 palabras, pero debe quedar inequívoco qué acción toca.
+
+MONEDAS NO-PRECIO (priorización):
+- Si USER_MESSAGE menciona garantía/papeleo/gestoría/tasas/entrega/acercar/extras/recambios:
+  - Prefiere tactic=tradeoff o conditional_offer.
+  - Prefiere TEMA que use esa moneda:
+    "Papeleo y trámites (quién se encarga)" o "Precio vs comodidad (fecha/recogida/papeleo)" o "Incluye extras/recambios/herramientas".
+  - Si eliges "paquetes <n>", una opción debe variar en esa moneda (no solo garantía).
 """.strip()
 
 PLANNER_SEMANTIC_V1_USER_PROMPT = """
