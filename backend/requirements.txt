@@ -1,9 +1,9 @@
-fastapi
-uvicorn
+fastapi>=0.110,<1
+uvicorn>=0.27,<1
 pydantic>=2.7,<3
-python-dotenv
-typing-extensions
-google-auth
-google-cloud-speech
-python-multipart
-openai
+python-dotenv>=1.0,<2
+typing-extensions>=4.10,<5
+google-auth>=2.29,<3
+google-cloud-speech>=2.26,<3
+python-multipart>=0.0.9,<1
+openai>=1.40,<3
