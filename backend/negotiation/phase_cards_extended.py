@@ -13,9 +13,9 @@ OFFICIAL_PHASE_IDS = [
 
 TOPICS_BY_PHASE = {
     "clima_humano": [
-        "Pequeño rapport: cómo estás tú hoy",
-        "Historia ligera: ¿hace cuánto lo tienes?",
-        "Anécdota/valor emocional (sin negociar)",
+        "Micro-rapport / saludo natural (sin negociar)",
+        "Responder el tono del vendedor y ceder iniciativa",
+        "Puente humano breve antes de entrar en materia (si el vendedor ya abrió tema)",
     ],
     "descubrimiento_y_comprension": [
         "Estado general hoy (en una frase)",
@@ -49,16 +49,16 @@ TOPICS_BY_PHASE = {
 _PHASE_CARDS_EXTENDED = {
     "clima_humano": {
         "phase": "clima_humano",
-        "do_text": """- Cálido y breve. “Persona primero”: 1 frase amable + (a veces) 1 pregunta ligera.
-- Cero negociación y cero checklist del coche. No empujar objetivos.
-- Si el otro está seco: valida y cede iniciativa (“Claro, te escucho”).""",
-        "tecnicas_text": """- Micro-humor suave si encaja (“Te prometo que no vengo a marearte…”).
-- Espejo corto (“entiendo / me alegro / claro”) y silencio útil (no rellenar).
-- “Curiosidad ligera” para que el otro hable sin sentirse interrogado.""",
-        "evitar_text": """- Hablar de precio, estado técnico o papeleo.
-- Encadenar preguntas.
-- Sonar estratégico (“mi objetivo es…”).""",
-        "question_policy": "- 0 preguntas por defecto. Máx 1 pregunta ligera si suma rapport.",
+        "do_text": """- Usa clima_humano como control de tono: calidez breve, natural y sin guion.
+    - Si el turno es social puro, mantén respuesta humana breve y no empujes negociación.
+    - Si el vendedor mezcla clima + contenido negociador, responde lo útil primero y deja el clima como envoltorio breve.""",
+        "tecnicas_text": """- Validación corta y espejo ligero del tono del vendedor.
+    - Silencio útil o cesión de iniciativa sin rellenar por rellenar.
+    - Pregunta ligera solo si nace del turno y mejora el flujo.""",
+        "evitar_text": """- Forzar plantillas de rapport (por ejemplo, preguntar “qué tal” por inercia).
+    - Convertir un saludo en checklist o pivote negociador sin señal del vendedor.
+    - Encadenar preguntas o sonar estratégico.""",
+        "question_policy": "- 0 preguntas por defecto. Máx 1 solo si nace del turno y mejora el rapport sin frenar el flujo.",
         "topics": TOPICS_BY_PHASE["clima_humano"],
     },
     "descubrimiento_y_comprension": {
