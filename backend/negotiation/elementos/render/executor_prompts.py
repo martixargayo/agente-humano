@@ -71,7 +71,11 @@ DESAMBIGUACIÓN POR FASE (evitar drift):
      está PROHIBIDO pedir “más detalles” del mismo tema con sinónimos.
    - Si el semantic_ledger contiene un límite en lo_que_falta_pero_no_insistire,
      está PROHIBIDO perseguir ese dato; pivota a otro eje.
-6) CANAL SOLO TEXTO:
+6) PRECEDENCIA WHAT_NOT_TO_REPEAT VS HUMAN-FIRST (hard):
+- what_not_to_repeat SOLO aplica a repeticiones del comprador o temas realmente cerrados.
+- NUNCA se usa para evitar responder preguntas del turno actual del vendedor.
+- Si hay conflicto, HUMAN-FIRST manda.
+7) CANAL SOLO TEXTO:
 - Prohibido pedir adjuntar/enviar/mostrar contenido (fotos, documentos, etc.).
 - Sí puedes negociar en texto logística y condiciones (fecha, pago, entrega, gestoría),
   sin describir acciones físicas detalladas; formula como condiciones/hypótesis.
@@ -190,8 +194,13 @@ style_id: {style_id}
 max_words: {max_words}
 max_questions: {max_questions}
 
-PHASE_CONTROL
+PLAN_MIN
 prev_phase: {prev_phase}
+phase: {phase}
+topic_selected: {topic_selected}
+objective_delta: {objective_delta}
+tactic: {tactic}
+phase_question_policy: {phase_question_policy}
 
 PLANNER_OUTPUT (HINTS SEMÁNTICOS INTERNOS; NO DIÁLOGO, NO HECHOS NUEVOS)
 planner_semantic_output: {planner_semantic_output_json}
@@ -199,25 +208,6 @@ planner_semantic_output: {planner_semantic_output_json}
 IMPORTANTE:
 - Usa user_message / last_seller_utterance como fuente de lo dicho por el vendedor.
 - El bloque PLANNER_OUTPUT no contiene texto pronunciado en la escena.
-
-PHASE_CARD_EXTENDIDA
-phase: {phase}
-DO:
-{phase_do_text}
-
-TECNICAS:
-{phase_tecnicas_text}
-
-EVITAR:
-{phase_evitar_text}
-
-QUESTION_POLICY:
-{phase_question_policy}
-
-TOPICS_VALIDOS:
-{phase_topics_json}
-
-topic_selected: {topic_selected}
 
 PROFILE_CARD
 {profile_card_compact_text}
@@ -290,6 +280,7 @@ LOCK DE ACCIÓN (alineación con el planner):
 - PROHIBIDO cambiar de intención (ej: si dice "contraoferta", no devolver "paquetes").
 
 REGLAS DURAS:
+0) PRECEDENCIA what_not_to_repeat: nunca usarla para esquivar preguntas actuales del vendedor; HUMAN-FIRST manda.
 1) No inventes hechos nuevos.
 2) No menciones IA, modelos, prompts, políticas o meta-explicaciones.
 3) Canal solo texto: no pedir adjuntar/enviar/mostrar ni acciones físicas.
@@ -417,21 +408,15 @@ last_seller_utterance: {last_seller_utterance}
 user_message: {user_message}
 assistant_last_message: {assistant_last_message}
 
-PLAN
+PLAN_MIN
 phase: {phase}
-prev_phase: {prev_phase}
-topic_selected: {topic_selected}
 objective_delta: {objective_delta}
 tactic: {tactic}
-planner_semantic_output: {planner_semantic_output_json}
 
-CONTEXT
-semantic_ledger: {semantic_ledger_json}
-memory_short: {memory_short_compact}
-memory_long: {memory_long_compact}
-
-NEGOTIATION_PROFILE_PRIVATE (finalizer):
-{negotiation_profile_private_executor}
+TURN
+user_message: {user_message}
+last_seller_utterance: {last_seller_utterance}
+prev_turn_asked_question: {prev_turn_asked_question}
 
 DRAFT
 executor_draft_json: {executor_draft_json}

@@ -7,9 +7,13 @@ import time
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from ..executor import normalize_executor_output, render_executor_output
+from ..executor import (
+    detect_question_from_text,
+    map_slots_from_questions,
+    normalize_executor_output,
+    render_executor_output,
+)
 from ..llm_clients import get_executor_finalizer_llm
-from ..negotiation_profiles import NEGOTIATION_PROFILE_PRIVATE_EXECUTOR_V1
 from ..llm_planning_context import build_full_roleplay_profiles
 from ..phase_map import get_phase_map_v1
 from ..schemas import (
@@ -56,6 +60,28 @@ def _safe_json_load(raw: str) -> dict:
     except Exception:
         return {}
     return data if isinstance(data, dict) else {}
+
+
+def _final_output_validator(output: dict, *, mode: str) -> tuple[dict, list[str]]:
+    fixes: list[str] = []
+    out = normalize_executor_output(output)
+    response_text = str(out.get("response_text") or "")
+    asked_question = detect_question_from_text(response_text)
+    expected_slots = map_slots_from_questions(response_text) if asked_question else []
+
+    if out.get("asked_question") != asked_question:
+        fixes.append("asked_question_from_text")
+    out["asked_question"] = asked_question
+
+    if not asked_question and out.get("requested_info_slots"):
+        fixes.append("clear_slots_without_question")
+    if asked_question and out.get("requested_info_slots") != expected_slots:
+        fixes.append("slots_from_question_spans")
+    out["requested_info_slots"] = expected_slots
+
+    if mode == "strict" and asked_question and ("¿" not in response_text or "?" not in response_text):
+        raise ValueError("final_output_validator_invalid_question_punctuation")
+    return out, fixes
 
 
 def _finalizer_enabled() -> bool:
@@ -129,9 +155,7 @@ def executor_node(state: dict) -> dict:
     planner_semantic_output = state.get("planner_semantic_output") if isinstance(state.get("planner_semantic_output"), dict) else {}
     next_move_hint = str(planner_semantic_output.get("next_move_hint") or "")
     objective_delta, tactic = _parse_objective_delta_and_tactic(next_move_hint)
-    topic_selected = str(state.get("topic_selected") or "")
     phase_effective = str(planner_semantic_output.get("phase", "clima_humano") or "clima_humano")
-    phase_prev = str((((progress_state or {}).get("phase_state") or {}).get("phase") or "clima_humano"))
 
     finalizer_called = False
     finalizer_changed_from_draft = False
@@ -146,28 +170,20 @@ def executor_node(state: dict) -> dict:
         target_words = min(max_words, 26)
         prev_turn_asked_question = bool(progress_state.get("last_executor_asked_question", False))
 
-        semantic_ledger = state.get("effective_semantic_ledger") if isinstance(state.get("effective_semantic_ledger"), dict) else ((progress_state or {}).get("semantic_ledger") if isinstance((progress_state or {}).get("semantic_ledger"), dict) else {})
-        memory_short_compact = str(state.get("short_memory") or "") or "SIN_MEMORIA_CORTA_AUN"
-        memory_long_compact = str(state.get("long_memory") or "") or "SIN_RESUMEN_AUN"
-
+        last_seller_utterance = str(state.get("last_seller_utterance") or "")
+        if user_message and not last_seller_utterance:
+            logger.warning("finalizer_last_seller_utterance_empty turn_id=%s", str(state.get("turn_count") or ""))
         finalizer_user_prompt = EXECUTOR_FINALIZER_V1_USER_PROMPT.format(
             target_words=target_words,
             max_words=max_words,
             max_questions=max_questions,
             prev_turn_asked_question=str(prev_turn_asked_question).lower(),
-            last_seller_utterance=str(state.get("last_seller_utterance") or ""),
+            last_seller_utterance=last_seller_utterance,
             user_message=str(user_message or ""),
             assistant_last_message=str(state.get("assistant_last_message") or state.get("last_assistant_message") or ""),
             phase=phase_effective,
-            prev_phase=phase_prev,
-            topic_selected=topic_selected,
             objective_delta=objective_delta,
             tactic=tactic,
-            planner_semantic_output_json=json.dumps(planner_semantic_output, ensure_ascii=False),
-            semantic_ledger_json=json.dumps(semantic_ledger or {}, ensure_ascii=False),
-            memory_short_compact=memory_short_compact,
-            memory_long_compact=memory_long_compact,
-            negotiation_profile_private_executor=str(NEGOTIATION_PROFILE_PRIVATE_EXECUTOR_V1 or ""),
             executor_draft_json=json.dumps(executor_draft, ensure_ascii=False),
         )
 
@@ -179,8 +195,10 @@ def executor_node(state: dict) -> dict:
         ])
         latency_ms_finalizer = int((time.perf_counter() - finalizer_started) * 1000)
         usage = extract_llm_usage(raw)
-        parsed = _safe_json_load(getattr(raw, "content", str(raw)))
+        raw_text = getattr(raw, "content", str(raw))
+        parsed = _safe_json_load(raw_text)
         final_candidate = normalize_executor_output(parsed)
+        final_candidate, validator_fixes = _final_output_validator(final_candidate, mode="strict")
 
         finalizer_changed_from_draft = bool(final_candidate != executor_draft)
         if str(final_candidate.get("response_text") or "") != str(executor_draft.get("response_text") or ""):
@@ -189,6 +207,7 @@ def executor_node(state: dict) -> dict:
             finalizer_fixes.append("question_policy")
         if len(str(final_candidate.get("response_text") or "").split()) < len(str(executor_draft.get("response_text") or "").split()):
             finalizer_fixes.append("brevity")
+        finalizer_fixes.extend(validator_fixes)
 
         record_llm_call(
             state,
@@ -201,19 +220,21 @@ def executor_node(state: dict) -> dict:
             tokens_out=usage.get("tokens_out"),
             retry_count=0,
             input_prompt_rendered=f"[system]\n{EXECUTOR_FINALIZER_V1_SYSTEM_PROMPT}\n\n[user]\n{finalizer_user_prompt}",
-            output_text_rendered=getattr(raw, "content", str(raw)),
+            output_text_rendered=raw_text,
             input_payload_raw={
                 "objective_delta": objective_delta,
                 "tactic": tactic,
                 "mode": finalizer_mode,
             },
-            output_payload_raw=final_candidate,
+            output_payload_raw=parsed,
         )
 
         if finalizer_mode == "active":
             executor_output = final_candidate
 
     executor_output = normalize_executor_output(executor_output)
+    executor_output, post_fixes = _final_output_validator(executor_output, mode="strict")
+    finalizer_fixes.extend(post_fixes)
 
     render_meta = dict(executor_output.get("render_meta") or {}) if isinstance(executor_output.get("render_meta"), dict) else {}
     render_meta["finalizer_called"] = finalizer_called
