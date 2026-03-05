@@ -125,13 +125,16 @@ def _build_executor_node(runtime: dict[str, Any], executor_output: dict[str, Any
         return None
 
     if executor_output:
+        render_meta = executor_output.get("render_meta") if isinstance(executor_output.get("render_meta"), dict) else {}
         node["output_payload_parsed"] = {
             "final_executor_output": executor_output,
             "llm_raw_output_text": str(node.get("output_text_rendered") or ""),
-            "llm_raw_output_payload": node.get("output_payload_raw"),
+            "llm_parsed_output": render_meta.get("llm_parsed_output", {}),
+            "normalized_output": render_meta.get("normalized_output", {}),
         }
+        if render_meta.get("llm_raw_output_text"):
+            node["output_payload_parsed"]["llm_raw_output_text"] = str(render_meta.get("llm_raw_output_text") or "")
         node["output_text_rendered"] = ""
-        node["output_payload_raw"] = executor_output
         node["output_capture_state"] = "captured"
 
     return node

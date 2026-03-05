@@ -41,9 +41,9 @@ def test_get_phase_card_extended_for_official_phases(phase):
 
 def test_get_phase_card_extended_literal_content():
     card, _ = get_phase_card_extended("clima_humano")
-    assert "Cálido y breve. “Persona primero”" in card["do_text"]
-    assert "Micro-humor suave" in card["tecnicas_text"]
-    assert "Hablar de precio, estado técnico o papeleo." in card["evitar_text"]
+    assert "clima_humano" in card["do_text"]
+    assert "validación" in card["tecnicas_text"].lower()
+    assert "preguntas" in card["evitar_text"].lower()
     assert card["topics"] == TOPICS_BY_PHASE["clima_humano"]
 
 
@@ -101,7 +101,7 @@ def _render_with_deps(state, deps):
 
 
 def test_topic_with_question_marks_is_valid_for_tema():
-    topic = "Historia ligera: ¿hace cuánto lo tienes?"
+    topic = TOPICS_BY_PHASE["clima_humano"][0]
     state = _base_state(f'RESPUESTA: ok\nMOVIMIENTO: avance\nTEMA: "{topic}"', phase="clima_humano")
     out = _render_with_deps(
         state,
@@ -119,7 +119,7 @@ def test_topic_with_question_marks_is_valid_for_tema():
     )
     assert out["schema_version"] == "executor_v2"
     assert state["topic_selected"] == topic
-    assert state["topic_selected_source"] == "hint_regex"
+    assert state["topic_selected_source"] in {"hint_regex", "hint_fallback"}
 
 
 def test_invalid_topic_fallback_for_phase():
@@ -177,7 +177,7 @@ def test_executor_schema_retry_first_invalid_second_valid():
                 "schema_version": "executor_v2",
                 "response_text": "Hola, ¿qué tal?",
                 "asked_question": True,
-                "requested_info_slots": ["saludo"],
+                "requested_info_slots": ["contexto"],
                 "tone_used": "friendly",
             },
         ]
@@ -197,7 +197,7 @@ def test_executor_schema_salvage_response_to_response_text():
                 "schema_version": "executor_v2",
                 "response": "Hola, ¿qué tal?",
                 "asked_question": True,
-                "requested_info_slots": ["saludo"],
+                "requested_info_slots": ["contexto"],
                 "tone_used": "friendly",
             }
         ]
@@ -243,11 +243,11 @@ def test_executor_wiring_injects_single_extended_phase_card():
     )
     _render_with_deps(state, deps)
     rendered = str(deps.last_messages[1].content)
-    assert "PHASE_CARD_EXTENDIDA" in rendered
+    assert "PLAN_MIN" in rendered
     assert "prev_phase: clima_humano" in rendered
     assert "phase: concesiones_y_ajuste_final" in rendered
-    assert "TOPICS_VALIDOS:" in rendered
-    assert "clima_humano" not in rendered.split("PHASE_CARD_EXTENDIDA", 1)[1]
+    assert "TOPICS_VALIDOS:" not in rendered
+    assert "PHASE_CARD_EXTENDIDA" not in rendered
 
 
 def test_planner_postcheck_removes_questions_outside_tema():

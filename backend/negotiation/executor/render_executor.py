@@ -24,12 +24,18 @@ _WORD_CAP_RETRY_INSTRUCTION = f"REINTENTO_BREVEDAD: Devuelve JSON válido y limi
 _SCHEMA_RETRY_INSTRUCTION = "REINTENTO_ESQUEMA: Devuelve SOLO JSON executor_v2 con schema_version y response_text. Sin otras claves."
 _PROMPT_SWAP_V2_ENABLED = str(os.getenv("NEGOTIATION_PROMPT_SWAP_V2_ENABLED", "1") or "1").strip().lower() in {"1", "true", "yes", "on"}
 _TEXT_ONLY_FORBIDDEN_RE = re.compile(r"\b(muéstrame|muestrame|enséñame|ensename|envíame|enviame|adjunta|pásame|pasame|tráeme|traeme)\b", re.IGNORECASE)
-_INTERROGATIVE_START_RE = re.compile(
-    r'(?i)(^|[.!]\s+)\s*(cómo|como|qué|que|cuándo|cuando|dónde|donde|por qué|porque|cuánto|cuanto|cuál|cual|quién|quien)\b'
-)
-_INTERROGATIVE_PHRASE_RE = re.compile(
-    r'(?i)\b(me gustaría saber|quisiera saber|podrías decirme|me puedes decir|necesito saber|dime si)\b'
-)
+_PRECIO_CIFRA_PATTERNS = [
+    re.compile(p, re.IGNORECASE)
+    for p in (
+        r"\ben qu[eé] cifra\b",
+        r"\bcu[aá]nto\s+(pides|ser[ií]a|quieres|aceptas)\b",
+        r"\bpor cu[aá]nto\b",
+        r"\bqu[eé]\s+precio\b",
+        r"\bte\s+encaja\s+\d",
+        r"\bprecio\s+final\b",
+        r"\bcifra\b",
+    )
+]
 def _word_count(text: str) -> int:
     return len(str(text or "").split())
 
@@ -130,7 +136,7 @@ def _enforce_executor_v2_contract(
         if max_questions > 0 and not data["response_text"].endswith("?"):
             data["response_text"] = data["response_text"].rstrip(" .") + "?"
 
-    asked_question = bool(data.get("asked_question", False)) or _looks_like_question_es(data["response_text"])
+    asked_question = detect_question_from_text(data["response_text"])
 
     requested_slots = data.get("requested_info_slots") if isinstance(data.get("requested_info_slots"), list) else []
     requested_slots = [str(x).strip()[:32] for x in requested_slots if str(x).strip()][:3]
@@ -147,9 +153,7 @@ def _enforce_executor_v2_contract(
         return data
 
     if asked_question:
-        if not requested_slots:
-            requested_slots = _infer_requested_slots(data["response_text"])
-        data["requested_info_slots"] = requested_slots[:3]
+        data["requested_info_slots"] = map_slots_from_questions(data["response_text"]) or requested_slots[:3]
     else:
         data["requested_info_slots"] = []
 
@@ -197,17 +201,17 @@ def _user_asked_direct_question(msg: str) -> bool:
     return _looks_like_question_es(msg)
 
 
-def _looks_like_question_es(text: str) -> bool:
+def detect_question_from_text(text: str) -> bool:
     t = str(text or "").strip()
     if not t:
         return False
-    if "?" in t or "¿" in t:
-        return True
-    if _INTERROGATIVE_START_RE.search(t):
-        return True
-    if _INTERROGATIVE_PHRASE_RE.search(t):
-        return True
-    return False
+    start = t.find("¿")
+    end = t.find("?", start + 1 if start >= 0 else 0)
+    return start >= 0 and end > start
+
+
+def _looks_like_question_es(text: str) -> bool:
+    return detect_question_from_text(text)
 
 
 def _remove_interrogative_sentences_es(text: str) -> str:
@@ -239,22 +243,42 @@ def _compact_scene_card(scene: dict) -> str:
 
 
 
-def _infer_requested_slots(response_text: str) -> list[str]:
-    lowered = str(response_text or "").lower()
+def extract_questions_spans(text: str) -> list[str]:
+    spans: list[str] = []
+    src = str(text or "")
+    cursor = 0
+    while True:
+        start = src.find("¿", cursor)
+        if start < 0:
+            break
+        end = src.find("?", start + 1)
+        if end < 0:
+            break
+        spans.append(src[start + 1 : end].strip())
+        cursor = end + 1
+    return [s for s in spans if s]
+
+
+def map_slots_from_questions(text: str) -> list[str]:
+    if not detect_question_from_text(text):
+        return []
+    questions = extract_questions_spans(text)
+    if not questions:
+        return []
+    joined = " ".join(questions).lower()
     slots: list[str] = []
-    mapping = [
-        ("saludo", ["qué tal", "como estas", "cómo estás", "hola"]),
-        ("precio_objetivo", ["precio", "cuánto", "cuanto"]),
-        ("motivo_venta", ["motivo", "por qué", "porque lo vendes"]),
-        ("estado_general", ["estado", "general"]),
-        ("mantenimiento", ["mantenimiento", "revisión", "revision"]),
-        ("documentacion", ["documentación", "documentacion", "papeles", "trámites", "tramites"]),
-        ("pago_fecha", ["pago", "fecha", "entrega"]),
-        ("contexto", ["detalles", "contexto"])
-    ]
-    for slot, keys in mapping:
-        if any(k in lowered for k in keys):
-            slots.append(slot)
+    if any(p.search(joined) for p in _PRECIO_CIFRA_PATTERNS):
+        slots.append("precio_objetivo")
+    if any(x in joined for x in ("motivo", "por qué vendes", "razón de venta")):
+        slots.append("motivo_venta")
+    if any(x in joined for x in ("estado", "cómo está", "como está")):
+        slots.append("estado_general")
+    if any(x in joined for x in ("mantenimiento", "revisión", "revision", "itv")):
+        slots.append("mantenimiento")
+    if any(x in joined for x in ("papeles", "documentación", "documentacion", "transferencia")):
+        slots.append("documentacion")
+    if any(x in joined for x in ("pago", "fecha", "cuándo", "cuando", "señal")):
+        slots.append("pago_fecha")
     if not slots:
         slots.append("contexto")
     return slots[:3]
@@ -346,11 +370,9 @@ def render_executor_output(
         planner_semantic_output_json=json.dumps(planner_semantic_output, ensure_ascii=False),
         prev_phase=prev_phase,
         phase=phase_card.get("phase", phase_id),
-        phase_do_text=phase_card.get("do_text", ""),
-        phase_tecnicas_text=phase_card.get("tecnicas_text", ""),
-        phase_evitar_text=phase_card.get("evitar_text", ""),
+        objective_delta=objective_delta,
+        tactic=tactic,
         phase_question_policy=phase_card.get("question_policy", ""),
-        phase_topics_json=json.dumps(phase_card.get("topics", []), ensure_ascii=False),
         topic_selected=topic_selected,
         lo_que_ya_se_toco_json=json.dumps(lo_que_ya_se_toco, ensure_ascii=False),
         lo_que_ya_pregunte_json=json.dumps(lo_que_ya_pregunte, ensure_ascii=False),
@@ -370,8 +392,10 @@ def render_executor_output(
     ]
 
     raw = deps.execute(messages)
-    data = safe_json_load(raw if isinstance(raw, str) else getattr(raw, "content", ""))
+    llm_raw_output_text = raw if isinstance(raw, str) else getattr(raw, "content", "")
+    data = safe_json_load(llm_raw_output_text)
     data, schema_salvage = _salvage_response_text(data)
+    llm_parsed_output = dict(data) if isinstance(data, dict) else {}
 
     schema_retry_count = 0
     if not _is_valid_executor_v2_payload(data):
@@ -382,10 +406,12 @@ def render_executor_output(
             HumanMessage(content=schema_retry_prompt.strip()),
         ]
         retry_raw = deps.execute(retry_messages)
-        retry_data = safe_json_load(retry_raw if isinstance(retry_raw, str) else getattr(retry_raw, "content", ""))
+        llm_raw_output_text = retry_raw if isinstance(retry_raw, str) else getattr(retry_raw, "content", "")
+        retry_data = safe_json_load(llm_raw_output_text)
         retry_data, schema_salvage_retry = _salvage_response_text(retry_data)
         schema_salvage = schema_salvage or schema_salvage_retry
         data = retry_data
+        llm_parsed_output = dict(data) if isinstance(data, dict) else {}
 
     out = normalize_executor_output(data)
     original_words = _word_count(str(out.get("response_text", "")))
@@ -401,9 +427,11 @@ def render_executor_output(
             HumanMessage(content=retry_prompt_q.strip()),
         ]
         retry_raw_q = deps.execute(retry_messages_q)
-        retry_data_q = safe_json_load(retry_raw_q if isinstance(retry_raw_q, str) else getattr(retry_raw_q, "content", ""))
+        llm_raw_output_text = retry_raw_q if isinstance(retry_raw_q, str) else getattr(retry_raw_q, "content", "")
+        retry_data_q = safe_json_load(llm_raw_output_text)
         retry_data_q, schema_salvage_retry = _salvage_response_text(retry_data_q)
         schema_salvage = schema_salvage or schema_salvage_retry
+        llm_parsed_output = dict(retry_data_q) if isinstance(retry_data_q, dict) else {}
         out = normalize_executor_output(retry_data_q)
 
     question_forced_removed = False
@@ -429,9 +457,11 @@ def render_executor_output(
             HumanMessage(content=(retry_prompt + "\n\n" + extra_hint).strip()),
         ]
         retry_raw = deps.execute(retry_messages)
-        retry_data = safe_json_load(retry_raw if isinstance(retry_raw, str) else getattr(retry_raw, "content", ""))
+        llm_raw_output_text = retry_raw if isinstance(retry_raw, str) else getattr(retry_raw, "content", "")
+        retry_data = safe_json_load(llm_raw_output_text)
         retry_data, schema_salvage_retry = _salvage_response_text(retry_data)
         schema_salvage = schema_salvage or schema_salvage_retry
+        llm_parsed_output = dict(retry_data) if isinstance(retry_data, dict) else {}
         out = normalize_executor_output(retry_data)
         text_only_violations_count = _count_text_only_violations(out.get("response_text", ""))
         needs_retry = (_word_count(out.get("response_text", "")) > _WORD_CAP_LIMIT) or (_PROMPT_SWAP_V2_ENABLED and text_only_violations_count > 0)
@@ -467,6 +497,9 @@ def render_executor_output(
     render_meta["phase_card_lookup_status"] = state.get("phase_card_lookup_status", "missing")
     render_meta["objective_delta"] = objective_delta
     render_meta["tactic"] = tactic
+    render_meta["llm_raw_output_text"] = str(llm_raw_output_text or "")
+    render_meta["llm_parsed_output"] = llm_parsed_output
+    render_meta["normalized_output"] = normalize_executor_output(out)
     out["render_meta"] = render_meta
 
     return _enforce_executor_v2_contract(

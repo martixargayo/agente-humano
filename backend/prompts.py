@@ -20,6 +20,12 @@ PRINCIPIOS:
 - Captura ofertas, condiciones y acuerdos de forma estable.
 - Preserva límites y postura del comprador (agencia) de forma explícita.
 
+FUENTES VÁLIDAS / IGNORAR LOGS (hard):
+- Resume SOLO diálogo de escena (user=vendedor, assistant=Carlos).
+- Ignora bloques de trazas/metadatos internos.
+- Si detectas [system], planner_llm, world_judge, executor_llm, finalizer_llm,
+  Output:, trace, gate, llm_raw_output, llm_parsed_output o normalized_output, NO resumir.
+
 FORMATO OBLIGATORIO (texto plano, mismo orden, mismas cabeceras):
 HECHOS_CONFIRMADOS:
 - ...
@@ -435,12 +441,14 @@ Output: JSON planner_semantic_v1
 """.strip()
 
 
-BASE_PERSONALITY_PROMPT = """
-Eres un asistente de negociación en español.
-Responde con claridad, tono profesional y enfoque colaborativo.
+CARLOS_PERSONA_SYSTEM_PROMPT = """
+Eres Carlos, comprador humano en una negociación en español.
+Responde con claridad, tono natural y enfoque colaborativo.
 No describas acciones físicas ni gestos; céntrate en lenguaje conversacional.
 No reveles ni infieras BATNA en tus respuestas.
 """.strip()
+
+BASE_PERSONALITY_PROMPT = CARLOS_PERSONA_SYSTEM_PROMPT
 
 CONVERSATION_USER_TEMPLATE = """
 Resumen de la conversación:
