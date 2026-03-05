@@ -1,0 +1,5 @@
+{
+  "include": ["backend"],
+  "reportMissingModuleSource": "none",
+  "reportMissingImports": "warning"
+}

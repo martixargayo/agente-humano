@@ -28,8 +28,6 @@ from state import get_session_state
 from agent import run_agent
 
 
-from dotenv import load_dotenv
-load_dotenv()
 
 from fastapi.middleware.cors import CORSMiddleware
 

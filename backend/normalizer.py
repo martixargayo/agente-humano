@@ -4,12 +4,8 @@ from __future__ import annotations
 import logging
 import os
 
-from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
+from openai import OpenAI
 from env_compat import getenv_preferred
-
-load_dotenv()
 
 # Modelo específico del normalizador (segunda LLM)
 NORMALIZER_MODEL = getenv_preferred(
@@ -23,22 +19,19 @@ NORMALIZER_TEMPERATURE = float(os.getenv("NORMALIZER_TEMPERATURE", "0.0"))
 logger = logging.getLogger(__name__)
 
 
-def _build_normalizer_llm() -> ChatOpenAI | None:
+def _build_normalizer_client() -> OpenAI | None:
     if not os.getenv("OPENAI_API_KEY"):
         logger.warning("normalizer_openai_api_key_missing passthrough_enabled=true")
         return None
 
     try:
-        return ChatOpenAI(
-            model=NORMALIZER_MODEL,
-            temperature=NORMALIZER_TEMPERATURE,
-        )
+        return OpenAI()
     except Exception as exc:
-        logger.warning("normalizer_llm_init_error=%s", exc)
+        logger.warning("normalizer_client_init_error=%s", exc)
         return None
 
 
-normalizer_llm = _build_normalizer_llm()
+normalizer_client = _build_normalizer_client()
 
 NORMALIZER_SYSTEM_PROMPT = """
 <normalizer>
@@ -76,10 +69,10 @@ VALIDACIONES Y RELLENO QUE PUEDES BORRAR (si no aportan contenido nuevo):
 
 RESPUESTAS QUE NO PUEDES BORRAR (solo acortar):
 - Si el vendedor pregunta: “¿Cómo te llamas?”
-  y Daniel responde: “Soy Daniel, encantado, gracias por venir…”
+  y Daniel responde: “Soy Daniel, encantado, gracias por venir…"
   → Debes mantener al menos “Soy Daniel.” (puedes borrar “encantado…”).
 - Si el vendedor pregunta: “¿Por qué te interesa este coche?”
-  y Daniel responde: “Busco algo fiable para uso diario y viajes…”
+  y Daniel responde: “Busco algo fiable para uso diario y viajes…"
   → Esa frase debe mantenerse (puedes acortarla un poco, pero no eliminarla).
 
 EJEMPLOS:
@@ -113,20 +106,6 @@ Devuelve solo la respuesta normalizada, sin explicaciones ni comentarios.
 """
 
 
-normalizer_prompt = ChatPromptTemplate.from_messages(
-    [
-        ("system", NORMALIZER_SYSTEM_PROMPT),
-        (
-            "user",
-            "Mensaje del vendedor:\n{user_message}\n\n"
-            "Respuesta original de Daniel:\n{assistant_reply}\n\n"
-            "Reescribe SOLO la respuesta de Daniel cumpliendo las reglas."
-        ),
-    ]
-)
-
-
-
 def normalize_text(raw_reply: str, last_user_message: str | None = None) -> str:
     """
     Normaliza una respuesta del modelo principal:
@@ -140,16 +119,26 @@ def normalize_text(raw_reply: str, last_user_message: str | None = None) -> str:
 
     last_user_message = (last_user_message or "").strip()
 
-    if normalizer_llm is None:
+    if normalizer_client is None:
         return raw_reply
 
-    messages = normalizer_prompt.format_messages(
-        user_message=last_user_message,
-        assistant_reply=raw_reply,
+    user_input = (
+        f"Mensaje del vendedor:\n{last_user_message}\n\n"
+        f"Respuesta original de Daniel:\n{raw_reply}\n\n"
+        "Reescribe SOLO la respuesta de Daniel cumpliendo las reglas."
     )
+
     try:
-        result = normalizer_llm.invoke(messages)
-        return (result.content or "").strip()
+        result = normalizer_client.responses.create(
+            model=NORMALIZER_MODEL,
+            temperature=NORMALIZER_TEMPERATURE,
+            input=[
+                {"role": "system", "content": NORMALIZER_SYSTEM_PROMPT},
+                {"role": "user", "content": user_input},
+            ],
+        )
+        normalized = (getattr(result, "output_text", "") or "").strip()
+        return normalized or raw_reply
     except Exception as exc:
         logger.warning("normalizer_invoke_error=%s", exc)
         return raw_reply
