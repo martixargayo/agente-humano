@@ -5,9 +5,7 @@ import logging
 import os
 from typing import List, Tuple
 
-from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
+from openai import OpenAI
 
 from normalizer import normalize_text
 
@@ -26,9 +24,6 @@ from prompts import (
     CONVERSATION_USER_TEMPLATE,
 )
 
-# Cargar variables de entorno (.env)
-load_dotenv()
-
 # --- Modelos ---
 
 # Modelo principal (para responder al usuario)
@@ -44,31 +39,23 @@ SUMMARY_TEMPERATURE = float(os.getenv("SUMMARY_TEMPERATURE", "0.2"))
 logger = logging.getLogger(__name__)
 
 
-def _build_chat_openai(model: str, temperature: float, *, client_name: str) -> ChatOpenAI | None:
+def _build_openai_client(*, client_name: str) -> OpenAI | None:
     if not os.getenv("OPENAI_API_KEY"):
         logger.warning("%s_openai_api_key_missing fallback_enabled=true", client_name)
         return None
 
     try:
-        return ChatOpenAI(model=model, temperature=temperature)
+        return OpenAI()
     except Exception as exc:
-        logger.warning("%s_llm_init_error=%s", client_name, exc)
+        logger.warning("%s_client_init_error=%s", client_name, exc)
         return None
 
 
-# Modelo principal del agente (Daniel)
-llm = _build_chat_openai(
-    model=MAIN_MODEL,
-    temperature=MAIN_TEMPERATURE,
-    client_name="agent_main",
-)
+# Cliente principal del agente (Daniel)
+llm_client = _build_openai_client(client_name="agent_main")
 
-# Modelo para resumir (memoria comprimida de sesión)
-summary_llm = _build_chat_openai(
-    model=SUMMARY_MODEL,
-    temperature=SUMMARY_TEMPERATURE,
-    client_name="agent_summary",
-)
+# Cliente para resumir (memoria comprimida de sesión)
+summary_client = _build_openai_client(client_name="agent_summary")
 
 # Parámetros de memoria (inspirados en trimming + summarizing)
 CONTEXT_LIMIT_TURNS: int = int(
@@ -78,29 +65,9 @@ KEEP_LAST_TURNS: int = int(
     os.getenv("KEEP_LAST_TURNS", DEFAULT_KEEP_LAST_TURNS)
 )
 
-# --- Prompts LangChain ---
-
-summary_prompt = ChatPromptTemplate.from_messages(
-    [
-        ("system", SUMMARY_SYSTEM_PROMPT),
-        ("user", SUMMARY_USER_PROMPT),
-    ]
-)
-
-conversation_prompt = ChatPromptTemplate.from_messages(
-    [
-        ("system", BASE_PERSONALITY_PROMPT),
-        (
-            "system",
-            "Usa el resumen más el historial reciente para responder al usuario "
-            "de forma coherente y consistente.",
-        ),
-        ("user", CONVERSATION_USER_TEMPLATE),
-    ]
-)
-
 
 # ---- Utilidades internas ----
+
 
 def _format_messages_as_text(messages: List[Message]) -> str:
     """
@@ -155,18 +122,27 @@ def _summarize_prefix_into_state(
     existing_summary = state.summary or ""
     new_block = _format_messages_as_text(prefix_messages)
 
-    messages = summary_prompt.format_messages(
+    user_input = SUMMARY_USER_PROMPT.format(
         existing_summary=existing_summary,
         new_block=new_block,
     )
 
-    if summary_llm is None:
+    if summary_client is None:
         state.summary = (existing_summary + "\n" + new_block).strip()
         return
 
     try:
-        result = summary_llm.invoke(messages)
-        state.summary = result.content.strip()
+        result = summary_client.responses.create(
+            model=SUMMARY_MODEL,
+            temperature=SUMMARY_TEMPERATURE,
+            input=[
+                {"role": "system", "content": SUMMARY_SYSTEM_PROMPT},
+                {"role": "user", "content": user_input},
+            ],
+        )
+        state.summary = (getattr(result, "output_text", "") or "").strip() or (
+            existing_summary + "\n" + new_block
+        ).strip()
     except Exception as exc:
         logger.warning("agent_summary_invoke_error=%s", exc)
         state.summary = (existing_summary + "\n" + new_block).strip()
@@ -204,25 +180,20 @@ def _maybe_trim_and_summarize(state: SessionState) -> None:
     state.history = suffix
 
 
-def _build_conversation_messages(
-    state: SessionState,
-    user_message: str,
-):
+def _build_conversation_user_input(state: SessionState, user_message: str) -> str:
     """
-    Construye los mensajes (para LangChain) combinando:
+    Construye el bloque de usuario combinando:
     - summary (memoria larga)
     - history recortado (short-term window)
     - mensaje actual del usuario
     """
     summary_text = state.summary or "Aún no hay resumen de la conversación."
     recent_history_text = _format_messages_as_text(state.history)
-
-    messages = conversation_prompt.format_messages(
-        summary=summary_text,
-        recent_history=recent_history_text,
+    return CONVERSATION_USER_TEMPLATE.format(
+        summary_text=summary_text,
+        recent_history_text=recent_history_text,
         user_message=user_message,
     )
-    return messages
 
 
 # ---- Punto de entrada principal del agente ----
@@ -246,16 +217,29 @@ def run_agent(
     # 2) Trimming + summarizing si toca (según nº de turnos)
     _maybe_trim_and_summarize(state)
 
-    # 3) Construir mensajes para el LLM
-    messages = _build_conversation_messages(state, user_message)
+    # 3) Construir input para el LLM
+    user_input = _build_conversation_user_input(state, user_message)
 
     # 4) Llamar al modelo principal
-    if llm is None:
+    if llm_client is None:
         raw_reply = "Entendido. ¿Qué condición te gustaría concretar ahora?"
     else:
         try:
-            result = llm.invoke(messages)
-            raw_reply = result.content.strip()
+            result = llm_client.responses.create(
+                model=MAIN_MODEL,
+                temperature=MAIN_TEMPERATURE,
+                input=[
+                    {"role": "system", "content": BASE_PERSONALITY_PROMPT},
+                    {
+                        "role": "system",
+                        "content": "Usa el resumen más el historial reciente para responder al usuario de forma coherente y consistente.",
+                    },
+                    {"role": "user", "content": user_input},
+                ],
+            )
+            raw_reply = (getattr(result, "output_text", "") or "").strip()
+            if not raw_reply:
+                raw_reply = "Entendido. ¿Qué condición te gustaría concretar ahora?"
         except Exception as exc:
             logger.warning("agent_main_invoke_error=%s", exc)
             raw_reply = "Entendido. ¿Qué condición te gustaría concretar ahora?"
