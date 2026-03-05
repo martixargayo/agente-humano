@@ -3,7 +3,11 @@ import json
 import pytest
 
 from negotiation.elementos.strategy_definitions import PlannerSemanticV1DecisionModel
-from negotiation.nodes.world_node import world_judge_llm
+from negotiation.nodes.world_node import (
+    extract_explicit_questions_for_ledger,
+    normalize_judge_output,
+    world_judge_llm,
+)
 from negotiation.phase_policy_planner import _normalize_next_move_hint, plan_phase_policy
 from negotiation.progress_updater import update_progress_state
 from negotiation.schemas import default_belief_state, default_progress_state, default_world_state
@@ -73,6 +77,56 @@ def test_world_judge_llm_parses_judge_semantic_v1(monkeypatch):
     assert out["schema_version"] == "judge_semantic_v1"
     assert out["topic_alignment"] in {"on_topic", "off_topic"}
     assert isinstance(out["semantic_ledger"]["lo_que_ya_pregunte"], list)
+
+
+def test_extract_explicit_questions_for_ledger_only_returns_explicit_spans():
+    assert extract_explicit_questions_for_ledger("Me gustaría saber más sobre su historia.") == []
+    assert extract_explicit_questions_for_ledger("Cuéntame, ¿cómo lo cuidaste a lo largo de los años?") == [
+        "¿cómo lo cuidaste a lo largo de los años?"
+    ]
+
+
+def test_normalize_judge_output_refresh_questions_when_only_questions_change():
+    prev = {
+        "lo_que_ya_se_toco": ["Motivo de venta comentado."],
+        "lo_que_ya_pregunte": [],
+        "lo_que_falta_pero_no_insistire": [],
+    }
+    out = normalize_judge_output(
+        {
+            "semantic_ledger": {
+                "lo_que_ya_se_toco": ["Motivo de venta comentado."],
+                "lo_que_ya_pregunte": ["inventada"],
+                "lo_que_falta_pero_no_insistire": [],
+            },
+            "ledger_update_notes": "no_update",
+        },
+        "Cuéntame, ¿cómo lo cuidaste a lo largo de los años?",
+        prev,
+    )
+    assert out["semantic_ledger"]["lo_que_ya_pregunte"] == ["¿cómo lo cuidaste a lo largo de los años?"]
+    assert out["ledger_update_notes"] == "refresh_questions"
+
+
+def test_normalize_judge_output_rewrites_no_update_when_other_ledger_fields_change():
+    prev = {
+        "lo_que_ya_se_toco": ["A"],
+        "lo_que_ya_pregunte": [],
+        "lo_que_falta_pero_no_insistire": [],
+    }
+    out = normalize_judge_output(
+        {
+            "semantic_ledger": {
+                "lo_que_ya_se_toco": ["A", "B"],
+                "lo_que_falta_pero_no_insistire": ["X"],
+            },
+            "ledger_update_notes": "no_update",
+        },
+        "Me gustaría saber más sobre su historia.",
+        prev,
+    )
+    assert out["semantic_ledger"]["lo_que_ya_pregunte"] == []
+    assert out["ledger_update_notes"] == "update: lo_que_ya_se_toco; update: lo_que_falta_pero_no_insistire"
 
 
 def test_progress_updater_persists_semantic_ledger_turn_to_turn():
