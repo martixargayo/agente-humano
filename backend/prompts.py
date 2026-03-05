@@ -133,7 +133,7 @@ INVARIANTES (hard, en este orden):
 3) CAPTURA IDEAS (no literal): escribe items como TEXTO HUMANO breve (3–12 palabras), útil para conversación futura; no tags.
 4) LISTAS Y SIGNIFICADO:
    - lo_que_ya_se_toco: hechos/posiciones/ofertas/condiciones nuevas (del usuario).
-   - lo_que_ya_pregunte: preguntas/intenciones preguntadas por el asistente (desde ASSISTANT_LAST_MESSAGE).
+   - lo_que_ya_pregunte: SOLO preguntas textuales explícitas hechas por el asistente (extraídas de ASSISTANT_LAST_MESSAGE, con signos de interrogación).
    - lo_que_falta_pero_no_insistire: temas que el usuario evita/rechaza/no puede dar (no perseguir).
 5) REGLA DE CONSERVACIÓN (hard, con excepción):
 - semantic_ledger DEBE empezar como copia exacta de SEMANTIC_LEDGER_PREV.
@@ -147,9 +147,11 @@ INVARIANTES (hard, en este orden):
      - Elimina primero: contexto blando y descripciones genéricas.
    - Evita frases genéricas tipo “saludo/cortesía”. Prefiere frases accionables.
 
-HIGIENE DE PREGUNTAS (hard):
+HIGIENE DE PREGUNTAS (hard, definición textual):
 - lo_que_ya_pregunte se recalcula CADA TURNO desde ASSISTANT_LAST_MESSAGE (máx 2 items).
-- Si ASSISTANT_LAST_MESSAGE no contiene preguntas reales, lo_que_ya_pregunte debe ser [].
+- SOLO cuenta como pregunta si hay forma interrogativa explícita en el texto (preferentemente con “¿ … ?”).
+- Peticiones implícitas NO cuentan como pregunta (ej.: “me gustaría saber…”, “quiero saber…”, “me gustaría conocer…”).
+- Si ASSISTANT_LAST_MESSAGE no contiene pregunta textual explícita, lo_que_ya_pregunte debe ser [].
 
 REGLA CLAVE (hard) — INFO_NO_DISPONIBLE / LIMITE_DEL_VENDEDOR:
 - Si USER_MESSAGE comunica que un dato solicitado NO está disponible (ahora o en general),
@@ -167,10 +169,22 @@ ACLARACIÓN DE ROLES PARA lo_que_ya_pregunte (hard, prioridad máxima):
 - Aunque USER_MESSAGE contenga 1 o más preguntas, lo_que_ya_pregunte se calcula EXCLUSIVAMENTE desde ASSISTANT_LAST_MESSAGE.
 - Si dudas, deja lo_que_ya_pregunte = [] antes que mezclar preguntas del vendedor.
 
+SEMÁNTICA DE PREGUNTA PARA lo_que_ya_pregunte (hard, prioridad máxima):
+- Usa definición TEXTUAL, no pragmática.
+- NO conviertas peticiones implícitas en preguntas.
+- Ejemplos que NO entran en lo_que_ya_pregunte:
+  - "Me gustaría saber más sobre su historia."
+  - "Quiero conocer más sobre el coche."
+  - "Sería bueno saber ese detalle."
+- Ejemplos que SÍ entran:
+  - "¿Cómo lo cuidaste a lo largo de los años?"
+  - "¿Qué detalle te gustaría aclarar antes de hablar de precios?"
+
 AUTO-CHEQUEO FINAL (hard):
 1) Relee ASSISTANT_LAST_MESSAGE.
-2) Verifica que cada item de lo_que_ya_pregunte aparece/deriva de ASSISTANT_LAST_MESSAGE.
-3) Si algún item deriva de USER_MESSAGE, elimínalo.
+2) Verifica que cada item de lo_que_ya_pregunte corresponde a una pregunta textual explícita presente en ASSISTANT_LAST_MESSAGE.
+3) Si algún item es inferido/parafraseado desde una petición implícita (ej. “me gustaría saber…”), elimínalo.
+4) Si dudas, deja lo_que_ya_pregunte = [].
 
 CÓMO DETECTARLO (semántico, no por keywords):
 - Hay “info no disponible” si el mensaje expresa incapacidad, falta de acceso, falta de conocimiento,
