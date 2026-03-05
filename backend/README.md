@@ -12,3 +12,12 @@ Sistema IA con OpenAI Responses API para agente humano conversacional (chat + ne
 - Endpoints conversacionales:
   - `/chat`
   - `/negociar`
+
+
+## Configuración
+
+- Dependencias Python: `backend/requirements.txt`.
+- Variables de entorno de integración: usa `backend/.env.example` como plantilla.
+- **Importante:** la configuración de modelos del pipeline conversacional (chat/negociación) está definida en código en cada nodo:
+  - `backend/chat/pipeline.py`
+  - `backend/negociacion/pipeline.py`
