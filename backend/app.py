@@ -17,6 +17,7 @@ from fastapi.responses import StreamingResponse
 import openai
 
 import base64
+from typing import Literal, cast
 
 from fastapi.staticfiles import StaticFiles
 
@@ -26,8 +27,7 @@ if str(BASE_DIR) not in sys.path:
 
 from state import get_session_state
 from agent import run_agent
-
-
+from negociacion import run_negotiation_agent
 
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -75,10 +75,10 @@ def _build_speech_client() -> speech.SpeechClient | None:
         return None
 
     try:
-        credentials = service_account.Credentials.from_service_account_file(
+        _ = service_account.Credentials.from_service_account_file(
             GOOGLE_CREDENTIALS_PATH
         )
-        return speech.SpeechClient(credentials=credentials)
+        return speech.SpeechClient.from_service_account_file(GOOGLE_CREDENTIALS_PATH)
     except Exception as exc:
         logger.warning("google_stt_client_init_error=%s", exc)
         return None
@@ -131,6 +131,15 @@ TTS_MODEL = os.getenv("OPENAI_TTS_MODEL", "gpt-4o-mini-tts")
 DEFAULT_VOICE = os.getenv("OPENAI_TTS_VOICE", "cedar")
 DEFAULT_FORMAT = os.getenv("OPENAI_TTS_FORMAT", "wav")
 DEFAULT_SPEED = float(os.getenv("OPENAI_TTS_SPEED", "1.10"))
+_ALLOWED_TTS_FORMATS = {"mp3", "opus", "aac", "flac", "wav", "pcm"}
+TTSAudioFormat = Literal["mp3", "opus", "aac", "flac", "wav", "pcm"]
+
+def _resolved_tts_format(requested: str | None = None) -> TTSAudioFormat:
+    value = (requested or DEFAULT_FORMAT or "wav").strip().lower()
+    if value not in _ALLOWED_TTS_FORMATS:
+        value = "wav"
+    return cast(TTSAudioFormat, value)
+
 TTS_IDENTITY_INSTRUCTIONS = os.getenv(
     "OPENAI_TTS_INSTRUCTIONS",
     (
@@ -157,7 +166,7 @@ async def warmup_tts():
             model=TTS_MODEL,
             voice=DEFAULT_VOICE,
             input="Calibración de voz.",
-            response_format=DEFAULT_FORMAT,
+            response_format=_resolved_tts_format(),
             speed=DEFAULT_SPEED,
             instructions=TTS_IDENTITY_INSTRUCTIONS,
         )
@@ -211,6 +220,23 @@ def chat_endpoint(payload: ChatRequest):
         raise HTTPException(
             status_code=500,
             detail=f"Error interno en el agente: {e}",
+        )
+
+@app.post("/negociar", response_model=ChatResponse)
+def negociar_endpoint(payload: ChatRequest):
+    try:
+        state = get_session_state(
+            user_id=payload.user_id,
+            session_id=payload.session_id,
+        )
+
+        reply, _ = run_negotiation_agent(state, payload.message)
+        return ChatResponse(reply=reply)
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error interno en negociación: {e}",
         )
 
 @app.get("/demo", response_class=HTMLResponse)
@@ -502,13 +528,8 @@ async def tts_openai(payload: TTSRequest):
 
     try:
         voice = payload.voice or DEFAULT_VOICE
-        fmt = DEFAULT_FORMAT
-        if payload.format and payload.format != DEFAULT_FORMAT:
-            logger.info(
-                "Formato solicitado ignorado; usando formato TTS por defecto",
-                extra={"requested_format": payload.format, "default_format": DEFAULT_FORMAT},
-            )
-
+        fmt = _resolved_tts_format(payload.format)
+        
         print(f"[TTS_OPENAI] Texto: {payload.text!r}")
         print(f"[TTS_OPENAI] model={TTS_MODEL}, voice={voice}, response_format={fmt}")
 
@@ -556,18 +577,7 @@ async def tts(payload: TTSRequest):
 
     try:
         voice = payload.voice or DEFAULT_VOICE
-        fmt = DEFAULT_FORMAT
-        if payload.format and payload.format != DEFAULT_FORMAT:
-            logger.info(
-                "Formato solicitado ignorado; usando formato TTS por defecto",
-                extra={"requested_format": payload.format, "default_format": DEFAULT_FORMAT},
-            )
-        if fmt not in {"mp3", "opus", "wav"}:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Formato de audio no soportado: {fmt}",
-            )
-
+        fmt = _resolved_tts_format(payload.format)
         print(f">>> /tts llamado. Texto: {payload.text!r}")
         print(f">>> model={TTS_MODEL}, voice={voice}, response_format={fmt}")
 

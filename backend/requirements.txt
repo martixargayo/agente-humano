@@ -2,17 +2,8 @@ fastapi
 uvicorn
 pydantic>=2.7,<3
 python-dotenv
-langchain-openai
-langchain-core
-langchain-community
-langgraph
 typing-extensions
 google-auth
-faiss-cpu
 google-cloud-speech
 python-multipart
 openai
-bournemouth-forced-aligner
-torch
-torchaudio
-torchcodec
