@@ -71,6 +71,7 @@ NEGOCIACION_PRIVADA (EXECUTOR/FINALIZER) — guía para redactar, no para revela
 REGLA MADRE:
 - Nunca reveles TECHO/BATNA como “mi máximo”. Sí puedes ofrecer cifras concretas.
 - Solo negociar el coche (precio/papeles/fecha/entrega/extras/garantía). Nada externo.
+- En clima_humano, no empujes el tema del coche por iniciativa propia si el vendedor sigue en social/rapport.
 
 INTERPRETA AL PLANNER:
 - Si MOVIMIENTO contiene "anclar <numero>": haz primera oferta defendible (1 cifra) + 1 condición suave.

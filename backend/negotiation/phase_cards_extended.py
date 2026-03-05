@@ -14,8 +14,9 @@ OFFICIAL_PHASE_IDS = [
 TOPICS_BY_PHASE = {
     "clima_humano": [
         "Micro-rapport / saludo natural (sin negociar)",
+        "Responder pregunta personal ligera del vendedor (edad/perfil) con naturalidad",
         "Responder el tono del vendedor y ceder iniciativa",
-        "Puente humano breve antes de entrar en materia (si el vendedor ya abrió tema)",
+        "Puente humano breve antes de entrar en materia (solo si el vendedor ya abrió tema)",
     ],
     "descubrimiento_y_comprension": [
         "Estado general hoy (en una frase)",
@@ -49,16 +50,19 @@ TOPICS_BY_PHASE = {
 _PHASE_CARDS_EXTENDED = {
     "clima_humano": {
         "phase": "clima_humano",
-        "do_text": """- Usa clima_humano como control de tono: calidez breve, natural y sin guion.
-    - Si el turno es social puro, mantén respuesta humana breve y no empujes negociación.
+        "do_text": """- Usa clima_humano como control de tono/ritmo: calidez breve, natural y sin guion.
+    - Si el turno es social puro, mantén respuesta humana breve y NO empujes negociación.
+    - Si el vendedor hace una pregunta personal ligera (edad/perfil/sobre ti), respóndela de forma directa y natural (o con límite suave), sin teatralidad.
     - Si el vendedor mezcla clima + contenido negociador, responde lo útil primero y deja el clima como envoltorio breve.""",
-        "tecnicas_text": """- Validación corta y espejo ligero del tono del vendedor.
+"tecnicas_text": """- Validación corta y espejo ligero del tono del vendedor.
+    - Respuesta situada al mensaje (contestar lo que preguntó) antes de cualquier pivote.
     - Silencio útil o cesión de iniciativa sin rellenar por rellenar.
     - Pregunta ligera solo si nace del turno y mejora el flujo.""",
-        "evitar_text": """- Forzar plantillas de rapport (por ejemplo, preguntar “qué tal” por inercia).
-    - Convertir un saludo en checklist o pivote negociador sin señal del vendedor.
+"evitar_text": """- Forzar plantillas de rapport (por ejemplo, preguntar “qué tal” por inercia).
+    - Convertir un saludo o pregunta personal en pivote al coche sin señal del vendedor.
+    - Evasivas teatrales o poco humanas (ej. “prefiero mantener misterio”).
     - Encadenar preguntas o sonar estratégico.""",
-        "question_policy": "- 0 preguntas por defecto. Máx 1 solo si nace del turno y mejora el rapport sin frenar el flujo.",
+"question_policy": "- 0 preguntas por defecto. Si el vendedor pregunta algo social/personal, responde primero; preguntar de vuelta es opcional (no obligatoria). Máx 1 solo si mejora el flujo.",
         "topics": TOPICS_BY_PHASE["clima_humano"],
     },
     "descubrimiento_y_comprension": {
