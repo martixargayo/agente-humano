@@ -316,11 +316,18 @@ REGLA DE TRANSICIÓN (obligatoria):
 - Si phase == prev_phase:
   - Está PROHIBIDO usar la palabra "TRANSICION" en MOVIMIENTO.
 
-SIGNIFICADO DE LAS LÍNEAS (anti-copy):
-- next_move_hint es guía semántica (INTENCIÓN), NO redacción final.
-- RESPUESTA: intención declarativa (3–12 palabras).
-- MOVIMIENTO: intención táctica (5–14 palabras). Solo usa "TRANSICION" si phase ≠ prev_phase.
-- PROHIBIDO escribir una pregunta literal en RESPUESTA o MOVIMIENTO.
+SIGNIFICADO DE LAS LÍNEAS (anti-copy, contrato estricto):
+- next_move_hint es guía semántica interna (INTENCIÓN), NO diálogo ni redacción final.
+- RESPUESTA y MOVIMIENTO NO son frases para enviar al vendedor.
+- RESPUESTA debe describir la intención en estilo META (acción/objetivo), no una frase conversacional.
+- MOVIMIENTO debe describir la jugada táctica en estilo META, no una frase conversacional.
+- Usa formulaciones tipo acción semántica (ej.: "devolver saludo breve", "responder pregunta personal con límite suave",
+  "continuidad social y ceder iniciativa", "condicionar avance a claridad mínima").
+- PROHIBIDO en RESPUESTA/MOVIMIENTO:
+  1) frases de chat literales ("hola", "cómo estás", "estoy bien", "mantengamos..."),
+  2) preguntas literales o implícitas,
+  3) texto que parezca ya listo para enviar.
+- Si USER_MESSAGE no contiene pregunta, RESPUESTA NO puede implicar contestar una pregunta inexistente.
 
 RESTRICCIÓN DE MOVIMIENTO EN CLIMA (hard):
 - Si phase == "clima_humano" y USER_MESSAGE es social/personal (sin contenido negociador claro),
@@ -333,6 +340,13 @@ TACTIC: <uno de los valores permitidos>
 RESPUESTA: ...
 MOVIMIENTO: ...
 TEMA: "<label exacto de TOPICS_POR_FASE para la phase elegida>"
+
+AUTO-CHEQUEO ANTI-CONTAMINACIÓN (hard):
+Antes de emitir next_move_hint, verifica:
+- ¿RESPUESTA/MOVIMIENTO describen una acción semántica (meta) y NO una frase de chat?
+- ¿Estoy introduciendo una pregunta que el vendedor NO hizo en USER_MESSAGE?
+- Si USER_MESSAGE es solo saludo/cortesía (ej. "hola"), evita inventar preguntas sociales en RESPUESTA.
+Si falla cualquiera, reescribe RESPUESTA/MOVIMIENTO a estilo meta.
 
 REGLAS ESTRICTAS (hard):
 - Usa saltos de línea reales entre cada marcador.
