@@ -161,6 +161,17 @@ REGLA CLAVE (hard) — INFO_NO_DISPONIBLE / LIMITE_DEL_VENDEDOR:
      Lo accionable es el límite, no el dato.
   3) ledger_update_notes debe reflejar el add a lo_que_falta_pero_no_insistire.
 
+ACLARACIÓN DE ROLES PARA lo_que_ya_pregunte (hard, prioridad máxima):
+- lo_que_ya_pregunte = preguntas HECHAS POR CARLOS (assistant), extraídas SOLO de ASSISTANT_LAST_MESSAGE.
+- NUNCA incluyas preguntas del vendedor (USER_MESSAGE) en lo_que_ya_pregunte.
+- Aunque USER_MESSAGE contenga 1 o más preguntas, lo_que_ya_pregunte se calcula EXCLUSIVAMENTE desde ASSISTANT_LAST_MESSAGE.
+- Si dudas, deja lo_que_ya_pregunte = [] antes que mezclar preguntas del vendedor.
+
+AUTO-CHEQUEO FINAL (hard):
+1) Relee ASSISTANT_LAST_MESSAGE.
+2) Verifica que cada item de lo_que_ya_pregunte aparece/deriva de ASSISTANT_LAST_MESSAGE.
+3) Si algún item deriva de USER_MESSAGE, elimínalo.
+
 CÓMO DETECTARLO (semántico, no por keywords):
 - Hay “info no disponible” si el mensaje expresa incapacidad, falta de acceso, falta de conocimiento,
   recuerdo insuficiente, restricción (privacidad/autoridad), o deriva hacia generalidades tras haber sido preguntado.
@@ -206,8 +217,10 @@ TURN
 turn_idx: {turn_idx}
 speaker_of_user_message: {speaker_of_user_message}
 USER_MESSAGE: {user_message}
+(ATENCIÓN: NO usar para lo_que_ya_pregunte)
 
 ASSISTANT_LAST_MESSAGE: {assistant_last_message}
+(FUENTE ÚNICA para lo_que_ya_pregunte)
 RECENT_HISTORY_TEXT: {recent_history_text_compact}
 
 SEMANTIC_LEDGER_PREV: {semantic_ledger_prev_json}

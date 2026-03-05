@@ -148,7 +148,6 @@ Coherencia de preguntas obligatoria:
 - Si asked_question es true, requested_info_slots DEBE tener 1–3 strings cortas (<=32 chars) coherentes con la pregunta.
   Usa preferentemente: precio_objetivo, motivo_venta, estado_general, mantenimiento, documentacion, pago_fecha, contexto.
 - Si asked_question es false, requested_info_slots DEBE ser [].
-- También cuenta como pregunta si pides información de forma indirecta (ej. “me gustaría saber…”). En ese caso estás OBLIGADO a convertirlo en pregunta con “¿…?” o reescribirlo a condicional declarativo.
 
 SLOTS (requested_info_slots) si hay pregunta (mapeo más específico):
 - Si la pregunta contiene: "precio", "€", "euros", "cifra", "te lo dejo en", "lo dejamos en",
@@ -244,7 +243,8 @@ Sin texto extra. Sin claves extra fuera de executor_v2.
 MISIÓN (compliance-first):
 A partir del borrador (executor_draft_json), corrige SOLO lo necesario para:
 - cumplir reglas duras (preguntas, roles, no inventar, canal texto),
-- mantener EXACTAMENTE los términos del borrador (precio, quién hace qué, qué se pide/qué se ofrece),
+- conservar los términos del borrador SOLO si son compatibles con TURN, reglas duras y no-contaminación.
+- Si el borrador contiene contenido no trazable al TURN, elimínalo o reescríbelo aunque cambien los términos.
 - acortar y mejorar naturalidad SIN añadir nuevas condiciones ni nuevas preguntas.
 Si el borrador ya cumple, haz cambios mínimos (ideal: solo estilo/brevedad).
 
