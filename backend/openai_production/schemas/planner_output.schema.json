@@ -1,0 +1,59 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "intent",
+    "language",
+    "needs_clarification",
+    "clarifying_question",
+    "safety_risk",
+    "hitl_required",
+    "executor_brief",
+    "response_style",
+    "voice",
+    "tts_instructions",
+    "max_output_tokens_executor",
+    "reasoning_effort_executor",
+    "memory_directives"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["planner_v1"]},
+    "intent": {
+      "type": "string",
+      "enum": [
+        "answer_user",
+        "ask_clarifying_question",
+        "refuse_or_safe_complete",
+        "route_to_human"
+      ]
+    },
+    "language": {"type": "string", "enum": ["es-ES"]},
+    "needs_clarification": {"type": "boolean"},
+    "clarifying_question": {"type": ["string", "null"]},
+    "safety_risk": {"type": "string", "enum": ["none", "low", "medium", "high"]},
+    "hitl_required": {"type": "boolean"},
+    "executor_brief": {"type": "string"},
+    "response_style": {"type": "string", "enum": ["concise", "normal", "detailed"]},
+    "voice": {"type": "string", "enum": ["marin", "cedar", "coral", "alloy"]},
+    "tts_instructions": {"type": ["string", "null"]},
+    "max_output_tokens_executor": {"type": "integer", "minimum": 64, "maximum": 4096},
+    "reasoning_effort_executor": {"type": "string", "enum": ["none", "low", "medium"]},
+    "memory_directives": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "use_context_summary",
+        "preserve_last_n_turns",
+        "do_not_repeat_summary",
+        "note_conflicts"
+      ],
+      "properties": {
+        "use_context_summary": {"type": "boolean"},
+        "preserve_last_n_turns": {"type": "integer", "minimum": 1, "maximum": 8},
+        "do_not_repeat_summary": {"type": "boolean"},
+        "note_conflicts": {"type": "boolean"}
+      }
+    }
+  }
+}
