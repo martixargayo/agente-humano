@@ -1,6 +1,16 @@
 # backend/app.py
 from __future__ import annotations
 
+import os
+import pathlib
+import sys
+
+from dotenv import load_dotenv
+from pathlib import Path
+
+# cargar variables del .env
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
