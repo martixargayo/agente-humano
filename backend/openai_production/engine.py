@@ -5,7 +5,7 @@ import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Literal, Tuple, cast
 
 import openai
 
@@ -243,8 +243,17 @@ class ExecutorNode:
             return "Entendido. Te respondo de forma clara y directa."
 
         max_output_tokens = int(plan.get("max_output_tokens_executor", 500) or 500)
-        effort = str(plan.get("reasoning_effort_executor", "low") or "low")
-        verbosity = "low" if plan.get("response_style") == "concise" else "high" if plan.get("response_style") == "detailed" else "medium"
+        effort_value = str(plan.get("reasoning_effort_executor", "low") or "low").lower()
+        if effort_value not in {"none", "low", "medium"}:
+            effort_value = "low"
+        effort = cast(Literal["none", "low", "medium"], effort_value)
+
+        verbosity_value = (
+            "low" if plan.get("response_style") == "concise"
+            else "high" if plan.get("response_style") == "detailed"
+            else "medium"
+        )
+        verbosity = cast(Literal["low", "medium", "high"], verbosity_value)
         brief = str(plan.get("executor_brief", "Responder en español de forma útil y concreta."))
 
         executor_input = (
@@ -290,7 +299,7 @@ def _load_schema(path: Path) -> Dict[str, Any]:
     except Exception:
         return {
             "type": "object",
-            "additionalProperties": false,
+            "additionalProperties": False,
             "required": ["schema_version"],
             "properties": {"schema_version": {"type": "string"}},
         }
