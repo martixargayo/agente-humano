@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from pathlib import Path
 
 # cargar variables del .env
-load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.responses import HTMLResponse
