@@ -161,6 +161,7 @@ def executor_node(state: dict) -> dict:
     finalizer_changed_from_draft = False
     finalizer_fixes: list[str] = []
     latency_ms_finalizer = 0
+    finalizer_last_seller_fallback_used = False
 
     if _finalizer_enabled():
         finalizer_called = True
@@ -170,16 +171,19 @@ def executor_node(state: dict) -> dict:
         target_words = min(max_words, 26)
         prev_turn_asked_question = bool(progress_state.get("last_executor_asked_question", False))
 
-        last_seller_utterance = str(state.get("last_seller_utterance") or "")
-        if user_message and not last_seller_utterance:
-            logger.warning("finalizer_last_seller_utterance_empty turn_id=%s", str(state.get("turn_count") or ""))
+        raw_last_seller = str(state.get("last_seller_utterance") or "").strip()
+        raw_user = str(user_message or "").strip()
+        finalizer_last_seller_fallback_used = bool((not raw_last_seller) and raw_user)
+        effective_last_seller = raw_last_seller or raw_user
+        if finalizer_last_seller_fallback_used:
+            logger.warning("finalizer_wiring: last_seller_utterance vacío; usando user_message como fallback")
         finalizer_user_prompt = EXECUTOR_FINALIZER_V1_USER_PROMPT.format(
             target_words=target_words,
             max_words=max_words,
             max_questions=max_questions,
             prev_turn_asked_question=str(prev_turn_asked_question).lower(),
-            last_seller_utterance=last_seller_utterance,
-            user_message=str(user_message or ""),
+            last_seller_utterance=effective_last_seller,
+            user_message=raw_user,
             assistant_last_message=str(state.get("assistant_last_message") or state.get("last_assistant_message") or ""),
             phase=phase_effective,
             objective_delta=objective_delta,
@@ -241,6 +245,7 @@ def executor_node(state: dict) -> dict:
     render_meta["finalizer_changed_from_draft"] = finalizer_changed_from_draft
     render_meta["finalizer_fixes"] = finalizer_fixes[:6]
     render_meta["latency_ms_finalizer"] = latency_ms_finalizer
+    render_meta["finalizer_last_seller_fallback_used"] = finalizer_last_seller_fallback_used
     render_meta["objective_delta"] = objective_delta
     render_meta["tactic"] = tactic
     executor_output["render_meta"] = render_meta

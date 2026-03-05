@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from datetime import datetime, timezone
+from copy import deepcopy
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -10,6 +12,80 @@ from ..llm_clients import get_planner_llm
 from ..repo_prompts import WORLD_JUDGE_V4_SYSTEM_PROMPT, WORLD_JUDGE_V4_USER_PROMPT
 from ..schemas import default_progress_state, default_semantic_ledger, default_world_state
 from ..telemetry.llm_usage import extract_llm_usage
+
+
+def _safe_json_load(raw: object) -> dict:
+    if isinstance(raw, dict):
+        return dict(raw)
+    text = str(raw or "").strip()
+    if not text:
+        return {}
+    start = text.find("{")
+    end = text.rfind("}")
+    if start >= 0 and end > start:
+        text = text[start : end + 1]
+    try:
+        data = json.loads(text)
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def extract_explicit_questions_for_ledger(text: str, max_items: int = 2) -> list[str]:
+    t = str(text or "").strip()
+    if not t:
+        return []
+    spans = re.findall(r"¿[^¿?]*\?", t)
+    cleaned: list[str] = []
+    for span in spans:
+        normalized = " ".join(str(span).split()).strip()
+        if normalized and normalized not in cleaned:
+            cleaned.append(normalized)
+    return cleaned[: max(0, int(max_items or 0))]
+
+
+def normalize_judge_output(judge_out: dict, assistant_last_message: str, prev_ledger: dict) -> dict:
+    out = deepcopy(judge_out or {}) if isinstance(judge_out, dict) else {}
+    sem = out.setdefault("semantic_ledger", {})
+    if not isinstance(sem, dict):
+        sem = {}
+        out["semantic_ledger"] = sem
+
+    raw_toco = sem.get("lo_que_ya_se_toco")
+    sem["lo_que_ya_se_toco"] = list(raw_toco) if isinstance(raw_toco, list) else []
+
+    raw_no_insist = sem.get("lo_que_falta_pero_no_insistire")
+    sem["lo_que_falta_pero_no_insistire"] = list(raw_no_insist) if isinstance(raw_no_insist, list) else []
+
+    sem["lo_que_ya_pregunte"] = extract_explicit_questions_for_ledger(assistant_last_message, max_items=2)
+
+    prev = prev_ledger if isinstance(prev_ledger, dict) else {}
+    prev_questions = prev.get("lo_que_ya_pregunte") if isinstance(prev.get("lo_que_ya_pregunte"), list) else []
+    prev_toco = prev.get("lo_que_ya_se_toco") if isinstance(prev.get("lo_que_ya_se_toco"), list) else []
+    prev_no_insist = (
+        prev.get("lo_que_falta_pero_no_insistire") if isinstance(prev.get("lo_que_falta_pero_no_insistire"), list) else []
+    )
+
+    changed_questions = prev_questions != sem.get("lo_que_ya_pregunte", [])
+    changed_toco = prev_toco != sem.get("lo_que_ya_se_toco", [])
+    changed_no_insist = prev_no_insist != sem.get("lo_que_falta_pero_no_insistire", [])
+
+    if not changed_questions and not changed_toco and not changed_no_insist:
+        out["ledger_update_notes"] = "no_update"
+    elif changed_questions and not changed_toco and not changed_no_insist:
+        out["ledger_update_notes"] = "refresh_questions"
+    else:
+        raw_notes = str(out.get("ledger_update_notes") or "").strip()
+        if not raw_notes or raw_notes == "no_update":
+            parts: list[str] = []
+            if changed_questions:
+                parts.append("refresh_questions")
+            if changed_toco:
+                parts.append("update: lo_que_ya_se_toco")
+            if changed_no_insist:
+                parts.append("update: lo_que_falta_pero_no_insistire")
+            out["ledger_update_notes"] = "; ".join(parts)
+    return out
 
 
 def _normalize_semantic_ledger(candidate: object, prev: dict | None = None) -> dict:
@@ -79,8 +155,8 @@ def world_judge_llm(
         ended_wall = datetime.now(timezone.utc).isoformat()
         llm_usage = extract_llm_usage(raw)
         text = getattr(raw, "content", str(raw))
-        candidate = json.loads(text)
-        if not isinstance(candidate, dict):
+        candidate = _safe_json_load(text)
+        if not isinstance(candidate, dict) or not candidate:
             raise ValueError("judge_semantic_invalid_shape")
         if str(candidate.get("schema_version", "")) != "judge_semantic_v1":
             raise ValueError("judge_semantic_invalid_schema_version")
@@ -94,6 +170,9 @@ def world_judge_llm(
             "semantic_ledger": _normalize_semantic_ledger(candidate.get("semantic_ledger"), ledger_prev),
             "ledger_update_notes": str(candidate.get("ledger_update_notes", "") or "")[:240],
         }
+        normalized = normalize_judge_output(normalized, assistant_last_message, ledger_prev)
+        normalized["semantic_ledger"] = _normalize_semantic_ledger(normalized.get("semantic_ledger"), ledger_prev)
+        normalized["ledger_update_notes"] = str(normalized.get("ledger_update_notes", "") or "")[:240]
         return normalized, {
             "judge_error_type": "",
             "judge_error_stage": "",

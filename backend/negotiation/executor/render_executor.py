@@ -271,7 +271,11 @@ def map_slots_from_questions(text: str) -> list[str]:
         slots.append("precio_objetivo")
     if any(x in joined for x in ("motivo", "por qué vendes", "razón de venta")):
         slots.append("motivo_venta")
-    if any(x in joined for x in ("estado", "cómo está", "como está")):
+    if re.search(r"\b(tu día|tu dia|qué tal|que tal|cómo estás|como estas|cómo has estado|como has estado)\b", joined):
+        slots.append("contexto")
+    elif "estado" in joined and re.search(r"\b(coche|mustang|vehículo|vehiculo|motor|carrocería|carroceria|auto|carro)\b", joined):
+        slots.append("estado_general")
+    elif any(x in joined for x in ("cómo está", "como está", "cómo esta", "como esta")):
         slots.append("estado_general")
     if any(x in joined for x in ("mantenimiento", "revisión", "revision", "itv")):
         slots.append("mantenimiento")
