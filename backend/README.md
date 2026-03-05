@@ -1,8 +1,14 @@
 # agente-humano
-Sistema IA con LangChain para crear un agente humano superrealista
+Sistema IA con OpenAI Responses API para agente humano conversacional (chat + negociación).
 
-## Deferred summary refresh (negociación)
+## Arquitectura actual (sin LangChain/LangGraph)
 
-- `NEGOTIATION_DEFER_SUMMARY=1`: mueve el `summary refresh` fuera del critical path de `/negociar`.
-- En este modo, el job se encola al final de `run_negotiation_agent` y opcionalmente también en `/tts` (idempotente por `(user_id, session_id, turn_id)`).
-- Por defecto (`0`), se mantiene el comportamiento síncrono actual para una migración segura.
+- Pipeline 3-LLM por turno para `chat` y `negociacion`:
+  - Summarizer (trimming + summarizing por turnos)
+  - Planner (Structured Outputs con JSON Schema estricto)
+  - Executor (respuesta final)
+- Entrada de voz por Google STT (`/stt_google`).
+- Salida de voz por OpenAI TTS (`/tts`, modelo por defecto `gpt-4o-mini-tts`).
+- Endpoints conversacionales:
+  - `/chat`
+  - `/negociar`

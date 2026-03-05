@@ -26,8 +26,7 @@ if str(BASE_DIR) not in sys.path:
 
 from state import get_session_state
 from agent import run_agent
-
-
+from negociacion import run_negotiation_agent
 
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -211,6 +210,23 @@ def chat_endpoint(payload: ChatRequest):
         raise HTTPException(
             status_code=500,
             detail=f"Error interno en el agente: {e}",
+        )
+
+@app.post("/negociar", response_model=ChatResponse)
+def negociar_endpoint(payload: ChatRequest):
+    try:
+        state = get_session_state(
+            user_id=payload.user_id,
+            session_id=payload.session_id,
+        )
+
+        reply, _ = run_negotiation_agent(state, payload.message)
+        return ChatResponse(reply=reply)
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error interno en negociación: {e}",
         )
 
 @app.get("/demo", response_class=HTMLResponse)
