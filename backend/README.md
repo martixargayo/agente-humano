@@ -21,3 +21,20 @@ Sistema IA con OpenAI Responses API para agente humano conversacional (chat + ne
 - **Importante:** la configuración de modelos del pipeline conversacional (chat/negociación) está definida en código en cada nodo:
   - `backend/chat/pipeline.py`
   - `backend/negociacion/pipeline.py`
+
+
+## Diagnóstico de errores en `app.py` y `openai_production/engine.py`
+
+Si VS Code/Pylance te muestra errores como "No se ha podido resolver la importación ..." o símbolos desconocidos (`speech`, `OpenAI`, etc.), casi siempre es por entorno local y no por APIs mal conectadas.
+
+Causas típicas:
+- Intérprete de Python del editor distinto al del terminal/venv.
+- Dependencias instaladas en un Python, pero Pylance analizando otro.
+- Versión antigua de `openai` que no incluye `openai.OpenAI()`.
+- `backend` no añadido a rutas de análisis del editor.
+
+Comprobación rápida:
+- `python3 backend/scripts/doctor_imports.py`
+- `pyright`
+
+Nota sobre APIs: una API key/credenciales incorrectas causa fallos en runtime (401/403, permisos, credenciales), no errores de importación estática.
