@@ -5,7 +5,7 @@ import logging
 import os
 from typing import List, Tuple
 
-from openai import OpenAI
+import openai
 
 from normalizer import normalize_text
 
@@ -39,13 +39,13 @@ SUMMARY_TEMPERATURE = float(os.getenv("SUMMARY_TEMPERATURE", "0.2"))
 logger = logging.getLogger(__name__)
 
 
-def _build_openai_client(*, client_name: str) -> OpenAI | None:
+def _build_openai_client(*, client_name: str):
     if not os.getenv("OPENAI_API_KEY"):
         logger.warning("%s_openai_api_key_missing fallback_enabled=true", client_name)
         return None
 
     try:
-        return OpenAI()
+        return openai.OpenAI()
     except Exception as exc:
         logger.warning("%s_client_init_error=%s", client_name, exc)
         return None

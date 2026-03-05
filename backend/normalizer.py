@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 import os
 
-from openai import OpenAI
+import openai
 from env_compat import getenv_preferred
 
 # Modelo específico del normalizador (segunda LLM)
@@ -19,13 +19,13 @@ NORMALIZER_TEMPERATURE = float(os.getenv("NORMALIZER_TEMPERATURE", "0.0"))
 logger = logging.getLogger(__name__)
 
 
-def _build_normalizer_client() -> OpenAI | None:
+def _build_normalizer_client():
     if not os.getenv("OPENAI_API_KEY"):
         logger.warning("normalizer_openai_api_key_missing passthrough_enabled=true")
         return None
 
     try:
-        return OpenAI()
+        return openai.OpenAI()
     except Exception as exc:
         logger.warning("normalizer_client_init_error=%s", exc)
         return None

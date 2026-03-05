@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Dict, List, Literal, Tuple, TypedDict
+from typing import Any, Dict, List, Literal, Mapping, Tuple, TypedDict
 
 from state_migration_v3 import migrate_belief_state_to_v3, migrate_world_state_to_v3
 
@@ -107,7 +107,7 @@ DEFAULT_KEEP_LAST_TURNS: int = 4            # cuántos turnos recientes guardamo
 
 
 def normalize_exit_option(
-    raw: Dict | None,
+    raw: Mapping[str, Any] | None,
     legacy_base_price: float,
     legacy_repairs: float,
     legacy_total_cost: float,

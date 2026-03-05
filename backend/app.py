@@ -14,7 +14,7 @@ from google.oauth2 import service_account
 import io  # arriba del archivo
 import time
 from fastapi.responses import StreamingResponse
-from openai import OpenAI
+import openai
 
 import base64
 
@@ -113,13 +113,13 @@ def _guess_transcription_filename(upload: UploadFile) -> str:
 
 # --- OpenAI Text-to-Speech (salida de audio) ---
 
-def _build_openai_client() -> OpenAI | None:
+def _build_openai_client():
     if not os.getenv("OPENAI_API_KEY"):
         logger.warning("openai_api_key_missing_tts_disabled=true")
         return None
 
     try:
-        return OpenAI()  # usa OPENAI_API_KEY del entorno
+        return openai.OpenAI()  # usa OPENAI_API_KEY del entorno
     except Exception as exc:
         logger.warning("openai_tts_client_init_error=%s", exc)
         return None
