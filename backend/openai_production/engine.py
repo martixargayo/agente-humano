@@ -26,6 +26,11 @@ class PipelineConfig:
     executor_model: str = "gpt-5-nano"
     context_limit: int = 6
     keep_last_n_turns: int = 3
+    llm_order: Tuple[Literal["summarizer", "planner", "executor"], ...] = (
+        "summarizer",
+        "planner",
+        "executor",
+    )
 
 
 def _read_text(path: Path, fallback: str) -> str:
@@ -336,19 +341,61 @@ def run_three_llm_turn(state: SessionState, user_message: str, config: PipelineC
     planner = PlannerNode(client=client, model=config.planner_model, system_prompt=planner_prompt, schema=schema)
     executor = ExecutorNode(client=client, model=config.executor_model, system_prompt=executor_prompt)
 
-    memory.maybe_trim_and_summarize(summarizer)
-
     items = memory.get_model_items()
     summary_text = memory.get_summary_text()
     recent_history = _history_to_text(items)
 
-    plan = planner.run(user_message=user_message, summary_text=summary_text, recent_history=recent_history)
-    reply = executor.run(
-        user_message=user_message,
-        summary_text=summary_text,
-        recent_history=recent_history,
-        plan=plan,
-    )
+    plan: Dict[str, Any] | None = None
+    reply: str | None = None
+
+    for node_name in config.llm_order:
+        if node_name == "summarizer":
+            memory.maybe_trim_and_summarize(summarizer)
+            items = memory.get_model_items()
+            summary_text = memory.get_summary_text()
+            recent_history = _history_to_text(items)
+            continue
+
+        if node_name == "planner":
+            items = memory.get_model_items()
+            summary_text = memory.get_summary_text()
+            recent_history = _history_to_text(items)
+            plan = planner.run(
+                user_message=user_message,
+                summary_text=summary_text,
+                recent_history=recent_history,
+            )
+            continue
+
+        if node_name == "executor":
+            if plan is None:
+                plan = planner.run(
+                    user_message=user_message,
+                    summary_text=summary_text,
+                    recent_history=recent_history,
+                )
+            reply = executor.run(
+                user_message=user_message,
+                summary_text=summary_text,
+                recent_history=recent_history,
+                plan=plan,
+            )
+            continue
+
+    if plan is None:
+        plan = planner.run(
+            user_message=user_message,
+            summary_text=summary_text,
+            recent_history=recent_history,
+        )
+
+    if reply is None:
+        reply = executor.run(
+            user_message=user_message,
+            summary_text=summary_text,
+            recent_history=recent_history,
+            plan=plan,
+        )
 
     add_message(state, role="assistant", content=reply)
     memory.add_message("assistant", reply, synthetic=False)
