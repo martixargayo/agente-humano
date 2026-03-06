@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from importlib import metadata
 from pathlib import Path
-from typing import List, Sequence, Tuple, TypedDict
+from typing import List, Sequence, Tuple, TypedDict, TypeVar
 
 import openai
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -76,6 +76,9 @@ from .shared_types import (
 logger = logging.getLogger(__name__)
 
 OPENAI_MIN_VERSION = "1.40.0"
+
+
+ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
 class InputSummary(BaseModel):
@@ -432,7 +435,7 @@ def _call_structured(
     return StructuredCallResult(parsed_json=parsed_json, refusal=None, parse_error=None, exception_error=None, response=response, source=StructuredCallSource.model)
 
 
-def _resolve_structured_result(result: StructuredCallResult, response_model: type[BaseModel], fallback: BaseModel) -> BaseModel:
+def _resolve_structured_result(result: StructuredCallResult, response_model: type[ModelT], fallback: ModelT) -> ModelT:
     if result.source == StructuredCallSource.model and result.parsed_json is not None:
         return response_model.model_validate(result.parsed_json)
     return fallback
