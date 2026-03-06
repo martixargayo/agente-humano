@@ -1,3 +1,15 @@
+# File Snapshot
+
+Original path:
+`backend/negociacion/flow_config.py`
+
+Snapshot status:
+`current`
+
+Language / type:
+`python`
+
+```python
 from __future__ import annotations
 
 import json
@@ -932,3 +944,5 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
 
     save_session_state(state)
     return reply, state
+
+```

@@ -1,3 +1,15 @@
+# File Snapshot
+
+Original path:
+`backend/negociacion/shared_types.py`
+
+Snapshot status:
+`current`
+
+Language / type:
+`python`
+
+```python
 from __future__ import annotations
 
 from enum import Enum
@@ -58,3 +70,5 @@ class SDKCompatibilityStatus(str, Enum):
     compatible = "compatible"
     below_minimum = "below_minimum"
     unknown = "unknown"
+
+```

@@ -1,3 +1,15 @@
+# File Snapshot
+
+Original path:
+`backend/negociacion/executor_node.py`
+
+Snapshot status:
+`current`
+
+Language / type:
+`python`
+
+```python
 from __future__ import annotations
 
 from typing import List, Literal
@@ -47,3 +59,5 @@ class ExecutorOutput(BaseModel):
     spoken_text: str
     memory_used: list[str]
     refusal_reason: str | None
+
+```
