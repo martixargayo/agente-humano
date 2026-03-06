@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from importlib import metadata
 from pathlib import Path
-from typing import List, Sequence, Tuple, TypedDict, TypeVar
+from typing import List, Sequence, Tuple, TypedDict
 
 import openai
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -57,9 +57,6 @@ from .shared_types import (
 logger = logging.getLogger(__name__)
 
 OPENAI_MIN_VERSION = "1.40.0"
-
-
-ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
 class InputSummary(BaseModel):
@@ -228,7 +225,7 @@ class StateRepository:
                 )
         else:
             logger.error("canonical_state_invalid_type memory_key=%s raw_type=%s fallback=default_state", self.memory_key, type(raw).__name__)
-        return _default_canonical_state()
+        return _default_canonical_state(session_state=session_state)
 
     def save_state(self, session_state: SessionState, canonical_state: CanonicalState) -> None:
         session_state.world_state[self.memory_key] = canonical_state.model_dump(mode="json")
@@ -279,8 +276,10 @@ def build_negotiation_pipeline_config() -> NegotiationTurnConfig:
     )
 
 
-def _default_canonical_state() -> CanonicalState:
-    return build_default_canonical_state(session_id="pending_session", thread_mode=ThreadMode.conversation)
+def _default_canonical_state(session_state: SessionState | None = None, thread_mode: ThreadMode = ThreadMode.conversation) -> CanonicalState:
+    session_id = session_state.session_id if session_state and session_state.session_id else "pending_session"
+    user_id = session_state.user_id if session_state and session_state.user_id else None
+    return build_default_canonical_state(session_id=session_id, user_id=user_id, thread_mode=thread_mode)
 
 
 # ==================================================
@@ -472,12 +471,6 @@ def _call_structured(
     return StructuredCallResult(parsed_json=parsed_json, refusal=None, parse_error=None, exception_error=None, response=response, source=StructuredCallSource.model)
 
 
-def _resolve_structured_result(result: StructuredCallResult, response_model: type[ModelT], fallback: ModelT) -> ModelT:
-    if result.source == StructuredCallSource.model and result.parsed_json is not None:
-        return response_model.model_validate(result.parsed_json)
-    return fallback
-
-
 # ==================================================
 # C) Gestión del hilo conversacional
 # ==================================================
@@ -519,9 +512,7 @@ def bootstrap_conversation_if_needed(client: openai.OpenAI | None, canonical_sta
 
 
 def ensure_openai_thread(client: openai.OpenAI | None, canonical_state: CanonicalState, mode_default: ThreadMode) -> OpenAIThreadState:
-    mode = canonical_state.openai_thread.thread_mode or mode_default
-    if canonical_state.openai_thread.thread_mode != mode:
-        canonical_state.openai_thread = OpenAIThreadState(thread_mode=mode, conversation_id=None, previous_response_id=None)
+    _ = mode_default  # compatible signature: el modo efectivo lo define el canónico válido.
     bootstrap_conversation_if_needed(client, canonical_state)
     return canonical_state.openai_thread
 
@@ -666,6 +657,107 @@ def _build_trace_log(node: NodeName, model: str, prompt_version: str, schema_ver
     )
 
 
+def _append_unique_reason(container: list[str], reason: str | None) -> None:
+    if not reason:
+        return
+    value = reason.strip()
+    if value and value not in container:
+        container.append(value)
+
+
+def _collect_last_refusals(logs: Sequence[NodeTraceLog], executor_output: ExecutorOutput, guardrail_reason: str | None) -> list[str]:
+    reasons: list[str] = []
+    for log in logs:
+        _append_unique_reason(reasons, log.refusal)
+    _append_unique_reason(reasons, executor_output.refusal_reason)
+    _append_unique_reason(reasons, guardrail_reason)
+    return reasons
+
+
+def _resolve_memory_call_result(canonical_state: CanonicalState, turn_id: str, mem_call: StructuredCallResult) -> MemoryOutput:
+    if mem_call.source == StructuredCallSource.model and mem_call.parsed_json is not None:
+        return MemoryOutput.model_validate(mem_call.parsed_json)
+    return _memory_fallback(canonical_state, turn_id)
+
+
+def _resolve_phase_call_result(canonical_state: CanonicalState, phase_call: StructuredCallResult) -> PhaseClassifierOutput:
+    if phase_call.source == StructuredCallSource.model and phase_call.parsed_json is not None:
+        return PhaseClassifierOutput.model_validate(phase_call.parsed_json)
+    return _phase_classifier_fallback(canonical_state.planner_state.current_phase)
+
+
+def _execute_memory_and_phase(
+    *,
+    client: openai.OpenAI | None,
+    config: NegotiationTurnConfig,
+    canonical_state: CanonicalState,
+    request_context: dict[str, str],
+    memory_prompt: str,
+    phase_classifier_prompt: str,
+    memory_input: MemoryInput,
+    phase_input: PhaseClassifierInput,
+) -> tuple[StructuredCallResult, int, StructuredCallResult, int, dict[str, str]]:
+    """Run memory+phase with explicit threading mode semantics.
+
+    - conversation: parallel allowed
+    - previous_response_id: forced sequential to preserve deterministic parent chain
+    """
+
+    def _run_memory_call(ctx: dict[str, str]) -> tuple[StructuredCallResult, int]:
+        mem_start = time.perf_counter()
+        call = _call_structured(
+            client,
+            config.model_memory,
+            build_memory_messages(memory_prompt, memory_input),
+            MemoryOutput,
+            "low",
+            ctx,
+            config.memory_store,
+        )
+        latency = int((time.perf_counter() - mem_start) * 1000)
+        return call, latency
+
+    def _run_phase_call(ctx: dict[str, str]) -> tuple[StructuredCallResult, int]:
+        phase_start = time.perf_counter()
+        call = _call_structured(
+            client,
+            config.model_phase_classifier,
+            build_phase_classifier_messages_payload(phase_classifier_prompt, phase_input),
+            PhaseClassifierOutput,
+            "low",
+            ctx,
+            config.memory_store,
+        )
+        latency = int((time.perf_counter() - phase_start) * 1000)
+        return call, latency
+
+    if canonical_state.openai_thread.thread_mode == ThreadMode.previous_response_id:
+        # No paralelizar ramas que compartan el mismo parent previous_response_id.
+        mem_call, mem_latency = _run_memory_call(request_context)
+        if mem_call.response is not None:
+            update_thread_after_response(canonical_state.openai_thread, mem_call.response)
+        request_context = refresh_request_context(client, canonical_state, config.thread_mode_default)
+
+        phase_call, phase_latency = _run_phase_call(request_context)
+        if phase_call.response is not None:
+            update_thread_after_response(canonical_state.openai_thread, phase_call.response)
+        request_context = refresh_request_context(client, canonical_state, config.thread_mode_default)
+        return mem_call, mem_latency, phase_call, phase_latency, request_context
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        mem_future = executor.submit(_run_memory_call, request_context)
+        phase_future = executor.submit(_run_phase_call, request_context)
+        mem_call, mem_latency = mem_future.result()
+        phase_call, phase_latency = phase_future.result()
+
+    if mem_call.response is not None:
+        update_thread_after_response(canonical_state.openai_thread, mem_call.response)
+    if phase_call.response is not None:
+        update_thread_after_response(canonical_state.openai_thread, phase_call.response)
+    request_context = refresh_request_context(client, canonical_state, config.thread_mode_default)
+    return mem_call, mem_latency, phase_call, phase_latency, request_context
+
+
 def _memory_fallback(canonical_state: CanonicalState, turn_id: str) -> MemoryOutput:
     return MemoryOutput(
         schema_version="memory.v1",
@@ -749,44 +841,22 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
 
     memory_input = build_memory_input(canonical_state, recent_dialogue, user_turn, trace_meta)
     phase_input = build_phase_input(canonical_state, recent_dialogue, user_turn, trace_meta)
-
-    def _run_memory_call() -> tuple[StructuredCallResult, int]:
-        mem_start = time.perf_counter()
-        call = _call_structured(client, config.model_memory, build_memory_messages(memory_prompt, memory_input), MemoryOutput, "low", request_context, config.memory_store)
-        latency = int((time.perf_counter() - mem_start) * 1000)
-        return call, latency
-
-    def _run_phase_call() -> tuple[StructuredCallResult, int]:
-        phase_start = time.perf_counter()
-        call = _call_structured(client, config.model_phase_classifier, build_phase_classifier_messages_payload(phase_classifier_prompt, phase_input), PhaseClassifierOutput, "low", request_context, config.memory_store)
-        latency = int((time.perf_counter() - phase_start) * 1000)
-        return call, latency
-
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        mem_future = executor.submit(_run_memory_call)
-        phase_future = executor.submit(_run_phase_call)
-        mem_call, mem_latency = mem_future.result()
-        phase_call, phase_latency = phase_future.result()
-
-    memory_patch = _resolve_structured_result(mem_call, MemoryOutput, _memory_fallback(canonical_state, turn_id))
-    if mem_call.source != StructuredCallSource.model:
-        memory_patch = _memory_fallback(canonical_state, turn_id)
-
-    phase_output = _resolve_structured_result(
-        phase_call,
-        PhaseClassifierOutput,
-        _phase_classifier_fallback(canonical_state.planner_state.current_phase),
+    mem_call, mem_latency, phase_call, phase_latency, request_context = _execute_memory_and_phase(
+        client=client,
+        config=config,
+        canonical_state=canonical_state,
+        request_context=request_context,
+        memory_prompt=memory_prompt,
+        phase_classifier_prompt=phase_classifier_prompt,
+        memory_input=memory_input,
+        phase_input=phase_input,
     )
-    if phase_call.source != StructuredCallSource.model:
-        phase_output = _phase_classifier_fallback(canonical_state.planner_state.current_phase)
+
+    memory_patch = _resolve_memory_call_result(canonical_state, turn_id, mem_call)
+    phase_output = _resolve_phase_call_result(canonical_state, phase_call)
 
     apply_memory_output_to_state(canonical_state, memory_patch)
     apply_phase_classifier_output_to_state(canonical_state, phase_output)
-    if mem_call.response is not None:
-        update_thread_after_response(canonical_state.openai_thread, mem_call.response)
-    if phase_call.response is not None:
-        update_thread_after_response(canonical_state.openai_thread, phase_call.response)
-    request_context = refresh_request_context(client, canonical_state, config.thread_mode_default)
     logs.append(_build_trace_log(NodeName.memory, config.model_memory, config.prompt_version_memory, memory_patch.schema_version, mem_latency, _trace_input_summary(memory_input.recent_dialogue_short, user_turn), "applied", mem_call, None))
     logs.append(_build_trace_log(NodeName.phase_classifier, config.model_phase_classifier, config.prompt_version_phase_classifier, "phase_classifier_output_v1", phase_latency, _trace_input_summary(phase_input.recent_turns, user_turn), phase_output.current_phase.value, phase_call, None))
 
@@ -850,7 +920,7 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
     canonical_state.trace.turn_id = turn_trace.turn_id
     canonical_state.trace.last_node_statuses = {log.node.value: log.output_status for log in logs}
     canonical_state.trace.last_fallbacks = [log.node.value for log in logs if log.call_source != StructuredCallSource.model]
-    canonical_state.trace.last_refusals = [log.refusal for log in logs if log.refusal]
+    canonical_state.trace.last_refusals = _collect_last_refusals(logs, executor_output, enforcement_reason)
     repo.save_state(state, canonical_state)
     repo.save_recent_dialogue(state, recent_dialogue)
     if config.feature_traces:

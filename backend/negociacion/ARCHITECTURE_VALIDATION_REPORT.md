@@ -1,97 +1,123 @@
 # Architecture Validation Report
 
-## 1) Archivos eliminados
-Se eliminaron completamente estos artefactos provisionales/viejos:
+## Correcciones implementadas en esta intervención
 
-- `backend/tests/fixtures/negotiation/canonical_state_minimal.json`
-- `backend/tests/fixtures/negotiation/executor_output_valid.json`
-- `backend/tests/fixtures/negotiation/memory_output_valid.json`
-- `backend/tests/fixtures/negotiation/phase_classifier_output_valid.json`
-- `backend/tests/fixtures/negotiation/planner_output_valid.json`
-- `backend/tests/fixtures/negotiation/turn_trace_golden.json`
-- `backend/tests/test_negotiation_architecture_validation.py`
-- `backend/tests/test_negotiation_cognitive_architecture.py`
-- `backend/negociacion/TEST_EVIDENCE.md`
-- `backend/negociacion/TEST_PLAN.md`
+### 1) `flow_config.py`: endurecimiento del wiring sin rediseño
+Se mantuvo `flow_config.py` como orquestador, pero se hicieron ajustes concretos para bajar riesgo operativo:
 
-No se crearon copias `_old`, `_bak` ni equivalentes.
+- Se eliminaron piezas redundantes/no usadas (`_resolve_structured_result` y su `TypeVar` asociado).
+- Se agregó helper explícito para ejecutar memory+phase por modo de threading: `_execute_memory_and_phase(...)`.
+- Se separó la resolución de outputs de memory y phase en helpers dedicados:
+  - `_resolve_memory_call_result(...)`
+  - `_resolve_phase_call_result(...)`
+- Se agregó recolección de razones de rechazo/seguridad con deduplicación:
+  - `_append_unique_reason(...)`
+  - `_collect_last_refusals(...)`
 
-## 2) Tests nuevos
-Se creó una suite única de validación en:
+Resultado: el wiring crítico (llamadas memory/phase, aplicación de outputs, contexto OpenAI y trazabilidad de refusals) queda explícito y verificable por tests.
 
+### 2) Bug de `previous_response_id` + paralelización
+Se corrigió de forma explícita:
+
+- `ThreadMode.conversation`: memory + phase classifier siguen en paralelo.
+- `ThreadMode.previous_response_id`: memory y phase classifier se ejecutan en secuencia deliberada para no compartir parent ambiguo.
+
+Cadena determinista en `previous_response_id`:
+1. call memory con parent actual
+2. update thread con response memory
+3. refresh context
+4. call phase classifier con nuevo parent
+5. update thread con response phase
+6. refresh context
+
+Esto evita forks implícitos sobre el mismo `previous_response_id`.
+
+### 3) `trace.last_refusals` completo y honesto
+Antes solo recogía refusals de logs de modelo.
+Ahora `last_refusals` agrega y deduplica:
+
+1. refusal de modelo (si existe)
+2. `executor_output.refusal_reason` final (si existe)
+3. razón de intervención de guardrail (`enforcement_reason`) cuando aplica
+
+Esto cubre tanto refusals directos como reescrituras/restricciones de seguridad.
+
+### 4) Fallback de `StateRepository.load_state()` conserva identidad real
+Se corrigió el fallback para estado canónico corrupto/inválido:
+
+- Ya no reconstruye siempre con `pending_session`.
+- Usa `session_state.session_id` y `session_state.user_id` cuando existen.
+- `pending_session` queda solo para casos sin identidad disponible.
+
+### 5) `ensure_openai_thread()` simplificado (sin fallback fantasma)
+Se limpió la lógica redundante basada en `or mode_default`.
+
+- El modo efectivo se toma del canónico válido (`canonical_state.openai_thread.thread_mode`).
+- Se mantiene bootstrap de conversación solo cuando corresponde.
+- En `previous_response_id` no se resetea modo ni parent por configuración externa.
+
+### 6) Limpieza real de `shared_types.py`
+Se auditó uso y se eliminaron enums no usados en la arquitectura actual:
+
+- `PlannerStatus`
+- `ExecutorStatus`
+- `ConversationAct`
+- `LengthBand`
+- `DirectnessLevel`
+- `InitiativeLevel`
+- `EmotionalIntensity`
+- `SafetyRiskLevel`
+
+Se mantuvieron los enums efectivamente usados por el flujo actual (`ThreadMode`, `NodeName`, `NegotiationPhase`, `SafetyPolicyAction`, `SafetyDomain`, `StyleTone`, `StructuredCallSource`, `SDKCompatibilityStatus`).
+
+## Validación ejecutada
+
+Suite principal actualizada:
 - `backend/tests/test_negotiation_architecture_clean.py`
 
-La suite reemplaza fixtures JSON externos por datos en línea en Python para que la validación sea directa y trazable.
+Cobertura relevante añadida/reforzada:
 
-## 3) Wiring probado explícitamente
-La suite cubre wiring real del pipeline y nodos:
+1. **Threading / previous_response_id**
+   - paralelo permitido en `conversation`
+   - secuencial obligatorio en `previous_response_id`
+   - verificación de orden de llamadas y `request_context` por llamada
+   - encadenamiento determinista de `previous_response_id`
 
-- Estado canónico -> `build_memory_input`, `build_phase_input`, `build_planner_input`, `build_executor_input`.
-- `persona.policy` presente en `PlannerInput`.
-- `persona.expressive` presente en `ExecutorInput`.
-- `planner_state.current_phase` usado para seleccionar/inyectar `phase_card` en planner y executor.
-- `PlannerOutput.limits` traducido a `ExecutorInput.response_limits`.
-- `MemoryOutput` aplicado sobre `memory_episodic` + `memory_working`.
-- `PhaseClassifierOutput` aplicado sobre `previous_phase` + `current_phase`.
-- Mensajes de nodos (`developer` estable, `user` dinámico serializado) para:
-  - memory
-  - phase classifier
-  - planner
-  - executor
-- Convención de diálogo runtime confirmada en `role + text`.
+2. **`trace.last_refusals`**
+   - refusal de modelo
+   - guardrail de rewrite
+   - refusal_reason final de executor
+   - guardrail de dominio
+   - deduplicación de razones repetidas
+   - vacío en happy path sin incidencias
 
-## 4) Invariantes del estado canónico demostrados
-Se valida explícitamente que:
+3. **Fallback de `load_state()`**
+   - conserva `session_id` y `user_id` reales en corrupción
+   - fallback `pending_session` solo cuando no hay identidad disponible
 
-- `CanonicalState.model_fields.keys()` contiene exactamente 8 grupos.
-- `model_dump(mode="json")` contiene exactamente esos 8 grupos.
-- No existen atributos legacy en `CanonicalState`:
-  - `recent_messages`
-  - `session_settings`
-  - `memory_profile`
-  - `relationship`
-  - `safety`
-  - `voice`
-  - `plan`
+4. **`ensure_openai_thread()`**
+   - conserva modo estable de estado válido
+   - bootstrap conversación cuando corresponde
 
-## 5) Contratos nuevos verificados
-La suite verifica uso real y shape de contratos:
+5. **`shared_types.py`**
+   - sin duplicados
+   - sin superficie legacy eliminada
 
-- Memory: `MemoryInput`, `MemoryOutput`, `MemoryEpisode`, `MemoryWorking`.
-- Phase classifier: `PhaseClassifierInput`, `PhaseClassifierOutput`.
-- Planner: `PlannerInput`, `PlannerOutput`.
-- Executor: `ExecutorInput`, `ExecutorOutput`.
+6. **E2E mínimo**
+   - happy path
+   - fallback sin cliente
+   - parse error path
+   - refusal path
+   - path con `previous_response_id`
 
-Y anti-legacy checks:
+## Regeneración de snapshots
+Se eliminó y regeneró completamente:
 
-- `PlannerOutput` sin `style_band`, `conversation_act`, `current_phase`, `policy`, `safety`, `situation`.
-- `ExecutorOutput` sin `tts`, `conversation_act_realized`.
-- ausencia de nombres legacy de memory (`MemoryPatch`, `profile_updates`, `relationship_updates`, `safety_updates`).
+- `docs/code_snapshot_current/`
 
-## 6) Dependencias legacy confirmadas eliminadas
-Se valida que:
+El nuevo snapshot refleja el estado exacto actual post-corrección (sin arrastre de snapshots previos).
 
-- Builders no referencian `canonical_state.recent_messages`, `canonical_state.session_settings`, `canonical_state.plan` ni otros attrs legacy.
-- El runtime puede correr el turno completo con un estado canónico mínimo sin depender de keys legacy en `world_state`.
-- `shared_types.py` no tiene clases enum duplicadas (chequeo de unicidad por AST).
+## Huecos reales pendientes
+Sigue pendiente (ya marcado en código) la política final de selección/deduplicación de memoria episódica (`///` en `flow_config.py`).
 
-## 7) Huecos reales pendientes
-Pendiente real detectado y mantenido explícito en código:
-
-- Política final de selección/deduplicación de memoria sigue marcada como provisional (`///`) en `flow_config.py`.
-
-No se ocultó con tests ni con shims.
-
-## 8) Evidencia de ausencia de rastro viejo relevante
-La evidencia se basa en:
-
-- tests de contratos (reject de campos extra/legacy por `extra="forbid"`),
-- tests de wiring de builders y aplicación de outputs,
-- tests e2e de turno completo con cliente fake:
-  - clima humano,
-  - descubrimiento,
-  - concesión/oferta,
-  - fallback sin cliente,
-  - parse error en planner,
-  - refusal en executor,
-- tests de inspección de source (AST) para confirmar que no hay dependencia directa de atributos legacy del canónico.
+No se introdujeron shims ni compatibilidad falsa para ocultarlo.
