@@ -2,78 +2,62 @@ from __future__ import annotations
 
 from typing import List, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
-from .canonical_state import DialogueMessage, MemoryEpisode, MemoryProfile, MemoryWorking, PersonaPolicy, RelationshipState, SafetyState
-from .memory_node import TaskContractPlanner, TraceMeta, UserTurn
-from .shared_types import (
-    ConversationAct,
-    DirectnessLevel,
-    EmotionalIntensity,
-    InitiativeLevel,
-    LengthBand,
-    PlannerStatus,
-    SafetyDomain,
-    SafetyPolicyAction,
-    SafetyRiskLevel,
-    StyleTone,
-)
+from .canonical_state import MemoryWorkingState, NegotiationState, PersonaPolicy, PlannerState
+from .memory_node import DialogueMessage, TraceMeta, UserTurn
+from .shared_types import NegotiationPhase
+
+PlannerDecision = Literal[
+    "none",
+    "hold",
+    "clarify",
+    "counter",
+    "accept",
+    "reject",
+    "close",
+]
 
 
-class SelectedMemory(BaseModel):
+class PlannerTaskContract(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    profile: MemoryProfile
-    working: MemoryWorking
-    episodic_recent: List[MemoryEpisode]
+    node_name: Literal["planner"]
+    objective: str
+    success_definition: str
 
 
-class ExternalEvidenceItem(BaseModel):
+class PhaseCard(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    source: str
-    summary: str
-    confidence: Literal["low", "medium", "high"]
+    phase: NegotiationPhase
+    guidance: str
+
+
+class SelectedMemoryItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    memory_id: str
+    memory_summary: str
 
 
 class PlannerInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    task_contract: TaskContractPlanner
+    schema_version: Literal["planner_input.v1"]
+    task_contract: PlannerTaskContract
     persona_policy: PersonaPolicy
-    relationship_state: RelationshipState
-    working_state: MemoryWorking
-    recent_dialogue: List[DialogueMessage]
-    selected_memory: SelectedMemory
-    external_evidence: List[ExternalEvidenceItem]
+    current_phase: NegotiationPhase
+    phase_card: PhaseCard
     user_turn: UserTurn
-    safety_flags: SafetyState
+    recent_dialogue_short: List[DialogueMessage]
+    memory_working: MemoryWorkingState
+    negotiation_state: NegotiationState
+    planner_state: PlannerState
+    selected_memory: List[SelectedMemoryItem]
     trace_meta: TraceMeta
-
-
-class PlannerSituation(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    user_intent: str
-    user_emotion: Literal["neutral", "frustrated", "positive", "unknown"]
-
-
-class PlannerPolicy(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    conversation_act: ConversationAct
-    turn_goal: str
-    ask_clarification: bool
 
 
 class PlannerContentPlan(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    key_points: List[str]
-    forbidden_topics: List[str]
-
-
-class PlannerStyleBand(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    tone: StyleTone
-    length_band: LengthBand
-    directness: DirectnessLevel
-    initiative: InitiativeLevel
-    emotional_intensity: EmotionalIntensity
+    must_include: list[str]
+    must_avoid: list[str]
 
 
 class PlannerLimits(BaseModel):
@@ -81,26 +65,16 @@ class PlannerLimits(BaseModel):
     max_sentences: int
     max_questions: int
     allow_topic_shift: bool
-    allow_advice: bool
     allow_personal_disclosure: bool
-
-
-class PlannerSafety(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    risk_level: SafetyRiskLevel
-    policy_action: SafetyPolicyAction
-    refusal_reason: str | None
-    blocked_domains: List[SafetyDomain]
 
 
 class PlannerOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    schema_version: str
-    status: PlannerStatus
-    situation: PlannerSituation
-    policy: PlannerPolicy
+    schema_version: Literal["planner.v3"]
+    status: Literal["plan", "clarify", "refuse"]
+    turn_goal: str
+    decision: PlannerDecision
     content_plan: PlannerContentPlan
-    style_band: PlannerStyleBand
     limits: PlannerLimits
-    safety: PlannerSafety
-    done_criteria: List[str]
+    memory_targets: list[str] = Field(default_factory=list)
+    done_criteria: list[str]

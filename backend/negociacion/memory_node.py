@@ -4,58 +4,73 @@ from typing import List, Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from .canonical_state import DialogueMessage, MemoryEpisode, MemoryProfile, MemoryWorking, RelationshipState
-from .shared_types import SafetyDomain, SafetyPolicyAction, SafetyRiskLevel
+from .canonical_state import MemoryEpisodicItem, MemoryWorkingState
+
+
+class DialogueMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    role: Literal["user", "assistant"]
+    text: str
 
 
 class UserTurn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     raw_text: str
     normalized_text: str
-    modality: Literal["text"]
+    modality: Literal["text", "stt"]
     language: str
-    timestamp_utc: str
+    timestamp_iso: str
 
-
-
-
-class TaskContractPlanner(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    single_visible_persona: bool
-    executor_cannot_replan: bool
-    success_definition: str
 
 class TraceMeta(BaseModel):
     model_config = ConfigDict(extra="forbid")
     turn_id: str
-    timestamp_utc: str
+    prompt_version: str
+    schema_version: str
+    model_target: str
+
+
+class MemoryTaskContract(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    node_name: Literal["memory"]
+    objective: str
+    success_definition: str
+
+
+class MemoryEpisode(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    event_type: Literal[
+        "offer",
+        "commitment",
+        "blocker",
+        "avoidance",
+        "important_fact",
+        "topic_closure",
+    ]
+    summary: str
+    turn_id: str
+
+
+class MemoryWorking(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    current_topic: str | None
+    pending_question: str | None
+    last_turn_summary: str
 
 
 class MemoryInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    task_contract: TaskContractPlanner
-    relationship_state: RelationshipState
-    memory_profile: MemoryProfile
-    memory_working: MemoryWorking
-    recent_dialogue: List[DialogueMessage]
+    schema_version: Literal["memory_input.v1"]
+    task_contract: MemoryTaskContract
     user_turn: UserTurn
+    recent_dialogue_short: List[DialogueMessage]
+    memory_working_current: MemoryWorkingState
+    recent_memory_episodic_short: List[MemoryEpisodicItem]
     trace_meta: TraceMeta
 
 
-class MemoryPatch(BaseModel):
+class MemoryOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    schema_version: str
-    profile_user_name: str | None
-    profile_preferred_language: str | None
-    profile_risk_tolerance: Literal["low", "medium", "high"] | None
-    episodic_append: List[MemoryEpisode]
-    working_current_user_goal: str | None
-    working_pending_question: str | None
-    working_negotiation_stage: Literal["discovery", "proposal", "closing", "unknown"] | None
-    relationship_trust_level: Literal["low", "medium", "high"] | None
-    relationship_rapport_level: Literal["low", "medium", "high"] | None
-    relationship_last_interaction_note: str | None
-    safety_risk_level: SafetyRiskLevel | None
-    safety_active_domain: SafetyDomain | None
-    safety_action: SafetyPolicyAction | None
-    safety_reason: str | None
+    schema_version: Literal["memory.v1"]
+    episodic_append: list[MemoryEpisode]
+    working_memory_new: MemoryWorking

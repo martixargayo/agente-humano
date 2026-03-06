@@ -10,8 +10,17 @@ class ThreadMode(str, Enum):
 
 class NodeName(str, Enum):
     memory = "memory"
+    phase_classifier = "phase_classifier"
     planner = "planner"
     executor = "executor"
+
+
+class NegotiationPhase(str, Enum):
+    clima_humano = "clima_humano"
+    descubrimiento_y_comprension = "descubrimiento_y_comprension"
+    propuesta_creativa = "propuesta_creativa"
+    concesiones_y_ajuste_final = "concesiones_y_ajuste_final"
+    formalizacion_del_acuerdo = "formalizacion_del_acuerdo"
 
 
 class PlannerStatus(str, Enum):

@@ -1,46 +1,34 @@
 from __future__ import annotations
 
-from typing import List, Literal
+from datetime import datetime, timezone
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
-from .shared_types import (
-    ConversationAct,
-    PlannerStatus,
-    SafetyDomain,
-    SafetyPolicyAction,
-    SafetyRiskLevel,
-    StyleTone,
-    ThreadMode,
-)
-
-# ----------------------
-# Threading OpenAI
-# ----------------------
+from .shared_types import NegotiationPhase, StyleTone, ThreadMode
 
 
-class SessionSettings(BaseModel):
+class SessionMeta(BaseModel):
+    """Metadatos persistentes de sesión."""
+
     model_config = ConfigDict(extra="forbid")
-    thread_mode_override: ThreadMode | None
+    session_id: str
+    user_id: str | None
+    avatar_id: str | None
+    created_at: str
+    updated_at: str
+
+    # /// Este grupo se inicializa por código al crear sesión.
+    # /// `updated_at` debe refrescarse al persistir estado.
 
 
 class OpenAIThreadState(BaseModel):
+    """Threading OpenAI (no estado de dominio)."""
+
     model_config = ConfigDict(extra="forbid")
-    mode: ThreadMode
+    thread_mode: ThreadMode
     conversation_id: str | None
     previous_response_id: str | None
-
-
-
-
-class DialogueMessage(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    role: Literal["user", "assistant"]
-    content: str
-
-# ----------------------
-# Persona
-# ----------------------
 
 
 class PersonaPolicy(BaseModel):
@@ -64,86 +52,103 @@ class PersonaState(BaseModel):
     expressive: PersonaExpressive
 
 
-# ----------------------
-# Relación
-# ----------------------
-
-
-class RelationshipState(BaseModel):
+class MemoryEpisodicItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    trust_level: Literal["low", "medium", "high"]
-    rapport_level: Literal["low", "medium", "high"]
-    last_interaction_note: str | None
-
-
-# ----------------------
-# Memoria
-# ----------------------
-
-
-class MemoryProfile(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    user_name: str | None
-    preferred_language: str
-    risk_tolerance: Literal["low", "medium", "high"]
-
-
-class MemoryEpisode(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    event_type: str
+    event_type: Literal[
+        "offer",
+        "commitment",
+        "blocker",
+        "avoidance",
+        "important_fact",
+        "topic_closure",
+    ]
     event_summary: str
     turn_id: str
 
 
-class MemoryWorking(BaseModel):
+class MemoryWorkingState(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    current_user_goal: str | None
+    current_topic: str | None
     pending_question: str | None
-    negotiation_stage: Literal["discovery", "proposal", "closing", "unknown"]
+    last_turn_summary: str | None
+    # /// Arranca en `None` al crear sesión; tras el primer turno memory node lo refresca con string factual.
 
 
-# ----------------------
-# Plan, safety, voz
-# ----------------------
-
-
-class PlanState(BaseModel):
+class NegotiationState(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    current_status: PlannerStatus
-    current_act: ConversationAct
-    current_goal: str
+    last_offer_self: str | None
+    last_offer_other: str | None
+    blockers: list[str] = Field(default_factory=list)
 
 
-class SafetyState(BaseModel):
+class PlannerState(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    risk_level: SafetyRiskLevel
-    active_domain: SafetyDomain
-    action: SafetyPolicyAction
-    reason: str | None
+    current_phase: NegotiationPhase | None
+    previous_phase: NegotiationPhase | None
+    current_turn_goal: str | None
+    topics_touched_current_phase: list[str] = Field(default_factory=list)
+    topics_touched_previous_phases: list[str] = Field(default_factory=list)
 
 
-class VoiceState(BaseModel):
+class TraceState(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    voice_name: str
-    speed: Literal["slow", "normal", "fast"]
-
-
-# ----------------------
-# Estado global canónico
-# ----------------------
+    turn_id: str | None
+    last_node_statuses: dict[str, str] = Field(default_factory=dict)
+    last_fallbacks: list[str] = Field(default_factory=list)
+    last_refusals: list[str] = Field(default_factory=list)
 
 
 class CanonicalState(BaseModel):
+    """Fuente mínima de verdad del dominio de negociación."""
+
     model_config = ConfigDict(extra="forbid")
-    session_settings: SessionSettings
+
+    session: SessionMeta
     openai_thread: OpenAIThreadState
-    recent_messages: List[DialogueMessage]
     persona: PersonaState
-    relationship: RelationshipState
-    memory_profile: MemoryProfile
-    memory_episodic: List[MemoryEpisode]
-    memory_working: MemoryWorking
-    plan: PlanState
-    safety: SafetyState
-    voice: VoiceState
-    trace: dict | None
+    memory_episodic: list[MemoryEpisodicItem]
+    memory_working: MemoryWorkingState
+    negotiation_state: NegotiationState
+    planner_state: PlannerState
+    trace: TraceState
+
+
+def build_default_canonical_state(
+    *,
+    session_id: str,
+    thread_mode: ThreadMode,
+    user_id: str | None = None,
+    avatar_id: str | None = None,
+    now_iso: str | None = None,
+) -> CanonicalState:
+    timestamp = now_iso or datetime.now(timezone.utc).isoformat()
+    return CanonicalState(
+        session=SessionMeta(
+            session_id=session_id,
+            user_id=user_id,
+            avatar_id=avatar_id,
+            created_at=timestamp,
+            updated_at=timestamp,
+        ),
+        openai_thread=OpenAIThreadState(thread_mode=thread_mode, conversation_id=None, previous_response_id=None),
+        persona=PersonaState(
+            policy=PersonaPolicy(
+                role_identity="negociador",
+                negotiation_goal="avanzar negociación con claridad",
+                question_strategy="minimal",
+                allow_topic_shift=False,
+            ),
+            expressive=PersonaExpressive(tone=StyleTone.neutral, lexical_style="plain", max_sentences_default=4),
+        ),
+        memory_episodic=[],
+        memory_working=MemoryWorkingState(current_topic=None, pending_question=None, last_turn_summary=None),
+        negotiation_state=NegotiationState(last_offer_self=None, last_offer_other=None, blockers=[]),
+        planner_state=PlannerState(
+            current_phase=None,
+            previous_phase=None,
+            current_turn_goal=None,
+            topics_touched_current_phase=[],
+            topics_touched_previous_phases=[],
+        ),
+        trace=TraceState(turn_id=None, last_node_statuses={}, last_fallbacks=[], last_refusals=[]),
+    )
