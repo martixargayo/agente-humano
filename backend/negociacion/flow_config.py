@@ -22,7 +22,7 @@ NEGOTIATION_FLOW_DETAILS: FlowDetails = {
     "flow_name": "negociacion",
     "memory_key": "negotiation_memory",
     "summarizer_model": "gpt-5-nano",
-    "planner_model": "gpt-5-nano",
+    "planner_model": "o4-mini",
     "executor_model": "gpt-5-nano",
     "context_limit": 6,
     "keep_last_n_turns": 3,
