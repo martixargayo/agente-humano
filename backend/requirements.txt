@@ -7,3 +7,4 @@ google-auth>=2.29,<3
 google-cloud-speech>=2.26,<3
 python-multipart>=0.0.9,<1
 openai>=1.40,<3
+openai-agents>=0.0.12,<1
