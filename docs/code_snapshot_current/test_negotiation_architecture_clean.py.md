@@ -147,6 +147,11 @@ def _make_state_with_mode(mode: ThreadMode, previous_response_id: str | None = N
     return state
 
 
+def _trace_meta_from_call(call: dict) -> dict:
+    payload = json.loads(call["input"][1]["content"])
+    return payload["trace_meta"]
+
+
 # Canonical + contracts
 
 def test_canonical_state_has_exact_8_groups_and_no_legacy_attrs():
@@ -292,7 +297,7 @@ def test_load_state_fallback_keeps_session_identity_on_corruption():
     state = SessionState(user_id="u-real", session_id="s-real")
     state.world_state["negotiation_canonical"] = {"broken": True}
 
-    canonical = repo.load_state(state)
+    canonical = repo.load_state(state, thread_mode=ThreadMode.conversation)
 
     assert canonical.session.session_id == "s-real"
     assert canonical.session.user_id == "u-real"
@@ -302,6 +307,18 @@ def test_load_state_fallback_keeps_session_identity_on_corruption():
 def test_load_state_fallback_uses_pending_only_when_session_identity_missing():
     fallback = flow._default_canonical_state(session_state=None)
     assert fallback.session.session_id == "pending_session"
+
+
+def test_load_state_fallback_preserves_requested_thread_mode_previous_response_id():
+    repo = flow.StateRepository(memory_key="negotiation_canonical")
+    state = SessionState(user_id="u-real", session_id="s-real")
+    state.world_state["negotiation_canonical"] = {"broken": True}
+
+    canonical = repo.load_state(state, thread_mode=ThreadMode.previous_response_id)
+
+    assert canonical.openai_thread.thread_mode == ThreadMode.previous_response_id
+    assert canonical.session.session_id == "s-real"
+    assert canonical.session.user_id == "u-real"
 
 
 # ensure_openai_thread
@@ -428,6 +445,90 @@ def test_trace_last_refusals_includes_domain_guardrail(monkeypatch):
     refusals = updated.world_state[config.memory_key]["trace"]["last_refusals"]
     assert "domain_restriction:medical" in refusals
     assert "optional_domain_guardrail" in refusals
+
+
+def test_trace_meta_is_node_specific_in_pipeline_payloads(monkeypatch):
+    config = flow.build_negotiation_pipeline_config()
+    state = SessionState(user_id="u1", session_id="s-trace-meta")
+    fake = _FakeClient(mode="happy", phase="propuesta_creativa")
+    monkeypatch.setattr(flow, "_build_client", lambda: fake)
+
+    flow.run_negotiation_cognitive_turn(state, "mensaje", config)
+
+    calls = fake.responses.calls
+    names = [c["text"]["format"]["name"] for c in calls]
+    assert names == ["MemoryOutput", "PhaseClassifierOutput", "PlannerOutput", "ExecutorOutput"]
+
+    memory_meta = _trace_meta_from_call(calls[0])
+    phase_meta = _trace_meta_from_call(calls[1])
+    planner_meta = _trace_meta_from_call(calls[2])
+    executor_meta = _trace_meta_from_call(calls[3])
+
+    assert memory_meta["prompt_version"] == config.prompt_version_memory
+    assert memory_meta["schema_version"] == "memory_input.v1"
+    assert memory_meta["model_target"] == config.model_memory
+
+    assert phase_meta["prompt_version"] == config.prompt_version_phase_classifier
+    assert phase_meta["schema_version"] == flow.PHASE_CLASSIFIER_INPUT_SCHEMA_VERSION
+    assert phase_meta["model_target"] == config.model_phase_classifier
+
+    assert planner_meta["prompt_version"] == config.prompt_version_planner
+    assert planner_meta["schema_version"] == "planner_input.v1"
+    assert planner_meta["model_target"] == config.model_planner
+
+    assert executor_meta["prompt_version"] == config.prompt_version_executor
+    assert executor_meta["schema_version"] == "executor_input.v1"
+    assert executor_meta["model_target"] == config.model_executor
+
+    turn_ids = {memory_meta["turn_id"], phase_meta["turn_id"], planner_meta["turn_id"], executor_meta["turn_id"]}
+    assert len(turn_ids) == 1
+
+
+def test_trace_meta_non_memory_nodes_do_not_inherit_memory_values(monkeypatch):
+    config = flow.build_negotiation_pipeline_config()
+    state = SessionState(user_id="u1", session_id="s-trace-meta-no-inherit")
+    fake = _FakeClient(mode="happy", phase="propuesta_creativa")
+    monkeypatch.setattr(flow, "_build_client", lambda: fake)
+
+    flow.run_negotiation_cognitive_turn(state, "mensaje", config)
+
+    phase_meta = _trace_meta_from_call(fake.responses.calls[1])
+    planner_meta = _trace_meta_from_call(fake.responses.calls[2])
+    executor_meta = _trace_meta_from_call(fake.responses.calls[3])
+
+    assert phase_meta["prompt_version"] != config.prompt_version_memory
+    assert phase_meta["schema_version"] != "memory_input.v1"
+    assert phase_meta["model_target"] != config.model_memory
+
+    assert planner_meta["prompt_version"] != config.prompt_version_memory
+    assert planner_meta["schema_version"] != "memory_input.v1"
+    assert planner_meta["model_target"] != config.model_memory
+
+    assert executor_meta["prompt_version"] != config.prompt_version_memory
+    assert executor_meta["schema_version"] != "memory_input.v1"
+    assert executor_meta["model_target"] != config.model_memory
+
+
+def test_e2e_previous_response_id_corrupt_state_preserves_mode_and_node_trace_meta(monkeypatch):
+    config = flow.build_negotiation_pipeline_config()
+    config.thread_mode_default = ThreadMode.previous_response_id
+    state = SessionState(user_id="u-real", session_id="s-real")
+    state.world_state[config.memory_key] = {"corrupt": True}
+    fake = _FakeClient(mode="happy", phase="descubrimiento_y_comprension")
+    monkeypatch.setattr(flow, "_build_client", lambda: fake)
+
+    flow.run_negotiation_cognitive_turn(state, "mensaje", config)
+
+    canonical = state.world_state[config.memory_key]
+    assert canonical["openai_thread"]["thread_mode"] == ThreadMode.previous_response_id.value
+    assert canonical["session"]["session_id"] == "s-real"
+    assert canonical["session"]["user_id"] == "u-real"
+
+    metas = [_trace_meta_from_call(c) for c in fake.responses.calls]
+    assert metas[0]["schema_version"] == "memory_input.v1"
+    assert metas[1]["schema_version"] == flow.PHASE_CLASSIFIER_INPUT_SCHEMA_VERSION
+    assert metas[2]["schema_version"] == "planner_input.v1"
+    assert metas[3]["schema_version"] == "executor_input.v1"
 
 
 def test_threading_conversation_keeps_parallelizable_memory_and_phase(monkeypatch):

@@ -57,6 +57,7 @@ from .shared_types import (
 logger = logging.getLogger(__name__)
 
 OPENAI_MIN_VERSION = "1.40.0"
+PHASE_CLASSIFIER_INPUT_SCHEMA_VERSION = "phase_classifier_input.v1"
 
 
 class InputSummary(BaseModel):
@@ -212,7 +213,7 @@ NEGOTIATION_FLOW_DETAILS: FlowDetails = {
 class StateRepository:
     memory_key: str
 
-    def load_state(self, session_state: SessionState) -> CanonicalState:
+    def load_state(self, session_state: SessionState, thread_mode: ThreadMode) -> CanonicalState:
         raw = session_state.world_state.get(self.memory_key, {}) if isinstance(session_state.world_state, dict) else {}
         if isinstance(raw, dict):
             try:
@@ -225,7 +226,7 @@ class StateRepository:
                 )
         else:
             logger.error("canonical_state_invalid_type memory_key=%s raw_type=%s fallback=default_state", self.memory_key, type(raw).__name__)
-        return _default_canonical_state(session_state=session_state)
+        return _default_canonical_state(session_state=session_state, thread_mode=thread_mode)
 
     def save_state(self, session_state: SessionState, canonical_state: CanonicalState) -> None:
         session_state.world_state[self.memory_key] = canonical_state.model_dump(mode="json")
@@ -816,12 +817,15 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
     sdk_info = check_openai_sdk_compatibility(strict=config.enforce_sdk_compatibility)
 
     repo = StateRepository(memory_key=config.memory_key)
-    canonical_state = repo.load_state(state)
+    canonical_state = repo.load_state(state, thread_mode=config.thread_mode_default)
     recent_dialogue = repo.load_recent_dialogue(state)
 
     turn_id = str(uuid.uuid4())
     now_iso = datetime.now(timezone.utc).isoformat()
-    trace_meta = TraceMeta(turn_id=turn_id, prompt_version=config.prompt_version_memory, schema_version="memory_input.v1", model_target=config.model_memory)
+    memory_trace_meta = TraceMeta(turn_id=turn_id, prompt_version=config.prompt_version_memory, schema_version="memory_input.v1", model_target=config.model_memory)
+    phase_trace_meta = TraceMeta(turn_id=turn_id, prompt_version=config.prompt_version_phase_classifier, schema_version=PHASE_CLASSIFIER_INPUT_SCHEMA_VERSION, model_target=config.model_phase_classifier)
+    planner_trace_meta = TraceMeta(turn_id=turn_id, prompt_version=config.prompt_version_planner, schema_version="planner_input.v1", model_target=config.model_planner)
+    executor_trace_meta = TraceMeta(turn_id=turn_id, prompt_version=config.prompt_version_executor, schema_version="executor_input.v1", model_target=config.model_executor)
     user_turn = _build_user_turn(user_message, now_iso)
 
     add_message(state, role="user", content=user_message)
@@ -839,8 +843,8 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
     logs: List[NodeTraceLog] = []
     safety_policy = _safety_policy(config)
 
-    memory_input = build_memory_input(canonical_state, recent_dialogue, user_turn, trace_meta)
-    phase_input = build_phase_input(canonical_state, recent_dialogue, user_turn, trace_meta)
+    memory_input = build_memory_input(canonical_state, recent_dialogue, user_turn, memory_trace_meta)
+    phase_input = build_phase_input(canonical_state, recent_dialogue, user_turn, phase_trace_meta)
     mem_call, mem_latency, phase_call, phase_latency, request_context = _execute_memory_and_phase(
         client=client,
         config=config,
@@ -860,7 +864,7 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
     logs.append(_build_trace_log(NodeName.memory, config.model_memory, config.prompt_version_memory, memory_patch.schema_version, mem_latency, _trace_input_summary(memory_input.recent_dialogue_short, user_turn), "applied", mem_call, None))
     logs.append(_build_trace_log(NodeName.phase_classifier, config.model_phase_classifier, config.prompt_version_phase_classifier, "phase_classifier_output_v1", phase_latency, _trace_input_summary(phase_input.recent_turns, user_turn), phase_output.current_phase.value, phase_call, None))
 
-    planner_input = build_planner_input(canonical_state, recent_dialogue, user_turn, trace_meta)
+    planner_input = build_planner_input(canonical_state, recent_dialogue, user_turn, planner_trace_meta)
     plan_start = time.perf_counter()
     planner_call = _call_structured(client, config.model_planner, build_planner_messages(planner_prompt, planner_input), PlannerOutput, config.reasoning_effort_planner, request_context, config.planner_store)
     planner_output = _planner_fallback()
@@ -876,7 +880,7 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
     request_context = refresh_request_context(client, canonical_state, config.thread_mode_default)
     logs.append(_build_trace_log(NodeName.planner, config.model_planner, config.prompt_version_planner, planner_output.schema_version, plan_latency, _trace_input_summary(planner_input.recent_dialogue_short, user_turn), planner_output.status, planner_call, None))
 
-    executor_input = build_executor_input(canonical_state, recent_dialogue, planner_output, user_turn, trace_meta, config.max_executor_recent_turns)
+    executor_input = build_executor_input(canonical_state, recent_dialogue, planner_output, user_turn, executor_trace_meta, config.max_executor_recent_turns)
     exe_start = time.perf_counter()
     executor_call = _call_structured(client, config.model_executor, build_executor_messages(executor_prompt, executor_input), ExecutorOutput, "low", request_context, config.executor_store)
     executor_output = _executor_fallback(planner_output)

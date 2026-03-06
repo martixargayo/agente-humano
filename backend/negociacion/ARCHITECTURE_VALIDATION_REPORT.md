@@ -1,123 +1,81 @@
 # Architecture Validation Report
 
-## Correcciones implementadas en esta intervención
+## Intervención actual (limitada)
 
-### 1) `flow_config.py`: endurecimiento del wiring sin rediseño
-Se mantuvo `flow_config.py` como orquestador, pero se hicieron ajustes concretos para bajar riesgo operativo:
+Esta intervención corrige **dos problemas concretos** y regenera snapshots:
 
-- Se eliminaron piezas redundantes/no usadas (`_resolve_structured_result` y su `TypeVar` asociado).
-- Se agregó helper explícito para ejecutar memory+phase por modo de threading: `_execute_memory_and_phase(...)`.
-- Se separó la resolución de outputs de memory y phase en helpers dedicados:
-  - `_resolve_memory_call_result(...)`
-  - `_resolve_phase_call_result(...)`
-- Se agregó recolección de razones de rechazo/seguridad con deduplicación:
-  - `_append_unique_reason(...)`
-  - `_collect_last_refusals(...)`
+1. `TraceMeta` por nodo (antes se reutilizaba el de memory en todos los nodos).
+2. Fallback del canónico preservando también `thread_mode` esperado del flujo.
+3. Regeneración limpia de `docs/code_snapshot_current/`.
 
-Resultado: el wiring crítico (llamadas memory/phase, aplicación de outputs, contexto OpenAI y trazabilidad de refusals) queda explícito y verificable por tests.
+## 1) Corrección de `TraceMeta` por nodo
 
-### 2) Bug de `previous_response_id` + paralelización
-Se corrigió de forma explícita:
+### Problema previo
+El pipeline construía un único `TraceMeta` con:
+- `prompt_version_memory`
+- `schema_version="memory_input.v1"`
+- `model_memory`
 
-- `ThreadMode.conversation`: memory + phase classifier siguen en paralelo.
-- `ThreadMode.previous_response_id`: memory y phase classifier se ejecutan en secuencia deliberada para no compartir parent ambiguo.
+Y lo enviaba también a phase/planner/executor, dejando trazabilidad de payload incorrecta.
 
-Cadena determinista en `previous_response_id`:
-1. call memory con parent actual
-2. update thread con response memory
-3. refresh context
-4. call phase classifier con nuevo parent
-5. update thread con response phase
-6. refresh context
+### Corrección aplicada
+Ahora se crean y cablean **cuatro** metas explícitos por turno:
+- `memory_trace_meta`
+- `phase_trace_meta`
+- `planner_trace_meta`
+- `executor_trace_meta`
 
-Esto evita forks implícitos sobre el mismo `previous_response_id`.
+Con valores correctos por nodo (mismo `turn_id`, pero `prompt_version`, `schema_version`, `model_target` propios).
 
-### 3) `trace.last_refusals` completo y honesto
-Antes solo recogía refusals de logs de modelo.
-Ahora `last_refusals` agrega y deduplica:
+Se definió constante explícita para input de phase classifier:
+- `PHASE_CLASSIFIER_INPUT_SCHEMA_VERSION = "phase_classifier_input.v1"`
 
-1. refusal de modelo (si existe)
-2. `executor_output.refusal_reason` final (si existe)
-3. razón de intervención de guardrail (`enforcement_reason`) cuando aplica
+## 2) Corrección de fallback canónico con `thread_mode`
 
-Esto cubre tanto refusals directos como reescrituras/restricciones de seguridad.
+### Problema previo
+Si `load_state()` fallaba por estado corrupto/inválido, el fallback reconstruía canónico sin respetar de forma explícita el `thread_mode` esperado por el flujo.
 
-### 4) Fallback de `StateRepository.load_state()` conserva identidad real
-Se corrigió el fallback para estado canónico corrupto/inválido:
+### Corrección aplicada
+- `StateRepository.load_state(...)` ahora recibe `thread_mode` esperado.
+- El fallback `_default_canonical_state(...)` se invoca con ese `thread_mode`.
+- El pipeline pasa `config.thread_mode_default` al cargar estado.
 
-- Ya no reconstruye siempre con `pending_session`.
-- Usa `session_state.session_id` y `session_state.user_id` cuando existen.
-- `pending_session` queda solo para casos sin identidad disponible.
+Resultado:
+- si el flujo usa `conversation`, fallback reconstruye en `conversation`.
+- si el flujo usa `previous_response_id`, fallback reconstruye en `previous_response_id`.
 
-### 5) `ensure_openai_thread()` simplificado (sin fallback fantasma)
-Se limpió la lógica redundante basada en `or mode_default`.
+Además se mantiene preservación de identidad (`session_id`, `user_id`).
 
-- El modo efectivo se toma del canónico válido (`canonical_state.openai_thread.thread_mode`).
-- Se mantiene bootstrap de conversación solo cuando corresponde.
-- En `previous_response_id` no se resetea modo ni parent por configuración externa.
+## 3) Tests añadidos/ajustados
 
-### 6) Limpieza real de `shared_types.py`
-Se auditó uso y se eliminaron enums no usados en la arquitectura actual:
-
-- `PlannerStatus`
-- `ExecutorStatus`
-- `ConversationAct`
-- `LengthBand`
-- `DirectnessLevel`
-- `InitiativeLevel`
-- `EmotionalIntensity`
-- `SafetyRiskLevel`
-
-Se mantuvieron los enums efectivamente usados por el flujo actual (`ThreadMode`, `NodeName`, `NegotiationPhase`, `SafetyPolicyAction`, `SafetyDomain`, `StyleTone`, `StructuredCallSource`, `SDKCompatibilityStatus`).
-
-## Validación ejecutada
-
-Suite principal actualizada:
+Archivo actualizado:
 - `backend/tests/test_negotiation_architecture_clean.py`
 
-Cobertura relevante añadida/reforzada:
+Cobertura nueva específica:
 
-1. **Threading / previous_response_id**
-   - paralelo permitido en `conversation`
-   - secuencial obligatorio en `previous_response_id`
-   - verificación de orden de llamadas y `request_context` por llamada
-   - encadenamiento determinista de `previous_response_id`
+1. `TraceMeta` por nodo
+- verifica payload `trace_meta` correcto para memory/phase/planner/executor.
+- verifica que phase/planner/executor **no heredan** valores de memory.
 
-2. **`trace.last_refusals`**
-   - refusal de modelo
-   - guardrail de rewrite
-   - refusal_reason final de executor
-   - guardrail de dominio
-   - deduplicación de razones repetidas
-   - vacío en happy path sin incidencias
+2. Fallback con `thread_mode`
+- fallback corrupto en `conversation` conserva modo.
+- fallback corrupto en `previous_response_id` conserva modo.
+- se preservan `session_id`/`user_id`.
 
-3. **Fallback de `load_state()`**
-   - conserva `session_id` y `user_id` reales en corrupción
-   - fallback `pending_session` solo cuando no hay identidad disponible
+3. E2E mínimo combinado
+- estado corrupto + config `previous_response_id`.
+- canónico reconstruido en `previous_response_id`.
+- payloads de los 4 nodos con `trace_meta` por nodo y schema correcto.
 
-4. **`ensure_openai_thread()`**
-   - conserva modo estable de estado válido
-   - bootstrap conversación cuando corresponde
+## 4) Regeneración de snapshots
 
-5. **`shared_types.py`**
-   - sin duplicados
-   - sin superficie legacy eliminada
-
-6. **E2E mínimo**
-   - happy path
-   - fallback sin cliente
-   - parse error path
-   - refusal path
-   - path con `previous_response_id`
-
-## Regeneración de snapshots
 Se eliminó y regeneró completamente:
-
 - `docs/code_snapshot_current/`
 
-El nuevo snapshot refleja el estado exacto actual post-corrección (sin arrastre de snapshots previos).
+El índice y archivos snapshot ahora reflejan el estado exacto post-intervención.
 
-## Huecos reales pendientes
-Sigue pendiente (ya marcado en código) la política final de selección/deduplicación de memoria episódica (`///` en `flow_config.py`).
+## Hueco real pendiente
 
-No se introdujeron shims ni compatibilidad falsa para ocultarlo.
+Sigue pendiente (ya marcado en código) la política final de selección/deduplicación de memoria episódica.
+
+No se introdujeron shims ni compatibilidad fake para ocultarlo.
