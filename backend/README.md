@@ -18,10 +18,26 @@ Sistema IA con OpenAI Responses API para agente humano conversacional (chat + ne
 
 - Dependencias Python: `backend/requirements.txt`.
 - Variables de entorno de integración: usa `backend/.env.example` como plantilla.
-- **Importante:** la configuración de modelos del pipeline conversacional (chat/negociación) está definida en código en cada nodo:
-  - `backend/chat/pipeline.py`
-  - `backend/negociacion/pipeline.py`
+- **Importante:** la configuración de cada flujo (orden de LLMs, modelos y límites) ahora está definida en:
+  - `backend/chat/flow_config.py`
+  - `backend/negociacion/flow_config.py`
 
+
+
+## Dónde está definida la secuencia de LLMs (orden + modelo)
+
+La secuencia y el orden están centralizados en `backend/openai_production/engine.py`, dentro de `run_three_llm_turn(...)`.
+Ese flujo ejecuta siempre este orden por turno:
+
+1. `SummarizerNode`
+2. `PlannerNode`
+3. `ExecutorNode`
+
+La selección de modelo, el orden de nodos y límites por dominio se define en:
+- `backend/chat/flow_config.py` (`CHAT_FLOW_DETAILS`)
+- `backend/negociacion/flow_config.py` (`NEGOTIATION_FLOW_DETAILS`)
+
+Cada pipeline (`backend/chat/pipeline.py`, `backend/negociacion/pipeline.py`) solo construye la configuración con `build_*_pipeline_config()` y se la pasa al motor común `run_three_llm_turn(...)`.
 
 ## Diagnóstico de errores en `app.py` y `openai_production/engine.py`
 
