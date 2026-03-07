@@ -29,7 +29,7 @@ from ..nodes.executor_node import (
     ExecutorResponseLimits,
     ExecutorTaskContract,
 )
-from ..nodes.memory_node import DialogueMessage as MemoryDialogueMessage, MemoryEpisode, MemoryInput, MemoryOutput, MemoryTaskContract, MemoryWorking as MemoryWorkingOutput, TraceMeta, UserTurn
+from ..nodes.memory_node import DialogueMessage as MemoryDialogueMessage, MemoryInput, MemoryOutput, MemoryTaskContract, MemoryWorking as MemoryWorkingOutput, TraceMeta, UserTurn
 from ..nodes.phase_classifier_node import (
     PhaseClassifierInput,
     PhaseClassifierOutput,
@@ -342,7 +342,16 @@ def build_memory_input(canonical_state: CanonicalState, recent_dialogue: Sequenc
     # /// episodic selection window remains provisional until memory retention policy is finalized.
     return MemoryInput(
         schema_version="memory_input.v1",
-        task_contract=MemoryTaskContract(node_name="memory", objective="actualizar memoria episódica y de trabajo", success_definition="emitir MemoryOutput mínimo y factual"),
+        task_contract=MemoryTaskContract(
+            node_name="memory",
+            objective="actualizar memoria episódica y memoria de trabajo",
+            completion_criteria=[
+                "episodic_append contiene solo eventos nuevos, relevantes y no duplicados",
+                "working_memory_new viene completo y factual",
+                "la salida cumple exactamente el schema MemoryOutput",
+            ],
+            output_schema_version="memory.v1",
+        ),
         user_turn=user_turn,
         recent_dialogue_short=_compact_recent(recent_dialogue, 8),
         memory_working_current=canonical_state.memory_working,
@@ -395,7 +404,15 @@ def build_executor_input(canonical_state: CanonicalState, recent_dialogue: Seque
 
 
 def build_memory_messages(memory_prompt: str, payload: MemoryInput) -> List[dict[str, str]]:
-    return [{"role": "developer", "content": memory_prompt}, {"role": "user", "content": payload.model_dump_json()}]
+    return [
+        {"role": "developer", "content": memory_prompt},
+        {
+            "role": "user",
+            "content": "<task_input>\nDevuelve solo JSON válido para `MemoryOutput`.\n\n<memory_input_json>\n"
+            f"{payload.model_dump_json()}\n"
+            "</memory_input_json>\n</task_input>",
+        },
+    ]
 
 
 def build_planner_messages(planner_prompt: str, payload: PlannerInput) -> List[dict[str, str]]:
@@ -550,7 +567,7 @@ def apply_memory_output_to_state(canonical_state: CanonicalState, output: Memory
     # updated by memory node
     # /// final deduplication policy depends on unresolved memory selection policy.
     canonical_state.memory_episodic.extend(
-        [MemoryEpisodicItem(event_type=item.event_type, event_summary=item.summary, turn_id=item.turn_id) for item in output.episodic_append]
+        [MemoryEpisodicItem(event_type=item.event_type, event_summary=item.event_summary, turn_id=item.turn_id) for item in output.episodic_append]
     )
     # refreshed each turn from memory output
     canonical_state.memory_working.current_topic = output.working_memory_new.current_topic
