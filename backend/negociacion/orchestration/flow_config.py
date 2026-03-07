@@ -230,6 +230,7 @@ class StateRepository:
         return _default_canonical_state(session_state=session_state, thread_mode=thread_mode)
 
     def save_state(self, session_state: SessionState, canonical_state: CanonicalState) -> None:
+        canonical_state.session.updated_at = datetime.now(timezone.utc).isoformat()
         session_state.world_state[self.memory_key] = canonical_state.model_dump(mode="json")
 
     def load_recent_dialogue(self, session_state: SessionState) -> List[MemoryDialogueMessage]:
