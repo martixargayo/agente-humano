@@ -9,9 +9,8 @@ from .memory_node import DialogueMessage, TraceMeta, UserTurn
 from ..state.shared_types import NegotiationPhase
 
 PlannerDecision = Literal[
-    "none",
     "hold",
-    "clarify",
+    "ask",
     "counter",
     "accept",
     "reject",
@@ -23,7 +22,8 @@ class PlannerTaskContract(BaseModel):
     model_config = ConfigDict(extra="forbid")
     node_name: Literal["planner"]
     objective: str
-    success_definition: str
+    completion_criteria: list[str]
+    output_schema_version: Literal["planner.v3"]
 
 
 class PhaseCard(BaseModel):

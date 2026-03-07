@@ -1,11 +1,25 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from .shared_types import NegotiationPhase, StyleTone, ThreadMode
+
+
+def _load_persona_defaults() -> dict[str, dict[str, object]]:
+    path = Path(__file__).resolve().parent.parent / "prompts" / "persona.json"
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError("persona.json debe ser un objeto JSON")
+    policy = raw.get("policy")
+    expressive = raw.get("expressive")
+    if not isinstance(policy, dict) or not isinstance(expressive, dict):
+        raise ValueError("persona.json debe contener 'policy' y 'expressive' como objetos")
+    return {"policy": policy, "expressive": expressive}
 
 
 class SessionMeta(BaseModel):
@@ -132,13 +146,8 @@ def build_default_canonical_state(
         ),
         openai_thread=OpenAIThreadState(thread_mode=thread_mode, conversation_id=None, previous_response_id=None),
         persona=PersonaState(
-            policy=PersonaPolicy(
-                role_identity="negociador",
-                negotiation_goal="avanzar negociación con claridad",
-                question_strategy="minimal",
-                allow_topic_shift=False,
-            ),
-            expressive=PersonaExpressive(tone=StyleTone.neutral, lexical_style="plain", max_sentences_default=4),
+            policy=PersonaPolicy.model_validate(_load_persona_defaults()["policy"]),
+            expressive=PersonaExpressive.model_validate(_load_persona_defaults()["expressive"]),
         ),
         memory_episodic=[],
         memory_working=MemoryWorkingState(current_topic=None, pending_question=None, last_turn_summary=None),

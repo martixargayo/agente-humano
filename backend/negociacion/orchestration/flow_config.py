@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from importlib import metadata
 from pathlib import Path
-from typing import List, Sequence, Tuple, TypedDict
+from typing import List, Literal, Sequence, Tuple, TypedDict
 
 import openai
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -341,6 +341,7 @@ def _load_phase_cards(prompts_dir: str) -> dict[NegotiationPhase, str]:
     return cards
 
 
+
 def _recent_phase_history(canonical_state: CanonicalState) -> List[NegotiationPhase]:
     items: List[NegotiationPhase] = []
     if canonical_state.planner_state.previous_phase is not None:
@@ -406,7 +407,17 @@ def build_planner_input(canonical_state: CanonicalState, recent_dialogue: Sequen
     # /// La selección de phase_card la hace código (lookup por fase), no el modelo planner.
     return PlannerInput(
         schema_version="planner_input.v1",
-        task_contract=PlannerTaskContract(node_name="planner", objective="decidir el próximo turno", success_definition="devolver plan mínimo ejecutable sin texto final"),
+        task_contract=PlannerTaskContract(
+            node_name="planner",
+            objective="decidir el mejor plan táctico del siguiente turno",
+            completion_criteria=[
+                "el objetivo del turno es claro",
+                "la decisión táctica es coherente con la fase actual",
+                "el plan es compacto y ejecutable",
+                "la salida cumple exactamente el schema PlannerOutput",
+            ],
+            output_schema_version="planner.v3",
+        ),
         persona_policy=canonical_state.persona.policy,
         current_phase=current_phase,
         phase_card=phase_card,
@@ -456,7 +467,15 @@ def build_memory_messages(memory_prompt: str, payload: MemoryInput) -> List[dict
 
 
 def build_planner_messages(planner_prompt: str, payload: PlannerInput) -> List[dict[str, str]]:
-    return [{"role": "developer", "content": planner_prompt}, {"role": "user", "content": payload.model_dump_json()}]
+    return [
+        {"role": "developer", "content": planner_prompt},
+        {
+            "role": "user",
+            "content": "<task_input>\nDevuelve solo JSON válido para `PlannerOutput`.\n\n<planner_input_json>\n"
+            f"{payload.model_dump_json()}\n"
+            "</planner_input_json>\n</task_input>",
+        },
+    ]
 
 
 def build_phase_classifier_messages_payload(phase_classifier_prompt: str, payload: PhaseClassifierInput) -> List[dict[str, str]]:
@@ -832,18 +851,20 @@ def _phase_classifier_fallback(previous_phase: NegotiationPhase | None) -> Phase
     return PhaseClassifierOutput(schema_version=PHASE_CLASSIFIER_OUTPUT_SCHEMA_VERSION, current_phase=previous_phase or NegotiationPhase.clima_humano)
 
 
-def _planner_fallback(status: str = "plan", refusal_reason: str | None = None) -> PlannerOutput:
-    decision = "none" if status == "plan" else "clarify" if status == "clarify" else "reject"
-    note = "rechazo" if status == "refuse" else "aclaración" if status == "clarify" else "respuesta"
+def _planner_fallback(status: Literal["clarify", "refuse"] = "clarify", refusal_reason: str | None = None) -> PlannerOutput:
+    _ = refusal_reason
+    decision = "ask" if status == "clarify" else "hold"
+    turn_goal = "pedir dato mínimo para continuar" if status == "clarify" else "declinar bajo reglas vigentes"
+    done = "aclaración_minima_emitida" if status == "clarify" else "negativa_emitida"
     return PlannerOutput(
         schema_version="planner.v3",
         status=status,
-        turn_goal="responder con claridad",
+        turn_goal=turn_goal,
         decision=decision,
-        content_plan=PlannerContentPlan(must_include=["una respuesta útil"], must_avoid=["inventar hechos"]),
-        limits=PlannerLimits(max_sentences=4, max_questions=1, allow_topic_shift=False, allow_personal_disclosure=False),
+        content_plan=PlannerContentPlan(must_include=["movimiento táctico conservador"], must_avoid=["inventar hechos"]),
+        limits=PlannerLimits(max_sentences=3, max_questions=1, allow_topic_shift=False, allow_personal_disclosure=False),
         memory_targets=[],
-        done_criteria=[f"{note}_emitida"],
+        done_criteria=[done],
     )
 
 
