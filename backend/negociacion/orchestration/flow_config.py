@@ -58,6 +58,7 @@ logger = logging.getLogger(__name__)
 
 OPENAI_MIN_VERSION = "1.40.0"
 PHASE_CLASSIFIER_INPUT_SCHEMA_VERSION = "phase_classifier_input.v1"
+PHASE_CLASSIFIER_OUTPUT_SCHEMA_VERSION = "phase_classifier.v1"
 
 
 class InputSummary(BaseModel):
@@ -296,13 +297,48 @@ def _compact_recent(recent: Sequence[MemoryDialogueMessage], max_messages: int) 
     return list(recent[-max_messages:])
 
 
-PHASE_CARDS: dict[NegotiationPhase, str] = {
-    NegotiationPhase.clima_humano: "Prioriza vínculo humano breve y transición natural hacia señales de negociación.",
-    NegotiationPhase.descubrimiento_y_comprension: "Aclara variables, restricciones y contexto antes de empujar una propuesta.",
-    NegotiationPhase.propuesta_creativa: "Estructura una propuesta concreta con opciones razonables y lenguaje claro.",
-    NegotiationPhase.concesiones_y_ajuste_final: "Gestiona concesiones/contraofertas para acercar posiciones y reducir fricción.",
-    NegotiationPhase.formalizacion_del_acuerdo: "Confirma términos finales y siguiente paso operativo para cerrar acuerdo.",
-}
+def _load_phase_cards(prompts_dir: str) -> dict[NegotiationPhase, str]:
+    path = Path(prompts_dir) / "phase_cards.json"
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {
+            NegotiationPhase.clima_humano: "Placeholder: generar clima humano y transición suave.",
+            NegotiationPhase.descubrimiento_y_comprension: "Placeholder: descubrir variables y restricciones.",
+            NegotiationPhase.propuesta_creativa: "Placeholder: plantear propuesta concreta inicial.",
+            NegotiationPhase.concesiones_y_ajuste_final: "Placeholder: ajustar con concesiones y condiciones.",
+            NegotiationPhase.formalizacion_del_acuerdo: "Placeholder: confirmar cierre y próximos pasos.",
+        }
+
+    cards: dict[NegotiationPhase, str] = {}
+    for phase in NegotiationPhase:
+        phase_raw = raw.get(phase.value, {}) if isinstance(raw, dict) else {}
+        if not isinstance(phase_raw, dict):
+            phase_raw = {}
+        objective = str(phase_raw.get("objective", "")).strip()
+        normal_moves = phase_raw.get("normal_moves", [])
+        stay_in_phase_when = phase_raw.get("stay_in_phase_when", [])
+        exit_phase_when = phase_raw.get("exit_phase_when", [])
+
+        def _as_list(v: object) -> list[str]:
+            if not isinstance(v, list):
+                return []
+            return [str(x).strip() for x in v if str(x).strip()]
+
+        segments: list[str] = []
+        if objective:
+            segments.append(f"Objetivo: {objective}")
+        moves = _as_list(normal_moves)
+        if moves:
+            segments.append("Movimientos: " + "; ".join(moves))
+        stay = _as_list(stay_in_phase_when)
+        if stay:
+            segments.append("Permanecer: " + "; ".join(stay))
+        exit_rules = _as_list(exit_phase_when)
+        if exit_rules:
+            segments.append("Salir cuando: " + "; ".join(exit_rules))
+        cards[phase] = " | ".join(segments) or "Placeholder de phase card."
+    return cards
 
 
 def _recent_phase_history(canonical_state: CanonicalState) -> List[NegotiationPhase]:
@@ -314,15 +350,19 @@ def _recent_phase_history(canonical_state: CanonicalState) -> List[NegotiationPh
     return items[-4:]
 
 
-def _select_phase_card(current_phase: NegotiationPhase) -> PhaseCard:
-    return PhaseCard(phase=current_phase, guidance=PHASE_CARDS[current_phase])
+def _select_phase_card(current_phase: NegotiationPhase, phase_cards: dict[NegotiationPhase, str]) -> PhaseCard:
+    return PhaseCard(phase=current_phase, guidance=phase_cards[current_phase])
 
 
 def build_phase_input(canonical_state: CanonicalState, recent_dialogue: Sequence[MemoryDialogueMessage], user_turn: UserTurn, trace_meta: TraceMeta) -> PhaseClassifierInput:
+    short_recent = _compact_recent(recent_dialogue, 4)
+    if short_recent and short_recent[-1].role == "user" and short_recent[-1].text == user_turn.normalized_text:
+        short_recent = short_recent[:-1]
+
     return build_phase_classifier_input(
-        previous_phase=canonical_state.planner_state.previous_phase,
+        previous_phase=canonical_state.planner_state.current_phase,
         recent_phase_history=_recent_phase_history(canonical_state),
-        recent_turns=_compact_recent(recent_dialogue, 4),
+        recent_turns=short_recent,
         current_user_turn=user_turn,
         trace_meta=trace_meta,
     )
@@ -360,9 +400,9 @@ def build_memory_input(canonical_state: CanonicalState, recent_dialogue: Sequenc
     )
 
 
-def build_planner_input(canonical_state: CanonicalState, recent_dialogue: Sequence[MemoryDialogueMessage], user_turn: UserTurn, trace_meta: TraceMeta) -> PlannerInput:
+def build_planner_input(canonical_state: CanonicalState, recent_dialogue: Sequence[MemoryDialogueMessage], user_turn: UserTurn, trace_meta: TraceMeta, prompts_dir: str) -> PlannerInput:
     current_phase = canonical_state.planner_state.current_phase or NegotiationPhase.clima_humano
-    phase_card = _select_phase_card(current_phase)
+    phase_card = _select_phase_card(current_phase, _load_phase_cards(prompts_dir))
     # /// La selección de phase_card la hace código (lookup por fase), no el modelo planner.
     return PlannerInput(
         schema_version="planner_input.v1",
@@ -380,9 +420,9 @@ def build_planner_input(canonical_state: CanonicalState, recent_dialogue: Sequen
     )
 
 
-def build_executor_input(canonical_state: CanonicalState, recent_dialogue: Sequence[MemoryDialogueMessage], planner_output: PlannerOutput, user_turn: UserTurn, trace_meta: TraceMeta, max_recent_turns: int) -> ExecutorInput:
+def build_executor_input(canonical_state: CanonicalState, recent_dialogue: Sequence[MemoryDialogueMessage], planner_output: PlannerOutput, user_turn: UserTurn, trace_meta: TraceMeta, max_recent_turns: int, prompts_dir: str) -> ExecutorInput:
     current_phase = canonical_state.planner_state.current_phase or NegotiationPhase.clima_humano
-    phase_card = _select_phase_card(current_phase)
+    phase_card = _select_phase_card(current_phase, _load_phase_cards(prompts_dir))
     return ExecutorInput(
         schema_version="executor_input.v1",
         task_contract=ExecutorTaskContract(node_name="executor", objective="realizar planner_output sin replanificar", success_definition="respuesta natural dentro de límites"),
@@ -789,7 +829,7 @@ def _memory_fallback(canonical_state: CanonicalState, turn_id: str) -> MemoryOut
 
 
 def _phase_classifier_fallback(previous_phase: NegotiationPhase | None) -> PhaseClassifierOutput:
-    return PhaseClassifierOutput(current_phase=previous_phase or NegotiationPhase.clima_humano)
+    return PhaseClassifierOutput(schema_version=PHASE_CLASSIFIER_OUTPUT_SCHEMA_VERSION, current_phase=previous_phase or NegotiationPhase.clima_humano)
 
 
 def _planner_fallback(status: str = "plan", refusal_reason: str | None = None) -> PlannerOutput:
@@ -879,9 +919,9 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
     apply_memory_output_to_state(canonical_state, memory_patch)
     apply_phase_classifier_output_to_state(canonical_state, phase_output)
     logs.append(_build_trace_log(NodeName.memory, config.model_memory, config.prompt_version_memory, memory_patch.schema_version, mem_latency, _trace_input_summary(memory_input.recent_dialogue_short, user_turn), "applied", mem_call, None))
-    logs.append(_build_trace_log(NodeName.phase_classifier, config.model_phase_classifier, config.prompt_version_phase_classifier, "phase_classifier_output_v1", phase_latency, _trace_input_summary(phase_input.recent_turns, user_turn), phase_output.current_phase.value, phase_call, None))
+    logs.append(_build_trace_log(NodeName.phase_classifier, config.model_phase_classifier, config.prompt_version_phase_classifier, PHASE_CLASSIFIER_OUTPUT_SCHEMA_VERSION, phase_latency, _trace_input_summary(phase_input.recent_turns, user_turn), phase_output.current_phase.value, phase_call, None))
 
-    planner_input = build_planner_input(canonical_state, recent_dialogue, user_turn, planner_trace_meta)
+    planner_input = build_planner_input(canonical_state, recent_dialogue, user_turn, planner_trace_meta, config.prompts_dir)
     plan_start = time.perf_counter()
     planner_call = _call_structured(client, config.model_planner, build_planner_messages(planner_prompt, planner_input), PlannerOutput, config.reasoning_effort_planner, request_context, config.planner_store)
     planner_output = _planner_fallback()
@@ -897,7 +937,7 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
     request_context = refresh_request_context(client, canonical_state, config.thread_mode_default)
     logs.append(_build_trace_log(NodeName.planner, config.model_planner, config.prompt_version_planner, planner_output.schema_version, plan_latency, _trace_input_summary(planner_input.recent_dialogue_short, user_turn), planner_output.status, planner_call, None))
 
-    executor_input = build_executor_input(canonical_state, recent_dialogue, planner_output, user_turn, executor_trace_meta, config.max_executor_recent_turns)
+    executor_input = build_executor_input(canonical_state, recent_dialogue, planner_output, user_turn, executor_trace_meta, config.max_executor_recent_turns, config.prompts_dir)
     exe_start = time.perf_counter()
     executor_call = _call_structured(client, config.model_executor, build_executor_messages(executor_prompt, executor_input), ExecutorOutput, "low", request_context, config.executor_store)
     executor_output = _executor_fallback(planner_output)
@@ -930,7 +970,7 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
         prompt_version_planner=config.prompt_version_planner,
         prompt_version_executor=config.prompt_version_executor,
         schema_version_memory=memory_patch.schema_version,
-        schema_version_phase_classifier="phase_classifier_output_v1",
+        schema_version_phase_classifier=PHASE_CLASSIFIER_OUTPUT_SCHEMA_VERSION,
         schema_version_planner=planner_output.schema_version,
         schema_version_executor=executor_output.schema_version,
         sdk_compatibility=sdk_info,

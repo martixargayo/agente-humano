@@ -1,0 +1,74 @@
+{
+  "clima_humano": {
+    "phase_id": "clima_humano",
+    "objective": "Placeholder: establecer rapport breve y contexto de apertura.",
+    "normal_moves": [
+      "Validar tono y disposición",
+      "Hacer transición suave hacia tema central"
+    ],
+    "stay_in_phase_when": [
+      "Aún no hay señales de negociación concreta",
+      "Predomina conversación relacional"
+    ],
+    "exit_phase_when": [
+      "Aparecen variables o necesidades concretas"
+    ]
+  },
+  "descubrimiento_y_comprension": {
+    "phase_id": "descubrimiento_y_comprension",
+    "objective": "Placeholder: comprender variables, límites y prioridades.",
+    "normal_moves": [
+      "Aclarar contexto relevante",
+      "Identificar restricciones y objetivos"
+    ],
+    "stay_in_phase_when": [
+      "Faltan datos para proponer",
+      "Persisten dudas clave"
+    ],
+    "exit_phase_when": [
+      "Existe base suficiente para propuesta concreta"
+    ]
+  },
+  "propuesta_creativa": {
+    "phase_id": "propuesta_creativa",
+    "objective": "Placeholder: formular propuesta inicial concreta.",
+    "normal_moves": [
+      "Presentar opción principal",
+      "Ofrecer variantes razonables"
+    ],
+    "stay_in_phase_when": [
+      "Se está modelando propuesta sin regateo intenso"
+    ],
+    "exit_phase_when": [
+      "Comienzan ofertas y ajustes cruzados"
+    ]
+  },
+  "concesiones_y_ajuste_final": {
+    "phase_id": "concesiones_y_ajuste_final",
+    "objective": "Placeholder: acercar posiciones con ajustes y concesiones.",
+    "normal_moves": [
+      "Comparar términos",
+      "Intercambiar concesiones condicionales"
+    ],
+    "stay_in_phase_when": [
+      "Siguen activas contraofertas o condiciones de cierre"
+    ],
+    "exit_phase_when": [
+      "Las condiciones quedan prácticamente acordadas"
+    ]
+  },
+  "formalizacion_del_acuerdo": {
+    "phase_id": "formalizacion_del_acuerdo",
+    "objective": "Placeholder: confirmar cierre y operacionalización.",
+    "normal_moves": [
+      "Recapitular términos finales",
+      "Definir siguiente paso operativo"
+    ],
+    "stay_in_phase_when": [
+      "Se validan detalles finales de ejecución"
+    ],
+    "exit_phase_when": [
+      "El acuerdo queda cerrado y confirmado"
+    ]
+  }
+}
