@@ -1,11 +1,43 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from .shared_types import NegotiationPhase, StyleTone, ThreadMode
+
+
+EMERGENCY_PERSONA_DEFAULTS: dict[str, dict[str, object]] = {
+    "policy": {
+        "role_identity": "negociador_emergencia",
+        "negotiation_goal": "mantener continuidad operativa con seguridad",
+        "question_strategy": "minimal",
+        "allow_topic_shift": False,
+    },
+    "expressive": {
+        "tone": "neutral",
+        "lexical_style": "plain",
+        "max_sentences_default": 4,
+    },
+}
+
+
+def _load_persona_defaults() -> dict[str, dict[str, object]]:
+    path = Path(__file__).resolve().parent.parent / "prompts" / "persona.json"
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return EMERGENCY_PERSONA_DEFAULTS
+    if not isinstance(raw, dict):
+        return EMERGENCY_PERSONA_DEFAULTS
+    policy = raw.get("policy")
+    expressive = raw.get("expressive")
+    if not isinstance(policy, dict) or not isinstance(expressive, dict):
+        return EMERGENCY_PERSONA_DEFAULTS
+    return {"policy": policy, "expressive": expressive}
 
 
 class SessionMeta(BaseModel):
@@ -122,6 +154,7 @@ def build_default_canonical_state(
     now_iso: str | None = None,
 ) -> CanonicalState:
     timestamp = now_iso or datetime.now(timezone.utc).isoformat()
+    persona_defaults = _load_persona_defaults()
     return CanonicalState(
         session=SessionMeta(
             session_id=session_id,
@@ -132,13 +165,8 @@ def build_default_canonical_state(
         ),
         openai_thread=OpenAIThreadState(thread_mode=thread_mode, conversation_id=None, previous_response_id=None),
         persona=PersonaState(
-            policy=PersonaPolicy(
-                role_identity="negociador",
-                negotiation_goal="avanzar negociación con claridad",
-                question_strategy="minimal",
-                allow_topic_shift=False,
-            ),
-            expressive=PersonaExpressive(tone=StyleTone.neutral, lexical_style="plain", max_sentences_default=4),
+            policy=PersonaPolicy.model_validate(persona_defaults["policy"]),
+            expressive=PersonaExpressive.model_validate(persona_defaults["expressive"]),
         ),
         memory_episodic=[],
         memory_working=MemoryWorkingState(current_topic=None, pending_question=None, last_turn_summary=None),

@@ -225,7 +225,7 @@ def test_phase_cards_custom_prompts_dir_is_used_by_planner_and_executor(tmp_path
             "schema_version": "planner.v3",
             "status": "plan",
             "turn_goal": "g",
-            "decision": "none",
+            "decision": "hold",
             "content_plan": {"must_include": ["x"], "must_avoid": ["y"]},
             "limits": {
                 "max_sentences": 3,
