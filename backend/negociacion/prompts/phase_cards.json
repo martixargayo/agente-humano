@@ -1,74 +1,212 @@
 {
   "clima_humano": {
-    "phase_id": "clima_humano",
-    "objective": "Placeholder: establecer rapport breve y contexto de apertura.",
-    "normal_moves": [
-      "Validar tono y disposición",
-      "Hacer transición suave hacia tema central"
+    "phase": "clima_humano",
+    "phase_objective": "Mantener una interacción humana breve, situada y natural sin empujar la negociación antes de tiempo.",
+    "what_good_progress_looks_like": [
+      "La conversación gana comodidad, continuidad o permiso relacional sin forzar agenda.",
+      "Se responde bien a una pregunta social o personal del vendedor.",
+      "Se conserva naturalidad sin desviar el turno al coche si el vendedor no lo ha abierto."
     ],
-    "stay_in_phase_when": [
-      "Aún no hay señales de negociación concreta",
-      "Predomina conversación relacional"
+    "planner_bias": [
+      "Favorece movimientos mínimos y sociales, no negociadores.",
+      "Trata esta fase como control de ritmo y tono, no como obligación de sacar información.",
+      "Si el vendedor mezcla clima y contenido útil, prioriza responder lo útil sin perder naturalidad."
     ],
-    "exit_phase_when": [
-      "Aparecen variables o necesidades concretas"
+    "good_moves": [
+      "Responder de forma directa y humana a saludos, presentación o preguntas personales ligeras.",
+      "Validar breve y ceder iniciativa si el turno es puramente social.",
+      "Hacer un puente muy corto al tema del coche solo si el vendedor ya lo ha abierto claramente."
+    ],
+    "avoid": [
+      "Introducir coche, precio, estado, papeles u oferta por iniciativa propia si el vendedor sigue en social.",
+      "Forzar rapport de plantilla o preguntas por inercia.",
+      "Sonar teatral, misterioso, demasiado estratégico o artificial.",
+      "Convertir una pregunta personal en pivote negociador sin señal clara."
+    ],
+    "question_policy": {
+      "default_max_questions": 0,
+      "when_to_ask": [
+        "Solo si nace del turno y mejora claramente el flujo humano.",
+        "Como máximo una pregunta ligera y no negociadora."
+      ],
+      "when_not_to_ask": [
+        "Cuando basta con responder y cerrar natural.",
+        "Cuando la pregunta saldría de una plantilla de rapport y no del turno real."
+      ]
+    },
+    "valid_topics": [
+      "saludo natural y micro-rapport",
+      "respuesta a pregunta personal ligera",
+      "tono y continuidad de la interacción",
+      "puente humano breve al tema del coche solo si el vendedor lo abrió"
+    ],
+    "done_signals": [
+      "El turno queda respondido con naturalidad y sin empujar agenda.",
+      "La conversación sigue fluida y creíble.",
+      "No se introduce negociación si todavía no toca."
     ]
   },
   "descubrimiento_y_comprension": {
-    "phase_id": "descubrimiento_y_comprension",
-    "objective": "Placeholder: comprender variables, límites y prioridades.",
-    "normal_moves": [
-      "Aclarar contexto relevante",
-      "Identificar restricciones y objetivos"
+    "phase": "descubrimiento_y_comprension",
+    "phase_objective": "Reducir incertidumbre y entender las variables relevantes del Mustang y del trato sin convertir el turno en interrogatorio.",
+    "what_good_progress_looks_like": [
+      "Se obtiene o consolida una pieza útil de claridad sobre coche, contexto o condiciones.",
+      "Se avanza sobre un solo eje relevante por turno.",
+      "Se evita repreguntar lo ya suficientemente tratado o no disponible."
     ],
-    "stay_in_phase_when": [
-      "Faltan datos para proponer",
-      "Persisten dudas clave"
+    "planner_bias": [
+      "Favorece claridad mínima suficiente antes de pasar a proponer.",
+      "Prefiere foco estrecho: un dato útil por turno.",
+      "Si el vendedor ya ha dado contexto útil, valida y cambia de eje en vez de repetir."
     ],
-    "exit_phase_when": [
-      "Existe base suficiente para propuesta concreta"
+    "good_moves": [
+      "Elegir un único eje con valor decisional: estado, mantenimiento, documentación, motivo de venta, tiempos o condiciones básicas.",
+      "Usar movimientos que extraigan claridad sin sonar inquisitivos.",
+      "Condicionar suavemente el avance si falta una pieza importante."
+    ],
+    "avoid": [
+      "Hacer listas de preguntas o abrir varios frentes en el mismo turno.",
+      "Pedir fotos, documentos o acciones físicas.",
+      "Reabrir un tema ya cubierto o perseguir un dato que el vendedor no puede dar.",
+      "Pasar a números o cierre sin base mínima de claridad."
+    ],
+    "question_policy": {
+      "default_max_questions": 1,
+      "when_to_ask": [
+        "Solo si la pregunta desbloquea una decisión real.",
+        "Solo si no puedes avanzar mejor con validación, marco o condición."
+      ],
+      "when_not_to_ask": [
+        "Cuando el vendedor ya respondió suficiente para este eje.",
+        "Cuando la pregunta sería una reformulación de algo ya contestado."
+      ]
+    },
+    "valid_topics": [
+      "estado general actual del Mustang",
+      "mantenimiento y cuidados realizados",
+      "documentación y situación operativa básica",
+      "motivo de venta",
+      "urgencia y tiempos del vendedor",
+      "condiciones básicas que afectan al trato"
+    ],
+    "done_signals": [
+      "Se reduce una incertidumbre relevante.",
+      "El planner ya tiene mejor base para proponer o condicionar.",
+      "El turno no suena a interrogatorio ni deja frentes innecesarios abiertos."
     ]
   },
   "propuesta_creativa": {
-    "phase_id": "propuesta_creativa",
-    "objective": "Placeholder: formular propuesta inicial concreta.",
-    "normal_moves": [
-      "Presentar opción principal",
-      "Ofrecer variantes razonables"
+    "phase": "propuesta_creativa",
+    "phase_objective": "Transformar el interés en una propuesta concreta, coherente y negociable que acerque el acuerdo sin regalar valor.",
+    "what_good_progress_looks_like": [
+      "Se pone sobre la mesa una propuesta clara que el vendedor puede aceptar, rechazar o ajustar.",
+      "La propuesta intercambia valor de forma explícita y comprensible.",
+      "Se mueve el trato hacia una estructura más cerrable."
     ],
-    "stay_in_phase_when": [
-      "Se está modelando propuesta sin regateo intenso"
+    "planner_bias": [
+      "Favorece una sola propuesta principal por turno.",
+      "Prefiere tradeoff claro frente a petición unilateral.",
+      "Usa creatividad solo dentro del trato del coche: precio, papeles, entrega, garantías razonables, extras y comodidad operativa."
     ],
-    "exit_phase_when": [
-      "Comienzan ofertas y ajustes cruzados"
+    "good_moves": [
+      "Hacer una oferta única con reciprocidad visible.",
+      "Vincular mejora de precio a rapidez, certeza, flexibilidad o reparto de cargas.",
+      "Construir una opción concreta que reduzca fricción para ambas partes.",
+      "Usar dos opciones solo si hay bloqueo real y ambas son equivalentes para el comprador."
+    ],
+    "avoid": [
+      "Lanzar varias ofertas a la vez sin necesidad.",
+      "Pedir rebaja y además pedir más concesiones sin ofrecer nada a cambio.",
+      "Inventar extras, condiciones o bienes fuera del trato principal.",
+      "Usar creatividad opaca, ilegal o poco creíble."
+    ],
+    "question_policy": {
+      "default_max_questions": 0,
+      "when_to_ask": [
+        "Solo si una pregunta operativa desbloquea la aceptación o el ajuste de la propuesta."
+      ],
+      "when_not_to_ask": [
+        "Cuando puedes mover mejor con una propuesta declarativa o condicional.",
+        "Cuando la pregunta sustituiría a una propuesta que ya debería estar formulada."
+      ]
+    },
+    "valid_topics": [
+      "oferta única con tradeoff claro",
+      "precio a cambio de contrapartida operativa",
+      "papeleo y reparto de trámites",
+      "garantía razonable o reparto de riesgos",
+      "extras relevantes del coche",
+      "cierre rápido condicionado"
+    ],
+    "done_signals": [
+      "El vendedor tiene una propuesta concreta sobre la mesa.",
+      "La propuesta mejora precio, riesgo o compromiso sin ser one-sided.",
+      "El trato queda más cerca de una negociación fina o del cierre."
     ]
   },
   "concesiones_y_ajuste_final": {
-    "phase_id": "concesiones_y_ajuste_final",
-    "objective": "Placeholder: acercar posiciones con ajustes y concesiones.",
-    "normal_moves": [
-      "Comparar términos",
-      "Intercambiar concesiones condicionales"
+    "phase": "concesiones_y_ajuste_final",
+    "phase_objective": "Ajustar precio y condiciones con movimientos pequeños, condicionados y orientados a cerrar sin regalar margen.",
+    "what_good_progress_looks_like": [
+      "Se estrecha la distancia real entre posiciones.",
+      "Cada concesión obtiene una contrapartida clara.",
+      "El acuerdo queda más cerrable después del turno."
     ],
-    "stay_in_phase_when": [
-      "Siguen activas contraofertas o condiciones de cierre"
+    "planner_bias": [
+      "Favorece mejoras pequeñas y siempre condicionadas.",
+      "No acepta demasiado pronto si aún hay palanca razonable.",
+      "Si el precio no mejora, intenta ganar valor en otras monedas del trato."
     ],
-    "exit_phase_when": [
-      "Las condiciones quedan prácticamente acordadas"
+    "good_moves": [
+      "Contraoferta pequeña y defendible.",
+      "Subir o ceder solo a cambio de papeles, garantía, extras, entrega o certeza operativa.",
+      "Dar un último empujón elegante con condición de cierre.",
+      "Resolver un fleco concreto que bloquea el acuerdo."
+    ],
+    "avoid": [
+      "Concesiones gratis.",
+      "Volver a discovery largo cuando ya hay base suficiente.",
+      "Regatear infinitamente sin nueva palanca.",
+      "Justificar de más o sonar agresivo.",
+      "Reabrir ejes ya suficientemente resueltos."
+    ],
+    "question_policy": {
+      "default_max_questions": 1,
+      "when_to_ask": [
+        "Solo para confirmar una condición operativa que realmente acerque el cierre.",
+        "Solo si la confirmación no puede sustituirse mejor por una formulación condicional."
+      ],
+      "when_not_to_ask": [
+        "Cuando el movimiento puede expresarse como propuesta o condición declarativa.",
+        "Cuando la pregunta serviría solo para seguir regateando sin avanzar."
+      ]
+    },
+    "valid_topics": [
+      "contraoferta pequeña y condicionada",
+      "subo si tú haces X",
+      "precio frente a comodidad operativa",
+      "reparto final de costes o cargas",
+      "último ajuste para cerrar"
+    ],
+    "done_signals": [
+      "La distancia entre comprador y vendedor se reduce de forma real.",
+      "Cada cesión queda atada a una contrapartida.",
+      "Después del turno ya se vislumbra un cierre operativo cercano."
     ]
   },
   "formalizacion_del_acuerdo": {
-    "phase_id": "formalizacion_del_acuerdo",
-    "objective": "Placeholder: confirmar cierre y operacionalización.",
-    "normal_moves": [
-      "Recapitular términos finales",
-      "Definir siguiente paso operativo"
-    ],
-    "stay_in_phase_when": [
-      "Se validan detalles finales de ejecución"
-    ],
-    "exit_phase_when": [
-      "El acuerdo queda cerrado y confirmado"
-    ]
+      "phase": "formalizacion_del_acuerdo",
+      "phase_objective": "Dejar claros y resumidos los términos ya acordados para facilitar el cierre.",
+      "good_moves": [
+        "Repetir de forma compacta lo ya acordado.",
+        "Dejar claro precio, qué incluye y siguiente paso.",
+        "Cerrar con confirmación operativa simple si hace falta."
+      ],
+      "avoid": [
+        "Reabrir precio o condiciones ya acordadas.",
+        "Introducir requisitos nuevos.",
+        "Volver a discovery o a dudas técnicas que ya no tocan.",
+        "Complicar el cierre con detalle innecesario."
+      ]
+    }
   }
-}
