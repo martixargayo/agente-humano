@@ -5,7 +5,7 @@ from typing import List
 from pydantic import BaseModel, ConfigDict
 
 from .memory_node import DialogueMessage, TraceMeta, UserTurn
-from .shared_types import NegotiationPhase
+from ..state.shared_types import NegotiationPhase
 
 
 class PhaseClassifierInput(BaseModel):

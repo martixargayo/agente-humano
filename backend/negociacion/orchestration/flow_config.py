@@ -15,28 +15,28 @@ from typing import List, Sequence, Tuple, TypedDict
 import openai
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from state import SessionState, add_message, save_session_state
+from sessions.state import SessionState, add_message, save_session_state
 
-from .canonical_state import (
+from ..state.canonical_state import (
     CanonicalState,
     MemoryEpisodicItem,
     OpenAIThreadState,
     build_default_canonical_state,
 )
-from .executor_node import (
+from ..nodes.executor_node import (
     ExecutorInput,
     ExecutorOutput,
     ExecutorResponseLimits,
     ExecutorTaskContract,
 )
-from .memory_node import DialogueMessage as MemoryDialogueMessage, MemoryEpisode, MemoryInput, MemoryOutput, MemoryTaskContract, MemoryWorking as MemoryWorkingOutput, TraceMeta, UserTurn
-from .phase_classifier_node import (
+from ..nodes.memory_node import DialogueMessage as MemoryDialogueMessage, MemoryEpisode, MemoryInput, MemoryOutput, MemoryTaskContract, MemoryWorking as MemoryWorkingOutput, TraceMeta, UserTurn
+from ..nodes.phase_classifier_node import (
     PhaseClassifierInput,
     PhaseClassifierOutput,
     build_phase_classifier_input,
     build_phase_classifier_messages,
 )
-from .planner_node import (
+from ..nodes.planner_node import (
     PhaseCard,
     PlannerContentPlan,
     PlannerInput,
@@ -45,7 +45,7 @@ from .planner_node import (
     PlannerTaskContract,
     SelectedMemoryItem,
 )
-from .shared_types import (
+from ..state.shared_types import (
     NodeName,
     NegotiationPhase,
     SDKCompatibilityStatus,

@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple, cast
 import importlib.util
 import openai
 
-from state import SessionState, add_message, save_session_state
+from sessions.state import SessionState, add_message, save_session_state
 
 logger = logging.getLogger(__name__)
 

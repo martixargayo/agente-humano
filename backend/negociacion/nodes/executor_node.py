@@ -4,10 +4,10 @@ from typing import List, Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from .canonical_state import PersonaExpressive
+from ..state.canonical_state import PersonaExpressive
 from .memory_node import DialogueMessage, TraceMeta, UserTurn
 from .planner_node import PhaseCard, PlannerOutput, SelectedMemoryItem
-from .shared_types import NegotiationPhase
+from ..state.shared_types import NegotiationPhase
 
 
 class ExecutorTaskContract(BaseModel):

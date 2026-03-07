@@ -4,9 +4,9 @@ from typing import List, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .canonical_state import MemoryWorkingState, NegotiationState, PersonaPolicy, PlannerState
+from ..state.canonical_state import MemoryWorkingState, NegotiationState, PersonaPolicy, PlannerState
 from .memory_node import DialogueMessage, TraceMeta, UserTurn
-from .shared_types import NegotiationPhase
+from ..state.shared_types import NegotiationPhase
 
 PlannerDecision = Literal[
     "none",

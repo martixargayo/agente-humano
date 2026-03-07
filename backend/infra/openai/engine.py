@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Literal, Tuple, cast
 
 import openai
 
-from state import SessionState, add_message, save_session_state
+from sessions.state import SessionState, add_message, save_session_state
 
 logger = logging.getLogger(__name__)
 

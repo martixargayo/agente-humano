@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Mapping, Tuple, TypedDict
 
-from state_migration_v3 import migrate_belief_state_to_v3, migrate_world_state_to_v3
+from sessions.state_migration_v3 import migrate_belief_state_to_v3, migrate_world_state_to_v3
 
 # ---- Tipos básicos ----
 

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Tuple
 
-from openai_production import run_three_llm_turn
-from state import SessionState
+from infra.openai import run_three_llm_turn
+from sessions.state import SessionState
 
 from .flow_config import build_chat_pipeline_config
 

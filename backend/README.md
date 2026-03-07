@@ -20,13 +20,13 @@ Sistema IA con OpenAI Responses API para agente humano conversacional (chat + ne
 - Variables de entorno de integración: usa `backend/.env.example` como plantilla.
 - **Importante:** la configuración de cada flujo (orden de LLMs, modelos y límites) ahora está definida en:
   - `backend/chat/flow_config.py`
-  - `backend/negociacion/flow_config.py`
+  - `backend/negociacion/orchestration/flow_config.py`
 
 
 
 ## Dónde está definida la secuencia de LLMs (orden + modelo)
 
-La secuencia y el orden están centralizados en `backend/openai_production/engine.py`, dentro de `run_three_llm_turn(...)`.
+La secuencia y el orden están centralizados en `backend/infra/openai/engine.py`, dentro de `run_three_llm_turn(...)`.
 Ese flujo ejecuta siempre este orden por turno:
 
 1. `SummarizerNode`
@@ -35,11 +35,11 @@ Ese flujo ejecuta siempre este orden por turno:
 
 La selección de modelo, el orden de nodos y límites por dominio se define en:
 - `backend/chat/flow_config.py` (`CHAT_FLOW_DETAILS`)
-- `backend/negociacion/flow_config.py` (`NEGOTIATION_FLOW_DETAILS`)
+- `backend/negociacion/orchestration/flow_config.py` (`NEGOTIATION_FLOW_DETAILS`)
 
 Cada pipeline (`backend/chat/pipeline.py`, `backend/negociacion/pipeline.py`) solo construye la configuración con `build_*_pipeline_config()` y se la pasa al motor común `run_three_llm_turn(...)`.
 
-## Diagnóstico de errores en `app.py` y `openai_production/engine.py`
+## Diagnóstico de errores en `api/app.py` y `infra/openai/engine.py`
 
 Si VS Code/Pylance te muestra errores como "No se ha podido resolver la importación ..." o símbolos desconocidos (`speech`, `OpenAI`, etc.), casi siempre es por entorno local y no por APIs mal conectadas.
 
