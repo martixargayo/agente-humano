@@ -14,6 +14,7 @@ from negociacion.orchestration.flow_config import (
     build_planner_input,
     build_planner_messages,
 )
+from negociacion.state import canonical_state as canonical_state_module
 from negociacion.state.canonical_state import build_default_canonical_state
 from negociacion.state.shared_types import NegotiationPhase, StructuredCallSource, ThreadMode
 
@@ -229,6 +230,49 @@ def test_persona_file_exists_and_default_state_uses_it():
     assert state.persona.policy.role_identity == raw["policy"]["role_identity"]
     assert state.persona.expressive.tone.value == raw["expressive"]["tone"]
 
+
+
+
+def test_default_state_uses_emergency_persona_if_file_missing(monkeypatch):
+    original_read_text = canonical_state_module.Path.read_text
+
+    def _fake_read_text(self, *args, **kwargs):
+        if self.name == "persona.json":
+            raise FileNotFoundError("missing persona")
+        return original_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(canonical_state_module.Path, "read_text", _fake_read_text)
+
+    state = build_default_canonical_state(session_id="smissing", thread_mode=ThreadMode.conversation)
+    assert state.persona.policy.role_identity == canonical_state_module.EMERGENCY_PERSONA_DEFAULTS["policy"]["role_identity"]
+
+
+def test_default_state_uses_emergency_persona_if_json_invalid(monkeypatch):
+    original_read_text = canonical_state_module.Path.read_text
+
+    def _fake_read_text(self, *args, **kwargs):
+        if self.name == "persona.json":
+            return "{invalid-json"
+        return original_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(canonical_state_module.Path, "read_text", _fake_read_text)
+
+    state = build_default_canonical_state(session_id="sinvalid", thread_mode=ThreadMode.conversation)
+    assert state.persona.expressive.lexical_style == canonical_state_module.EMERGENCY_PERSONA_DEFAULTS["expressive"]["lexical_style"]
+
+
+def test_default_state_uses_emergency_persona_if_structure_invalid(monkeypatch):
+    original_read_text = canonical_state_module.Path.read_text
+
+    def _fake_read_text(self, *args, **kwargs):
+        if self.name == "persona.json":
+            return json.dumps({"policy": "not-an-object", "expressive": {}})
+        return original_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(canonical_state_module.Path, "read_text", _fake_read_text)
+
+    state = build_default_canonical_state(session_id="sstructure", thread_mode=ThreadMode.conversation)
+    assert state.persona.policy.negotiation_goal == canonical_state_module.EMERGENCY_PERSONA_DEFAULTS["policy"]["negotiation_goal"]
 
 def test_planner_uses_policy_and_executor_uses_expressive_from_canonical():
     state = _build_state()
