@@ -14,7 +14,8 @@ class ExecutorTaskContract(BaseModel):
     model_config = ConfigDict(extra="forbid")
     node_name: Literal["executor"]
     objective: str
-    success_definition: str
+    completion_criteria: list[str]
+    output_schema_version: Literal["executor.v1"]
 
 
 class ExecutorResponseLimits(BaseModel):
