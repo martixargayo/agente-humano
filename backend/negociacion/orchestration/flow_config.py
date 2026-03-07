@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from importlib import metadata
 from pathlib import Path
-from typing import List, Literal, Sequence, Tuple, TypedDict
+from typing import Callable, List, Literal, Sequence, Tuple, TypedDict
 
 import openai
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -55,6 +55,13 @@ from ..state.shared_types import (
 )
 
 logger = logging.getLogger(__name__)
+
+_tts_prefetch_hook: Callable[[str], None] | None = None
+
+
+def set_tts_prefetch_hook(hook: Callable[[str], None] | None) -> None:
+    global _tts_prefetch_hook
+    _tts_prefetch_hook = hook
 
 OPENAI_MIN_VERSION = "1.40.0"
 PHASE_CLASSIFIER_INPUT_SCHEMA_VERSION = "phase_classifier_input.v1"
@@ -1014,6 +1021,11 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
     logs.append(_build_trace_log(NodeName.executor, config.model_executor, config.prompt_version_executor, executor_output.schema_version, exe_latency, _trace_input_summary(executor_input.recent_dialogue_short, user_turn), executor_output.status if enforcement_reason is None else f"{executor_output.status}:{enforcement_reason}", executor_call, None))
 
     reply = executor_output.spoken_text
+    if _tts_prefetch_hook is not None:
+        try:
+            _tts_prefetch_hook(reply)
+        except Exception as exc:
+            logger.warning("tts_prefetch_hook_error=%s", exc)
     add_message(state, role="assistant", content=reply)
     recent_dialogue.append(MemoryDialogueMessage(role="assistant", text=reply))
     recent_dialogue = _compact_recent(recent_dialogue, config.max_recent_messages)

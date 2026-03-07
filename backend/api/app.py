@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import pathlib
 import sys
+import asyncio
 
 from dotenv import load_dotenv
 from pathlib import Path
@@ -12,6 +13,7 @@ from pathlib import Path
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
@@ -24,7 +26,7 @@ from fastapi.responses import StreamingResponse
 import openai
 
 import base64
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 from fastapi.staticfiles import StaticFiles
 
@@ -36,6 +38,7 @@ if str(BACKEND_DIR) not in sys.path:
 from sessions.state import get_session_state
 from agent import run_agent
 from negociacion import run_negotiation_agent
+from negociacion.orchestration.flow_config import set_tts_prefetch_hook
 
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -142,6 +145,10 @@ DEFAULT_SPEED = float(os.getenv("OPENAI_TTS_SPEED", "1.10"))
 _ALLOWED_TTS_FORMATS = {"mp3", "opus", "aac", "flac", "wav", "pcm"}
 TTSAudioFormat = Literal["mp3", "opus", "aac", "flac", "wav", "pcm"]
 
+_tts_audio_cache: dict[str, bytes] = {}
+_tts_inflight_tasks: dict[str, asyncio.Future[Any]] = {}
+_main_event_loop: asyncio.AbstractEventLoop | None = None
+
 def _resolved_tts_format(requested: str | None = None) -> TTSAudioFormat:
     value = (requested or DEFAULT_FORMAT or "wav").strip().lower()
     if value not in _ALLOWED_TTS_FORMATS:
@@ -158,12 +165,84 @@ TTS_IDENTITY_INSTRUCTIONS = os.getenv(
     ),
 )
 
+
+def _tts_media_type(fmt: TTSAudioFormat) -> str:
+    return (
+        "audio/mpeg" if fmt == "mp3" else "audio/ogg" if fmt == "opus" else "audio/wav"
+    )
+
+
+def _sync_generate_tts_audio(text: str, voice: str, fmt: TTSAudioFormat) -> bytes:
+    audio_resp = openai_client.audio.speech.create(
+        model="gpt-4o-mini-tts",
+        voice=voice,
+        input=text,
+        response_format=fmt,
+        speed=DEFAULT_SPEED,
+        instructions=TTS_IDENTITY_INSTRUCTIONS,
+    )
+    return getattr(audio_resp, "content", None) or audio_resp.read()
+
+
+async def pre_generate_tts(text: str):
+    if openai_client is None:
+        return
+
+    normalized_text = text.strip()
+    if not normalized_text:
+        return
+
+    if normalized_text in _tts_audio_cache:
+        return
+
+    logger.info("pre_generate_tts_started text_len=%s", len(normalized_text))
+    try:
+        audio_bytes = await run_in_threadpool(
+            _sync_generate_tts_audio,
+            normalized_text,
+            "cedar",
+            _resolved_tts_format(),
+        )
+        _tts_audio_cache[normalized_text] = audio_bytes
+        logger.info("pre_generate_tts_generated text_len=%s audio_bytes=%s", len(normalized_text), len(audio_bytes))
+    except Exception as exc:
+        logger.warning("pre_generate_tts_error=%s", exc)
+    finally:
+        _tts_inflight_tasks.pop(normalized_text, None)
+
+
+def _schedule_tts_prefetch(text: str) -> None:
+    normalized_text = text.strip()
+    if not normalized_text or normalized_text in _tts_audio_cache:
+        return
+    if normalized_text in _tts_inflight_tasks and not _tts_inflight_tasks[normalized_text].done():
+        return
+
+    try:
+        loop = asyncio.get_running_loop()
+        task = loop.create_task(pre_generate_tts(normalized_text))
+    except RuntimeError:
+        if _main_event_loop is None:
+            logger.warning("pre_generate_tts_skipped no_event_loop=true")
+            return
+        future = asyncio.run_coroutine_threadsafe(pre_generate_tts(normalized_text), _main_event_loop)
+        task = asyncio.wrap_future(future, loop=_main_event_loop)
+
+    _tts_inflight_tasks[normalized_text] = task
+    logger.info("pre_generate_tts_task_launched text_len=%s", len(normalized_text))
+
+
+set_tts_prefetch_hook(_schedule_tts_prefetch)
+
 @app.on_event("startup")
 async def warmup_tts():
     """
     Llamada de calentamiento para que el primer TTS
     no tenga el coste de arranque del modelo.
     """
+    global _main_event_loop
+    _main_event_loop = asyncio.get_running_loop()
+
     if openai_client is None:
         logger.warning("warmup_tts_skipped client_unavailable=true")
         return
@@ -541,23 +620,15 @@ async def tts_openai(payload: TTSRequest):
         print(f"[TTS_OPENAI] Texto: {payload.text!r}")
         print(f"[TTS_OPENAI] model={TTS_MODEL}, voice={voice}, response_format={fmt}")
 
-        audio_resp = openai_client.audio.speech.create(
-            model=TTS_MODEL,
-            voice=voice,
-            input=payload.text,
-            response_format=fmt,
-            speed=DEFAULT_SPEED,
-            instructions=TTS_IDENTITY_INSTRUCTIONS,
+        audio_bytes = await run_in_threadpool(
+            _sync_generate_tts_audio,
+            payload.text,
+            voice,
+            fmt,
         )
-
-        audio_bytes = audio_resp.read()  # <--- aquí también
         print(f"[TTS_OPENAI] audio_bytes len={len(audio_bytes)}")
 
-        media_type = (
-            "audio/mpeg" if fmt == "mp3"
-            else "audio/ogg" if fmt == "opus"
-            else "audio/wav"
-        )
+        media_type = _tts_media_type(fmt)
 
         return StreamingResponse(
             io.BytesIO(audio_bytes),
@@ -589,19 +660,31 @@ async def tts(payload: TTSRequest):
         print(f">>> /tts llamado. Texto: {payload.text!r}")
         print(f">>> model={TTS_MODEL}, voice={voice}, response_format={fmt}")
 
-        media_type = (
-            "audio/mpeg" if fmt == "mp3" else "audio/ogg" if fmt == "opus" else "audio/wav"
-        )
-        audio = openai_client.audio.speech.create(
-            model=TTS_MODEL,
-            voice=voice,
-            input=payload.text,
-            response_format=fmt,
-            speed=DEFAULT_SPEED,
-            instructions=TTS_IDENTITY_INSTRUCTIONS,
-        )
+        media_type = _tts_media_type(fmt)
+        normalized_text = payload.text.strip()
 
-        audio_bytes = audio.content
+        if normalized_text in _tts_audio_cache:
+            audio_bytes = _tts_audio_cache[normalized_text]
+            logger.info("tts_cache_hit text_len=%s", len(normalized_text))
+        else:
+            in_flight = _tts_inflight_tasks.get(normalized_text)
+            if in_flight is not None and not in_flight.done():
+                logger.info("tts_waiting_for_inflight text_len=%s", len(normalized_text))
+                await in_flight
+
+            if normalized_text in _tts_audio_cache:
+                audio_bytes = _tts_audio_cache[normalized_text]
+                logger.info("tts_cache_hit_after_wait text_len=%s", len(normalized_text))
+            else:
+                audio_bytes = await run_in_threadpool(
+                    _sync_generate_tts_audio,
+                    payload.text,
+                    voice,
+                    fmt,
+                )
+                _tts_audio_cache[normalized_text] = audio_bytes
+                logger.info("tts_generated_sync text_len=%s audio_bytes=%s", len(normalized_text), len(audio_bytes))
+
         print(
             f">>> /tts: audio_bytes len={len(audio_bytes)}, media_type={media_type}"
         )
