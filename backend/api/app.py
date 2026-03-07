@@ -8,8 +8,8 @@ import sys
 from dotenv import load_dotenv
 from pathlib import Path
 
-# cargar variables del .env
-load_dotenv(Path(__file__).resolve().parent / ".env")
+# cargar variables del .env (en backend/.env)
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.responses import HTMLResponse
