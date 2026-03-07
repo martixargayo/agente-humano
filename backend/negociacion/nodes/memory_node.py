@@ -4,7 +4,7 @@ from typing import List, Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from .canonical_state import MemoryEpisodicItem, MemoryWorkingState
+from ..state.canonical_state import MemoryEpisodicItem, MemoryWorkingState
 
 
 class DialogueMessage(BaseModel):

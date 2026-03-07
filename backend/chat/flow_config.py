@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal, TypedDict
 
-from openai_production import PipelineConfig
+from infra.openai import PipelineConfig
 
 LLMNodeName = Literal["summarizer", "planner", "executor"]
 
@@ -37,7 +37,7 @@ def build_chat_pipeline_config() -> PipelineConfig:
     return PipelineConfig(
         memory_key=CHAT_FLOW_DETAILS["memory_key"],
         prompts_dir=BASE_DIR / "prompts",
-        planner_schema_path=Path(__file__).resolve().parent.parent / "openai_production" / "schemas" / "planner_output.schema.json",
+        planner_schema_path=Path(__file__).resolve().parent.parent / "infra" / "openai" / "schemas" / "planner_output.schema.json",
         planner_model=CHAT_FLOW_DETAILS["planner_model"],
         summarizer_model=CHAT_FLOW_DETAILS["summarizer_model"],
         executor_model=CHAT_FLOW_DETAILS["executor_model"],

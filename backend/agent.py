@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Tuple
 
 from chat import run_chat_agent
-from state import SessionState
+from sessions.state import SessionState
 
 
 def run_agent(state: SessionState, user_message: str) -> Tuple[str, SessionState]:

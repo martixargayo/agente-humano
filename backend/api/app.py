@@ -1,4 +1,4 @@
-# backend/app.py
+# backend/api/app.py
 from __future__ import annotations
 
 import os
@@ -32,10 +32,11 @@ from typing import Literal, cast
 from fastapi.staticfiles import StaticFiles
 
 BASE_DIR = pathlib.Path(__file__).resolve().parent
-if str(BASE_DIR) not in sys.path:
-    sys.path.insert(0, str(BASE_DIR))
+BACKEND_DIR = BASE_DIR.parent
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
 
-from state import get_session_state
+from sessions.state import get_session_state
 from agent import run_agent
 from negociacion import run_negotiation_agent
 
@@ -58,7 +59,7 @@ app.add_middleware(
 
 # --- Servir el avatar 3D como estático en /avatar ---
 
-AVATAR_DIR = BASE_DIR / "avatar_app"  # carpeta que has creado
+AVATAR_DIR = BACKEND_DIR / "avatar_app"  # carpeta que has creado
 
 if AVATAR_DIR.exists():
     app.mount(
