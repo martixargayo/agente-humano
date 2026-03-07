@@ -50,7 +50,7 @@ def _build_planner_output() -> PlannerOutput:
 
 def test_build_executor_input_exact_fields_and_sources():
     state = _build_state()
-    state.persona.expressive.max_sentences_default = 7
+    state.persona.expressive.voz_y_estilo = "voz_test_7"
     user_turn = _build_user_turn("Quiero avanzar", "2026-01-01T00:00:00Z")
     trace_meta = {
         "turn_id": "20",
@@ -79,7 +79,7 @@ def test_build_executor_input_exact_fields_and_sources():
         "response_limits",
         "trace_meta",
     }
-    assert dumped["persona_expressive"]["max_sentences_default"] == 7
+    assert dumped["persona_expressive"]["voz_y_estilo"] == "voz_test_7"
     assert dumped["current_phase"] == state.planner_state.current_phase.value
     assert dumped["planner_output"]["schema_version"] == "planner.v3"
     assert dumped["response_limits"]["max_sentences"] == dumped["planner_output"]["limits"]["max_sentences"]

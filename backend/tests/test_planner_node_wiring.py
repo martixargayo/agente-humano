@@ -227,8 +227,8 @@ def test_persona_file_exists_and_default_state_uses_it():
     assert "expressive" in raw
 
     state = build_default_canonical_state(session_id="s100", thread_mode=ThreadMode.conversation)
-    assert state.persona.policy.role_identity == raw["policy"]["role_identity"]
-    assert state.persona.expressive.tone.value == raw["expressive"]["tone"]
+    assert state.persona.policy.identidad_operativa == raw["policy"]["identidad_operativa"]
+    assert state.persona.expressive.voz_y_estilo == raw["expressive"]["voz_y_estilo"]
 
 
 
@@ -244,7 +244,7 @@ def test_default_state_uses_emergency_persona_if_file_missing(monkeypatch):
     monkeypatch.setattr(canonical_state_module.Path, "read_text", _fake_read_text)
 
     state = build_default_canonical_state(session_id="smissing", thread_mode=ThreadMode.conversation)
-    assert state.persona.policy.role_identity == canonical_state_module.EMERGENCY_PERSONA_DEFAULTS["policy"]["role_identity"]
+    assert state.persona.policy.identidad_operativa == canonical_state_module.EMERGENCY_PERSONA_DEFAULTS["policy"]["identidad_operativa"]
 
 
 def test_default_state_uses_emergency_persona_if_json_invalid(monkeypatch):
@@ -258,7 +258,7 @@ def test_default_state_uses_emergency_persona_if_json_invalid(monkeypatch):
     monkeypatch.setattr(canonical_state_module.Path, "read_text", _fake_read_text)
 
     state = build_default_canonical_state(session_id="sinvalid", thread_mode=ThreadMode.conversation)
-    assert state.persona.expressive.lexical_style == canonical_state_module.EMERGENCY_PERSONA_DEFAULTS["expressive"]["lexical_style"]
+    assert state.persona.expressive.naturalidad == canonical_state_module.EMERGENCY_PERSONA_DEFAULTS["expressive"]["naturalidad"]
 
 
 def test_default_state_uses_emergency_persona_if_structure_invalid(monkeypatch):
@@ -272,12 +272,12 @@ def test_default_state_uses_emergency_persona_if_structure_invalid(monkeypatch):
     monkeypatch.setattr(canonical_state_module.Path, "read_text", _fake_read_text)
 
     state = build_default_canonical_state(session_id="sstructure", thread_mode=ThreadMode.conversation)
-    assert state.persona.policy.negotiation_goal == canonical_state_module.EMERGENCY_PERSONA_DEFAULTS["policy"]["negotiation_goal"]
+    assert state.persona.policy.objetivo_privado == canonical_state_module.EMERGENCY_PERSONA_DEFAULTS["policy"]["objetivo_privado"]
 
 def test_planner_uses_policy_and_executor_uses_expressive_from_canonical():
     state = _build_state()
-    state.persona.policy.role_identity = "perfil_test_policy"
-    state.persona.expressive.max_sentences_default = 6
+    state.persona.policy.identidad_operativa = "perfil_test_policy"
+    state.persona.expressive.voz_y_estilo = "perfil_test_expressive"
 
     user_turn = _build_user_turn("hola", "2026-01-01T00:00:00Z")
     trace_meta = {
@@ -315,5 +315,5 @@ def test_planner_uses_policy_and_executor_uses_expressive_from_canonical():
         "backend/negociacion/prompts",
     )  # type: ignore[arg-type]
 
-    assert planner_input.persona_policy.role_identity == "perfil_test_policy"
-    assert executor_input.persona_expressive.max_sentences_default == 6
+    assert planner_input.persona_policy.identidad_operativa == "perfil_test_policy"
+    assert executor_input.persona_expressive.voz_y_estilo == "perfil_test_expressive"

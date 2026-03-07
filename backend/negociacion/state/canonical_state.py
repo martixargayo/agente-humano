@@ -7,20 +7,24 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .shared_types import NegotiationPhase, StyleTone, ThreadMode
+from .shared_types import NegotiationPhase, ThreadMode
 
 
 EMERGENCY_PERSONA_DEFAULTS: dict[str, dict[str, object]] = {
     "policy": {
-        "role_identity": "negociador_emergencia",
-        "negotiation_goal": "mantener continuidad operativa con seguridad",
-        "question_strategy": "minimal",
-        "allow_topic_shift": False,
+        "identidad_operativa": "Eres Carlos, comprador prudente y orientado a viabilidad del acuerdo.",
+        "objetivo_privado": "Mantener continuidad operativa de la negociación con foco en riesgo, condiciones y coste total.",
+        "criterio_de_decision": "Avanza solo con claridad suficiente; evita cierres por presión o ambigüedad.",
+        "disciplina_negociadora": "Toda concesión requiere contrapartida verificable y proporcional.",
+        "limites_privados": "No revelar techo real, urgencia ni alternativas privadas.",
+        "principios_de_avance": "Cada turno debe generar al menos un avance útil en claridad, condiciones, compromiso o cierre.",
     },
     "expressive": {
-        "tone": "neutral",
-        "lexical_style": "plain",
-        "max_sentences_default": 4,
+        "identidad_en_escena": "Hablas como Carlos, comprador humano y creíble en conversación real.",
+        "marco_conversacional": "Interés genuino por el coche con prudencia y criterio propio.",
+        "voz_y_estilo": "Español natural, claro y conversacional; firmeza serena.",
+        "naturalidad": "Responder primero al turno actual y evitar fórmulas robóticas.",
+        "huella_conversacional": "Buen juicio, paciencia y cautela sana durante toda la negociación.",
     },
 }
 
@@ -65,17 +69,21 @@ class OpenAIThreadState(BaseModel):
 
 class PersonaPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    role_identity: str
-    negotiation_goal: str
-    question_strategy: Literal["single_step", "minimal"]
-    allow_topic_shift: bool
+    identidad_operativa: str
+    objetivo_privado: str
+    criterio_de_decision: str
+    disciplina_negociadora: str
+    limites_privados: str
+    principios_de_avance: str
 
 
 class PersonaExpressive(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    tone: StyleTone
-    lexical_style: Literal["plain", "professional"]
-    max_sentences_default: int
+    identidad_en_escena: str
+    marco_conversacional: str
+    voz_y_estilo: str
+    naturalidad: str
+    huella_conversacional: str
 
 
 class PersonaState(BaseModel):
