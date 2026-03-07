@@ -379,6 +379,26 @@ def _select_memory(canonical_state: CanonicalState, max_items: int = 3) -> List[
     return selected
 
 
+def _select_memory_for_executor(canonical_state: CanonicalState, planner_output: PlannerOutput, max_items: int = 2) -> List[SelectedMemoryItem]:
+    fallback = _select_memory(canonical_state, max_items=max_items)
+    if not planner_output.memory_targets:
+        return fallback
+
+    planner_candidates = _select_memory(canonical_state)
+    by_id = {item.memory_id: item for item in planner_candidates}
+
+    selected_from_targets: List[SelectedMemoryItem] = []
+    seen: set[str] = set()
+    for target in planner_output.memory_targets:
+        item = by_id.get(target)
+        if item is None or item.memory_id in seen:
+            continue
+        selected_from_targets.append(item)
+        seen.add(item.memory_id)
+
+    return selected_from_targets or fallback
+
+
 def build_memory_input(canonical_state: CanonicalState, recent_dialogue: Sequence[MemoryDialogueMessage], user_turn: UserTurn, trace_meta: TraceMeta) -> MemoryInput:
     # /// episodic selection window remains provisional until memory retention policy is finalized.
     return MemoryInput(
@@ -436,14 +456,25 @@ def build_executor_input(canonical_state: CanonicalState, recent_dialogue: Seque
     phase_card = _select_phase_card(current_phase, _load_phase_cards(prompts_dir))
     return ExecutorInput(
         schema_version="executor_input.v1",
-        task_contract=ExecutorTaskContract(node_name="executor", objective="realizar planner_output sin replanificar", success_definition="respuesta natural dentro de límites"),
+        task_contract=ExecutorTaskContract(
+            node_name="executor",
+            objective="producir la respuesta final orientada al usuario a partir de planner_output",
+            completion_criteria=[
+                "la respuesta es natural y humana",
+                "permanece dentro de los límites del planner",
+                "respeta response_limits",
+                "la salida cumple exactamente el schema ExecutorOutput",
+                "no replanifica ni altera la estrategia",
+            ],
+            output_schema_version="executor.v1",
+        ),
         persona_expressive=canonical_state.persona.expressive,
         current_phase=current_phase,
         phase_card=phase_card,
         user_turn=user_turn,
         recent_dialogue_short=_compact_recent(recent_dialogue, max_recent_turns * 2),
         planner_output=planner_output,
-        selected_memory_for_reference=_select_memory(canonical_state, max_items=2),
+        selected_memory_for_reference=_select_memory_for_executor(canonical_state, planner_output, max_items=2),
         response_limits=ExecutorResponseLimits(
             max_sentences=planner_output.limits.max_sentences,
             max_questions=planner_output.limits.max_questions,
@@ -483,7 +514,15 @@ def build_phase_classifier_messages_payload(phase_classifier_prompt: str, payloa
 
 
 def build_executor_messages(executor_prompt: str, payload: ExecutorInput) -> List[dict[str, str]]:
-    return [{"role": "developer", "content": executor_prompt}, {"role": "user", "content": payload.model_dump_json()}]
+    return [
+        {"role": "developer", "content": executor_prompt},
+        {
+            "role": "user",
+            "content": "<task_input>\nDevuelve solo JSON válido para `ExecutorOutput`.\n\n<executor_input_json>\n"
+            f"{payload.model_dump_json()}\n"
+            "</executor_input_json>\n</task_input>",
+        },
+    ]
 
 
 # ==================================================
