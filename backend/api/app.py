@@ -15,9 +15,6 @@ from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-import os
-import pathlib
-import sys
 from google.cloud import speech
 from google.oauth2 import service_account
 
