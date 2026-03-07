@@ -4,7 +4,7 @@ from typing import List, Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from ..state.canonical_state import MemoryEpisodicItem, MemoryWorkingState
+from ..state.canonical_state import MemoryEpisodicItem as CanonicalMemoryEpisodicItem, MemoryWorkingState
 
 
 class DialogueMessage(BaseModel):
@@ -34,10 +34,11 @@ class MemoryTaskContract(BaseModel):
     model_config = ConfigDict(extra="forbid")
     node_name: Literal["memory"]
     objective: str
-    success_definition: str
+    completion_criteria: list[str]
+    output_schema_version: Literal["memory.v1"]
 
 
-class MemoryEpisode(BaseModel):
+class MemoryEpisodicItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
     event_type: Literal[
         "offer",
@@ -47,7 +48,7 @@ class MemoryEpisode(BaseModel):
         "important_fact",
         "topic_closure",
     ]
-    summary: str
+    event_summary: str
     turn_id: str
 
 
@@ -65,12 +66,12 @@ class MemoryInput(BaseModel):
     user_turn: UserTurn
     recent_dialogue_short: List[DialogueMessage]
     memory_working_current: MemoryWorkingState
-    recent_memory_episodic_short: List[MemoryEpisodicItem]
+    recent_memory_episodic_short: List[CanonicalMemoryEpisodicItem]
     trace_meta: TraceMeta
 
 
 class MemoryOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     schema_version: Literal["memory.v1"]
-    episodic_append: list[MemoryEpisode]
+    episodic_append: list[MemoryEpisodicItem]
     working_memory_new: MemoryWorking
