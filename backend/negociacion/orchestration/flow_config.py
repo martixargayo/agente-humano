@@ -53,6 +53,15 @@ from ..state.shared_types import (
     StructuredCallSource,
     ThreadMode,
 )
+from ..traces.builders import (
+    build_executor_node_trace,
+    build_memory_node_trace,
+    build_phase_node_trace,
+    build_planner_node_trace,
+    excerpt,
+)
+from ..traces.constants import TRACE_VERSION
+from ..traces.models import EvalGrades, SDKCompatibilityInfo, StructuredCallResult, TurnTrace
 
 logger = logging.getLogger(__name__)
 
@@ -67,80 +76,6 @@ OPENAI_MIN_VERSION = "1.40.0"
 PHASE_CLASSIFIER_INPUT_SCHEMA_VERSION = "phase_classifier_input.v1"
 PHASE_CLASSIFIER_OUTPUT_SCHEMA_VERSION = "phase_classifier.v1"
 
-
-class InputSummary(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    user_turn_chars: int
-    recent_dialogue_items: int
-
-
-class ErrorSummary(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    code: str
-    message: str
-
-
-class NodeTraceLog(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    node: NodeName
-    model: str
-    prompt_version: str
-    schema_version: str
-    latency_ms: int
-    retries: int
-    input_summary: InputSummary
-    output_status: str
-    call_source: StructuredCallSource
-    refusal: str | None
-    parse_error: str | None
-    error: ErrorSummary | None
-
-
-class EvalGrades(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    planner_coherence: str
-    executor_naturalness: str
-    planner_executor_agreement: bool
-    safety_compliance: bool
-
-
-class SDKCompatibilityInfo(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    installed_version: str | None
-    minimum_version: str
-    status: SDKCompatibilityStatus
-    details: str
-
-
-class TurnTrace(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    turn_id: str
-    timestamp_utc: str
-    model_memory: str
-    model_phase_classifier: str
-    model_planner: str
-    model_executor: str
-    prompt_version_memory: str
-    prompt_version_phase_classifier: str
-    prompt_version_planner: str
-    prompt_version_executor: str
-    schema_version_memory: str
-    schema_version_phase_classifier: str
-    schema_version_planner: str
-    schema_version_executor: str
-    sdk_compatibility: SDKCompatibilityInfo
-    grades: EvalGrades
-    logs: List[NodeTraceLog]
-
-
-class StructuredCallResult(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    parsed_json: dict | None
-    refusal: str | None
-    parse_error: str | None
-    exception_error: str | None
-    response: object | None
-    source: StructuredCallSource
 
 
 class SafetyPolicyConfig(BaseModel):
@@ -760,27 +695,6 @@ def _evaluate_stub(planner: PlannerOutput, executor: ExecutorOutput) -> EvalGrad
     )
 
 
-def _trace_input_summary(messages: Sequence[MemoryDialogueMessage], user_turn: UserTurn) -> InputSummary:
-    return InputSummary(user_turn_chars=len(user_turn.normalized_text), recent_dialogue_items=len(messages))
-
-
-def _build_trace_log(node: NodeName, model: str, prompt_version: str, schema_version: str, latency_ms: int, input_summary: InputSummary, output_status: str, call_result: StructuredCallResult, error: ErrorSummary | None) -> NodeTraceLog:
-    return NodeTraceLog(
-        node=node,
-        model=model,
-        prompt_version=prompt_version,
-        schema_version=schema_version,
-        latency_ms=latency_ms,
-        retries=0,
-        input_summary=input_summary,
-        output_status=output_status,
-        call_source=call_result.source,
-        refusal=call_result.refusal,
-        parse_error=call_result.parse_error,
-        error=error,
-    )
-
-
 def _append_unique_reason(container: list[str], reason: str | None) -> None:
     if not reason:
         return
@@ -789,10 +703,10 @@ def _append_unique_reason(container: list[str], reason: str | None) -> None:
         container.append(value)
 
 
-def _collect_last_refusals(logs: Sequence[NodeTraceLog], executor_output: ExecutorOutput, guardrail_reason: str | None) -> list[str]:
+def _collect_last_refusals(logs: Sequence, executor_output: ExecutorOutput, guardrail_reason: str | None) -> list[str]:
     reasons: list[str] = []
     for log in logs:
-        _append_unique_reason(reasons, log.refusal)
+        _append_unique_reason(reasons, getattr(log, "refusal_reason", None))
     _append_unique_reason(reasons, executor_output.refusal_reason)
     _append_unique_reason(reasons, guardrail_reason)
     return reasons
@@ -945,8 +859,10 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
     canonical_state = repo.load_state(state, thread_mode=config.thread_mode_default)
     recent_dialogue = repo.load_recent_dialogue(state)
 
+    turn_started_perf = time.perf_counter()
+    turn_started_at = datetime.now(timezone.utc).isoformat()
     turn_id = str(uuid.uuid4())
-    now_iso = datetime.now(timezone.utc).isoformat()
+    now_iso = turn_started_at
     memory_trace_meta = TraceMeta(turn_id=turn_id, prompt_version=config.prompt_version_memory, schema_version="memory_input.v1", model_target=config.model_memory)
     phase_trace_meta = TraceMeta(turn_id=turn_id, prompt_version=config.prompt_version_phase_classifier, schema_version=PHASE_CLASSIFIER_INPUT_SCHEMA_VERSION, model_target=config.model_phase_classifier)
     planner_trace_meta = TraceMeta(turn_id=turn_id, prompt_version=config.prompt_version_planner, schema_version="planner_input.v1", model_target=config.model_planner)
@@ -963,9 +879,11 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
     planner_prompt = _read_text(prompts_dir / "planner_prompt.txt", "[ROLE] planner\n[CONTRACT] return only PlannerOutput json\n[SUCCESS] strong intent, limits and safety")
     executor_prompt = _read_text(prompts_dir / "executor_prompt.txt", "[ROLE] executor\n[CONTRACT] return only ExecutorOutput json\n[SUCCESS] realize planner without replanning")
 
+    thread_before = canonical_state.openai_thread.model_copy(deep=True)
+
     client = _build_client()
     request_context = refresh_request_context(client, canonical_state, config.thread_mode_default)
-    logs: List[NodeTraceLog] = []
+    logs: List = []
     safety_policy = _safety_policy(config)
 
     memory_input = build_memory_input(canonical_state, recent_dialogue, user_turn, memory_trace_meta)
@@ -986,8 +904,8 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
 
     apply_memory_output_to_state(canonical_state, memory_patch)
     apply_phase_classifier_output_to_state(canonical_state, phase_output)
-    logs.append(_build_trace_log(NodeName.memory, config.model_memory, config.prompt_version_memory, memory_patch.schema_version, mem_latency, _trace_input_summary(memory_input.recent_dialogue_short, user_turn), "applied", mem_call, None))
-    logs.append(_build_trace_log(NodeName.phase_classifier, config.model_phase_classifier, config.prompt_version_phase_classifier, PHASE_CLASSIFIER_OUTPUT_SCHEMA_VERSION, phase_latency, _trace_input_summary(phase_input.recent_turns, user_turn), phase_output.current_phase.value, phase_call, None))
+    logs.append(build_memory_node_trace(memory_input, memory_patch, mem_call, mem_latency, "applied"))
+    logs.append(build_phase_node_trace(phase_input, phase_output, phase_call, phase_latency))
 
     planner_input = build_planner_input(canonical_state, recent_dialogue, user_turn, planner_trace_meta, config.prompts_dir)
     plan_start = time.perf_counter()
@@ -1003,7 +921,7 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
     if planner_call.response is not None:
         update_thread_after_response(canonical_state.openai_thread, planner_call.response)
     request_context = refresh_request_context(client, canonical_state, config.thread_mode_default)
-    logs.append(_build_trace_log(NodeName.planner, config.model_planner, config.prompt_version_planner, planner_output.schema_version, plan_latency, _trace_input_summary(planner_input.recent_dialogue_short, user_turn), planner_output.status, planner_call, None))
+    logs.append(build_planner_node_trace(planner_input, planner_output, planner_call, plan_latency))
 
     executor_input = build_executor_input(canonical_state, recent_dialogue, planner_output, user_turn, executor_trace_meta, config.max_executor_recent_turns, config.prompts_dir)
     exe_start = time.perf_counter()
@@ -1015,10 +933,13 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
         executor_output = _executor_fallback(planner_output, status="refuse", refusal_reason=executor_call.refusal)
     exe_latency = int((time.perf_counter() - exe_start) * 1000)
 
+    guardrail_status_before = executor_output.status
+    guardrail_text_before = executor_output.spoken_text
     executor_output, enforcement_reason = _apply_executor_guardrails(executor_output, planner_output, user_turn, safety_policy)
     if executor_call.response is not None:
         update_thread_after_response(canonical_state.openai_thread, executor_call.response)
-    logs.append(_build_trace_log(NodeName.executor, config.model_executor, config.prompt_version_executor, executor_output.schema_version, exe_latency, _trace_input_summary(executor_input.recent_dialogue_short, user_turn), executor_output.status if enforcement_reason is None else f"{executor_output.status}:{enforcement_reason}", executor_call, None))
+    executor_log_status = executor_output.status if enforcement_reason is None else f"{executor_output.status}:{enforcement_reason}"
+    logs.append(build_executor_node_trace(executor_input, executor_output, executor_call, exe_latency, executor_log_status))
 
     reply = executor_output.spoken_text
     if _tts_prefetch_hook is not None:
@@ -1030,10 +951,36 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
     recent_dialogue.append(MemoryDialogueMessage(role="assistant", text=reply))
     recent_dialogue = _compact_recent(recent_dialogue, config.max_recent_messages)
 
+    turn_finished_at = datetime.now(timezone.utc).isoformat()
+    total_latency_ms = int((time.perf_counter() - turn_started_perf) * 1000)
     grades = _evaluate_stub(planner_output, executor_output) if config.feature_eval_hooks else EvalGrades(planner_coherence="disabled", executor_naturalness="disabled", planner_executor_agreement=True, safety_compliance=True)
+    guardrail_reasons = [enforcement_reason] if enforcement_reason else []
+    nodes = {log.node.value: log for log in logs}
     turn_trace = TurnTrace(
+        trace_version=TRACE_VERSION,
         turn_id=turn_id,
         timestamp_utc=now_iso,
+        turn_started_at=turn_started_at,
+        turn_finished_at=turn_finished_at,
+        total_latency_ms=total_latency_ms,
+        session_id=canonical_state.session.session_id,
+        user_id=canonical_state.session.user_id,
+        avatar_id=canonical_state.session.avatar_id,
+        thread_mode=canonical_state.openai_thread.thread_mode,
+        conversation_id_before=thread_before.conversation_id,
+        conversation_id_after=canonical_state.openai_thread.conversation_id,
+        previous_response_id_before=thread_before.previous_response_id,
+        previous_response_id_after=canonical_state.openai_thread.previous_response_id,
+        user_turn=user_turn,
+        final_reply_text=reply,
+        final_reply_excerpt=excerpt(reply) or "",
+        final_status=executor_output.status,
+        assistant_turn_emitted=True,
+        guardrails_triggered=bool(enforcement_reason),
+        guardrail_reasons=guardrail_reasons,
+        guardrail_rewrite_applied=guardrail_text_before != executor_output.spoken_text,
+        guardrail_status_before=guardrail_status_before,
+        guardrail_status_after=executor_output.status,
         model_memory=config.model_memory,
         model_phase_classifier=config.model_phase_classifier,
         model_planner=config.model_planner,
@@ -1049,11 +996,12 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
         sdk_compatibility=sdk_info,
         grades=grades,
         logs=logs,
+        nodes=nodes,
     )
 
     canonical_state.trace.turn_id = turn_trace.turn_id
-    canonical_state.trace.last_node_statuses = {log.node.value: log.output_status for log in logs}
-    canonical_state.trace.last_fallbacks = [log.node.value for log in logs if log.call_source != StructuredCallSource.model]
+    canonical_state.trace.last_node_statuses = {log.node.value: log.status for log in logs}
+    canonical_state.trace.last_fallbacks = [log.node.value for log in logs if log.source != StructuredCallSource.model]
     canonical_state.trace.last_refusals = _collect_last_refusals(logs, executor_output, enforcement_reason)
     repo.save_state(state, canonical_state)
     repo.save_recent_dialogue(state, recent_dialogue)
