@@ -8,7 +8,6 @@ from negociacion.nodes.executor_node import ExecutorOutput
 from negociacion.nodes.memory_node import DialogueMessage
 from negociacion.nodes.planner_node import PlannerOutput
 from negociacion.orchestration.flow_config import (
-    _apply_executor_guardrails,
     _build_user_turn,
     _call_structured,
     _executor_fallback,
@@ -16,8 +15,9 @@ from negociacion.orchestration.flow_config import (
     build_executor_messages,
     build_negotiation_pipeline_config,
     run_negotiation_cognitive_turn,
-    SafetyPolicyConfig,
 )
+from negociacion.guards.output import run_output_guardrails
+from negociacion.guards.policy import build_guardrails_policy
 from negociacion.state.canonical_state import MemoryEpisodicItem, build_default_canonical_state
 from negociacion.state.shared_types import NegotiationPhase, StructuredCallSource, ThreadMode
 
@@ -266,14 +266,15 @@ def test_executor_guardrails_keep_executor_contract_compatible():
         refusal_reason=None,
     )
 
-    guarded, reason = _apply_executor_guardrails(
-        output,
-        planner,
-        user_turn,
-        policy=SafetyPolicyConfig(hard_baseline_enabled=True, optional_layer_enabled=True),
+    guarded, result = run_output_guardrails(
+        executor_output=output,
+        planner_output=planner,
+        user_turn=user_turn,
+        policy=build_guardrails_policy(feature_input_guardrails=True, feature_output_guardrails=True, feature_moderation=False),
+        client=None,
     )
 
-    assert reason is not None
+    assert result.decision.value in {"allow", "rewrite", "block"}
     assert guarded.schema_version == "executor.v1"
     assert guarded.status in {"clarify", "refuse", "deliver"}
     assert isinstance(guarded.spoken_text, str)
