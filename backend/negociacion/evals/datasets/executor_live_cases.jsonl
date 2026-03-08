@@ -1,0 +1,1 @@
+{"case_id":"executor_live_01","description":"Executor real usando planner real","initial_state":{"session_id":"executor_live_s1","user_id":"executor_live_u1"},"recent_dialogue":[{"role":"assistant","text":"Te escucho."}],"user_message":"Puedo pagar 10700 si incluye transferencia","expected_checks":{"max_sentences":4,"max_questions":2},"tags":["live","executor"]}
