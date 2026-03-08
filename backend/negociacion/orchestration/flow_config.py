@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from importlib import metadata
 from pathlib import Path
-from typing import Callable, List, Literal, Sequence, Tuple, TypedDict
+from typing import Callable, List, Literal, Sequence, TypedDict
 
 import openai
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -49,10 +49,15 @@ from ..state.shared_types import (
     NodeName,
     NegotiationPhase,
     SDKCompatibilityStatus,
-    SafetyDomain,
     StructuredCallSource,
     ThreadMode,
 )
+from ..guards.builders import build_input_block_response
+from ..guards.input import run_input_guardrails
+from ..guards.models import InputGuardrailDecision, InputGuardrailResult, OutputGuardrailDecision, OutputGuardrailResult
+from ..guards.output import run_output_guardrails
+from ..guards.policy import build_guardrails_policy
+
 from ..traces.builders import (
     build_executor_node_trace,
     build_memory_node_trace,
@@ -77,13 +82,6 @@ PHASE_CLASSIFIER_INPUT_SCHEMA_VERSION = "phase_classifier_input.v1"
 PHASE_CLASSIFIER_OUTPUT_SCHEMA_VERSION = "phase_classifier.v1"
 
 
-
-class SafetyPolicyConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    hard_baseline_enabled: bool
-    optional_layer_enabled: bool
-
-
 class NegotiationTurnConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     memory_key: str = "negotiation_canonical"
@@ -99,7 +97,11 @@ class NegotiationTurnConfig(BaseModel):
     executor_store: bool = False
     max_recent_messages: int = 12
     max_executor_recent_turns: int = 4
+    # Legacy compatibility flag. Guardrails v1 now use feature_input_guardrails/feature_output_guardrails/feature_moderation.
     feature_safety: bool = True
+    feature_input_guardrails: bool = True
+    feature_output_guardrails: bool = True
+    feature_moderation: bool = True
     feature_traces: bool = True
     feature_eval_hooks: bool = True
     prompt_version_memory: str = "memory_v3"
@@ -124,6 +126,9 @@ class FlowDetails(TypedDict):
     max_recent_messages: int
     max_executor_recent_turns: int
     feature_safety: bool
+    feature_input_guardrails: bool
+    feature_output_guardrails: bool
+    feature_moderation: bool
     feature_traces: bool
     feature_eval_hooks: bool
     enforce_sdk_compatibility: bool
@@ -146,6 +151,9 @@ NEGOTIATION_FLOW_DETAILS: FlowDetails = {
     "max_recent_messages": 12,
     "max_executor_recent_turns": 4,
     "feature_safety": True,
+    "feature_input_guardrails": True,
+    "feature_output_guardrails": True,
+    "feature_moderation": True,
     "feature_traces": True,
     "feature_eval_hooks": True,
     "enforce_sdk_compatibility": False,
@@ -215,6 +223,9 @@ def build_negotiation_pipeline_config() -> NegotiationTurnConfig:
         max_recent_messages=NEGOTIATION_FLOW_DETAILS["max_recent_messages"],
         max_executor_recent_turns=NEGOTIATION_FLOW_DETAILS["max_executor_recent_turns"],
         feature_safety=NEGOTIATION_FLOW_DETAILS["feature_safety"],
+        feature_input_guardrails=NEGOTIATION_FLOW_DETAILS["feature_input_guardrails"],
+        feature_output_guardrails=NEGOTIATION_FLOW_DETAILS["feature_output_guardrails"],
+        feature_moderation=NEGOTIATION_FLOW_DETAILS["feature_moderation"],
         feature_traces=NEGOTIATION_FLOW_DETAILS["feature_traces"],
         feature_eval_hooks=NEGOTIATION_FLOW_DETAILS["feature_eval_hooks"],
         enforce_sdk_compatibility=NEGOTIATION_FLOW_DETAILS["enforce_sdk_compatibility"],
@@ -630,51 +641,18 @@ def apply_phase_classifier_output_to_state(canonical_state: CanonicalState, phas
 # E) Guardarraíles
 # ==================================================
 
-def _contains_pii(text: str) -> bool:
-    return any(signal in text.lower() for signal in ["dni", "pasaporte", "tarjeta", "cuenta bancaria", "iban", "cvv"])
+
+def _default_input_guardrail_result() -> InputGuardrailResult:
+    return InputGuardrailResult(decision=InputGuardrailDecision.allow)
 
 
-def _contains_overclaim(text: str) -> bool:
-    return any(signal in text.lower() for signal in ["garantizo", "100% seguro", "sin duda"])
-
-
-def _contains_critical_domain(text: str) -> SafetyDomain:
-    lower = text.lower()
-    if any(t in lower for t in ["diagnóstico", "medicina", "tratamiento", "síntoma"]):
-        return SafetyDomain.medical
-    if any(t in lower for t in ["demanda", "abogado", "juicio", "ilegal"]):
-        return SafetyDomain.legal
-    if any(t in lower for t in ["inversión", "acciones", "cripto", "rendimiento garantizado"]):
-        return SafetyDomain.financial
-    if any(t in lower for t in ["hackea", "arma", "explosivo", "veneno"]):
-        return SafetyDomain.dangerous_instruction
-    return SafetyDomain.none
-
-
-def _safety_policy(config: NegotiationTurnConfig) -> SafetyPolicyConfig:
-    return SafetyPolicyConfig(hard_baseline_enabled=True, optional_layer_enabled=config.feature_safety)
-
-
-def _apply_executor_guardrails(executor_output: ExecutorOutput, planner_output: PlannerOutput, user_turn: UserTurn, policy: SafetyPolicyConfig) -> Tuple[ExecutorOutput, str | None]:
-    if not policy.optional_layer_enabled:
-        return executor_output, None
-
-    domain = _contains_critical_domain(user_turn.normalized_text)
-    if domain != SafetyDomain.none:
-        return executor_output.model_copy(update={
-            "status": "clarify",
-            "spoken_text": "Puedo ayudarte de forma general, pero no puedo dar asesoría profesional específica en ese ámbito.",
-            "refusal_reason": f"domain_restriction:{domain.value}",
-        }), "optional_domain_guardrail"
-
-    if _contains_pii(executor_output.spoken_text) or _contains_overclaim(executor_output.spoken_text):
-        return executor_output.model_copy(update={
-            "status": "clarify",
-            "spoken_text": "Prefiero mantener precisión y seguridad. ¿Quieres que lo formule de forma más cauta?",
-            "refusal_reason": "safety_rewrite_required",
-        }), "optional_output_guardrail"
-
-    return executor_output, None
+def _default_output_guardrail_result(status: str) -> OutputGuardrailResult:
+    return OutputGuardrailResult(
+        decision=OutputGuardrailDecision.allow,
+        status_before=status,
+        status_after=status,
+        planner_contract_signals={"planner_status": "unknown", "executor_status": status, "violations": []},
+    )
 
 
 # ==================================================
@@ -703,12 +681,13 @@ def _append_unique_reason(container: list[str], reason: str | None) -> None:
         container.append(value)
 
 
-def _collect_last_refusals(logs: Sequence, executor_output: ExecutorOutput, guardrail_reason: str | None) -> list[str]:
+def _collect_last_refusals(logs: Sequence, executor_output: ExecutorOutput) -> list[str]:
+    """Collect only real refusal signals (model refusals + final refusal/block outcomes)."""
     reasons: list[str] = []
     for log in logs:
         _append_unique_reason(reasons, getattr(log, "refusal_reason", None))
-    _append_unique_reason(reasons, executor_output.refusal_reason)
-    _append_unique_reason(reasons, guardrail_reason)
+    if executor_output.status == "refuse":
+        _append_unique_reason(reasons, executor_output.refusal_reason)
     return reasons
 
 
@@ -852,7 +831,7 @@ def _read_text(path: Path, fallback: str) -> str:
 # Pipeline principal del turno
 # ==================================================
 
-def run_negotiation_cognitive_turn(state: SessionState, user_message: str, config: NegotiationTurnConfig) -> Tuple[str, SessionState]:
+def run_negotiation_cognitive_turn(state: SessionState, user_message: str, config: NegotiationTurnConfig) -> tuple[str, SessionState]:
     sdk_info = check_openai_sdk_compatibility(strict=config.enforce_sdk_compatibility)
 
     repo = StateRepository(memory_key=config.memory_key)
@@ -869,10 +848,6 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
     executor_trace_meta = TraceMeta(turn_id=turn_id, prompt_version=config.prompt_version_executor, schema_version="executor_input.v1", model_target=config.model_executor)
     user_turn = _build_user_turn(user_message, now_iso)
 
-    add_message(state, role="user", content=user_message)
-    recent_dialogue.append(MemoryDialogueMessage(role="user", text=user_turn.normalized_text))
-    recent_dialogue = _compact_recent(recent_dialogue, config.max_recent_messages)
-
     prompts_dir = Path(config.prompts_dir)
     memory_prompt = _read_text(prompts_dir / "summarizer_prompt.txt", "Identity: memory node\nOutput: MemoryOutput JSON estricto")
     phase_classifier_prompt = _read_text(prompts_dir / "phase_classifier_prompt.txt", "Clasifica la fase conversacional actual y devuelve SOLO current_phase en JSON estricto.")
@@ -880,73 +855,100 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
     executor_prompt = _read_text(prompts_dir / "executor_prompt.txt", "[ROLE] executor\n[CONTRACT] return only ExecutorOutput json\n[SUCCESS] realize planner without replanning")
 
     thread_before = canonical_state.openai_thread.model_copy(deep=True)
-
     client = _build_client()
-    request_context = refresh_request_context(client, canonical_state, config.thread_mode_default)
-    logs: List = []
-    safety_policy = _safety_policy(config)
-
-    memory_input = build_memory_input(canonical_state, recent_dialogue, user_turn, memory_trace_meta)
-    phase_input = build_phase_input(canonical_state, recent_dialogue, user_turn, phase_trace_meta)
-    mem_call, mem_latency, phase_call, phase_latency, request_context = _execute_memory_and_phase(
-        client=client,
-        config=config,
-        canonical_state=canonical_state,
-        request_context=request_context,
-        memory_prompt=memory_prompt,
-        phase_classifier_prompt=phase_classifier_prompt,
-        memory_input=memory_input,
-        phase_input=phase_input,
+    policy = build_guardrails_policy(
+        feature_input_guardrails=config.feature_input_guardrails,
+        feature_output_guardrails=config.feature_output_guardrails,
+        feature_moderation=config.feature_moderation,
     )
 
-    memory_patch = _resolve_memory_call_result(canonical_state, turn_id, mem_call)
-    phase_output = _resolve_phase_call_result(canonical_state, phase_call)
+    input_result = run_input_guardrails(user_text=user_turn.normalized_text, policy=policy, client=client)
+    output_result = _default_output_guardrail_result("not_executed")
 
-    apply_memory_output_to_state(canonical_state, memory_patch)
-    apply_phase_classifier_output_to_state(canonical_state, phase_output)
-    logs.append(build_memory_node_trace(memory_input, memory_patch, mem_call, mem_latency, "applied"))
-    logs.append(build_phase_node_trace(phase_input, phase_output, phase_call, phase_latency))
-
-    planner_input = build_planner_input(canonical_state, recent_dialogue, user_turn, planner_trace_meta, config.prompts_dir)
-    plan_start = time.perf_counter()
-    planner_call = _call_structured(client, config.model_planner, build_planner_messages(planner_prompt, planner_input), PlannerOutput, config.reasoning_effort_planner, request_context, config.planner_store)
+    logs: list = []
+    nodes: dict = {}
     planner_output = _planner_fallback()
-    if planner_call.source == StructuredCallSource.model and planner_call.parsed_json is not None:
-        planner_output = PlannerOutput.model_validate(planner_call.parsed_json)
-    elif planner_call.source == StructuredCallSource.refusal:
-        planner_output = _planner_fallback(status="refuse", refusal_reason=planner_call.refusal)
-    plan_latency = int((time.perf_counter() - plan_start) * 1000)
+    executor_output = _executor_fallback(planner_output, status="clarify")
 
-    apply_planner_output_to_state(canonical_state, planner_output)
-    if planner_call.response is not None:
-        update_thread_after_response(canonical_state.openai_thread, planner_call.response)
-    request_context = refresh_request_context(client, canonical_state, config.thread_mode_default)
-    logs.append(build_planner_node_trace(planner_input, planner_output, planner_call, plan_latency))
+    # v1 semantics: soft_restrict is a risk marker only; it does not alter normal node execution yet.
+    if input_result.decision in {InputGuardrailDecision.allow, InputGuardrailDecision.soft_restrict}:
+        add_message(state, role="user", content=user_message)
+        recent_dialogue.append(MemoryDialogueMessage(role="user", text=user_turn.normalized_text))
+        recent_dialogue = _compact_recent(recent_dialogue, config.max_recent_messages)
 
-    executor_input = build_executor_input(canonical_state, recent_dialogue, planner_output, user_turn, executor_trace_meta, config.max_executor_recent_turns, config.prompts_dir)
-    exe_start = time.perf_counter()
-    executor_call = _call_structured(client, config.model_executor, build_executor_messages(executor_prompt, executor_input), ExecutorOutput, "low", request_context, config.executor_store)
-    executor_output = _executor_fallback(planner_output)
-    if executor_call.source == StructuredCallSource.model and executor_call.parsed_json is not None:
-        executor_output = ExecutorOutput.model_validate(executor_call.parsed_json)
-    elif executor_call.source == StructuredCallSource.refusal:
-        executor_output = _executor_fallback(planner_output, status="refuse", refusal_reason=executor_call.refusal)
-    exe_latency = int((time.perf_counter() - exe_start) * 1000)
+    if input_result.decision == InputGuardrailDecision.block:
+        reply = build_input_block_response()
+        executor_output = _executor_fallback(planner_output, status="refuse", refusal_reason="input_guardrail_block")
+        executor_output = executor_output.model_copy(update={"spoken_text": reply})
+    else:
+        request_context = refresh_request_context(client, canonical_state, config.thread_mode_default)
 
-    guardrail_status_before = executor_output.status
-    guardrail_text_before = executor_output.spoken_text
-    executor_output, enforcement_reason = _apply_executor_guardrails(executor_output, planner_output, user_turn, safety_policy)
-    if executor_call.response is not None:
-        update_thread_after_response(canonical_state.openai_thread, executor_call.response)
-    executor_log_status = executor_output.status if enforcement_reason is None else f"{executor_output.status}:{enforcement_reason}"
-    logs.append(build_executor_node_trace(executor_input, executor_output, executor_call, exe_latency, executor_log_status))
+        memory_input = build_memory_input(canonical_state, recent_dialogue, user_turn, memory_trace_meta)
+        phase_input = build_phase_input(canonical_state, recent_dialogue, user_turn, phase_trace_meta)
+        mem_call, mem_latency, phase_call, phase_latency, request_context = _execute_memory_and_phase(
+            client=client,
+            config=config,
+            canonical_state=canonical_state,
+            request_context=request_context,
+            memory_prompt=memory_prompt,
+            phase_classifier_prompt=phase_classifier_prompt,
+            memory_input=memory_input,
+            phase_input=phase_input,
+        )
 
-    reply = executor_output.spoken_text
+        memory_patch = _resolve_memory_call_result(canonical_state, turn_id, mem_call)
+        phase_output = _resolve_phase_call_result(canonical_state, phase_call)
+        apply_memory_output_to_state(canonical_state, memory_patch)
+        apply_phase_classifier_output_to_state(canonical_state, phase_output)
+        logs.append(build_memory_node_trace(memory_input, memory_patch, mem_call, mem_latency, "applied"))
+        logs.append(build_phase_node_trace(phase_input, phase_output, phase_call, phase_latency))
+
+        planner_input = build_planner_input(canonical_state, recent_dialogue, user_turn, planner_trace_meta, config.prompts_dir)
+        plan_start = time.perf_counter()
+        planner_call = _call_structured(client, config.model_planner, build_planner_messages(planner_prompt, planner_input), PlannerOutput, config.reasoning_effort_planner, request_context, config.planner_store)
+        planner_output = _planner_fallback()
+        if planner_call.source == StructuredCallSource.model and planner_call.parsed_json is not None:
+            planner_output = PlannerOutput.model_validate(planner_call.parsed_json)
+        elif planner_call.source == StructuredCallSource.refusal:
+            planner_output = _planner_fallback(status="refuse", refusal_reason=planner_call.refusal)
+        plan_latency = int((time.perf_counter() - plan_start) * 1000)
+
+        apply_planner_output_to_state(canonical_state, planner_output)
+        if planner_call.response is not None:
+            update_thread_after_response(canonical_state.openai_thread, planner_call.response)
+        request_context = refresh_request_context(client, canonical_state, config.thread_mode_default)
+        logs.append(build_planner_node_trace(planner_input, planner_output, planner_call, plan_latency))
+
+        executor_input = build_executor_input(canonical_state, recent_dialogue, planner_output, user_turn, executor_trace_meta, config.max_executor_recent_turns, config.prompts_dir)
+        exe_start = time.perf_counter()
+        executor_call = _call_structured(client, config.model_executor, build_executor_messages(executor_prompt, executor_input), ExecutorOutput, "low", request_context, config.executor_store)
+        executor_output = _executor_fallback(planner_output)
+        if executor_call.source == StructuredCallSource.model and executor_call.parsed_json is not None:
+            executor_output = ExecutorOutput.model_validate(executor_call.parsed_json)
+        elif executor_call.source == StructuredCallSource.refusal:
+            executor_output = _executor_fallback(planner_output, status="refuse", refusal_reason=executor_call.refusal)
+        exe_latency = int((time.perf_counter() - exe_start) * 1000)
+
+        if executor_call.response is not None:
+            update_thread_after_response(canonical_state.openai_thread, executor_call.response)
+
+        executor_output, output_result = run_output_guardrails(
+            executor_output=executor_output,
+            planner_output=planner_output,
+            user_turn=user_turn,
+            policy=policy,
+            client=client,
+        )
+        logs.append(build_executor_node_trace(executor_input, executor_output, executor_call, exe_latency, executor_output.status))
+        nodes = {log.node.value: log for log in logs}
+        reply = executor_output.spoken_text
+
     if _tts_prefetch_hook is not None:
         try:
             _tts_prefetch_hook(reply)
         except Exception as exc:
             logger.warning("tts_prefetch_hook_error=%s", exc)
+
     add_message(state, role="assistant", content=reply)
     recent_dialogue.append(MemoryDialogueMessage(role="assistant", text=reply))
     recent_dialogue = _compact_recent(recent_dialogue, config.max_recent_messages)
@@ -954,8 +956,10 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
     turn_finished_at = datetime.now(timezone.utc).isoformat()
     total_latency_ms = int((time.perf_counter() - turn_started_perf) * 1000)
     grades = _evaluate_stub(planner_output, executor_output) if config.feature_eval_hooks else EvalGrades(planner_coherence="disabled", executor_naturalness="disabled", planner_executor_agreement=True, safety_compliance=True)
-    guardrail_reasons = [enforcement_reason] if enforcement_reason else []
-    nodes = {log.node.value: log for log in logs}
+
+    combined_guardrail_reasons = sorted(set(input_result.reasons + output_result.reasons))
+    guardrails_triggered = input_result.decision != InputGuardrailDecision.allow or output_result.decision != OutputGuardrailDecision.allow
+
     turn_trace = TurnTrace(
         trace_version=TRACE_VERSION,
         turn_id=turn_id,
@@ -976,11 +980,24 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
         final_reply_excerpt=excerpt(reply) or "",
         final_status=executor_output.status,
         assistant_turn_emitted=True,
-        guardrails_triggered=bool(enforcement_reason),
-        guardrail_reasons=guardrail_reasons,
-        guardrail_rewrite_applied=guardrail_text_before != executor_output.spoken_text,
-        guardrail_status_before=guardrail_status_before,
-        guardrail_status_after=executor_output.status,
+        guardrails_triggered=guardrails_triggered,
+        guardrail_reasons=combined_guardrail_reasons,
+        guardrail_rewrite_applied=output_result.rewrite_applied,
+        guardrail_status_before=output_result.status_before,
+        guardrail_status_after=output_result.status_after,
+        input_guardrail_decision=input_result.decision.value,
+        input_guardrail_reasons=input_result.reasons,
+        input_guardrail_triggered=input_result.decision != InputGuardrailDecision.allow,
+        input_moderation_used=input_result.moderation_used,
+        input_moderation_flags=input_result.moderation_flags,
+        output_guardrail_decision=output_result.decision.value,
+        output_guardrail_reasons=output_result.reasons,
+        output_guardrail_triggered=output_result.decision != OutputGuardrailDecision.allow,
+        output_guardrail_rewrite_applied=output_result.rewrite_applied,
+        output_guardrail_status_before=output_result.status_before,
+        output_guardrail_status_after=output_result.status_after,
+        output_moderation_used=output_result.moderation_used,
+        output_moderation_flags=output_result.moderation_flags,
         model_memory=config.model_memory,
         model_phase_classifier=config.model_phase_classifier,
         model_planner=config.model_planner,
@@ -989,7 +1006,7 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
         prompt_version_phase_classifier=config.prompt_version_phase_classifier,
         prompt_version_planner=config.prompt_version_planner,
         prompt_version_executor=config.prompt_version_executor,
-        schema_version_memory=memory_patch.schema_version,
+        schema_version_memory="memory.v1",
         schema_version_phase_classifier=PHASE_CLASSIFIER_OUTPUT_SCHEMA_VERSION,
         schema_version_planner=planner_output.schema_version,
         schema_version_executor=executor_output.schema_version,
@@ -1002,7 +1019,7 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
     canonical_state.trace.turn_id = turn_trace.turn_id
     canonical_state.trace.last_node_statuses = {log.node.value: log.status for log in logs}
     canonical_state.trace.last_fallbacks = [log.node.value for log in logs if log.source != StructuredCallSource.model]
-    canonical_state.trace.last_refusals = _collect_last_refusals(logs, executor_output, enforcement_reason)
+    canonical_state.trace.last_refusals = _collect_last_refusals(logs, executor_output)
     repo.save_state(state, canonical_state)
     repo.save_recent_dialogue(state, recent_dialogue)
     if config.feature_traces:

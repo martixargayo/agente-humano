@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import List, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..nodes.memory_node import UserTurn
 from ..state.shared_types import NodeName, SDKCompatibilityStatus, StructuredCallSource, ThreadMode
@@ -101,6 +101,21 @@ class TurnTrace(BaseModel):
     guardrail_status_before: str
     guardrail_status_after: str
 
+    input_guardrail_decision: str
+    input_guardrail_reasons: list[str] = Field(default_factory=list)
+    input_guardrail_triggered: bool = False
+    input_moderation_used: bool = False
+    input_moderation_flags: list[str] = Field(default_factory=list)
+
+    output_guardrail_decision: str
+    output_guardrail_reasons: list[str] = Field(default_factory=list)
+    output_guardrail_triggered: bool = False
+    output_guardrail_rewrite_applied: bool = False
+    output_guardrail_status_before: str
+    output_guardrail_status_after: str
+    output_moderation_used: bool = False
+    output_moderation_flags: list[str] = Field(default_factory=list)
+
     model_memory: str
     model_phase_classifier: str
     model_planner: str
@@ -117,6 +132,7 @@ class TurnTrace(BaseModel):
     grades: EvalGrades
 
     # Ordered execution timeline, useful for latency/status sequencing.
-    logs: List[RichNodeTrace]
+    # When input_guardrail_decision=="block", cognitive nodes may not run and logs can be empty by design.
+    logs: List[RichNodeTrace] = Field(default_factory=list)
     # Indexed access by node name for direct grading lookups.
-    nodes: dict[Literal["memory", "phase_classifier", "planner", "executor"], RichNodeTrace]
+    nodes: dict[Literal["memory", "phase_classifier", "planner", "executor"], RichNodeTrace] = Field(default_factory=dict)
