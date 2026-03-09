@@ -966,6 +966,12 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
             memory_input=memory_input,
             phase_input=phase_input,
         )
+        if len(memory_phase_result) == 7:
+            mem_call, mem_latency, mem_threading, phase_call, phase_latency, phase_threading, request_context = memory_phase_result
+        else:
+            mem_call, mem_latency, phase_call, phase_latency, request_context = memory_phase_result
+            mem_threading = _node_request_context("memory", request_context)[1]
+            phase_threading = _node_request_context("phase_classifier", request_context)[1]
 
         memory_messages = build_memory_messages(memory_prompt, memory_input)
         phase_messages = build_phase_classifier_messages_payload(phase_classifier_prompt, phase_input)
