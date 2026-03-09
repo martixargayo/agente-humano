@@ -37,6 +37,21 @@ def list_sessions() -> list[dict[str, Any]]:
     return session_bridge.list_sessions()
 
 
+
+def ensure_session(*, user_id: str, session_id: str) -> dict[str, Any]:
+    state = get_session_state(user_id=user_id, session_id=session_id)
+    traces = storage.resolve_traces(state)
+    meta = state.world_state.get("optimizador_sandbox_meta", {}) if isinstance(state.world_state, dict) else {}
+    return {
+        "session_key": storage.session_key(user_id, session_id),
+        "user_id": user_id,
+        "session_id": session_id,
+        "turn_count": len(traces),
+        "last_updated": state.last_updated.isoformat(),
+        "is_sandbox": bool(meta),
+        "sandbox_meta": meta if isinstance(meta, dict) else {},
+    }
+
 def list_conversations(user_id: str, session_id: str) -> list[dict[str, Any]]:
     return session_bridge.list_conversations(user_id, session_id)
 
@@ -126,11 +141,13 @@ def run_sandbox_turn(
     latest = traces[-1] if traces else None
     versioning = _resolve_versioning(state, latest, repeat_from_turn_id)
     if latest is not None:
+        optimizer_state = experiments_bridge.get_state(optimizer_session_id)
         latest["_optimizador"] = {
             "optimizer_session_id": optimizer_session_id,
             "used_overrides": bool(resolved_entries),
             "applied_overrides": experiments_bridge.describe_effective_overrides(resolved_entries),
-            "mode": experiments_bridge.get_state(optimizer_session_id).get("mode", "mirror"),
+            "mode": optimizer_state.get("mode", "mirror"),
+            "workspace_version": optimizer_state.get("workspace_version", 1),
             "session_key": storage.session_key(user_id, session_id),
             "conversation_id": conversation_id,
             "versioning": versioning,
