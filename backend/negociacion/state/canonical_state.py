@@ -128,6 +128,7 @@ class PlannerState(BaseModel):
     current_turn_goal: str | None
     topics_touched_current_phase: list[str] = Field(default_factory=list)
     topics_touched_previous_phases: list[str] = Field(default_factory=list)
+    recent_phase_history: list[NegotiationPhase] = Field(default_factory=list)
 
 
 class TraceState(BaseModel):
@@ -185,6 +186,7 @@ def build_default_canonical_state(
             current_turn_goal=None,
             topics_touched_current_phase=[],
             topics_touched_previous_phases=[],
+            recent_phase_history=[],
         ),
         trace=TraceState(turn_id=None, last_node_statuses={}, last_fallbacks=[], last_refusals=[]),
     )

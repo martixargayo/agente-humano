@@ -12,6 +12,7 @@ from negociacion.orchestration.flow_config import (
     _call_structured,
     _phase_classifier_fallback,
     _load_phase_cards,
+    _load_phase_classifier_card,
     apply_phase_classifier_output_to_state,
     build_executor_input,
     build_phase_classifier_messages_payload,
@@ -20,6 +21,8 @@ from negociacion.orchestration.flow_config import (
 )
 from negociacion.state.canonical_state import build_default_canonical_state
 from negociacion.state.shared_types import NegotiationPhase, StructuredCallSource, ThreadMode
+
+PROMPTS_DIR = Path(__file__).resolve().parents[1] / "negociacion" / "prompts"
 
 
 def _build_state():
@@ -45,13 +48,15 @@ def test_build_phase_input_exact_fields_and_sources():
         DialogueMessage(role="user", text=user_turn.normalized_text),
     ]
 
-    payload = build_phase_input(state, recent, user_turn, trace_meta)  # type: ignore[arg-type]
+    payload = build_phase_input(state, recent, user_turn, trace_meta, str(PROMPTS_DIR))  # type: ignore[arg-type]
     dumped = payload.model_dump(mode="json")
 
     assert set(dumped.keys()) == {
         "schema_version",
         "previous_phase",
         "recent_phase_history",
+        "phase_classifier_card",
+        "phase_classifier_card_source",
         "recent_turns",
         "current_user_turn",
         "trace_meta",
@@ -60,6 +65,8 @@ def test_build_phase_input_exact_fields_and_sources():
     assert dumped["previous_phase"] == "descubrimiento_y_comprension"
     assert dumped["recent_phase_history"] == ["clima_humano", "descubrimiento_y_comprension"]
     assert dumped["recent_turns"] == [{"role": "assistant", "text": "¿Qué presupuesto tienes?"}]
+    assert "phase_classifier_card" in dumped["phase_classifier_card"]
+    assert dumped["phase_classifier_card_source"].endswith("backend/negociacion/prompts/phase_classifier_card.json")
 
 
 def test_phase_output_schema_contract():
@@ -119,7 +126,7 @@ def test_phase_messages_are_split_and_structured_call_is_strict_json_schema():
         "schema_version": "phase_classifier_input.v1",
         "model_target": "gpt-5-mini",
     }
-    payload = build_phase_input(state, [], user_turn, trace_meta)  # type: ignore[arg-type]
+    payload = build_phase_input(state, [], user_turn, trace_meta, str(PROMPTS_DIR))  # type: ignore[arg-type]
     messages = build_phase_classifier_messages_payload("PROMPT", payload)
 
     assert messages[0]["role"] == "developer"
@@ -143,7 +150,7 @@ def test_phase_messages_are_split_and_structured_call_is_strict_json_schema():
 
 
 def test_phase_cards_placeholder_file_exists_and_has_all_phases():
-    cards = _load_phase_cards("backend/negociacion/prompts")
+    cards = _load_phase_cards(str(PROMPTS_DIR))
     assert set(cards.keys()) == {
         NegotiationPhase.clima_humano,
         NegotiationPhase.descubrimiento_y_comprension,
@@ -152,7 +159,7 @@ def test_phase_cards_placeholder_file_exists_and_has_all_phases():
         NegotiationPhase.formalizacion_del_acuerdo,
     }
 
-    path = Path("backend/negociacion/prompts/phase_cards.json")
+    path = PROMPTS_DIR / "phase_cards.json"
     raw = json.loads(path.read_text(encoding="utf-8"))
     assert set(raw.keys()) == {
         "clima_humano",
@@ -248,5 +255,92 @@ def test_phase_cards_custom_prompts_dir_is_used_by_planner_and_executor(tmp_path
         str(tmp_path),
     )  # type: ignore[arg-type]
 
-    assert "OBJETIVO CUSTOM CLIMA" in planner_input.phase_card.guidance
-    assert "OBJETIVO CUSTOM CLIMA" in executor_input.phase_card.guidance
+    assert planner_input.phase_card.model_dump(mode="json")["objective"] == "OBJETIVO CUSTOM CLIMA"
+    assert executor_input.phase_card.model_dump(mode="json")["objective"] == "OBJETIVO CUSTOM CLIMA"
+
+
+def test_phase_classifier_card_custom_prompts_dir_and_fallback(tmp_path):
+    card_path = tmp_path / "phase_classifier_card.json"
+    card_path.write_text(json.dumps({"phase_classifier_card": {"purpose": "CUSTOM"}}), encoding="utf-8")
+
+    custom_card, source = _load_phase_classifier_card(str(tmp_path))
+    assert custom_card["phase_classifier_card"]["purpose"] == "CUSTOM"
+    assert source == str(card_path)
+
+    fallback_card, fallback_source = _load_phase_classifier_card(str(tmp_path / "missing"))
+    assert fallback_card["phase_classifier_card"]["purpose"].startswith("Fallback guidance")
+    assert fallback_source.startswith("fallback:")
+
+
+def test_recent_phase_history_caps_at_five_and_preserves_order():
+    state = build_default_canonical_state(session_id="s1", thread_mode=ThreadMode.conversation)
+    sequence = [
+        NegotiationPhase.clima_humano,
+        NegotiationPhase.descubrimiento_y_comprension,
+        NegotiationPhase.propuesta_creativa,
+        NegotiationPhase.concesiones_y_ajuste_final,
+        NegotiationPhase.formalizacion_del_acuerdo,
+        NegotiationPhase.concesiones_y_ajuste_final,
+        NegotiationPhase.formalizacion_del_acuerdo,
+    ]
+    for phase in sequence:
+        apply_phase_classifier_output_to_state(state, PhaseClassifierOutput(schema_version="phase_classifier.v1", current_phase=phase))
+
+    assert state.planner_state.recent_phase_history == sequence[-5:]
+
+
+def test_phase_prompt_payload_artifacts_include_card_and_recent_history_last_5():
+    state = build_default_canonical_state(session_id="s1", thread_mode=ThreadMode.conversation)
+    state.planner_state.recent_phase_history = [
+        NegotiationPhase.clima_humano,
+        NegotiationPhase.descubrimiento_y_comprension,
+        NegotiationPhase.propuesta_creativa,
+        NegotiationPhase.concesiones_y_ajuste_final,
+        NegotiationPhase.formalizacion_del_acuerdo,
+        NegotiationPhase.concesiones_y_ajuste_final,
+    ]
+
+    user_turn = _build_user_turn("¿Eres Carlos, el interesado en el coche?", "2026-01-01T00:00:00Z")
+    trace_meta = {
+        "turn_id": "5",
+        "prompt_version": "phase_classifier_v1",
+        "schema_version": "phase_classifier_input.v1",
+        "model_target": "gpt-5-mini",
+    }
+
+    payload = build_phase_input(state, [], user_turn, trace_meta, str(PROMPTS_DIR))  # type: ignore[arg-type]
+    payload_json = payload.model_dump_json()
+    messages = build_phase_classifier_messages_payload("PROMPT", payload)
+
+    assert '"phase_classifier_card"' in payload_json
+    assert '"recent_phase_history"' in payload_json
+    assert "phase_classifier_card" in messages[1]["content"]
+    assert "recent_phase_history" in messages[1]["content"]
+
+    parsed = json.loads(payload_json)
+    assert parsed["recent_phase_history"] == [
+        "descubrimiento_y_comprension",
+        "propuesta_creativa",
+        "concesiones_y_ajuste_final",
+        "formalizacion_del_acuerdo",
+        "concesiones_y_ajuste_final",
+    ]
+
+
+def test_borderline_identification_case_is_present_in_phase_classifier_card_payload():
+    payload = build_phase_input(
+        _build_state(),
+        [],
+        _build_user_turn("¿Eres Carlos, el interesado en el coche?", "2026-01-01T00:00:00Z"),
+        {
+            "turn_id": "6",
+            "prompt_version": "phase_classifier_v1",
+            "schema_version": "phase_classifier_input.v1",
+            "model_target": "gpt-5-mini",
+        },
+        str(PROMPTS_DIR),
+    )  # type: ignore[arg-type]
+
+    card = payload.phase_classifier_card["phase_classifier_card"]
+    keep_clima = card["borderline_examples"]["keep_clima_humano"]
+    assert "¿Eres Carlos, el interesado en el coche?" in keep_clima

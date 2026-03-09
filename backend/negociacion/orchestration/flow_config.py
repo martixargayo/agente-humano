@@ -80,6 +80,7 @@ def set_tts_prefetch_hook(hook: Callable[[str], None] | None) -> None:
 OPENAI_MIN_VERSION = "1.40.0"
 PHASE_CLASSIFIER_INPUT_SCHEMA_VERSION = "phase_classifier_input.v1"
 PHASE_CLASSIFIER_OUTPUT_SCHEMA_VERSION = "phase_classifier.v1"
+MAX_RECENT_PHASE_HISTORY = 5
 
 
 # Centralized node threading contract:
@@ -299,6 +300,36 @@ def _compact_recent(recent: Sequence[MemoryDialogueMessage], max_messages: int) 
     return list(recent[-max_messages:])
 
 
+
+
+def _phase_classifier_card_fallback(path: Path, error: Exception | None = None) -> tuple[dict[str, object], str]:
+    fallback_card = {
+        "phase_classifier_card": {
+            "purpose": "Fallback guidance for phase classification when prompt card file is unavailable.",
+            "output_expectation": "Devuelve la fase dominante actual con criterio conservador y continuidad contextual.",
+        }
+    }
+    source = f"fallback:{path}"
+    if error is not None:
+        source = f"{source} error={type(error).__name__}"
+    return fallback_card, source
+
+
+def _load_phase_classifier_card(prompts_dir: str) -> tuple[dict[str, object], str]:
+    path = Path(prompts_dir) / "phase_classifier_card.json"
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        logger.warning("phase_classifier_card_load_failed path=%s error=%s", path, exc)
+        return _phase_classifier_card_fallback(path, exc)
+
+    if not isinstance(raw, dict) or not isinstance(raw.get("phase_classifier_card"), dict):
+        logger.warning("phase_classifier_card_invalid_shape path=%s", path)
+        return _phase_classifier_card_fallback(path)
+
+    return raw, str(path)
+
+
 def _load_phase_cards(prompts_dir: str) -> dict[NegotiationPhase, PhaseCard]:
     path = Path(prompts_dir) / "phase_cards.json"
     try:
@@ -322,26 +353,31 @@ def _load_phase_cards(prompts_dir: str) -> dict[NegotiationPhase, PhaseCard]:
 
 
 def _recent_phase_history(canonical_state: CanonicalState) -> List[NegotiationPhase]:
-    items: List[NegotiationPhase] = []
-    if canonical_state.planner_state.previous_phase is not None:
-        items.append(canonical_state.planner_state.previous_phase)
-    if canonical_state.planner_state.current_phase is not None:
-        items.append(canonical_state.planner_state.current_phase)
-    return items[-4:]
+    items: List[NegotiationPhase] = list(canonical_state.planner_state.recent_phase_history)
+    if not items:
+        if canonical_state.planner_state.previous_phase is not None:
+            items.append(canonical_state.planner_state.previous_phase)
+        if canonical_state.planner_state.current_phase is not None:
+            items.append(canonical_state.planner_state.current_phase)
+    return items[-MAX_RECENT_PHASE_HISTORY:]
 
 
 def _select_phase_card(current_phase: NegotiationPhase, phase_cards: dict[NegotiationPhase, PhaseCard]) -> PhaseCard:
     return phase_cards[current_phase]
 
 
-def build_phase_input(canonical_state: CanonicalState, recent_dialogue: Sequence[MemoryDialogueMessage], user_turn: UserTurn, trace_meta: TraceMeta) -> PhaseClassifierInput:
+def build_phase_input(canonical_state: CanonicalState, recent_dialogue: Sequence[MemoryDialogueMessage], user_turn: UserTurn, trace_meta: TraceMeta, prompts_dir: str) -> PhaseClassifierInput:
     short_recent = _compact_recent(recent_dialogue, 4)
     if short_recent and short_recent[-1].role == "user" and short_recent[-1].text == user_turn.normalized_text:
         short_recent = short_recent[:-1]
 
+    phase_classifier_card, phase_classifier_card_source = _load_phase_classifier_card(prompts_dir)
+
     return build_phase_classifier_input(
         previous_phase=canonical_state.planner_state.current_phase,
         recent_phase_history=_recent_phase_history(canonical_state),
+        phase_classifier_card=phase_classifier_card,
+        phase_classifier_card_source=phase_classifier_card_source,
         recent_turns=short_recent,
         current_user_turn=user_turn,
         trace_meta=trace_meta,
@@ -695,6 +731,9 @@ def apply_planner_output_to_state(canonical_state: CanonicalState, planner_outpu
 def apply_phase_classifier_output_to_state(canonical_state: CanonicalState, phase_output: PhaseClassifierOutput) -> None:
     canonical_state.planner_state.previous_phase = canonical_state.planner_state.current_phase
     canonical_state.planner_state.current_phase = phase_output.current_phase
+    history = list(canonical_state.planner_state.recent_phase_history)
+    history.append(phase_output.current_phase)
+    canonical_state.planner_state.recent_phase_history = history[-MAX_RECENT_PHASE_HISTORY:]
     # /// La lógica de mover tópicos entre current/previous phases depende del contrato final planner-memory y no se define aquí.
 
 
@@ -933,7 +972,7 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
         request_context = refresh_request_context(client, canonical_state, config.thread_mode_default)
 
         memory_input = build_memory_input(canonical_state, recent_dialogue, user_turn, memory_trace_meta)
-        phase_input = build_phase_input(canonical_state, recent_dialogue, user_turn, phase_trace_meta)
+        phase_input = build_phase_input(canonical_state, recent_dialogue, user_turn, phase_trace_meta, str(prompts_dir))
         memory_phase_result = _execute_memory_and_phase(
             client=client,
             config=config,

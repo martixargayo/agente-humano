@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from negociacion.orchestration import flow_config as fc
 from negociacion.orchestration.flow_config import (
     NegotiationTurnConfig,
@@ -22,8 +24,11 @@ def _fake_result() -> StructuredCallResult:
     )
 
 
+PROMPTS_DIR = Path(__file__).resolve().parents[1] / "negociacion" / "prompts"
+
+
 def _config(mode: ThreadMode) -> NegotiationTurnConfig:
-    return NegotiationTurnConfig(prompts_dir="backend/negociacion/prompts", thread_mode_default=mode)
+    return NegotiationTurnConfig(prompts_dir=str(PROMPTS_DIR), thread_mode_default=mode)
 
 
 def test_execute_memory_phase_runs_parallel_and_isolates_context_even_in_conversation_mode(monkeypatch):
@@ -48,7 +53,7 @@ def test_execute_memory_phase_runs_parallel_and_isolates_context_even_in_convers
         memory_prompt="M",
         phase_classifier_prompt="P",
         memory_input=fc.build_memory_input(canonical, [], fc._build_user_turn("hola", "2026-01-01T00:00:00Z"), fc.TraceMeta(turn_id="t", prompt_version="m", schema_version="memory_input.v1", model_target="x")),
-        phase_input=fc.build_phase_input(canonical, [], fc._build_user_turn("hola", "2026-01-01T00:00:00Z"), fc.TraceMeta(turn_id="t", prompt_version="p", schema_version="phase_classifier_input.v1", model_target="x")),
+        phase_input=fc.build_phase_input(canonical, [], fc._build_user_turn("hola", "2026-01-01T00:00:00Z"), fc.TraceMeta(turn_id="t", prompt_version="p", schema_version="phase_classifier_input.v1", model_target="x"), str(PROMPTS_DIR)),
     )
 
     assert seen_nodes == {"memory", "phase"}

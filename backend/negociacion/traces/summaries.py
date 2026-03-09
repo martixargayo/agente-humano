@@ -55,6 +55,7 @@ class PhaseInputSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
     previous_phase: str | None
     recent_phase_history: list[str]
+    phase_classifier_card_source: str
     recent_turn_count: int
     user_text_excerpt: str
 

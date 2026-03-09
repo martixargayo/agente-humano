@@ -78,7 +78,7 @@ def build_live_context(case: dict) -> tuple[SessionState, CanonicalState, list[D
 def run_live_phase(case: dict) -> dict:
     _, canonical, recent, user_turn, config, client, request_context, _, phase_prompt, _, _ = build_live_context(case)
     trace = _trace_meta(case["case_id"], config.prompt_version_phase_classifier, "phase_classifier_input.v1", config.model_phase_classifier)
-    phase_input = build_phase_input(canonical, recent, user_turn, trace)
+    phase_input = build_phase_input(canonical, recent, user_turn, trace, config.prompts_dir)
     call = _call_structured(client, config.model_phase_classifier, build_phase_classifier_messages_payload(phase_prompt, phase_input), PhaseClassifierOutput, "low", request_context, config.memory_store)
     output = PhaseClassifierOutput.model_validate(call.parsed_json) if call.source == StructuredCallSource.model and call.parsed_json else _phase_classifier_fallback(canonical.planner_state.current_phase)
     return output.model_dump(mode="json")
@@ -103,7 +103,7 @@ def run_live_planner(case: dict) -> tuple[dict, dict]:
     apply_memory_output_to_state(canonical, memory_output)
 
     phase_trace = _trace_meta(case["case_id"], config.prompt_version_phase_classifier, "phase_classifier_input.v1", config.model_phase_classifier)
-    phase_input = build_phase_input(canonical, recent, user_turn, phase_trace)
+    phase_input = build_phase_input(canonical, recent, user_turn, phase_trace, config.prompts_dir)
     phase_call = _call_structured(client, config.model_phase_classifier, build_phase_classifier_messages_payload(phase_prompt, phase_input), PhaseClassifierOutput, "low", request_context, config.memory_store)
     phase_output = PhaseClassifierOutput.model_validate(phase_call.parsed_json) if phase_call.source == StructuredCallSource.model and phase_call.parsed_json else _phase_classifier_fallback(canonical.planner_state.current_phase)
     apply_phase_classifier_output_to_state(canonical, phase_output)
@@ -125,7 +125,7 @@ def run_live_executor(case: dict) -> tuple[dict, str, dict]:
     apply_memory_output_to_state(canonical, memory_output)
 
     phase_trace = _trace_meta(case["case_id"], config.prompt_version_phase_classifier, "phase_classifier_input.v1", config.model_phase_classifier)
-    phase_input = build_phase_input(canonical, recent, user_turn, phase_trace)
+    phase_input = build_phase_input(canonical, recent, user_turn, phase_trace, config.prompts_dir)
     phase_call = _call_structured(client, config.model_phase_classifier, build_phase_classifier_messages_payload(phase_prompt, phase_input), PhaseClassifierOutput, "low", request_context, config.memory_store)
     phase_output = PhaseClassifierOutput.model_validate(phase_call.parsed_json) if phase_call.source == StructuredCallSource.model and phase_call.parsed_json else _phase_classifier_fallback(canonical.planner_state.current_phase)
     apply_phase_classifier_output_to_state(canonical, phase_output)
