@@ -141,6 +141,14 @@ def test_e2e_pipeline_wires_nodes_and_persists_trace_and_state(monkeypatch):
         NodeName.planner.value,
         NodeName.executor.value,
     ]
+    assert traces[0]["nodes"]["memory"]["threading_policy"] == "stateless_parallel"
+    assert traces[0]["nodes"]["phase_classifier"]["threading_policy"] == "stateless_parallel"
+    assert traces[0]["nodes"]["planner"]["threading_policy"] == "stateful_sequential"
+    assert traces[0]["nodes"]["executor"]["status_before_guardrail"] == "deliver"
+    assert traces[0]["nodes"]["executor"]["status_after_guardrail"] == "deliver"
+    assert traces[0]["nodes"]["planner"]["prompt_artifacts"]["developer_prompt_text"]
+    assert traces[0]["nodes"]["planner"]["prompt_artifacts"]["user_prompt_rendered"]
+    assert traces[0]["nodes"]["planner"]["prompt_artifacts"]["input_payload_json"]
 
 
 def test_turn_trace_rich_schema_for_grading_and_compact_canonical_trace(monkeypatch):
@@ -319,7 +327,7 @@ def test_turn_trace_rich_schema_for_grading_and_compact_canonical_trace(monkeypa
 
     trace_str = str(trace)
     assert "planner_prompt" not in trace_str
-    assert "task_input" not in trace_str
+    assert "task_input" in trace_str
 
 
 def test_planner_refuse_status_does_not_create_fake_refusal_reason(monkeypatch):
@@ -393,3 +401,63 @@ def test_planner_refuse_status_does_not_create_fake_refusal_reason(monkeypatch):
     assert trace["nodes"]["planner"]["refusal_reason"] is None
 
 
+
+
+def test_planner_exception_sets_fallback_applied_trace_flags(monkeypatch):
+    session = SessionState(user_id="u_fb", session_id="s_fb")
+    config = build_negotiation_pipeline_config().model_copy(update={"feature_safety": False, "feature_traces": True})
+
+    def _fake_build_client():
+        return object()
+
+    def _fake_refresh_request_context(client, canonical_state, mode_default):
+        _ = (client, canonical_state, mode_default)
+        return {"conversation": "conv-fb"}
+
+    def _fake_execute_memory_and_phase(**kwargs):
+        _ = kwargs
+        mem_call = _fake_model_result({
+            "schema_version": "memory.v1",
+            "episodic_append": [],
+            "working_memory_new": {"current_topic": None, "pending_question": None, "last_turn_summary": "ok"},
+        })
+        phase_call = _fake_model_result({"schema_version": "phase_classifier.v1", "current_phase": "clima_humano"})
+        return mem_call, 5, phase_call, 5, {"conversation": "conv-fb"}
+
+    def _fake_call_structured(client, model, messages, response_model, reasoning_effort, request_context, store):
+        _ = (client, model, messages, reasoning_effort, request_context, store)
+        if response_model.__name__ == "PlannerOutput":
+            return StructuredCallResult(
+                parsed_json=None,
+                refusal=None,
+                parse_error=None,
+                exception_error="conversation_locked",
+                response=None,
+                source=StructuredCallSource.exception,
+                model_called=True,
+            )
+        if response_model.__name__ == "ExecutorOutput":
+            return _fake_model_result(
+                {
+                    "schema_version": "executor.v1",
+                    "status": "clarify",
+                    "spoken_text": "Necesito un dato adicional para continuar.",
+                    "memory_used": [],
+                    "refusal_reason": None,
+                }
+            )
+        raise AssertionError("unexpected model")
+
+    monkeypatch.setattr(fc, "_build_client", _fake_build_client)
+    monkeypatch.setattr(fc, "refresh_request_context", _fake_refresh_request_context)
+    monkeypatch.setattr(fc, "_execute_memory_and_phase", _fake_execute_memory_and_phase)
+    monkeypatch.setattr(fc, "_call_structured", _fake_call_structured)
+
+    run_negotiation_cognitive_turn(session, "hola", config)
+    trace = session.world_state[f"{config.memory_key}_traces"][0]
+    planner_node = trace["nodes"]["planner"]
+
+    assert planner_node["source"] == "exception"
+    assert planner_node["fallback_applied"] is True
+    assert planner_node["fallback_output_summary"] is not None
+    assert planner_node["final_output_source"] == "fallback_output"

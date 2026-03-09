@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import List, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 from ..state.canonical_state import MemoryWorkingState, NegotiationState, PersonaPolicy, PlannerState
 from .memory_node import DialogueMessage, TraceMeta, UserTurn
@@ -76,5 +76,5 @@ class PlannerOutput(BaseModel):
     decision: PlannerDecision
     content_plan: PlannerContentPlan
     limits: PlannerLimits
-    memory_targets: list[str] = Field(default_factory=list)
+    memory_targets: list[str]
     done_criteria: list[str]

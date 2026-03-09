@@ -73,3 +73,8 @@ class OutputGuardrailResult(BaseModel):
     planner_contract_signals: PlannerContractSignals
     moderation_used: bool = False
     moderation_flags: list[str] = Field(default_factory=list)
+    enforcement_mode: str = "active"
+    enforcement_action: str = "none"
+    observed_not_applied_rules: list[str] = Field(default_factory=list)
+    enforced_rules: list[str] = Field(default_factory=list)
+    output_changed: bool = False

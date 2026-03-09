@@ -35,12 +35,38 @@ def _seed_turn(*, user_id: str, session_id: str, turn_suffix: str = "1", convers
         "output_guardrail_status_before": "deliver",
         "output_guardrail_status_after": "deliver",
         "output_guardrail_rewrite_applied": False,
+        "output_guardrail_enforcement_mode": "observe_only",
+        "output_guardrail_enforcement_action": "none",
+        "output_guardrail_observed_not_applied_rules": [],
+        "output_guardrail_enforced_rules": [],
+        "output_guardrail_output_changed": False,
         "output_moderation_used": False,
         "output_moderation_flags": [],
         "conversation_id_after": conversation_id,
         "user_turn": {"raw_text": text},
         "logs": [],
-        "nodes": {},
+        "nodes": {
+            "planner": {
+                "status": "plan",
+                "source": "model",
+                "latency_ms": 10,
+                "prompt_version": "planner_v3",
+                "output_summary": {"status": "plan"},
+                "prompt_artifacts": {
+                    "developer_prompt_text": f"DEV {turn_suffix}",
+                    "user_prompt_rendered": f"USER {turn_suffix}",
+                    "input_payload_json": json.dumps({"turn": turn_suffix}),
+                    "model_target": "o4-mini",
+                    "prompt_version": "planner_v3",
+                    "input_schema_version": "planner_input.v1",
+                    "output_schema_version": "planner.v3",
+                    "threading_policy": "stateful_sequential",
+                    "developer_prompt_hash": f"dev-{turn_suffix}",
+                    "user_prompt_hash": f"usr-{turn_suffix}",
+                    "payload_hash": f"pay-{turn_suffix}",
+                },
+            }
+        },
         "session_id": session_id,
         "user_id": user_id,
     }
@@ -152,7 +178,28 @@ def test_overrides_scope_and_validation_and_application(monkeypatch):
                 "output_guardrail_status_after": "deliver",
                 "user_turn": {"raw_text": user_message},
                 "logs": [],
-                "nodes": {},
+                "nodes": {
+            "planner": {
+                "status": "plan",
+                "source": "model",
+                "latency_ms": 10,
+                "prompt_version": "planner_v3",
+                "output_summary": {"status": "plan"},
+                "prompt_artifacts": {
+                    "developer_prompt_text": "DEV sandbox",
+                    "user_prompt_rendered": "USER sandbox",
+                    "input_payload_json": json.dumps({"turn": "sandbox"}),
+                    "model_target": "o4-mini",
+                    "prompt_version": "planner_v3",
+                    "input_schema_version": "planner_input.v1",
+                    "output_schema_version": "planner.v3",
+                    "threading_policy": "stateful_sequential",
+                    "developer_prompt_hash": "dev-sandbox",
+                    "user_prompt_hash": "usr-sandbox",
+                    "payload_hash": "pay-sandbox",
+                },
+            }
+        },
                 "conversation_id_after": "conv-1",
             }
         )
@@ -219,7 +266,28 @@ def test_contextual_phase_cards_and_persona_used_and_tracked(monkeypatch):
                 "output_guardrail_status_after": "deliver",
                 "user_turn": {"raw_text": user_message},
                 "logs": [],
-                "nodes": {},
+                "nodes": {
+            "planner": {
+                "status": "plan",
+                "source": "model",
+                "latency_ms": 10,
+                "prompt_version": "planner_v3",
+                "output_summary": {"status": "plan"},
+                "prompt_artifacts": {
+                    "developer_prompt_text": "DEV sandbox",
+                    "user_prompt_rendered": "USER sandbox",
+                    "input_payload_json": json.dumps({"turn": "sandbox"}),
+                    "model_target": "o4-mini",
+                    "prompt_version": "planner_v3",
+                    "input_schema_version": "planner_input.v1",
+                    "output_schema_version": "planner.v3",
+                    "threading_policy": "stateful_sequential",
+                    "developer_prompt_hash": "dev-sandbox",
+                    "user_prompt_hash": "usr-sandbox",
+                    "payload_hash": "pay-sandbox",
+                },
+            }
+        },
                 "conversation_id_after": "conv-1",
             }
         )
@@ -275,6 +343,7 @@ def test_compare_and_guardrails_honest_and_cases(monkeypatch, tmp_path):
     assert "effective_overrides" in body
     assert "node_changes" in body["diff"]
     assert "guardrails" in body["diff"]
+    assert "prompt_artifact_changes" in body["diff"]
 
     save = client.post("/api/optimizador/cases", json={"turn_id": a, "family": "end_to_end", "tags": ["good"], "notes": "ok"})
     assert save.status_code == 200
@@ -342,7 +411,28 @@ def test_repeat_turn_generates_next_version(monkeypatch):
                 "output_guardrail_status_after": "deliver",
                 "user_turn": {"raw_text": user_message},
                 "logs": [],
-                "nodes": {},
+                "nodes": {
+            "planner": {
+                "status": "plan",
+                "source": "model",
+                "latency_ms": 10,
+                "prompt_version": "planner_v3",
+                "output_summary": {"status": "plan"},
+                "prompt_artifacts": {
+                    "developer_prompt_text": "DEV sandbox",
+                    "user_prompt_rendered": "USER sandbox",
+                    "input_payload_json": json.dumps({"turn": "sandbox"}),
+                    "model_target": "o4-mini",
+                    "prompt_version": "planner_v3",
+                    "input_schema_version": "planner_input.v1",
+                    "output_schema_version": "planner.v3",
+                    "threading_policy": "stateful_sequential",
+                    "developer_prompt_hash": "dev-sandbox",
+                    "user_prompt_hash": "usr-sandbox",
+                    "payload_hash": "pay-sandbox",
+                },
+            }
+        },
                 "conversation_id_after": "conv-1",
             }
         )
@@ -382,3 +472,14 @@ def test_optimizer_can_bootstrap_session_without_avatar_dependency():
     assert payload["session_id"] == "s_opt"
     sessions = client.get("/api/optimizador/sessions").json()["items"]
     assert any(row["session_key"] == "u_opt::s_opt" for row in sessions)
+
+
+
+def test_compare_detects_prompt_artifact_changes():
+    SESSIONS.clear()
+    a = _seed_turn(user_id="u2", session_id="s2", turn_suffix="1")
+    b = _seed_turn(user_id="u2", session_id="s2", turn_suffix="2")
+    body = client.post("/api/optimizador/compare", json={"turn_a": a, "turn_b": b}).json()
+    assert "planner" in body["diff"]["prompt_artifact_changes"]
+    assert body["diff"]["prompt_artifact_changes"]["planner"]["changed"] is True
+    assert body["diff"]["prompt_artifact_changes"]["planner"]["fields"]["developer_prompt_text"] is True
