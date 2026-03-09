@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from . import experiments_bridge, services
-from .models import CompareTurnsRequest, NewConversationRequest, OverrideUpdateRequest, SandboxCloneRequest, SandboxTurnRequest, SaveCaseRequest
+from .models import BootstrapSessionRequest, CompareTurnsRequest, ConfirmOverridesRequest, NewConversationRequest, OverrideUpdateRequest, SandboxCloneRequest, SandboxTurnRequest, SaveCaseRequest
 
 router = APIRouter(prefix="/api/optimizador", tags=["optimizador"])
 
@@ -11,6 +11,11 @@ router = APIRouter(prefix="/api/optimizador", tags=["optimizador"])
 @router.get("/sessions")
 def list_sessions() -> dict:
     return {"items": services.list_sessions()}
+
+
+@router.post("/sessions/bootstrap")
+def bootstrap_session(payload: BootstrapSessionRequest) -> dict:
+    return services.ensure_session(user_id=payload.user_id, session_id=payload.session_id)
 
 
 @router.get("/sessions/{user_id}/{session_id}/conversations")
@@ -58,6 +63,14 @@ def get_overrides(optimizer_session_id: str) -> dict:
 def update_overrides(optimizer_session_id: str, payload: OverrideUpdateRequest) -> dict:
     try:
         return experiments_bridge.update_state(optimizer_session_id, payload.model_dump(mode="json", exclude_none=True))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/overrides/{optimizer_session_id}/confirm")
+def confirm_overrides(optimizer_session_id: str, payload: ConfirmOverridesRequest) -> dict:
+    try:
+        return experiments_bridge.confirm_state(optimizer_session_id, payload.model_dump(mode="json").get("entries", []))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

@@ -28,6 +28,10 @@ class OverrideUpdateRequest(BaseModel):
     entries: list[OverrideEntry] = Field(default_factory=list)
 
 
+class ConfirmOverridesRequest(BaseModel):
+    entries: list[OverrideEntry] = Field(default_factory=list)
+
+
 class SandboxTurnRequest(BaseModel):
     optimizer_session_id: str = "default"
     user_id: str
@@ -49,6 +53,11 @@ class NewConversationRequest(BaseModel):
     optimizer_session_id: str = "default"
     user_id: str
     session_id: str
+
+
+class BootstrapSessionRequest(BaseModel):
+    user_id: str = "u_optimizador"
+    session_id: str = "optimizador-main"
 
 
 class SaveCaseRequest(BaseModel):
