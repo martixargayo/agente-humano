@@ -6,11 +6,12 @@ import os
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from importlib import metadata
 from pathlib import Path
-from typing import Callable, List, Literal, Sequence, TypedDict
+from typing import Any, Callable, List, Literal, Sequence, TypedDict
 
 import openai
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -501,24 +502,32 @@ def build_executor_input(canonical_state: CanonicalState, recent_dialogue: Seque
 
 
 def build_memory_messages(memory_prompt: str, payload: MemoryInput) -> List[dict[str, str]]:
+    return build_memory_messages_from_payload_json(memory_prompt, payload.model_dump_json())
+
+
+def build_memory_messages_from_payload_json(memory_prompt: str, payload_json: str) -> List[dict[str, str]]:
     return [
         {"role": "developer", "content": memory_prompt},
         {
             "role": "user",
             "content": "<task_input>\nDevuelve solo JSON válido para `MemoryOutput`.\n\n<memory_input_json>\n"
-            f"{payload.model_dump_json()}\n"
+            f"{payload_json}\n"
             "</memory_input_json>\n</task_input>",
         },
     ]
 
 
 def build_planner_messages(planner_prompt: str, payload: PlannerInput) -> List[dict[str, str]]:
+    return build_planner_messages_from_payload_json(planner_prompt, payload.model_dump_json())
+
+
+def build_planner_messages_from_payload_json(planner_prompt: str, payload_json: str) -> List[dict[str, str]]:
     return [
         {"role": "developer", "content": planner_prompt},
         {
             "role": "user",
             "content": "<task_input>\nDevuelve solo JSON válido para `PlannerOutput`.\n\n<planner_input_json>\n"
-            f"{payload.model_dump_json()}\n"
+            f"{payload_json}\n"
             "</planner_input_json>\n</task_input>",
         },
     ]
@@ -528,13 +537,29 @@ def build_phase_classifier_messages_payload(phase_classifier_prompt: str, payloa
     return build_phase_classifier_messages(phase_classifier_prompt, payload)
 
 
+def build_phase_classifier_messages_from_payload_json(phase_classifier_prompt: str, payload_json: str) -> List[dict[str, str]]:
+    return [
+        {"role": "developer", "content": phase_classifier_prompt},
+        {
+            "role": "user",
+            "content": "<task_input>\nDevuelve solo JSON válido para `PhaseClassifierOutput`.\n\n<phase_classifier_input_json>\n"
+            f"{payload_json}\n"
+            "</phase_classifier_input_json>\n</task_input>",
+        },
+    ]
+
+
 def build_executor_messages(executor_prompt: str, payload: ExecutorInput) -> List[dict[str, str]]:
+    return build_executor_messages_from_payload_json(executor_prompt, payload.model_dump_json())
+
+
+def build_executor_messages_from_payload_json(executor_prompt: str, payload_json: str) -> List[dict[str, str]]:
     return [
         {"role": "developer", "content": executor_prompt},
         {
             "role": "user",
             "content": "<task_input>\nDevuelve solo JSON válido para `ExecutorOutput`.\n\n<executor_input_json>\n"
-            f"{payload.model_dump_json()}\n"
+            f"{payload_json}\n"
             "</executor_input_json>\n</task_input>",
         },
     ]
@@ -572,17 +597,40 @@ def _hash_text(value: str | None) -> str | None:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
-def _build_prompt_artifacts(messages: list[dict[str, str]], payload_json: str, model_target: str, prompt_version: str, input_schema_version: str, output_schema_version: str, threading_info: dict[str, object]) -> PromptArtifacts:
-    """Persist the exact prompt surfaces sent to the model for optimizer inspection.
+@dataclass(frozen=True)
+class FrozenPromptCall:
+    payload_snapshot: BaseModel | dict[str, Any] | list[Any]
+    payload_json: str
+    messages: list[dict[str, str]]
+    artifacts: PromptArtifacts
 
-    We intentionally store both rendered user message and structured payload JSON so
-    debugging can distinguish template rendering issues vs payload-construction issues.
-    """
-    developer = next((m.get("content") for m in messages if m.get("role") == "developer"), None)
-    user = next((m.get("content") for m in messages if m.get("role") == "user"), None)
-    return PromptArtifacts(
-        developer_prompt_text=developer,
-        user_prompt_rendered=user,
+
+def freeze_prompt_artifacts(
+    *,
+    developer_prompt_text: str,
+    payload: BaseModel | dict[str, Any] | list[Any],
+    render_user_prompt: Callable[[str], str],
+    model_target: str,
+    prompt_version: str,
+    input_schema_version: str,
+    output_schema_version: str,
+    threading_info: dict[str, object],
+) -> FrozenPromptCall:
+    if isinstance(payload, BaseModel):
+        payload_snapshot = payload.model_copy(deep=True)
+        payload_json = payload_snapshot.model_dump_json()
+    else:
+        payload_snapshot = deepcopy(payload)
+        payload_json = json.dumps(payload_snapshot, ensure_ascii=False, separators=(",", ":"))
+
+    user_prompt_rendered = render_user_prompt(payload_json)
+    messages = [
+        {"role": "developer", "content": developer_prompt_text},
+        {"role": "user", "content": user_prompt_rendered},
+    ]
+    artifacts = PromptArtifacts(
+        developer_prompt_text=developer_prompt_text,
+        user_prompt_rendered=user_prompt_rendered,
         input_payload_json=payload_json,
         model_target=model_target,
         prompt_version=prompt_version,
@@ -590,13 +638,15 @@ def _build_prompt_artifacts(messages: list[dict[str, str]], payload_json: str, m
         output_schema_version=output_schema_version,
         threading_policy=str(threading_info.get("threading_policy")) if threading_info.get("threading_policy") is not None else None,
         threading_mode_effective=str(threading_info.get("threading_mode_effective")) if threading_info.get("threading_mode_effective") is not None else None,
-        developer_prompt_hash=_hash_text(developer),
-        user_prompt_hash=_hash_text(user),
+        developer_prompt_hash=_hash_text(developer_prompt_text),
+        user_prompt_hash=_hash_text(user_prompt_rendered),
         payload_hash=_hash_text(payload_json),
-        developer_prompt_chars=len(developer or ""),
-        user_prompt_chars=len(user or ""),
+        developer_prompt_chars=len(developer_prompt_text),
+        user_prompt_chars=len(user_prompt_rendered),
         payload_chars=len(payload_json),
     )
+    return FrozenPromptCall(payload_snapshot=payload_snapshot, payload_json=payload_json, messages=messages, artifacts=artifacts)
+
 
 def _call_structured(
     client: openai.OpenAI | None,
@@ -812,10 +862,8 @@ def _execute_memory_and_phase(
     config: NegotiationTurnConfig,
     canonical_state: CanonicalState,
     request_context: dict[str, str],
-    memory_prompt: str,
-    phase_classifier_prompt: str,
-    memory_input: MemoryInput,
-    phase_input: PhaseClassifierInput,
+    memory_messages: list[dict[str, str]],
+    phase_messages: list[dict[str, str]],
 ) -> tuple[StructuredCallResult, int, dict[str, object], StructuredCallResult, int, dict[str, object], dict[str, str]]:
     """Run memory+phase in parallel with explicit per-node threading isolation."""
 
@@ -827,7 +875,7 @@ def _execute_memory_and_phase(
         call = _call_structured(
             client,
             config.model_memory,
-            build_memory_messages(memory_prompt, memory_input),
+            memory_messages,
             MemoryOutput,
             "low",
             ctx,
@@ -841,7 +889,7 @@ def _execute_memory_and_phase(
         call = _call_structured(
             client,
             config.model_phase_classifier,
-            build_phase_classifier_messages_payload(phase_classifier_prompt, phase_input),
+            phase_messages,
             PhaseClassifierOutput,
             "low",
             ctx,
@@ -978,10 +1026,8 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
             config=config,
             canonical_state=canonical_state,
             request_context=request_context,
-            memory_prompt=memory_prompt,
-            phase_classifier_prompt=phase_classifier_prompt,
-            memory_input=memory_input,
-            phase_input=phase_input,
+            memory_messages=memory_frozen.messages,
+            phase_messages=phase_frozen.messages,
         )
         if len(memory_phase_result) == 7:
             mem_call, mem_latency, mem_threading, phase_call, phase_latency, phase_threading, request_context = memory_phase_result
@@ -990,38 +1036,27 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
             mem_threading = _node_request_context("memory", request_context)[1]
             phase_threading = _node_request_context("phase_classifier", request_context)[1]
 
-        memory_messages = build_memory_messages(memory_prompt, memory_input)
-        phase_messages = build_phase_classifier_messages_payload(phase_classifier_prompt, phase_input)
         memory_patch = _resolve_memory_call_result(canonical_state, turn_id, mem_call)
         phase_output = _resolve_phase_call_result(canonical_state, phase_call)
         apply_memory_output_to_state(canonical_state, memory_patch)
         apply_phase_classifier_output_to_state(canonical_state, phase_output)
-        memory_artifacts = _build_prompt_artifacts(
-            memory_messages,
-            memory_input.model_dump_json(),
-            memory_trace_meta.model_target,
-            memory_trace_meta.prompt_version,
-            memory_input.schema_version,
-            memory_patch.schema_version,
-            mem_threading,
-        )
-        phase_artifacts = _build_prompt_artifacts(
-            phase_messages,
-            phase_input.model_dump_json(),
-            phase_trace_meta.model_target,
-            phase_trace_meta.prompt_version,
-            phase_input.schema_version,
-            phase_output.schema_version,
-            phase_threading,
-        )
-        logs.append(build_memory_node_trace(memory_input, memory_patch, mem_call, mem_latency, "applied", mem_threading, memory_artifacts))
-        logs.append(build_phase_node_trace(phase_input, phase_output, phase_call, phase_latency, phase_threading, phase_artifacts))
+        logs.append(build_memory_node_trace(memory_frozen.payload_snapshot, memory_patch, mem_call, mem_latency, "applied", mem_threading, memory_frozen.artifacts))
+        logs.append(build_phase_node_trace(phase_frozen.payload_snapshot, phase_output, phase_call, phase_latency, phase_threading, phase_frozen.artifacts))
 
         planner_input = build_planner_input(canonical_state, recent_dialogue, user_turn, planner_trace_meta, config.prompts_dir)
         planner_request_context, planner_threading = _node_request_context("planner", request_context)
-        planner_messages = build_planner_messages(planner_prompt, planner_input)
+        planner_frozen = freeze_prompt_artifacts(
+            developer_prompt_text=planner_prompt,
+            payload=planner_input,
+            render_user_prompt=lambda payload_json: build_planner_messages_from_payload_json(planner_prompt, payload_json)[1]["content"],
+            model_target=planner_trace_meta.model_target,
+            prompt_version=planner_trace_meta.prompt_version,
+            input_schema_version=planner_input.schema_version,
+            output_schema_version="planner.v3",
+            threading_info=planner_threading,
+        )
         plan_start = time.perf_counter()
-        planner_call = _call_structured(client, config.model_planner, planner_messages, PlannerOutput, config.reasoning_effort_planner, planner_request_context, config.planner_store)
+        planner_call = _call_structured(client, config.model_planner, planner_frozen.messages, PlannerOutput, config.reasoning_effort_planner, planner_request_context, config.planner_store)
         planner_output = _planner_fallback()
         if planner_call.source == StructuredCallSource.model and planner_call.parsed_json is not None:
             planner_output = PlannerOutput.model_validate(planner_call.parsed_json)
@@ -1033,22 +1068,22 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
         if planner_call.response is not None:
             update_thread_after_response(canonical_state.openai_thread, planner_call.response)
         request_context = refresh_request_context(client, canonical_state, config.thread_mode_default)
-        planner_artifacts = _build_prompt_artifacts(
-            planner_messages,
-            planner_input.model_dump_json(),
-            planner_trace_meta.model_target,
-            planner_trace_meta.prompt_version,
-            planner_input.schema_version,
-            planner_output.schema_version,
-            planner_threading,
-        )
-        logs.append(build_planner_node_trace(planner_input, planner_output, planner_call, plan_latency, planner_threading, planner_artifacts))
+        logs.append(build_planner_node_trace(planner_frozen.payload_snapshot, planner_output, planner_call, plan_latency, planner_threading, planner_frozen.artifacts))
 
         executor_input = build_executor_input(canonical_state, recent_dialogue, planner_output, user_turn, executor_trace_meta, config.max_executor_recent_turns, config.prompts_dir)
         executor_request_context, executor_threading = _node_request_context("executor", request_context)
-        executor_messages = build_executor_messages(executor_prompt, executor_input)
+        executor_frozen = freeze_prompt_artifacts(
+            developer_prompt_text=executor_prompt,
+            payload=executor_input,
+            render_user_prompt=lambda payload_json: build_executor_messages_from_payload_json(executor_prompt, payload_json)[1]["content"],
+            model_target=executor_trace_meta.model_target,
+            prompt_version=executor_trace_meta.prompt_version,
+            input_schema_version=executor_input.schema_version,
+            output_schema_version="executor.v1",
+            threading_info=executor_threading,
+        )
         exe_start = time.perf_counter()
-        executor_call = _call_structured(client, config.model_executor, executor_messages, ExecutorOutput, "low", executor_request_context, config.executor_store)
+        executor_call = _call_structured(client, config.model_executor, executor_frozen.messages, ExecutorOutput, "low", executor_request_context, config.executor_store)
         executor_output = _executor_fallback(planner_output)
         if executor_call.source == StructuredCallSource.model and executor_call.parsed_json is not None:
             executor_output = ExecutorOutput.model_validate(executor_call.parsed_json)
@@ -1067,16 +1102,7 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
             policy=policy,
             client=client,
         )
-        executor_artifacts = _build_prompt_artifacts(
-            executor_messages,
-            executor_input.model_dump_json(),
-            executor_trace_meta.model_target,
-            executor_trace_meta.prompt_version,
-            executor_input.schema_version,
-            executor_output.schema_version,
-            executor_threading,
-        )
-        logs.append(build_executor_node_trace(executor_input, executor_output_before_guardrail, executor_output, executor_call, exe_latency, executor_output.status, guardrail_applied=output_result.rewrite_applied or output_result.status_before != output_result.status_after, status_before_guardrail=output_result.status_before, status_after_guardrail=output_result.status_after, threading_info=executor_threading, prompt_artifacts=executor_artifacts))
+        logs.append(build_executor_node_trace(executor_frozen.payload_snapshot, executor_output_before_guardrail, executor_output, executor_call, exe_latency, executor_output.status, guardrail_applied=output_result.rewrite_applied or output_result.status_before != output_result.status_after, status_before_guardrail=output_result.status_before, status_after_guardrail=output_result.status_after, threading_info=executor_threading, prompt_artifacts=executor_frozen.artifacts))
         nodes = {log.node.value: log for log in logs}
         reply = executor_output.spoken_text
 
