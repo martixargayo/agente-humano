@@ -23,6 +23,7 @@ const state = {
   chatDraft: "", activeTab: "Chat",
   defaultUserId: "u_optimizador",
   defaultSessionId: "optimizador-main",
+  lastUiSnapshot: "",
 };
 
 const $ = (q) => document.querySelector(q);
@@ -85,6 +86,56 @@ async function refresh({ autoSelect = false } = {}) {
   if (state.waitingReply && latest && latest !== prevSelected) {
     state.waitingReply = false;
     showToast("Respuesta lista");
+  }
+}
+
+
+
+function buildUiSnapshot() {
+  return JSON.stringify({
+    selectedSessionKey: state.selectedSessionKey,
+    selectedTurnId: state.selectedTurnId,
+    liveFollow: state.liveFollow,
+    waitingReply: state.waitingReply,
+    editing: state.editing,
+    turns: state.turns.map((t) => `${t.turn_id}:${t.version || 1}`).join("|"),
+    dialogueLen: state.dialogue.length,
+    dialogueLast: state.dialogue[state.dialogue.length - 1]?.turn_id || "",
+    promptsHash: state.prompts.map((p) => `${p.node}:${(p.base_text || "").length}`).join("|"),
+    draftHash: JSON.stringify(state.draftEntries || []),
+    casesLen: state.cases.length,
+    workspaceVersion: state.overrides.workspace_version || 1,
+    mode: state.overrides.mode || "mirror",
+  });
+}
+
+function captureInteractionState() {
+  const content = byId("content");
+  const active = document.activeElement;
+  const focusedPrompt = active?.matches?.("textarea.promptTextarea[data-node]")
+    ? {
+        node: active.dataset.node,
+        selectionStart: active.selectionStart,
+        selectionEnd: active.selectionEnd,
+      }
+    : null;
+  return {
+    scrollTop: content?.scrollTop ?? 0,
+    focusedPrompt,
+  };
+}
+
+function restoreInteractionState(snapshot) {
+  const content = byId("content");
+  if (content) content.scrollTop = snapshot.scrollTop;
+  if (snapshot.focusedPrompt) {
+    const target = document.querySelector(`textarea.promptTextarea[data-node='${snapshot.focusedPrompt.node}']`);
+    if (target) {
+      target.focus();
+      if (typeof snapshot.focusedPrompt.selectionStart === "number" && typeof snapshot.focusedPrompt.selectionEnd === "number") {
+        target.setSelectionRange(snapshot.focusedPrompt.selectionStart, snapshot.focusedPrompt.selectionEnd);
+      }
+    }
   }
 }
 
@@ -296,15 +347,26 @@ async function sendChat(message, repeatFrom = null) {
 function startPolling() {
   if (state.pollTimer) clearInterval(state.pollTimer);
   state.pollTimer = setInterval(async () => {
-    const typing = byId("chatInput") === document.activeElement;
-    const prev = state.lastKnownTurnId;
+    const typingChat = byId("chatInput") === document.activeElement;
+    const prevTurnId = state.lastKnownTurnId;
+    const beforeSnapshot = state.lastUiSnapshot || buildUiSnapshot();
+    const interaction = captureInteractionState();
     try {
       await refresh();
-      renderTopbar();
-      if (state.activeTab !== "Chat" || !typing || prev !== state.lastKnownTurnId) {
-        renderTab(); bindEvents();
-      } else {
+      const afterSnapshot = buildUiSnapshot();
+      const hasChanges = beforeSnapshot !== afterSnapshot;
+      const hasNewTurn = prevTurnId !== state.lastKnownTurnId;
+      state.lastUiSnapshot = afterSnapshot;
+
+      if (!hasChanges && !hasNewTurn) return;
+
+      if (state.activeTab === "Chat" && typingChat && !hasNewTurn) {
         byId("chatHistory").innerHTML = state.dialogue.map((d) => `<div class='msg ${d.role}'>${d.role === "user" ? "Usuario" : "IA"}: ${escapeHtml(d.text || "")}</div>`).join("") + (state.waitingReply ? "<div class='msg assistant pending'>IA: pensando...</div>" : "");
+      } else {
+        renderTopbar();
+        renderTab();
+        bindEvents();
+        restoreInteractionState(interaction);
       }
     } catch (_) {}
   }, POLL_IDLE_MS);
@@ -316,6 +378,7 @@ async function boot() {
   renderTopbar();
   renderTab();
   bindEvents();
+  state.lastUiSnapshot = buildUiSnapshot();
   startPolling();
 }
 
