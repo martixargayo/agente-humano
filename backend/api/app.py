@@ -39,6 +39,7 @@ from sessions.state import get_session_state
 from agent import run_agent
 from negociacion import run_negotiation_agent
 from negociacion.orchestration.flow_config import set_tts_prefetch_hook
+from negociacion.optimizador import router as optimizador_router
 
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -68,6 +69,15 @@ if AVATAR_DIR.exists():
         name="avatar",
     )
 
+OPTIMIZADOR_DIR = AVATAR_DIR / "optimizador"
+if OPTIMIZADOR_DIR.exists():
+    app.mount(
+        "/optimizador",
+        StaticFiles(directory=str(OPTIMIZADOR_DIR), html=True),
+        name="optimizador",
+    )
+
+app.include_router(optimizador_router)
 
 # --- Google Cloud Speech-to-Text (entrada de audio) ---
 
