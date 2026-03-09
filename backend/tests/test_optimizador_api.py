@@ -354,3 +354,20 @@ def test_repeat_turn_generates_next_version(monkeypatch):
     turn = services.get_turn("turn_repeat")
     assert turn["_optimizador"]["versioning"]["base_turn_id"] == first_id
     assert turn["_optimizador"]["versioning"]["version"] == 2
+
+def test_confirm_overrides_creates_new_workspace_version():
+    SESSIONS.clear()
+    _seed_turn(user_id="u1", session_id="s1", turn_suffix="1")
+
+    first = client.get("/api/optimizador/overrides/default").json()
+    assert first["workspace_version"] == 1
+
+    confirmed = client.post(
+        "/api/optimizador/overrides/default/confirm",
+        json={"entries": [{"category": "prompt", "key": "planner", "value": "nuevo", "scope": "this_optimizer_session"}]},
+    )
+    assert confirmed.status_code == 200
+    body = confirmed.json()
+    assert body["workspace_version"] == 2
+    assert body["mode"] == "sandbox"
+    assert body["committed_entries"][0]["key"] == "planner"

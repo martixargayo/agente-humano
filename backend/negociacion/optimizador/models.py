@@ -28,6 +28,10 @@ class OverrideUpdateRequest(BaseModel):
     entries: list[OverrideEntry] = Field(default_factory=list)
 
 
+class ConfirmOverridesRequest(BaseModel):
+    entries: list[OverrideEntry] = Field(default_factory=list)
+
+
 class SandboxTurnRequest(BaseModel):
     optimizer_session_id: str = "default"
     user_id: str

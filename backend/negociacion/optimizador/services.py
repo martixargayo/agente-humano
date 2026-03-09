@@ -126,11 +126,13 @@ def run_sandbox_turn(
     latest = traces[-1] if traces else None
     versioning = _resolve_versioning(state, latest, repeat_from_turn_id)
     if latest is not None:
+        optimizer_state = experiments_bridge.get_state(optimizer_session_id)
         latest["_optimizador"] = {
             "optimizer_session_id": optimizer_session_id,
             "used_overrides": bool(resolved_entries),
             "applied_overrides": experiments_bridge.describe_effective_overrides(resolved_entries),
-            "mode": experiments_bridge.get_state(optimizer_session_id).get("mode", "mirror"),
+            "mode": optimizer_state.get("mode", "mirror"),
+            "workspace_version": optimizer_state.get("workspace_version", 1),
             "session_key": storage.session_key(user_id, session_id),
             "conversation_id": conversation_id,
             "versioning": versioning,
