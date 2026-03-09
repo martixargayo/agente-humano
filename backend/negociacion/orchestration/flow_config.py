@@ -82,6 +82,9 @@ PHASE_CLASSIFIER_INPUT_SCHEMA_VERSION = "phase_classifier_input.v1"
 PHASE_CLASSIFIER_OUTPUT_SCHEMA_VERSION = "phase_classifier.v1"
 
 
+# Centralized node threading contract:
+# - memory/phase are parallel + stateless to avoid conversation locks.
+# - planner/executor are stateful sequential stages.
 NODE_THREADING_POLICIES: dict[str, str] = {
     "memory": "stateless_parallel",
     "phase_classifier": "stateless_parallel",
@@ -556,6 +559,11 @@ def _hash_text(value: str | None) -> str | None:
 
 
 def _build_prompt_artifacts(messages: list[dict[str, str]], payload_json: str, model_target: str, prompt_version: str, input_schema_version: str, output_schema_version: str, threading_info: dict[str, object]) -> PromptArtifacts:
+    """Persist the exact prompt surfaces sent to the model for optimizer inspection.
+
+    We intentionally store both rendered user message and structured payload JSON so
+    debugging can distinguish template rendering issues vs payload-construction issues.
+    """
     developer = next((m.get("content") for m in messages if m.get("role") == "developer"), None)
     user = next((m.get("content") for m in messages if m.get("role") == "user"), None)
     return PromptArtifacts(
@@ -948,7 +956,7 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
 
         memory_input = build_memory_input(canonical_state, recent_dialogue, user_turn, memory_trace_meta)
         phase_input = build_phase_input(canonical_state, recent_dialogue, user_turn, phase_trace_meta)
-        memory_phase_result = _execute_memory_and_phase(
+        mem_call, mem_latency, mem_threading, phase_call, phase_latency, phase_threading, request_context = _execute_memory_and_phase(
             client=client,
             config=config,
             canonical_state=canonical_state,

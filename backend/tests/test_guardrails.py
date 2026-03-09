@@ -130,7 +130,7 @@ def test_pipeline_output_guardrail_applies_after_executor(monkeypatch):
             "working_memory_new": {"current_topic": "precio", "pending_question": None, "last_turn_summary": "ok"},
         }, refusal=None, parse_error=None, exception_error=None, response=None, source=fc.StructuredCallSource.model)
         phase_call = fc.StructuredCallResult(parsed_json={"schema_version": "phase_classifier.v1", "current_phase": "propuesta_creativa"}, refusal=None, parse_error=None, exception_error=None, response=None, source=fc.StructuredCallSource.model)
-        return mem_call, 1, phase_call, 1, {}
+        return mem_call, 1, {"threading_policy":"stateless_parallel","threading_mode_effective":"stateless","request_context_has_conversation_id":False,"request_context_has_previous_response_id":False}, phase_call, 1, {"threading_policy":"stateless_parallel","threading_mode_effective":"stateless","request_context_has_conversation_id":False,"request_context_has_previous_response_id":False}, {}
 
     def _fake_call_structured(client, model, messages, response_model, reasoning_effort, request_context, store):
         _ = (client, model, messages, reasoning_effort, request_context, store)
@@ -168,7 +168,7 @@ def test_pipeline_soft_restrict_continues_and_is_traced(monkeypatch):
             "working_memory_new": {"current_topic": "precio", "pending_question": None, "last_turn_summary": "ok"},
         }, refusal=None, parse_error=None, exception_error=None, response=None, source=fc.StructuredCallSource.model)
         phase_call = fc.StructuredCallResult(parsed_json={"schema_version": "phase_classifier.v1", "current_phase": "propuesta_creativa"}, refusal=None, parse_error=None, exception_error=None, response=None, source=fc.StructuredCallSource.model)
-        return mem_call, 1, phase_call, 1, {}
+        return mem_call, 1, {"threading_policy":"stateless_parallel","threading_mode_effective":"stateless","request_context_has_conversation_id":False,"request_context_has_previous_response_id":False}, phase_call, 1, {"threading_policy":"stateless_parallel","threading_mode_effective":"stateless","request_context_has_conversation_id":False,"request_context_has_previous_response_id":False}, {}
 
     def _fake_call_structured(client, model, messages, response_model, reasoning_effort, request_context, store):
         _ = (client, model, messages, reasoning_effort, request_context, store)
@@ -206,7 +206,7 @@ def test_last_refusals_excludes_rewrite_only_guardrail_reasons(monkeypatch):
             "working_memory_new": {"current_topic": "precio", "pending_question": None, "last_turn_summary": "ok"},
         }, refusal=None, parse_error=None, exception_error=None, response=None, source=fc.StructuredCallSource.model)
         phase_call = fc.StructuredCallResult(parsed_json={"schema_version": "phase_classifier.v1", "current_phase": "propuesta_creativa"}, refusal=None, parse_error=None, exception_error=None, response=None, source=fc.StructuredCallSource.model)
-        return mem_call, 1, phase_call, 1, {}
+        return mem_call, 1, {"threading_policy":"stateless_parallel","threading_mode_effective":"stateless","request_context_has_conversation_id":False,"request_context_has_previous_response_id":False}, phase_call, 1, {"threading_policy":"stateless_parallel","threading_mode_effective":"stateless","request_context_has_conversation_id":False,"request_context_has_previous_response_id":False}, {}
 
     def _fake_call_structured(client, model, messages, response_model, reasoning_effort, request_context, store):
         _ = (client, model, messages, reasoning_effort, request_context, store)
@@ -238,7 +238,7 @@ def test_hola_not_rewritten_by_internal_guardrail(monkeypatch):
             "working_memory_new": {"current_topic": None, "pending_question": None, "last_turn_summary": "ok"},
         }, refusal=None, parse_error=None, exception_error=None, response=None, source=fc.StructuredCallSource.model, model_called=True)
         phase_call = fc.StructuredCallResult(parsed_json={"schema_version": "phase_classifier.v1", "current_phase": "clima_humano"}, refusal=None, parse_error=None, exception_error=None, response=None, source=fc.StructuredCallSource.model, model_called=True)
-        return mem_call, 1, phase_call, 1, {}
+        return mem_call, 1, {"threading_policy":"stateless_parallel","threading_mode_effective":"stateless","request_context_has_conversation_id":False,"request_context_has_previous_response_id":False}, phase_call, 1, {"threading_policy":"stateless_parallel","threading_mode_effective":"stateless","request_context_has_conversation_id":False,"request_context_has_previous_response_id":False}, {}
 
     def _fake_call_structured(client, model, messages, response_model, reasoning_effort, request_context, store):
         _ = (client, model, messages, reasoning_effort, request_context, store)

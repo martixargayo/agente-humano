@@ -68,7 +68,7 @@ def test_e2e_pipeline_wires_nodes_and_persists_trace_and_state(monkeypatch):
                 "current_phase": "propuesta_creativa",
             }
         )
-        return mem_call, 7, phase_call, 9, {"conversation": "conv-test-2"}
+        return mem_call, 7, {"threading_policy":"stateless_parallel","threading_mode_effective":"stateless","request_context_has_conversation_id":False,"request_context_has_previous_response_id":False}, phase_call, 9, {"threading_policy":"stateless_parallel","threading_mode_effective":"stateless","request_context_has_conversation_id":False,"request_context_has_previous_response_id":False}, {"conversation": "conv-test-2"}
 
     def _fake_call_structured(client, model, messages, response_model, reasoning_effort, request_context, store):
         _ = (client, messages, reasoning_effort, store)
@@ -178,7 +178,7 @@ def test_turn_trace_rich_schema_for_grading_and_compact_canonical_trace(monkeypa
             }
         )
         phase_call = _fake_model_result({"schema_version": "phase_classifier.v1", "current_phase": "propuesta_creativa"})
-        return mem_call, 11, phase_call, 13, {"conversation": "conv-trace"}
+        return mem_call, 11, {"threading_policy":"stateless_parallel","threading_mode_effective":"stateless","request_context_has_conversation_id":False,"request_context_has_previous_response_id":False}, phase_call, 13, {"threading_policy":"stateless_parallel","threading_mode_effective":"stateless","request_context_has_conversation_id":False,"request_context_has_previous_response_id":False}, {"conversation": "conv-trace"}
 
     def _fake_call_structured(client, model, messages, response_model, reasoning_effort, request_context, store):
         _ = (client, model, messages, reasoning_effort, request_context, store)
@@ -355,7 +355,7 @@ def test_planner_refuse_status_does_not_create_fake_refusal_reason(monkeypatch):
             }
         )
         phase_call = _fake_model_result({"schema_version": "phase_classifier.v1", "current_phase": "propuesta_creativa"})
-        return mem_call, 3, phase_call, 4, {"conversation": "conv-refuse"}
+        return mem_call, 3, {"threading_policy":"stateless_parallel","threading_mode_effective":"stateless","request_context_has_conversation_id":False,"request_context_has_previous_response_id":False}, phase_call, 4, {"threading_policy":"stateless_parallel","threading_mode_effective":"stateless","request_context_has_conversation_id":False,"request_context_has_previous_response_id":False}, {"conversation": "conv-refuse"}
 
     def _fake_call_structured(client, model, messages, response_model, reasoning_effort, request_context, store):
         _ = (client, model, messages, reasoning_effort, request_context, store)
@@ -422,7 +422,7 @@ def test_planner_exception_sets_fallback_applied_trace_flags(monkeypatch):
             "working_memory_new": {"current_topic": None, "pending_question": None, "last_turn_summary": "ok"},
         })
         phase_call = _fake_model_result({"schema_version": "phase_classifier.v1", "current_phase": "clima_humano"})
-        return mem_call, 5, phase_call, 5, {"conversation": "conv-fb"}
+        return mem_call, 5, {"threading_policy":"stateless_parallel","threading_mode_effective":"stateless","request_context_has_conversation_id":False,"request_context_has_previous_response_id":False}, phase_call, 5, {"threading_policy":"stateless_parallel","threading_mode_effective":"stateless","request_context_has_conversation_id":False,"request_context_has_previous_response_id":False}, {"conversation": "conv-fb"}
 
     def _fake_call_structured(client, model, messages, response_model, reasoning_effort, request_context, store):
         _ = (client, model, messages, reasoning_effort, request_context, store)
@@ -461,3 +461,103 @@ def test_planner_exception_sets_fallback_applied_trace_flags(monkeypatch):
     assert planner_node["fallback_applied"] is True
     assert planner_node["fallback_output_summary"] is not None
     assert planner_node["final_output_source"] == "fallback_output"
+
+
+
+def test_e2e_hola_regression_no_meta_rewrite_and_prompt_artifacts_present(monkeypatch):
+    session = SessionState(user_id="u_hola_e2e", session_id="s_hola_e2e")
+    config = build_negotiation_pipeline_config().model_copy(update={"feature_traces": True})
+
+    monkeypatch.setattr(fc, "_build_client", lambda: None)
+
+    def _fake_execute_memory_and_phase(**kwargs):
+        _ = kwargs
+        mem_call = _fake_model_result({
+            "schema_version": "memory.v1",
+            "episodic_append": [],
+            "working_memory_new": {"current_topic": None, "pending_question": None, "last_turn_summary": "hola"},
+        })
+        phase_call = _fake_model_result({"schema_version": "phase_classifier.v1", "current_phase": "clima_humano"})
+        info = {"threading_policy": "stateless_parallel", "threading_mode_effective": "stateless", "request_context_has_conversation_id": False, "request_context_has_previous_response_id": False}
+        return mem_call, 1, info, phase_call, 1, info, {}
+
+    def _fake_call_structured(client, model, messages, response_model, reasoning_effort, request_context, store):
+        _ = (client, model, messages, reasoning_effort, request_context, store)
+        if response_model.__name__ == "PlannerOutput":
+            return _fake_model_result({
+                "schema_version": "planner.v3",
+                "status": "plan",
+                "turn_goal": "saludar y abrir conversación",
+                "decision": "ask",
+                "content_plan": {"must_include": ["saludo"], "must_avoid": ["meta"]},
+                "limits": {"max_sentences": 2, "max_questions": 1, "allow_topic_shift": False, "allow_personal_disclosure": False},
+                "memory_targets": [],
+                "done_criteria": ["ok"],
+            })
+        return _fake_model_result({
+            "schema_version": "executor.v1",
+            "status": "deliver",
+            "spoken_text": "según el planner, hola",
+            "memory_used": [],
+            "refusal_reason": None,
+        })
+
+    monkeypatch.setattr(fc, "_execute_memory_and_phase", _fake_execute_memory_and_phase)
+    monkeypatch.setattr(fc, "_call_structured", _fake_call_structured)
+
+    reply, updated = run_negotiation_cognitive_turn(session, "Hola", config)
+    assert "seguridad y precisión" not in reply.lower()
+    trace = updated.world_state[f"{config.memory_key}_traces"][0]
+    assert trace["output_guardrail_enforcement_action"] == "observed_not_applied"
+    assert trace["output_guardrail_output_changed"] is False
+    assert trace["nodes"]["planner"]["prompt_artifacts"]["input_payload_json"]
+
+
+def test_e2e_mustang_opening_keeps_trace_and_prompt_artifacts_consistent(monkeypatch):
+    session = SessionState(user_id="u_mustang", session_id="s_mustang")
+    config = build_negotiation_pipeline_config().model_copy(update={"feature_traces": True})
+
+    monkeypatch.setattr(fc, "_build_client", lambda: None)
+
+    def _fake_execute_memory_and_phase(**kwargs):
+        _ = kwargs
+        mem_call = _fake_model_result({
+            "schema_version": "memory.v1",
+            "episodic_append": [{"event_type": "important_fact", "event_summary": "interés en Mustang", "turn_id": "t1"}],
+            "working_memory_new": {"current_topic": "mustang", "pending_question": None, "last_turn_summary": "interesado en mustang"},
+        })
+        phase_call = _fake_model_result({"schema_version": "phase_classifier.v1", "current_phase": "descubrimiento_y_comprension"})
+        info = {"threading_policy": "stateless_parallel", "threading_mode_effective": "stateless", "request_context_has_conversation_id": False, "request_context_has_previous_response_id": False}
+        return mem_call, 2, info, phase_call, 2, info, {}
+
+    def _fake_call_structured(client, model, messages, response_model, reasoning_effort, request_context, store):
+        _ = (client, model, messages, reasoning_effort, request_context, store)
+        if response_model.__name__ == "PlannerOutput":
+            return _fake_model_result({
+                "schema_version": "planner.v3",
+                "status": "plan",
+                "turn_goal": "profundizar interés en el Mustang",
+                "decision": "ask",
+                "content_plan": {"must_include": ["confirmar detalles"], "must_avoid": ["inventar"]},
+                "limits": {"max_sentences": 3, "max_questions": 1, "allow_topic_shift": False, "allow_personal_disclosure": False},
+                "memory_targets": ["episodic_0"],
+                "done_criteria": ["ok"],
+            })
+        return _fake_model_result({
+            "schema_version": "executor.v1",
+            "status": "deliver",
+            "spoken_text": "Perfecto, seguimos con el Mustang clásico. ¿Qué versión estás viendo?",
+            "memory_used": ["episodic_0"],
+            "refusal_reason": None,
+        })
+
+    monkeypatch.setattr(fc, "_execute_memory_and_phase", _fake_execute_memory_and_phase)
+    monkeypatch.setattr(fc, "_call_structured", _fake_call_structured)
+
+    reply, updated = run_negotiation_cognitive_turn(session, "Hola, sigo interesado en el Mustang", config)
+    assert "mustang" in reply.lower()
+    trace = updated.world_state[f"{config.memory_key}_traces"][0]
+    assert trace["nodes"]["memory"]["status"] == "applied"
+    assert trace["nodes"]["phase_classifier"]["status"] == "descubrimiento_y_comprension"
+    assert trace["nodes"]["executor"]["final_output_source"] in {"validated_output", "post_guardrail_output"}
+    assert trace["nodes"]["executor"]["prompt_artifacts"]["developer_prompt_text"]

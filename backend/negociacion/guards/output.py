@@ -35,6 +35,11 @@ def _planner_contract_signals(planner_output: PlannerOutput, executor_output: Ex
 
 
 def run_output_guardrails(*, executor_output: ExecutorOutput, planner_output: PlannerOutput, user_turn: UserTurn, policy: GuardrailsPolicy, client: openai.OpenAI | None) -> tuple[ExecutorOutput, OutputGuardrailResult]:
+    """Evaluate output guardrails with explicit observe-only semantics.
+
+    In observe-only mode, non-critical rules are recorded but do not mutate user-visible output.
+    Only critical rules can enforce rewrite/block.
+    """
     if not policy.output_guardrails_enabled:
         result = OutputGuardrailResult(
             decision=OutputGuardrailDecision.allow,

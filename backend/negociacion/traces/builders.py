@@ -204,6 +204,7 @@ def _parse_exception(exception_error: str | None) -> tuple[str | None, str | Non
 
 
 def _build_node_trace(
+    # NOTE: source describes model-call result; final_output_source describes emitted layer.
     node: NodeName,
     model_target: str,
     prompt_version: str,
