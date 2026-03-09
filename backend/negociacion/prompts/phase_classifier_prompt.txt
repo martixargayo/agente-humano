@@ -32,12 +32,10 @@ No haces nada más.
 - `concesiones_y_ajuste_final`
 - `formalizacion_del_acuerdo`
 
-# Phase definitions
-- `clima_humano`: interacción social o relacional sin negociación clara todavía.
-- `descubrimiento_y_comprension`: se aclaran contexto, variables, necesidades, restricciones o detalles antes de negociar en serio.
-- `propuesta_creativa`: aparece o se construye una propuesta concreta, pero la conversación aún no está dominada por ofertas, contraofertas o ajustes finales.
-- `concesiones_y_ajuste_final`: predominan ofertas, contraofertas, cifras, condiciones, ajustes, concesiones o presión para acercar posiciones.
-- `formalizacion_del_acuerdo`: se están confirmando, cerrando o operacionalizando términos ya suficientemente acordados.
+# Classification guidance source
+- Usa `phase_classifier_card` como guía semántica principal para interpretar fases, transiciones, bordes y casos borderline.
+- Usa `recent_phase_history` como contexto de trayectoria reciente, no como orden rígido.
+- No te apoyes en heurísticas simplistas de palabra clave ni en el último mensaje aislado si la card sugiere continuidad.
 
 # Decision rules
 - Usa la trayectoria reciente (incluyendo `recent_phase_history`), no solo el último mensaje.
