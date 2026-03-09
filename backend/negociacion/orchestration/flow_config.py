@@ -862,13 +862,37 @@ def _execute_memory_and_phase(
     config: NegotiationTurnConfig,
     canonical_state: CanonicalState,
     request_context: dict[str, str],
-    memory_messages: list[dict[str, str]],
-    phase_messages: list[dict[str, str]],
+    memory_messages: list[dict[str, str]] | None = None,
+    phase_messages: list[dict[str, str]] | None = None,
+    memory_prompt: str | None = None,
+    phase_classifier_prompt: str | None = None,
+    memory_input: MemoryInput | None = None,
+    phase_input: PhaseClassifierInput | None = None,
+    memory_context_override: dict[str, str] | None = None,
+    phase_context_override: dict[str, str] | None = None,
+    memory_threading_override: dict[str, object] | None = None,
+    phase_threading_override: dict[str, object] | None = None,
 ) -> tuple[StructuredCallResult, int, dict[str, object], StructuredCallResult, int, dict[str, object], dict[str, str]]:
     """Run memory+phase in parallel with explicit per-node threading isolation."""
 
-    memory_context, memory_threading = _node_request_context("memory", request_context)
-    phase_context, phase_threading = _node_request_context("phase_classifier", request_context)
+    if memory_messages is None:
+        if memory_prompt is None or memory_input is None:
+            raise ValueError("memory_messages or (memory_prompt + memory_input) must be provided")
+        memory_messages = build_memory_messages(memory_prompt, memory_input)
+    if phase_messages is None:
+        if phase_classifier_prompt is None or phase_input is None:
+            raise ValueError("phase_messages or (phase_classifier_prompt + phase_input) must be provided")
+        phase_messages = build_phase_classifier_messages_payload(phase_classifier_prompt, phase_input)
+
+    if memory_context_override is not None and memory_threading_override is not None:
+        memory_context, memory_threading = memory_context_override, memory_threading_override
+    else:
+        memory_context, memory_threading = _node_request_context("memory", request_context)
+
+    if phase_context_override is not None and phase_threading_override is not None:
+        phase_context, phase_threading = phase_context_override, phase_threading_override
+    else:
+        phase_context, phase_threading = _node_request_context("phase_classifier", request_context)
 
     def _run_memory_call(ctx: dict[str, str]) -> tuple[StructuredCallResult, int]:
         mem_start = time.perf_counter()
@@ -1021,6 +1045,28 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
 
         memory_input = build_memory_input(canonical_state, recent_dialogue, user_turn, memory_trace_meta)
         phase_input = build_phase_input(canonical_state, recent_dialogue, user_turn, phase_trace_meta, str(prompts_dir))
+        memory_context, memory_threading = _node_request_context("memory", request_context)
+        memory_frozen = freeze_prompt_artifacts(
+            developer_prompt_text=memory_prompt,
+            payload=memory_input,
+            render_user_prompt=lambda payload_json: build_memory_messages_from_payload_json(memory_prompt, payload_json)[1]["content"],
+            model_target=memory_trace_meta.model_target,
+            prompt_version=memory_trace_meta.prompt_version,
+            input_schema_version=memory_input.schema_version,
+            output_schema_version="memory.v1",
+            threading_info=memory_threading,
+        )
+        phase_context, phase_threading = _node_request_context("phase_classifier", request_context)
+        phase_frozen = freeze_prompt_artifacts(
+            developer_prompt_text=phase_classifier_prompt,
+            payload=phase_input,
+            render_user_prompt=lambda payload_json: build_phase_classifier_messages_from_payload_json(phase_classifier_prompt, payload_json)[1]["content"],
+            model_target=phase_trace_meta.model_target,
+            prompt_version=phase_trace_meta.prompt_version,
+            input_schema_version=phase_input.schema_version,
+            output_schema_version=PHASE_CLASSIFIER_OUTPUT_SCHEMA_VERSION,
+            threading_info=phase_threading,
+        )
         memory_phase_result = _execute_memory_and_phase(
             client=client,
             config=config,
@@ -1028,6 +1074,12 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
             request_context=request_context,
             memory_messages=memory_frozen.messages,
             phase_messages=phase_frozen.messages,
+            memory_input=memory_input,
+            phase_input=phase_input,
+            memory_context_override=memory_context,
+            phase_context_override=phase_context,
+            memory_threading_override=memory_threading,
+            phase_threading_override=phase_threading,
         )
         if len(memory_phase_result) == 7:
             mem_call, mem_latency, mem_threading, phase_call, phase_latency, phase_threading, request_context = memory_phase_result
