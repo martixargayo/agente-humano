@@ -182,6 +182,7 @@ class FlowDetails(TypedDict):
 
 
 BASE_DIR = Path(__file__).resolve().parent
+PROMPTS_DIR = BASE_DIR.parent / "prompts"
 
 NEGOTIATION_FLOW_DETAILS: FlowDetails = {
     "flow_name": "negociacion",
@@ -257,7 +258,7 @@ class StateRepository:
 def build_negotiation_pipeline_config() -> NegotiationTurnConfig:
     return NegotiationTurnConfig(
         memory_key=NEGOTIATION_FLOW_DETAILS["memory_key"],
-        prompts_dir=str(BASE_DIR / "prompts"),
+        prompts_dir=str(PROMPTS_DIR),
         model_memory=NEGOTIATION_FLOW_DETAILS["model_memory"],
         model_phase_classifier=NEGOTIATION_FLOW_DETAILS["model_phase_classifier"],
         model_planner=NEGOTIATION_FLOW_DETAILS["model_planner"],
@@ -298,47 +299,24 @@ def _compact_recent(recent: Sequence[MemoryDialogueMessage], max_messages: int) 
     return list(recent[-max_messages:])
 
 
-def _load_phase_cards(prompts_dir: str) -> dict[NegotiationPhase, str]:
+def _load_phase_cards(prompts_dir: str) -> dict[NegotiationPhase, PhaseCard]:
     path = Path(prompts_dir) / "phase_cards.json"
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return {
-            NegotiationPhase.clima_humano: "Placeholder: generar clima humano y transición suave.",
-            NegotiationPhase.descubrimiento_y_comprension: "Placeholder: descubrir variables y restricciones.",
-            NegotiationPhase.propuesta_creativa: "Placeholder: plantear propuesta concreta inicial.",
-            NegotiationPhase.concesiones_y_ajuste_final: "Placeholder: ajustar con concesiones y condiciones.",
-            NegotiationPhase.formalizacion_del_acuerdo: "Placeholder: confirmar cierre y próximos pasos.",
-        }
+    except Exception as exc:
+        logger.warning("phase_cards_load_failed path=%s error=%s", path, exc)
+        raw = {}
 
-    cards: dict[NegotiationPhase, str] = {}
+    cards: dict[NegotiationPhase, PhaseCard] = {}
     for phase in NegotiationPhase:
         phase_raw = raw.get(phase.value, {}) if isinstance(raw, dict) else {}
         if not isinstance(phase_raw, dict):
             phase_raw = {}
-        objective = str(phase_raw.get("objective", "")).strip()
-        normal_moves = phase_raw.get("normal_moves", [])
-        stay_in_phase_when = phase_raw.get("stay_in_phase_when", [])
-        exit_phase_when = phase_raw.get("exit_phase_when", [])
-
-        def _as_list(v: object) -> list[str]:
-            if not isinstance(v, list):
-                return []
-            return [str(x).strip() for x in v if str(x).strip()]
-
-        segments: list[str] = []
-        if objective:
-            segments.append(f"Objetivo: {objective}")
-        moves = _as_list(normal_moves)
-        if moves:
-            segments.append("Movimientos: " + "; ".join(moves))
-        stay = _as_list(stay_in_phase_when)
-        if stay:
-            segments.append("Permanecer: " + "; ".join(stay))
-        exit_rules = _as_list(exit_phase_when)
-        if exit_rules:
-            segments.append("Salir cuando: " + "; ".join(exit_rules))
-        cards[phase] = " | ".join(segments) or "Placeholder de phase card."
+        phase_payload = dict(phase_raw)
+        phase_payload.setdefault("phase", phase.value)
+        if not phase_payload.get("guidance"):
+            phase_payload["guidance"] = f"Fallback guidance for phase {phase.value}."
+        cards[phase] = PhaseCard.model_validate(phase_payload)
     return cards
 
 
@@ -352,8 +330,8 @@ def _recent_phase_history(canonical_state: CanonicalState) -> List[NegotiationPh
     return items[-4:]
 
 
-def _select_phase_card(current_phase: NegotiationPhase, phase_cards: dict[NegotiationPhase, str]) -> PhaseCard:
-    return PhaseCard(phase=current_phase, guidance=phase_cards[current_phase])
+def _select_phase_card(current_phase: NegotiationPhase, phase_cards: dict[NegotiationPhase, PhaseCard]) -> PhaseCard:
+    return phase_cards[current_phase]
 
 
 def build_phase_input(canonical_state: CanonicalState, recent_dialogue: Sequence[MemoryDialogueMessage], user_turn: UserTurn, trace_meta: TraceMeta) -> PhaseClassifierInput:
@@ -956,7 +934,7 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
 
         memory_input = build_memory_input(canonical_state, recent_dialogue, user_turn, memory_trace_meta)
         phase_input = build_phase_input(canonical_state, recent_dialogue, user_turn, phase_trace_meta)
-        mem_call, mem_latency, mem_threading, phase_call, phase_latency, phase_threading, request_context = _execute_memory_and_phase(
+        memory_phase_result = _execute_memory_and_phase(
             client=client,
             config=config,
             canonical_state=canonical_state,

@@ -145,6 +145,30 @@ def test_build_executor_input_falls_back_when_planner_memory_targets_unresolvabl
     assert [m.memory_id for m in payload.selected_memory_for_reference] == ["episodic_0"]
 
 
+
+
+def test_build_executor_input_injects_full_phase_card_from_source_of_truth():
+    state = _build_state()
+    state.planner_state.current_phase = NegotiationPhase.clima_humano
+    user_turn = _build_user_turn("hola", "2026-01-01T00:00:00Z")
+    trace_meta = {
+        "turn_id": "20b",
+        "prompt_version": "executor_v3",
+        "schema_version": "executor_input.v1",
+        "model_target": "gpt-5-nano",
+    }
+
+    payload = build_executor_input(state, [], _build_planner_output(), user_turn, trace_meta, 4, "backend/negociacion/prompts")  # type: ignore[arg-type]
+    phase_card = payload.model_dump(mode="json")["phase_card"]
+
+    assert phase_card["phase"] == "clima_humano"
+    assert phase_card["phase_objective"].startswith("Mantener una interacción humana breve")
+    assert "what_good_progress_looks_like" in phase_card
+    assert "good_moves" in phase_card
+    assert "avoid" in phase_card
+    assert phase_card["question_policy"]["default_max_questions"] == 0
+    assert "done_signals" in phase_card
+    assert phase_card.get("guidance")
 def test_executor_output_fields_are_exact_and_forbid_legacy_keys():
     assert set(ExecutorOutput.model_fields.keys()) == {
         "schema_version",

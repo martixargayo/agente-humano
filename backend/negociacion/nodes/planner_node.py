@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Literal
+from typing import Any, List, Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -27,9 +27,12 @@ class PlannerTaskContract(BaseModel):
 
 
 class PhaseCard(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="allow")
     phase: NegotiationPhase
-    guidance: str
+    guidance: str | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        return self.model_dump(mode="json")
 
 
 class SelectedMemoryItem(BaseModel):
