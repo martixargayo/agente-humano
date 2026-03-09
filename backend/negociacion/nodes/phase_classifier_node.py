@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Literal
+from typing import Any, List, Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -13,6 +13,8 @@ class PhaseClassifierInput(BaseModel):
     schema_version: Literal["phase_classifier_input.v1"]
     previous_phase: NegotiationPhase | None
     recent_phase_history: List[NegotiationPhase]
+    phase_classifier_card: dict[str, Any]
+    phase_classifier_card_source: str
     recent_turns: List[DialogueMessage]
     current_user_turn: UserTurn
     trace_meta: TraceMeta
@@ -28,6 +30,8 @@ def build_phase_classifier_input(
     *,
     previous_phase: NegotiationPhase | None,
     recent_phase_history: List[NegotiationPhase],
+    phase_classifier_card: dict[str, Any],
+    phase_classifier_card_source: str,
     recent_turns: List[DialogueMessage],
     current_user_turn: UserTurn,
     trace_meta: TraceMeta,
@@ -36,6 +40,8 @@ def build_phase_classifier_input(
         schema_version="phase_classifier_input.v1",
         previous_phase=previous_phase,
         recent_phase_history=recent_phase_history,
+        phase_classifier_card=phase_classifier_card,
+        phase_classifier_card_source=phase_classifier_card_source,
         recent_turns=recent_turns,
         current_user_turn=current_user_turn,
         trace_meta=trace_meta,

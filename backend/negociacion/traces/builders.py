@@ -65,6 +65,7 @@ def build_phase_node_trace(input_payload: PhaseClassifierInput, output_payload: 
     input_summary = PhaseInputSummary(
         previous_phase=input_payload.previous_phase.value if input_payload.previous_phase else None,
         recent_phase_history=[phase.value for phase in input_payload.recent_phase_history],
+        phase_classifier_card_source=input_payload.phase_classifier_card_source,
         recent_turn_count=len(input_payload.recent_turns),
         user_text_excerpt=excerpt(input_payload.current_user_turn.normalized_text) or "",
     )
