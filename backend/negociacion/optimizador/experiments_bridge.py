@@ -26,7 +26,7 @@ _ALLOWED_CONFIG_FIELDS: dict[str, type] = {
 _ALLOWED_CONTEXTUAL_KEYS = {"phase_cards", "persona"}
 
 _OVERRIDE_STORE: dict[str, dict[str, Any]] = {}
-_DEFAULT_STATE = {"mode": "mirror", "entries": []}
+_DEFAULT_STATE = {"mode": "mirror", "entries": [], "workspace_version": 1, "committed_entries": []}
 
 
 def get_state(optimizer_session_id: str) -> dict[str, Any]:
@@ -56,6 +56,20 @@ def update_state(optimizer_session_id: str, patch: dict[str, Any]) -> dict[str, 
         state["entries"] = validated
     return deepcopy(state)
 
+
+
+def confirm_state(optimizer_session_id: str, entries: list[dict[str, Any]]) -> dict[str, Any]:
+    state = _OVERRIDE_STORE.setdefault(optimizer_session_id, deepcopy(_DEFAULT_STATE))
+    validated: list[dict[str, Any]] = []
+    for raw in entries:
+        entry = OverrideEntry.model_validate(raw)
+        _validate_entry(entry)
+        validated.append(entry.model_dump(mode="json"))
+    state["entries"] = validated
+    state["committed_entries"] = deepcopy(validated)
+    state["mode"] = "sandbox"
+    state["workspace_version"] = int(state.get("workspace_version") or 1) + 1
+    return deepcopy(state)
 
 def resolve_entries(
     *,
