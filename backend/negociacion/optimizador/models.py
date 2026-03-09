@@ -35,6 +35,7 @@ class SandboxTurnRequest(BaseModel):
     message: str
     conversation_id: str | None = None
     scope_turn_id: str | None = None
+    repeat_from_turn_id: str | None = None
 
 
 class SandboxCloneRequest(BaseModel):
@@ -42,6 +43,12 @@ class SandboxCloneRequest(BaseModel):
     source_user_id: str
     source_session_id: str
     source_conversation_id: str | None = None
+
+
+class NewConversationRequest(BaseModel):
+    optimizer_session_id: str = "default"
+    user_id: str
+    session_id: str
 
 
 class SaveCaseRequest(BaseModel):

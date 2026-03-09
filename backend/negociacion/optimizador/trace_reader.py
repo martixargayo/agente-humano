@@ -10,6 +10,8 @@ def list_turns(user_id: str, session_id: str, conversation_id: str | None = None
     out: list[dict[str, Any]] = []
     for idx, turn in enumerate(turns, start=1):
         node_sources = [log.get("source") for log in turn.get("logs", []) if isinstance(log, dict)]
+        meta = turn.get("_optimizador", {}) if isinstance(turn.get("_optimizador"), dict) else {}
+        versioning = meta.get("versioning", {}) if isinstance(meta.get("versioning"), dict) else {}
         out.append(
             {
                 "turn_id": turn.get("turn_id"),
@@ -19,7 +21,9 @@ def list_turns(user_id: str, session_id: str, conversation_id: str | None = None
                 "guardrails_triggered": bool(turn.get("guardrails_triggered", False)),
                 "fallback_used": any(source in {"fallback", "parse_error", "exception", "refusal"} for source in node_sources),
                 "conversation_id": turn.get("conversation_id_after") or turn.get("conversation_id_before"),
-                "has_override": bool(turn.get("_optimizador", {}).get("applied_overrides")),
+                "has_override": bool(meta.get("applied_overrides")),
+                "version": int(versioning.get("version") or 1),
+                "base_turn_id": versioning.get("base_turn_id") or turn.get("turn_id"),
             }
         )
     return out

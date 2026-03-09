@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from . import experiments_bridge, services
-from .models import CompareTurnsRequest, OverrideUpdateRequest, SandboxCloneRequest, SandboxTurnRequest, SaveCaseRequest
+from .models import CompareTurnsRequest, NewConversationRequest, OverrideUpdateRequest, SandboxCloneRequest, SandboxTurnRequest, SaveCaseRequest
 
 router = APIRouter(prefix="/api/optimizador", tags=["optimizador"])
 
@@ -80,6 +80,16 @@ def sandbox_clone(payload: SandboxCloneRequest) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+
+
+@router.post("/sandbox/new_conversation")
+def sandbox_new_conversation(payload: NewConversationRequest) -> dict:
+    return services.new_conversation_session(
+        optimizer_session_id=payload.optimizer_session_id,
+        user_id=payload.user_id,
+        session_id=payload.session_id,
+    )
+
 @router.post("/sandbox/turn")
 def sandbox_turn(payload: SandboxTurnRequest) -> dict:
     return services.run_sandbox_turn(
@@ -89,6 +99,7 @@ def sandbox_turn(payload: SandboxTurnRequest) -> dict:
         message=payload.message,
         conversation_id=payload.conversation_id,
         scope_turn_id=payload.scope_turn_id,
+        repeat_from_turn_id=payload.repeat_from_turn_id,
     )
 
 

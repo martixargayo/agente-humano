@@ -9,266 +9,245 @@ const state = {
   turns: [],
   selectedTurnId: "",
   turn: null,
+  conversations: [],
   dialogue: [],
   prompts: [],
   cases: [],
-  overrides: {mode:"mirror",entries:[]},
+  overrides: { mode: "mirror", entries: [] },
   compareResult: null,
   liveFollow: true,
-  newTurnAvailable: false,
+  editing: false,
+  busy: false,
   pollTimer: null,
 };
 
-const $ = (s) => document.querySelector(s);
-async function api(path, opts={}) { const r = await fetch(`/api/optimizador${path}`, {headers:{"Content-Type":"application/json"}, ...opts}); if(!r.ok) throw new Error(await r.text()); return r.json(); }
+const $ = (q) => document.querySelector(q);
 
-function getSelectedSession(){ return state.sessions.find(s=>s.session_key===state.selectedSessionKey) || null; }
-
-async function bootstrap(){
-  renderTabs();
-  await fullRefresh({allowTurnAutoSelect:true});
-  startPolling();
-  switchTab("Chat");
+async function api(path, opts = {}) {
+  const r = await fetch(`/api/optimizador${path}`, { headers: { "Content-Type": "application/json" }, ...opts });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
 }
 
-function renderTabs(){
-  $("#tabs").innerHTML = TABS.map(t=>`<button data-tab="${t}">${t}</button>`).join("");
-  $("#tabs").onclick=(e)=>{const b=e.target.closest("button"); if(b) switchTab(b.dataset.tab);};
+function showToast(text, type = "ok") {
+  const el = document.createElement("div");
+  el.className = `toast ${type}`;
+  el.textContent = text;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 1800);
 }
 
-async function fullRefresh({allowTurnAutoSelect=false}={}){
-  const prevLastTurn = state.turns[state.turns.length-1]?.turn_id;
+function selectedSession() { return state.sessions.find((s) => s.session_key === state.selectedSessionKey) || null; }
+function modeLabel(mode) { return mode === "sandbox" ? "Probar" : "Ver"; }
+function activeTab() { return $("#tabs button.active")?.dataset.tab || "Chat"; }
+
+function turnTitle() {
+  const t = state.turn || {};
+  const row = state.turns.find((x) => x.turn_id === t.turn_id);
+  if (!row) return "Turno - · v1";
+  return `Turno ${row.index} · v${row.version || 1}`;
+}
+
+async function refresh({ autoSelect = false } = {}) {
   const prevSelected = state.selectedTurnId;
+  const prevLast = state.turns[state.turns.length - 1]?.turn_id;
 
-  const sessionsResp = await api('/sessions');
-  state.sessions = sessionsResp.items;
-  if(!state.selectedSessionKey && state.sessions[0]) state.selectedSessionKey = state.sessions[0].session_key;
-  const selected = getSelectedSession();
-  if(!selected){ renderTopbar(); return; }
+  state.sessions = (await api("/sessions")).items;
+  if (!state.selectedSessionKey && state.sessions[0]) state.selectedSessionKey = state.sessions[0].session_key;
+  const s = selectedSession();
+  if (!s) return;
 
-  const basePath = `/sessions/${encodeURIComponent(selected.user_id)}/${encodeURIComponent(selected.session_id)}`;
-  state.conversations = (await api(`${basePath}/conversations`)).items;
-  state.turns = (await api(`${basePath}/turns${state.selectedConversation?`?conversation_id=${encodeURIComponent(state.selectedConversation)}`:''}`)).items;
+  const base = `/sessions/${encodeURIComponent(s.user_id)}/${encodeURIComponent(s.session_id)}`;
+  state.conversations = (await api(`${base}/conversations`)).items;
+  state.turns = (await api(`${base}/turns${state.selectedConversation ? `?conversation_id=${encodeURIComponent(state.selectedConversation)}` : ""}`)).items;
 
-  const newLastTurn = state.turns[state.turns.length-1]?.turn_id;
-  if (prevLastTurn && newLastTurn && prevLastTurn !== newLastTurn && !state.liveFollow) state.newTurnAvailable = true;
+  const nextLast = state.turns[state.turns.length - 1]?.turn_id;
+  if (state.liveFollow || autoSelect) state.selectedTurnId = nextLast || "";
+  else if (prevSelected && state.turns.some((x) => x.turn_id === prevSelected)) state.selectedTurnId = prevSelected;
+  else state.selectedTurnId = nextLast || "";
 
-  if(allowTurnAutoSelect || state.liveFollow){
-    if(newLastTurn){ state.selectedTurnId = newLastTurn; state.newTurnAvailable = false; }
-  } else if(prevSelected && state.turns.some(t=>t.turn_id===prevSelected)) {
-    state.selectedTurnId = prevSelected;
-  }
+  if (!state.liveFollow && prevLast && nextLast && prevLast !== nextLast) showToast("Nuevo turno disponible", "warn");
 
-  if(state.selectedTurnId) state.turn = await api(`/turns/${state.selectedTurnId}`);
-  state.dialogue = (await api(`${basePath}/dialogue`)).items;
-  state.cases = (await api('/cases')).items;
-  state.prompts = (await api('/prompts')).items;
+  state.turn = state.selectedTurnId ? await api(`/turns/${state.selectedTurnId}`) : null;
+  state.dialogue = (await api(`${base}/dialogue`)).items;
+  state.cases = (await api("/cases")).items;
+  state.prompts = (await api("/prompts")).items;
   state.overrides = await api(`/overrides/${state.optimizerSessionId}`);
+}
+
+async function runAction(label, fn) {
+  if (state.busy) return;
+  state.busy = true;
   renderTopbar();
+  try {
+    await fn();
+    showToast(label);
+  } catch (e) {
+    showToast(`${label} falló`, "err");
+  } finally {
+    state.busy = false;
+    renderTopbar();
+    renderTab(activeTab());
+  }
 }
 
-function startPolling(){
-  if(state.pollTimer) clearInterval(state.pollTimer);
-  state.pollTimer = setInterval(async()=>{
-    try {
-      await fullRefresh({allowTurnAutoSelect:false});
-      switchTab(currentTab());
-    } catch(_e) {}
-  }, POLL_MS);
-  window.addEventListener("beforeunload", ()=>{ if(state.pollTimer) clearInterval(state.pollTimer); });
+function copyTextForTab(tab) {
+  const t = state.turn || {};
+  if (["Resumen", "Experimentos"].includes(tab)) return null;
+  if (tab === "Chat" || tab === "Diálogo") return state.dialogue.map((d) => `${d.role}: ${d.text}`).join("\n");
+  if (tab === "Timeline") return (t.logs || []).map((l) => `${l.node_name}: ${l.status} (${l.source}) ${l.latency_ms}ms`).join("\n");
+  if (tab === "Nodos") return JSON.stringify(t.nodes || {}, null, 2);
+  if (tab === "Guardrails") return JSON.stringify({ input: { decision: t.input_guardrail_decision, reasons: t.input_guardrail_reasons }, output: { decision: t.output_guardrail_decision, reasons: t.output_guardrail_reasons } }, null, 2);
+  if (tab === "Trace") return JSON.stringify(t, null, 2);
+  if (tab === "Prompts") return (state.prompts || []).map((p) => `# ${p.node}\n${p.base_text}`).join("\n\n");
+  if (tab === "Comparar") return JSON.stringify(state.compareResult || {}, null, 2);
+  if (tab === "Datasets / Casos") return JSON.stringify(state.cases.slice(-10), null, 2);
+  if (tab === "Evals") return $("#evalOut")?.textContent || "";
+  return JSON.stringify(t, null, 2);
 }
 
-function currentTab(){ return $("#tabs button.active")?.dataset.tab || "Chat"; }
-function switchTab(name){ document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("active", b.dataset.tab===name)); renderPanel(name); }
+async function onCopy() {
+  const txt = copyTextForTab(activeTab());
+  if (txt == null) return showToast("Copiar no disponible aquí", "warn");
+  await navigator.clipboard.writeText(txt);
+  showToast("Copiado");
+}
 
-function badge(text){ return `<span class='badge'>${text}</span>`; }
+async function onEdit() {
+  const s = selectedSession();
+  if (!s) return;
+  if (state.overrides.mode === "mirror") {
+    const clone = await api("/sandbox/clone", { method: "POST", body: JSON.stringify({ optimizer_session_id: state.optimizerSessionId, source_user_id: s.user_id, source_session_id: s.session_id, source_conversation_id: state.selectedConversation || null }) });
+    state.selectedSessionKey = clone.session_key;
+    await api(`/overrides/${state.optimizerSessionId}`, { method: "PUT", body: JSON.stringify({ mode: "sandbox", entries: state.overrides.entries || [] }) });
+    state.editing = true;
+    await refresh({ autoSelect: true });
+    return;
+  }
+  state.editing = !state.editing;
+}
 
-function renderTopbar(){
-  const turn = state.turn || {};
-  const selected = getSelectedSession();
+async function sendChat(message, repeatFrom = null) {
+  const s = selectedSession();
+  if (!s || !message?.trim()) return;
+  await api("/sandbox/turn", { method: "POST", body: JSON.stringify({ optimizer_session_id: state.optimizerSessionId, user_id: s.user_id, session_id: s.session_id, message, conversation_id: state.selectedConversation || null, scope_turn_id: state.selectedTurnId || null, repeat_from_turn_id: repeatFrom }) });
+  await refresh({ autoSelect: true });
+}
+
+async function newConversation() {
+  const s = selectedSession();
+  if (!s) return;
+  const created = await api("/sandbox/new_conversation", { method: "POST", body: JSON.stringify({ optimizer_session_id: state.optimizerSessionId, user_id: s.user_id, session_id: s.session_id }) });
+  state.selectedSessionKey = created.session_key;
+  state.selectedConversation = "";
+  await refresh({ autoSelect: true });
+}
+
+function renderTopbar() {
+  const t = state.turn || {};
+  const lat = t.total_latency_ms ? `${(Number(t.total_latency_ms) / 1000).toFixed(1)}s` : "-";
   $("#topbar").innerHTML = `
-    <select id='sessionSel'>${state.sessions.map(s=>`<option value='${s.session_key}' ${s.session_key===state.selectedSessionKey?'selected':''}>${s.user_id} / ${s.session_id} (${s.turn_count})</option>`).join('')}</select>
-    <select id='convSel'><option value=''>todas conv</option>${(state.conversations||[]).map(c=>`<option value='${c.conversation_id}' ${c.conversation_id===state.selectedConversation?'selected':''}>${c.conversation_id} (${c.turn_count})</option>`).join('')}</select>
-    <select id='turnSel'>${state.turns.map(t=>`<option value='${t.turn_id}' ${t.turn_id===state.selectedTurnId?'selected':''}>#${t.index} ${t.final_status} ${t.total_latency_ms}ms ${t.has_override?'[exp]':''}</option>`).join('')}</select>
-    ${badge(`estado:${turn.final_status||'-'}`)} ${badge(`lat:${turn.total_latency_ms||0}ms`)} ${badge(`in:${turn.input_guardrail_decision||'-'}`)} ${badge(`out:${turn.output_guardrail_decision||'-'}`)}
-    ${badge(`modo:${state.overrides?.mode||'mirror'}`)} ${badge(`follow:${state.liveFollow?'on':'off'}`)}
-    ${state.newTurnAvailable?"<span class='badge'>nuevo turno disponible</span>":""}
-    ${selected?.is_sandbox?`<span class='badge'>sandbox:${escapeHtml(selected?.sandbox_meta?.clone_strategy||'n/a')} from ${escapeHtml(selected?.sandbox_meta?.source_session_id||'-')} / conv ${escapeHtml(selected?.sandbox_meta?.source_conversation_id||'-')}</span>`:''}
-    <button id='prevTurn'>◀</button><button id='nextTurn'>▶</button>
-    <button id='toggleFollow'>live follow</button>
-    <button id='saveCase'>guardar caso</button>
-    <button id='repeatTurn'>repetir turno</button>
-    <button id='cloneSandbox'>duplicar sandbox</button>
-    <button id='resetSandbox'>reset overrides</button>
+    <div class='top-left'>${turnTitle()}</div>
+    <div class='top-mid'>latencia total: ${lat}</div>
+    <div class='top-right'>
+      <button id='copyBtn' ${["Resumen", "Experimentos"].includes(activeTab()) ? "disabled" : ""}>Copiar</button>
+      <button id='editBtn' class='${state.editing ? "active" : ""}'>${state.busy ? "..." : "Editar"}</button>
+    </div>
   `;
-
-  $('#sessionSel').onchange = async (e)=>{state.selectedSessionKey=e.target.value; state.selectedConversation=''; await fullRefresh({allowTurnAutoSelect:true}); switchTab(currentTab());};
-  $('#convSel').onchange = async (e)=>{state.selectedConversation=e.target.value; await fullRefresh({allowTurnAutoSelect:true}); switchTab(currentTab());};
-  $('#turnSel').onchange = async (e)=>{state.selectedTurnId=e.target.value; state.liveFollow=false; if(state.selectedTurnId) state.turn = await api(`/turns/${state.selectedTurnId}`); renderTopbar(); switchTab(currentTab());};
-  $('#prevTurn').onclick=()=>moveTurn(-1);
-  $('#nextTurn').onclick=()=>moveTurn(1);
-  $('#toggleFollow').onclick=async()=>{state.liveFollow=!state.liveFollow; if(state.liveFollow) await fullRefresh({allowTurnAutoSelect:true}); renderTopbar();};
-  $('#saveCase').onclick=quickSaveCase;
-  $('#repeatTurn').onclick=repeatTurn;
-  $('#cloneSandbox').onclick=cloneSandbox;
-  $('#resetSandbox').onclick=async()=>{await api(`/overrides/${state.optimizerSessionId}`,{method:'DELETE'}); await fullRefresh(); switchTab('Experimentos');};
+  $("#copyBtn").onclick = () => runAction("Copiado", onCopy);
+  $("#editBtn").onclick = () => runAction(state.editing ? "Edición desactivada" : "Modo edición", onEdit);
 }
 
-function moveTurn(step){
-  const idx = state.turns.findIndex(t=>t.turn_id===state.selectedTurnId);
-  const next = state.turns[idx+step]; if(!next) return;
-  state.selectedTurnId=next.turn_id; state.liveFollow=false;
-  api(`/turns/${next.turn_id}`).then((turn)=>{state.turn=turn; renderTopbar(); switchTab(currentTab());});
+function renderTabs() {
+  $("#tabs").innerHTML = TABS.map((t) => `<button data-tab='${t}'>${t}</button>`).join("");
+  $("#tabs").onclick = (e) => { const b = e.target.closest("button"); if (b) renderTab(b.dataset.tab); };
 }
 
-async function cloneSandbox(){
-  const selected = getSelectedSession(); if(!selected) return;
-  const payload = {optimizer_session_id:state.optimizerSessionId, source_user_id:selected.user_id, source_session_id:selected.session_id, source_conversation_id:state.selectedConversation||null};
-  const sandbox = await api('/sandbox/clone',{method:'POST', body:JSON.stringify(payload)});
-  state.selectedSessionKey = sandbox.session_key;
-  state.selectedConversation = '';
-  await fullRefresh({allowTurnAutoSelect:true});
-  switchTab('Chat');
+function renderToolbar() {
+  const s = selectedSession();
+  const meta = s?.sandbox_meta || {};
+  return `
+  <div class='toolbar'>
+    <span class='badge'>${modeLabel(state.overrides.mode)}</span>
+    <span class='badge'>follow:${state.liveFollow ? "on" : "off"}</span>
+    ${s?.is_sandbox ? `<span class='badge'>sandbox clonado · ${meta.source_session_id || "-"}</span>` : ""}
+    ${state.editing ? "<span class='badge'>modo edición</span>" : ""}
+    <button id='toggleFollow'>live follow</button>
+    <button id='repeatBtn'>Repetir</button>
+    <button id='newConvBtn'>Nueva conversación</button>
+    <button id='saveCaseBtn'>Guardar caso</button>
+    <button id='resetOverridesBtn'>Reset overrides</button>
+  </div>`;
 }
 
-async function repeatTurn(){ const text = state.turn?.user_turn?.raw_text; if(text) await sendMessage(text); }
-async function quickSaveCase(){ if(!state.selectedTurnId) return; await api('/cases',{method:'POST', body:JSON.stringify({turn_id:state.selectedTurnId,family:'end_to_end',tags:['regression'],notes:'guardado desde optimizador'})}); await fullRefresh(); alert('caso guardado'); }
-
-async function sendMessage(text){
-  const selected = getSelectedSession(); if(!selected || !text.trim()) return;
-  const payload = {optimizer_session_id:state.optimizerSessionId,user_id:selected.user_id,session_id:selected.session_id,message:text,conversation_id:state.selectedConversation||null,scope_turn_id:state.selectedTurnId||null};
-  await api('/sandbox/turn',{method:'POST',body:JSON.stringify(payload)});
-  await fullRefresh({allowTurnAutoSelect:true});
-  switchTab('Chat');
+function renderTab(tab) {
+  document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+  const c = $("#content");
+  const t = state.turn || {};
+  let html = renderToolbar();
+  if (tab === "Chat") html += `<div class='panel'><div class='card scroll'>${state.dialogue.map((d) => `<div class='msg ${d.role}'>${d.role === "user" ? "Usuario" : "IA"}: ${escapeHtml(d.text || "")}</div>`).join("")}</div><div class='card'><textarea id='chatInput' placeholder='Escribe...'></textarea><button id='sendBtn'>Enviar</button></div></div>`;
+  if (tab === "Resumen") html += `<div class='card scroll'><pre>${escapeHtml(JSON.stringify(t, null, 2))}</pre></div>`;
+  if (tab === "Timeline") html += `<div class='card scroll'>${(t.logs || []).map((l) => `<div class='timeline-item ${statusClass(l.source, l.status)}'><b>${l.node_name}</b> · ${l.status} · ${l.latency_ms}ms · ${l.source}</div>`).join("")}</div>`;
+  if (tab === "Nodos") html += `<div class='grid2'>${Object.entries(t.nodes || {}).map(([k, v]) => `<div class='card scroll'><h3>${k}</h3><pre>${escapeHtml(JSON.stringify(v, null, 2))}</pre></div>`).join("")}</div>`;
+  if (tab === "Guardrails") html += `<div class='grid2'><div class='card scroll'><h3>Input</h3><pre>${escapeHtml(JSON.stringify({decision:t.input_guardrail_decision,reasons:t.input_guardrail_reasons,triggered:t.input_guardrail_triggered,moderation:t.input_moderation_used},null,2))}</pre></div><div class='card scroll'><h3>Output</h3><pre>${escapeHtml(JSON.stringify({decision:t.output_guardrail_decision,reasons:t.output_guardrail_reasons,triggered:t.output_guardrail_triggered,rewrite:t.output_guardrail_rewrite_applied,moderation:t.output_moderation_used},null,2))}</pre></div></div>`;
+  if (tab === "Trace") html += `<div class='card scroll'><pre>${escapeHtml(JSON.stringify(t, null, 2))}</pre></div>`;
+  if (tab === "Evals") html += `<div class='card'>${["run_fixture_evals","run_live_evals","run_e2e_mock","run_e2e_live","run_all","run_all_live"].map((a)=>`<button class='evalBtn' data-act='${a}'>${a}</button>`).join(" ")}<pre id='evalOut'></pre></div>`;
+  if (tab === "Datasets / Casos") html += `<div class='card scroll'><pre>${escapeHtml(JSON.stringify(state.cases.slice(-30), null, 2))}</pre></div>`;
+  if (tab === "Prompts") html += `<div class='panel'>${state.prompts.map((p)=>`<div class='card'><h3>${p.node}</h3><textarea data-node='${p.node}'>${escapeHtml(p.base_text)}</textarea><button class='applyPrompt' data-node='${p.node}'>Aplicar override</button></div>`).join("")}</div>`;
+  if (tab === "Comparar") html += renderCompare();
+  if (tab === "Diálogo") html += `<div class='card scroll'>${state.dialogue.map((d)=>`<div class='msg ${d.role}'><b>${d.role}:</b> ${escapeHtml(d.text||"")}</div>`).join("")}</div>`;
+  if (tab === "Experimentos") html += `<div class='card scroll'><h3>Modo: ${modeLabel(state.overrides.mode)}</h3><button id='setView'>Ver</button><button id='setTry'>Probar</button><pre>${escapeHtml(JSON.stringify(state.overrides.entries || [], null, 2))}</pre></div>`;
+  c.innerHTML = html;
+  bindEvents(tab);
 }
 
-function renderPanel(tab){
-  const c = $('#content'); const t=state.turn||{};
-  if(tab==='Chat') c.innerHTML = `<div class='panel'><div class='card'>${state.dialogue.map(d=>`<div class='msg ${d.role}'>${d.role==='user'?'Usuario':'IA'}: ${escapeHtml(d.text)}</div>`).join('')}</div><div class='card'><textarea id='chatInput' placeholder='Escribe mensaje...'></textarea><button id='chatSend'>Enviar</button><div>respuesta final: ${escapeHtml(t.final_reply_text||'-')}</div></div></div>`;
-  if(tab==='Resumen') c.innerHTML = `<div class='card'><pre>${escapeHtml(JSON.stringify({turn_id:t.turn_id,session_id:t.session_id,user_id:t.user_id,conversation_id:t.conversation_id_after||t.conversation_id_before,turn_started_at:t.turn_started_at,turn_finished_at:t.turn_finished_at,total_latency_ms:t.total_latency_ms,final_status:t.final_status,user_text:t.user_turn?.raw_text,final_reply:t.final_reply_text,assistant_turn_emitted:t.assistant_turn_emitted,input_guardrail_decision:t.input_guardrail_decision,output_guardrail_decision:t.output_guardrail_decision,override_info:t._optimizador||null},null,2))}</pre></div>`;
-  if(tab==='Timeline') c.innerHTML = `<div class='panel'>${renderTimeline(t)}</div>`;
-  if(tab==='Nodos') c.innerHTML = `<div class='grid2'>${['memory','phase_classifier','planner','executor'].map(n=>renderNode(t.nodes?.[n],n)).join('')}</div>`;
-  if(tab==='Guardrails') c.innerHTML = `<div class='grid2'><div class='card'><h3>Input guardrails</h3>${guardBlock(t,'input')}</div><div class='card'><h3>Output guardrails</h3>${guardBlock(t,'output')}</div></div>`;
-  if(tab==='Trace') c.innerHTML = `<div class='card'><button id='copyTrace'>Copiar</button> <button id='exportTrace'>Exportar</button><pre>${escapeHtml(JSON.stringify(t,null,2))}</pre></div>`;
-  if(tab==='Evals') c.innerHTML = `<div class='card'>${['run_fixture_evals','run_live_evals','run_e2e_mock','run_e2e_live','run_all','run_all_live'].map(a=>`<button class='evalBtn' data-action='${a}'>${a}</button>`).join(' ')}<pre id='evalOut'></pre></div>`;
-  if(tab==='Datasets / Casos') c.innerHTML = `<div class='panel'><div class='card'><button id='saveCaseDetailed'>Guardar turno actual como caso</button></div><div class='card'><pre>${escapeHtml(JSON.stringify(state.cases.slice(-40),null,2))}</pre></div></div>`;
-  if(tab==='Prompts') c.innerHTML = `<div class='panel'>${state.prompts.map(p=>`<div class='card'><h3>${p.node}</h3><small>${p.file}</small><textarea data-node='${p.node}'>${escapeHtml(p.base_text)}</textarea><label>scope <select data-scope='${p.node}'><option value='this_optimizer_session'>sesión optimizador</option><option value='this_conversation'>conversación</option><option value='this_turn'>turno</option></select></label><button class='applyPrompt' data-node='${p.node}'>Aplicar override real</button></div>`).join('')}</div>`;
-  if(tab==='Comparar') c.innerHTML = renderComparePanel();
-  if(tab==='Diálogo') c.innerHTML = `<div class='card'>${state.dialogue.map(d=>`<div class='msg ${d.role}' data-turn='${d.turn_id}'><b>${d.role==='user'?'Usuario':'IA'}:</b> ${escapeHtml(d.text)}</div>`).join('')}<button id='copyDialogue'>Copiar conversación</button></div>`;
-  if(tab==='Experimentos') c.innerHTML = renderExperimentsPanel();
-  bindTabEvents(tab);
-}
-
-function renderTimeline(t){
-  const items = [
-    {label:'input guardrails',type:'input_guard'},
-    {label:'memory',type:'node',node:'memory'},
-    {label:'phase_classifier',type:'node',node:'phase_classifier'},
-    {label:'planner',type:'node',node:'planner'},
-    {label:'executor',type:'node',node:'executor'},
-    {label:'output guardrails',type:'output_guard'},
-    {label:'emisión final / TTS',type:'final'},
-  ];
-  return items.map(item=>renderTimelineItem(t,item)).join('');
-}
-
-function renderTimelineItem(t,item){
-  if(item.type==='input_guard'){
-    const decision=t.input_guardrail_decision||'not_executed';
-    const cls=guardrailClass(decision);
-    return `<div class='timeline-item ${cls}'><b>${item.label}</b><div>decision:${decision} moderation:${t.input_moderation_used?'on':'off'}</div><div>reasons:${escapeHtml(JSON.stringify(t.input_guardrail_reasons||[]))}</div></div>`;
-  }
-  if(item.type==='output_guard'){
-    const decision=t.output_guardrail_decision||'not_executed';
-    const cls=guardrailClass(decision);
-    return `<div class='timeline-item ${cls}'><b>${item.label}</b><div>decision:${decision} rewrite:${t.output_guardrail_rewrite_applied?'yes':'no'} moderation:${t.output_moderation_used?'on':'off'}</div><div>status ${t.output_guardrail_status_before||'-'} → ${t.output_guardrail_status_after||'-'}</div><div>reasons:${escapeHtml(JSON.stringify(t.output_guardrail_reasons||[]))}</div></div>`;
-  }
-  if(item.type==='node'){
-    const node=t.nodes?.[item.node];
-    if(!node) return `<div class='timeline-item'><b>${item.label}</b><div>no ejecutado / sin datos</div></div>`;
-    const cls=nodeClass(node.source,node.status);
-    return `<div class='timeline-item ${cls}'><b>${item.label}</b><div>status:${node.status} source:${node.source} lat:${node.latency_ms}ms</div><div>prompt:${node.prompt_version} schema:${node.output_schema_version}</div></div>`;
-  }
-  return `<div class='timeline-item ok'><b>${item.label}</b><div>final_status:${t.final_status||'-'}</div></div>`;
-}
-
-function guardrailClass(decision){ if(['block','refuse'].includes(decision)) return 'err'; if(['soft_restrict','rewrite'].includes(decision)) return 'warn'; return 'ok'; }
-function nodeClass(source,status){ if(['exception','parse_error','refusal'].includes(source)||['refuse','block'].includes(status)) return 'err'; if(source==='fallback'||status==='rewrite') return 'warn'; return 'ok'; }
-function renderNode(node,name){ if(!node) return `<div class='card'><h3>${name}</h3><p>sin datos</p></div>`; return `<div class='card'><h3>${name}</h3><pre>${escapeHtml(JSON.stringify({input_summary:node.input_summary,output_summary:node.output_summary,latencia:node.latency_ms,source:node.source,prompt_version:node.prompt_version,input_schema:node.input_schema_version,output_schema:node.output_schema_version,parse_error:node.parse_error,refusal_reason:node.refusal_reason,exception:node.exception_message},null,2))}</pre></div>`; }
-function guardBlock(t,type){
-  if(type==='input') return `<pre>${escapeHtml(JSON.stringify({decision:t.input_guardrail_decision,reasons:t.input_guardrail_reasons,triggered:t.input_guardrail_triggered,moderation_used:t.input_moderation_used,moderation_flags:t.input_moderation_flags},null,2))}</pre><small>Se muestran solo campos realmente presentes en trace.</small>`;
-  return `<pre>${escapeHtml(JSON.stringify({decision:t.output_guardrail_decision,reasons:t.output_guardrail_reasons,triggered:t.output_guardrail_triggered,status_before:t.output_guardrail_status_before,status_after:t.output_guardrail_status_after,rewrite_applied:t.output_guardrail_rewrite_applied,moderation_used:t.output_moderation_used,moderation_flags:t.output_moderation_flags},null,2))}</pre><small>No se muestran señales granulares no persistidas.</small>`;
-}
-
-function renderExperimentsPanel(){
-  const entries = state.overrides?.entries || [];
-  return `<div class='panel'><div class='card'><h3>Experimento activo</h3><label>modo <select id='modeSel'><option value='mirror' ${state.overrides.mode==='mirror'?'selected':''}>mirror</option><option value='sandbox' ${state.overrides.mode==='sandbox'?'selected':''}>sandbox</option></select></label><button id='saveMode'>Guardar modo</button><pre>${escapeHtml(JSON.stringify(entries,null,2))}</pre></div><div class='card'><h3>Config overrides reales (soportados)</h3><label>model_planner <input id='cfgModelPlanner' placeholder='o4-mini'></label><label>feature_moderation <select id='cfgModeration'><option value=''>--</option><option value='true'>true</option><option value='false'>false</option></select></label><label>scope <select id='cfgScope'><option value='this_optimizer_session'>sesión</option><option value='this_conversation'>conversación</option><option value='this_turn'>turno</option></select></label><button id='applyConfig'>Aplicar config override</button></div></div>`;
-}
-
-function renderComparePanel(){
-  const turnOptions = state.turns.map(t=>`<option value='${t.turn_id}'>#${t.index} ${t.turn_id}</option>`).join('');
+function renderCompare() {
+  const opts = state.turns.map((t)=>`<option value='${t.turn_id}'>Turno ${t.index} · v${t.version||1}</option>`).join("");
+  if (!state.compareResult) return `<div class='card'><select id='cmpA'>${opts}</select><select id='cmpB'>${opts}</select><button id='runCmp'>Comparar</button></div>`;
   const r = state.compareResult;
-  if(!r) return `<div class='card'><select id='cmpA'>${turnOptions}</select><select id='cmpB'>${turnOptions}</select><button id='runCmp'>Comparar</button><p>Sin comparación ejecutada.</p></div>`;
-  return `<div class='panel'><div class='card'><select id='cmpA'>${turnOptions}</select><select id='cmpB'>${turnOptions}</select><button id='runCmp'>Comparar</button></div><div class='grid2'><div class='card'><h3>Turno A</h3><p>status:${r.a.final_status} lat:${r.a.latency_ms}ms</p><p>input:${r.a.guardrails.input} output:${r.a.guardrails.output}</p><p>exp:${r.relationship.a_is_experiment?'sí':'no'}</p><pre>${escapeHtml(r.a.final_reply||'')}</pre></div><div class='card'><h3>Turno B</h3><p>status:${r.b.final_status} lat:${r.b.latency_ms}ms</p><p>input:${r.b.guardrails.input} output:${r.b.guardrails.output}</p><p>exp:${r.relationship.b_is_experiment?'sí':'no'}</p><pre>${escapeHtml(r.b.final_reply||'')}</pre></div></div><div class='card'><h3>Diferencias clave</h3><ul><li>tipo comparación: ${r.relationship.experiment_kind}</li><li>misma optimizer_session: ${r.relationship.same_optimizer_session}</li><li>status cambiado: ${r.diff.final_status_changed}</li><li>reply cambiado: ${r.diff.reply_changed}</li><li>latency delta(ms): ${r.diff.latency_delta_ms}</li><li>input decision cambió: ${r.diff.guardrails.input_decision_changed}</li><li>output decision cambió: ${r.diff.guardrails.output_decision_changed}</li><li>output rewrite cambió: ${r.diff.guardrails.output_rewrite_changed}</li></ul></div><div class='card'><h3>Overrides efectivos</h3><pre>${escapeHtml(JSON.stringify(r.effective_overrides,null,2))}</pre></div><div class='card'><h3>Diferencias por nodo</h3><pre>${escapeHtml(JSON.stringify(r.diff.node_changes,null,2))}</pre></div></div>`;
+  return `<div class='panel'><div class='card'><select id='cmpA'>${opts}</select><select id='cmpB'>${opts}</select><button id='runCmp'>Comparar</button></div><div class='grid2'><div class='card scroll'><h3>A</h3><pre>${escapeHtml(JSON.stringify(r.a, null, 2))}</pre></div><div class='card scroll'><h3>B</h3><pre>${escapeHtml(JSON.stringify(r.b, null, 2))}</pre></div></div><div class='card scroll'><h3>Diferencias clave</h3><pre>${escapeHtml(JSON.stringify({relationship:r.relationship, effective_overrides:r.effective_overrides, diff:r.diff}, null, 2))}</pre></div></div>`;
 }
 
-function bindTabEvents(tab){
-  if(tab==='Chat') $('#chatSend').onclick=()=>sendMessage($('#chatInput').value);
-  if(tab==='Trace'){ $('#copyTrace').onclick=()=>navigator.clipboard.writeText(JSON.stringify(state.turn||{},null,2)); $('#exportTrace').onclick=()=>download('trace.json',JSON.stringify(state.turn||{},null,2)); }
-  if(tab==='Evals') document.querySelectorAll('.evalBtn').forEach(b=>b.onclick=async()=>$('#evalOut').textContent=JSON.stringify(await api(`/evals/${b.dataset.action}`,{method:'POST'}),null,2));
-  if(tab==='Datasets / Casos') $('#saveCaseDetailed').onclick=quickSaveCase;
-  if(tab==='Prompts') document.querySelectorAll('.applyPrompt').forEach(btn=>btn.onclick=applyPromptOverride);
-  if(tab==='Comparar') $('#runCmp').onclick=runCompare;
-  if(tab==='Diálogo'){ document.querySelectorAll('.msg[data-turn]').forEach(m=>m.onclick=async()=>{state.selectedTurnId=m.dataset.turn; state.liveFollow=false; state.turn=await api(`/turns/${state.selectedTurnId}`); renderTopbar(); switchTab('Trace');}); $('#copyDialogue').onclick=()=>navigator.clipboard.writeText(state.dialogue.map(d=>`${d.role}: ${d.text}`).join('\n')); }
-  if(tab==='Experimentos'){ $('#saveMode').onclick=saveMode; $('#applyConfig').onclick=applyConfigOverride; }
+function bindEvents(tab) {
+  $("#toggleFollow").onclick = () => runAction("Follow actualizado", async()=>{ state.liveFollow = !state.liveFollow; await refresh({autoSelect:true}); });
+  $("#repeatBtn").onclick = () => runAction("Turno repetido", async()=>{ const text = state.turn?.user_turn?.raw_text; if(!text) throw new Error("sin turno"); await sendChat(text, state.selectedTurnId); });
+  $("#newConvBtn").onclick = () => runAction("Nueva conversación", newConversation);
+  $("#saveCaseBtn").onclick = () => runAction("Caso guardado", async()=>{ if(!state.selectedTurnId) throw new Error("sin turno"); await api('/cases',{method:'POST',body:JSON.stringify({turn_id:state.selectedTurnId,family:'end_to_end',tags:['manual'],notes:'guardado desde optimizador'})}); await refresh(); });
+  $("#resetOverridesBtn").onclick = () => runAction("Overrides reseteados", async()=>{ await api(`/overrides/${state.optimizerSessionId}`,{method:'DELETE'}); await refresh(); });
+
+  if (tab === "Chat") $("#sendBtn").onclick = () => runAction("Mensaje enviado", async()=>{ await sendChat($("#chatInput").value); });
+  if (tab === "Evals") document.querySelectorAll(".evalBtn").forEach((b)=>b.onclick=()=>runAction("Eval ejecutada", async()=>{$("#evalOut").textContent = JSON.stringify(await api(`/evals/${b.dataset.act}`,{method:'POST'}),null,2);}));
+  if (tab === "Prompts") document.querySelectorAll(".applyPrompt").forEach((b)=>b.onclick=()=>runAction("Override aplicado", async()=>{
+    if (!state.editing || state.overrides.mode !== "sandbox") throw new Error("Activa Editar en Probar");
+    const node = b.dataset.node;
+    const val = document.querySelector(`textarea[data-node='${node}']`).value;
+    const entries = [...(state.overrides.entries||[]).filter((e)=>!(e.category==='prompt' && e.key===node && e.scope==='this_optimizer_session')),{category:'prompt',key:node,value:val,scope:'this_optimizer_session'}];
+    await api(`/overrides/${state.optimizerSessionId}`,{method:'PUT',body:JSON.stringify({mode:'sandbox',entries})});
+    await refresh();
+  }));
+  if (tab === "Comparar") $("#runCmp").onclick = () => runAction("Comparación lista", async()=>{ state.compareResult = await api('/compare',{method:'POST',body:JSON.stringify({turn_a:$('#cmpA').value,turn_b:$('#cmpB').value})}); });
+  if (tab === "Experimentos") {
+    $("#setView").onclick = () => runAction("Modo Ver", async()=>{ await api(`/overrides/${state.optimizerSessionId}`,{method:'PUT',body:JSON.stringify({mode:'mirror',entries:state.overrides.entries||[]})}); state.editing=false; await refresh(); });
+    $("#setTry").onclick = () => runAction("Modo Probar", async()=>{ await api(`/overrides/${state.optimizerSessionId}`,{method:'PUT',body:JSON.stringify({mode:'sandbox',entries:state.overrides.entries||[]})}); await refresh(); });
+  }
 }
 
-async function applyPromptOverride(e){
-  const node = e.target.dataset.node;
-  const value = document.querySelector(`textarea[data-node='${node}']`).value;
-  const scope = document.querySelector(`select[data-scope='${node}']`).value;
-  const entry = scopedEntry({category:'prompt', key:node, value, scope});
-  await upsertOverrideEntry(entry);
-  await fullRefresh();
-  alert('override aplicado');
+function statusClass(source, status) {
+  if (["exception", "parse_error", "refusal"].includes(source) || ["refuse", "block"].includes(status)) return "err";
+  if (source === "fallback" || status === "rewrite") return "warn";
+  return "ok";
 }
 
-async function saveMode(){
-  await api(`/overrides/${state.optimizerSessionId}`,{method:'PUT',body:JSON.stringify({mode:$('#modeSel').value,entries:state.overrides.entries||[]})});
-  await fullRefresh();
+function escapeHtml(s) { return String(s ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;"); }
+
+async function boot() {
+  renderTabs();
+  await refresh({ autoSelect: true });
+  renderTopbar();
+  renderTab("Chat");
+  state.pollTimer = setInterval(async()=>{
+    try { await refresh(); renderTopbar(); renderTab(activeTab()); } catch(_e){}
+  }, POLL_MS);
 }
 
-async function applyConfigOverride(){
-  const entries=[];
-  const model=$('#cfgModelPlanner').value.trim();
-  if(model) entries.push(scopedEntry({category:'config',key:'model_planner',value:model,scope:$('#cfgScope').value}));
-  const mod=$('#cfgModeration').value;
-  if(mod) entries.push(scopedEntry({category:'config',key:'feature_moderation',value:mod==='true',scope:$('#cfgScope').value}));
-  for(const entry of entries) await upsertOverrideEntry(entry);
-  await fullRefresh();
-}
-
-function scopedEntry(base){
-  const entry = {...base};
-  if(entry.scope==='this_conversation') entry.conversation_id = state.selectedConversation || (state.turn?.conversation_id_after||state.turn?.conversation_id_before||null);
-  if(entry.scope==='this_turn') entry.turn_id = state.selectedTurnId || null;
-  return entry;
-}
-
-async function upsertOverrideEntry(entry){
-  const current = await api(`/overrides/${state.optimizerSessionId}`);
-  const entries = (current.entries||[]).filter(e=>!(e.category===entry.category && e.key===entry.key && e.scope===entry.scope && (e.conversation_id||null)===(entry.conversation_id||null) && (e.turn_id||null)===(entry.turn_id||null)));
-  entries.push(entry);
-  await api(`/overrides/${state.optimizerSessionId}`,{method:'PUT',body:JSON.stringify({mode:current.mode,entries})});
-}
-
-async function runCompare(){
-  const a=$('#cmpA').value, b=$('#cmpB').value;
-  state.compareResult = await api('/compare',{method:'POST',body:JSON.stringify({turn_a:a,turn_b:b})});
-  switchTab('Comparar');
-}
-
-function download(name,text){ const blob = new Blob([text],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; a.click(); }
-function escapeHtml(s){ return String(s??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
-
-bootstrap().catch(err=>{ document.body.innerHTML = `<pre>${escapeHtml(err.message)}</pre>`; });
+boot().catch((e) => { document.body.innerHTML = `<pre>${escapeHtml(e.message)}</pre>`; });

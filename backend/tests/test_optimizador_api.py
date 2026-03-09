@@ -306,3 +306,51 @@ def test_override_scopes_resolution_precedence():
     resolved = experiments_bridge.resolve_entries(optimizer_session_id="os1", conversation_id="c1", turn_id="t1")
     current = {(e["category"], e["key"]): e["value"] for e in resolved}
     assert current[("config", "model_planner")] == "turn"
+
+
+def test_new_conversation_endpoint_creates_clean_session():
+    SESSIONS.clear()
+    _seed_turn(user_id="u1", session_id="base", turn_suffix="1")
+    r = client.post("/api/optimizador/sandbox/new_conversation", json={"optimizer_session_id": "default", "user_id": "u1", "session_id": "base"})
+    assert r.status_code == 200
+    payload = r.json()
+    turns = client.get(f"/api/optimizador/sessions/{payload['user_id']}/{payload['session_id']}/turns").json()["items"]
+    assert turns == []
+
+
+def test_repeat_turn_generates_next_version(monkeypatch):
+    SESSIONS.clear()
+    first_id = _seed_turn(user_id="u1", session_id="s1", turn_suffix="1")
+
+    state = get_session_state("u1", "s1")
+    state.world_state["negotiation_canonical_traces"][0]["_optimizador"] = {"versioning": {"base_turn_id": first_id, "version": 1}}
+
+    def fake_run(state, user_message, config):
+        state.world_state.setdefault("negotiation_canonical_traces", []).append(
+            {
+                "turn_id": "turn_repeat",
+                "turn_started_at": "2026-01-01T00:00:09Z",
+                "timestamp_utc": "2026-01-01T00:00:09Z",
+                "total_latency_ms": 1,
+                "final_status": "deliver",
+                "final_reply_text": "ok",
+                "assistant_turn_emitted": True,
+                "guardrails_triggered": False,
+                "input_guardrail_decision": "allow",
+                "output_guardrail_decision": "allow",
+                "output_guardrail_status_before": "deliver",
+                "output_guardrail_status_after": "deliver",
+                "user_turn": {"raw_text": user_message},
+                "logs": [],
+                "nodes": {},
+                "conversation_id_after": "conv-1",
+            }
+        )
+        return "ok", state
+
+    monkeypatch.setattr(services, "run_negotiation_cognitive_turn", fake_run)
+    run = client.post("/api/optimizador/sandbox/turn", json={"optimizer_session_id": "default", "user_id": "u1", "session_id": "s1", "message": "hola", "conversation_id": "conv-1", "repeat_from_turn_id": first_id})
+    assert run.status_code == 200
+    turn = services.get_turn("turn_repeat")
+    assert turn["_optimizador"]["versioning"]["base_turn_id"] == first_id
+    assert turn["_optimizador"]["versioning"]["version"] == 2

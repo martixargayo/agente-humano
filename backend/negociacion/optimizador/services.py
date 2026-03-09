@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from typing import Any
+from datetime import datetime, timezone
 
-from sessions.state import get_session_state
+from sessions.state import get_session_state, SessionState
 
 from ..orchestration.flow_config import build_negotiation_pipeline_config, run_negotiation_cognitive_turn
 from ..state.canonical_state import build_default_canonical_state
@@ -72,6 +73,30 @@ def duplicate_sandbox_session(
     )
 
 
+def new_conversation_session(*, optimizer_session_id: str, user_id: str, session_id: str) -> dict[str, Any]:
+    state = get_session_state(user_id=user_id, session_id=session_id)
+    new_session_id = f"{session_id}__newconv__{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+    new_state = SessionState(user_id=user_id, session_id=new_session_id)
+    new_state.world_state["optimizador_sandbox_meta"] = {
+        "optimizer_session_id": optimizer_session_id,
+        "source_user_id": user_id,
+        "source_session_id": session_id,
+        "source_conversation_id": None,
+        "clone_strategy": "new_conversation_clean_start",
+        "cloned_at": datetime.now(timezone.utc).isoformat(),
+        "preferred_conversation_id": None,
+    }
+    from sessions.state import SESSIONS
+    SESSIONS[(user_id, new_session_id)] = new_state
+    _ = state
+    return {
+        "session_key": storage.session_key(user_id, new_session_id),
+        "user_id": user_id,
+        "session_id": new_session_id,
+        "sandbox_meta": new_state.world_state["optimizador_sandbox_meta"],
+    }
+
+
 def run_sandbox_turn(
     *,
     optimizer_session_id: str,
@@ -80,6 +105,7 @@ def run_sandbox_turn(
     message: str,
     conversation_id: str | None,
     scope_turn_id: str | None,
+    repeat_from_turn_id: str | None,
 ) -> dict[str, Any]:
     state = get_session_state(user_id=user_id, session_id=session_id)
     base_config = build_negotiation_pipeline_config()
@@ -98,6 +124,7 @@ def run_sandbox_turn(
 
     traces = storage.resolve_traces(state)
     latest = traces[-1] if traces else None
+    versioning = _resolve_versioning(state, latest, repeat_from_turn_id)
     if latest is not None:
         latest["_optimizador"] = {
             "optimizer_session_id": optimizer_session_id,
@@ -106,14 +133,51 @@ def run_sandbox_turn(
             "mode": experiments_bridge.get_state(optimizer_session_id).get("mode", "mirror"),
             "session_key": storage.session_key(user_id, session_id),
             "conversation_id": conversation_id,
+            "versioning": versioning,
         }
 
     turns = list_turns(user_id, session_id, conversation_id=conversation_id)
+    selected_turn = turns[-1] if turns else None
     return {
         "reply": reply,
-        "turn": turns[-1] if turns else None,
+        "turn": selected_turn,
+        "turn_title": derive_turn_title(latest, turns) if latest else None,
         "effective_overrides": experiments_bridge.describe_effective_overrides(resolved_entries),
     }
+
+
+def _resolve_versioning(state: Any, latest_turn: dict[str, Any] | None, repeat_from_turn_id: str | None) -> dict[str, Any]:
+    if latest_turn is None:
+        return {"base_turn_id": None, "version": 1}
+
+    traces = storage.resolve_traces(state)
+    if not repeat_from_turn_id:
+        return {"base_turn_id": latest_turn.get("turn_id"), "version": 1}
+
+    source_turn = next((t for t in traces if t.get("turn_id") == repeat_from_turn_id), None)
+    base_turn_id = repeat_from_turn_id
+    if isinstance(source_turn, dict):
+        meta = source_turn.get("_optimizador", {}) if isinstance(source_turn.get("_optimizador"), dict) else {}
+        versioning = meta.get("versioning", {}) if isinstance(meta.get("versioning"), dict) else {}
+        base_turn_id = versioning.get("base_turn_id") or repeat_from_turn_id
+
+    max_version = 1
+    for t in traces:
+        meta = t.get("_optimizador", {}) if isinstance(t.get("_optimizador"), dict) else {}
+        versioning = meta.get("versioning", {}) if isinstance(meta.get("versioning"), dict) else {}
+        if versioning.get("base_turn_id") == base_turn_id:
+            max_version = max(max_version, int(versioning.get("version") or 1))
+
+    return {"base_turn_id": base_turn_id, "version": max_version + 1}
+
+
+def derive_turn_title(turn: dict[str, Any], turns: list[dict[str, Any]]) -> str:
+    turn_id = turn.get("turn_id")
+    index = next((item.get("index") for item in turns if item.get("turn_id") == turn_id), None)
+    meta = turn.get("_optimizador", {}) if isinstance(turn.get("_optimizador"), dict) else {}
+    versioning = meta.get("versioning", {}) if isinstance(meta.get("versioning"), dict) else {}
+    version = versioning.get("version") or 1
+    return f"Turno {index or '?'} · v{version}"
 
 
 def list_prompts() -> list[dict[str, str]]:
