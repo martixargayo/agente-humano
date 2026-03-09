@@ -67,6 +67,31 @@ def test_build_planner_input_exact_fields_and_sources():
 
 
 
+
+
+def test_build_planner_input_injects_full_phase_card_from_source_of_truth():
+    state = _build_state()
+    state.planner_state.current_phase = NegotiationPhase.clima_humano
+    user_turn = _build_user_turn("hola", "2026-01-01T00:00:00Z")
+    trace_meta = {
+        "turn_id": "10b",
+        "prompt_version": "planner_v3",
+        "schema_version": "planner_input.v1",
+        "model_target": "o4-mini",
+    }
+
+    payload = build_planner_input(state, [], user_turn, trace_meta, "backend/negociacion/prompts")  # type: ignore[arg-type]
+    phase_card = payload.model_dump(mode="json")["phase_card"]
+
+    assert phase_card["phase"] == "clima_humano"
+    assert phase_card["phase_objective"].startswith("Mantener una interacción humana breve")
+    assert "what_good_progress_looks_like" in phase_card
+    assert "planner_bias" in phase_card
+    assert "good_moves" in phase_card
+    assert "avoid" in phase_card
+    assert phase_card["question_policy"]["default_max_questions"] == 0
+    assert "done_signals" in phase_card
+    assert phase_card.get("guidance")
 def test_planner_output_fields_are_exact_and_forbid_legacy_keys():
     assert set(PlannerOutput.model_fields.keys()) == {
         "schema_version",

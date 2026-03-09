@@ -561,3 +561,110 @@ def test_e2e_mustang_opening_keeps_trace_and_prompt_artifacts_consistent(monkeyp
     assert trace["nodes"]["phase_classifier"]["status"] == "descubrimiento_y_comprension"
     assert trace["nodes"]["executor"]["final_output_source"] in {"validated_output", "post_guardrail_output"}
     assert trace["nodes"]["executor"]["prompt_artifacts"]["developer_prompt_text"]
+
+
+def test_e2e_hola_prompt_artifacts_include_full_phase_card(monkeypatch):
+    session = SessionState(user_id="u_hola", session_id="s_hola")
+    config = build_negotiation_pipeline_config().model_copy(update={"feature_safety": False, "feature_traces": True})
+
+    def _fake_build_client():
+        return object()
+
+    def _fake_refresh_request_context(client, canonical_state, mode_default):
+        _ = (client, canonical_state, mode_default)
+        return {"conversation": "conv-hola"}
+
+    def _fake_execute_memory_and_phase(**kwargs):
+        _ = kwargs
+        mem_call = _fake_model_result(
+            {
+                "schema_version": "memory.v1",
+                "episodic_append": [],
+                "working_memory_new": {
+                    "current_topic": None,
+                    "pending_question": None,
+                    "last_turn_summary": "saludo inicial",
+                },
+            }
+        )
+        phase_call = _fake_model_result(
+            {
+                "schema_version": "phase_classifier.v1",
+                "current_phase": "clima_humano",
+            }
+        )
+        threading = {
+            "threading_policy": "stateless_parallel",
+            "threading_mode_effective": "stateless",
+            "request_context_has_conversation_id": False,
+            "request_context_has_previous_response_id": False,
+        }
+        return mem_call, 3, threading, phase_call, 4, threading, {"conversation": "conv-hola"}
+
+    def _fake_call_structured(client, model, messages, response_model, reasoning_effort, request_context, store):
+        _ = (client, model, messages, reasoning_effort, request_context, store)
+        if response_model.__name__ == "PlannerOutput":
+            return _fake_model_result(
+                {
+                    "schema_version": "planner.v3",
+                    "status": "plan",
+                    "turn_goal": "mantener saludo natural",
+                    "decision": "hold",
+                    "content_plan": {"must_include": ["saludo natural"], "must_avoid": ["negociar temprano"]},
+                    "limits": {
+                        "max_sentences": 2,
+                        "max_questions": 0,
+                        "allow_topic_shift": False,
+                        "allow_personal_disclosure": False,
+                    },
+                    "memory_targets": [],
+                    "done_criteria": ["saludo_resuelto"],
+                }
+            )
+        if response_model.__name__ == "ExecutorOutput":
+            return _fake_model_result(
+                {
+                    "schema_version": "executor.v1",
+                    "status": "deliver",
+                    "spoken_text": "Hola, encantado. ¿Cómo estás?",
+                    "memory_used": [],
+                    "refusal_reason": None,
+                }
+            )
+        raise AssertionError("unexpected response model")
+
+    monkeypatch.setattr(fc, "_build_client", _fake_build_client)
+    monkeypatch.setattr(fc, "refresh_request_context", _fake_refresh_request_context)
+    monkeypatch.setattr(fc, "_execute_memory_and_phase", _fake_execute_memory_and_phase)
+    monkeypatch.setattr(fc, "_call_structured", _fake_call_structured)
+
+    run_negotiation_cognitive_turn(session, "hola", config)
+
+    trace = session.world_state[f"{config.memory_key}_traces"][0]
+    planner_artifacts = trace["nodes"]["planner"]["prompt_artifacts"]
+    executor_artifacts = trace["nodes"]["executor"]["prompt_artifacts"]
+
+    for artifacts in (planner_artifacts, executor_artifacts):
+        payload = artifacts["input_payload_json"]
+        rendered = artifacts["user_prompt_rendered"]
+        assert '"current_phase":"clima_humano"' in payload
+        assert '"phase":"clima_humano"' in payload
+        assert '"phase_objective"' in payload
+        assert '"what_good_progress_looks_like"' in payload
+        assert '"planner_bias"' in payload
+        assert '"good_moves"' in payload
+        assert '"avoid"' in payload
+        assert '"question_policy"' in payload
+        assert '"valid_topics"' in payload
+        assert '"done_signals"' in payload
+        assert "Placeholder: generar clima humano y transición suave." not in payload
+
+        assert '"phase_objective"' in rendered
+        assert '"what_good_progress_looks_like"' in rendered
+        assert '"planner_bias"' in rendered
+        assert '"good_moves"' in rendered
+        assert '"avoid"' in rendered
+        assert '"question_policy"' in rendered
+        assert '"valid_topics"' in rendered
+        assert '"done_signals"' in rendered
+        assert "Placeholder: generar clima humano y transición suave." not in rendered
