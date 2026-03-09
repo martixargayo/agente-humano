@@ -139,13 +139,23 @@ function renderTab() {
     const found = (state.draftEntries || []).find((e) => e.category === "prompt" && e.key === p.node);
     const val = found ? found.value : p.base_text;
     const changed = (found?.value ?? p.base_text) !== p.base_text;
-    return `<div class='card ${state.editing ? "editable" : ""} ${changed ? "changed" : ""}'><h3>${p.node}</h3><textarea data-node='${p.node}' ${state.editing ? "" : "disabled"}>${escapeHtml(val)}</textarea></div>`;
+    return `<div class='card ${state.editing ? "editable" : ""} ${changed ? "changed" : ""}'><h3>${p.node}</h3><textarea class='promptTextarea' data-node='${p.node}' ${state.editing ? "" : "disabled"}>${escapeHtml(val)}</textarea></div>`;
   }).join("")}</div>`;
   if (tab === "Cambios") html += renderChanges();
   if (tab === "Diálogo") html += `<div class='card'>${state.dialogue.map((d) => `<div class='msg ${d.role}'><b>${d.role}:</b> ${escapeHtml(d.text || "")}</div>`).join("")}</div>`;
 
   html += `<div class='editStatus ${state.editing ? "on" : ""}' id='editStatus'>${state.editing ? `modo edición · ${pendingChangesCount()} cambio${pendingChangesCount() === 1 ? "" : "s"}` : `modo lectura · v${state.overrides.workspace_version || 1}`}</div>`;
   byId("content").innerHTML = html;
+  autosizePromptTextareas();
+}
+
+
+
+function autosizePromptTextareas() {
+  document.querySelectorAll("textarea.promptTextarea").forEach((ta) => {
+    ta.style.height = "auto";
+    ta.style.height = `${ta.scrollHeight}px`;
+  });
 }
 
 function renderChanges() {
@@ -245,6 +255,7 @@ function bindEvents() {
 
   document.querySelectorAll("textarea[data-node]").forEach((ta) => ta.addEventListener("input", (e) => {
     if (!state.editing) return;
+    autosizePromptTextareas();
     const node = e.target.dataset.node;
     const base = state.prompts.find((p) => p.node === node)?.base_text || "";
     state.draftEntries = (state.draftEntries || []).filter((x) => !(x.category === "prompt" && x.key === node));
