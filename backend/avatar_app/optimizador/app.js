@@ -21,6 +21,8 @@ const state = {
   liveFollow: true, editing: false, busy: false, waitingReply: false,
   draftEntries: [], evalOut: "", lastKnownTurnId: "", pollTimer: null,
   chatDraft: "", activeTab: "Chat",
+  defaultUserId: "u_optimizador",
+  defaultSessionId: "optimizador-main",
 };
 
 const $ = (q) => document.querySelector(q);
@@ -56,6 +58,10 @@ function showToast(text, type = "ok") {
 async function refresh({ autoSelect = false } = {}) {
   const prevSelected = state.selectedTurnId;
   state.sessions = (await api("/sessions")).items;
+  if (!state.sessions.length) {
+    await api("/sessions/bootstrap", { method: "POST", body: JSON.stringify({ user_id: state.defaultUserId, session_id: state.defaultSessionId }) });
+    state.sessions = (await api("/sessions")).items;
+  }
   if (!state.selectedSessionKey && state.sessions[0]) state.selectedSessionKey = state.sessions[0].session_key;
   const s = selectedSession();
   if (!s) return;
@@ -230,7 +236,7 @@ function bindEvents() {
   byId("resetOverridesBtn")?.addEventListener("click", async () => { await api(`/overrides/${state.optimizerSessionId}`, { method: "DELETE" }); state.editing = false; await refresh(); renderTopbar(); renderTab(); bindEvents(); });
 
   byId("chatInput")?.addEventListener("input", (e) => { state.chatDraft = e.target.value; });
-  byId("sendBtn")?.addEventListener("click", async () => { if (!state.chatDraft.trim()) return; await sendChat(state.chatDraft); state.chatDraft = ""; });
+  byId("sendBtn")?.addEventListener("click", async () => { if (!state.chatDraft.trim()) return; const msg = state.chatDraft; state.chatDraft = ""; try { await sendChat(msg); } catch (_) { state.chatDraft = msg; renderTab(); bindEvents(); } });
 
   document.querySelectorAll(".evalBtn").forEach((b) => b.addEventListener("click", async () => {
     state.evalOut = JSON.stringify(await api(`/evals/${b.dataset.act}`, { method: "POST" }), null, 2);
@@ -259,11 +265,20 @@ function bindEvents() {
 
 async function sendChat(message, repeatFrom = null) {
   const s = selectedSession();
-  if (!s) return;
+  if (!s) throw new Error("No hay sesión activa en optimizador");
   state.waitingReply = true;
   renderTab();
-  await api("/sandbox/turn", { method: "POST", body: JSON.stringify({ optimizer_session_id: state.optimizerSessionId, user_id: s.user_id, session_id: s.session_id, message, conversation_id: state.selectedConversation || null, scope_turn_id: state.selectedTurnId || null, repeat_from_turn_id: repeatFrom }) });
-  await refresh({ autoSelect: true });
+  try {
+    const result = await api("/sandbox/turn", { method: "POST", body: JSON.stringify({ optimizer_session_id: state.optimizerSessionId, user_id: s.user_id, session_id: s.session_id, message, conversation_id: state.selectedConversation || null, scope_turn_id: state.selectedTurnId || null, repeat_from_turn_id: repeatFrom }) });
+    await refresh({ autoSelect: true });
+    if (result?.reply && !state.dialogue.some((d) => d.role === "assistant" && d.text === result.reply)) {
+      state.dialogue.push({ role: "assistant", text: result.reply });
+    }
+  } catch (e) {
+    state.waitingReply = false;
+    showToast(`Chat falló: ${e.message || e}`, "err");
+    throw e;
+  }
   renderTopbar(); renderTab(); bindEvents();
 }
 

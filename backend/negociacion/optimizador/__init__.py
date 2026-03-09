@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from . import experiments_bridge, services
-from .models import CompareTurnsRequest, ConfirmOverridesRequest, NewConversationRequest, OverrideUpdateRequest, SandboxCloneRequest, SandboxTurnRequest, SaveCaseRequest
+from .models import BootstrapSessionRequest, CompareTurnsRequest, ConfirmOverridesRequest, NewConversationRequest, OverrideUpdateRequest, SandboxCloneRequest, SandboxTurnRequest, SaveCaseRequest
 
 router = APIRouter(prefix="/api/optimizador", tags=["optimizador"])
 
@@ -11,6 +11,11 @@ router = APIRouter(prefix="/api/optimizador", tags=["optimizador"])
 @router.get("/sessions")
 def list_sessions() -> dict:
     return {"items": services.list_sessions()}
+
+
+@router.post("/sessions/bootstrap")
+def bootstrap_session(payload: BootstrapSessionRequest) -> dict:
+    return services.ensure_session(user_id=payload.user_id, session_id=payload.session_id)
 
 
 @router.get("/sessions/{user_id}/{session_id}/conversations")

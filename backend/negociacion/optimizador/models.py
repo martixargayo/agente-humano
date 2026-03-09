@@ -55,6 +55,11 @@ class NewConversationRequest(BaseModel):
     session_id: str
 
 
+class BootstrapSessionRequest(BaseModel):
+    user_id: str = "u_optimizador"
+    session_id: str = "optimizador-main"
+
+
 class SaveCaseRequest(BaseModel):
     turn_id: str
     family: Literal["memory", "phase", "planner", "executor", "end_to_end", "guardrails"]

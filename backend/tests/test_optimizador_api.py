@@ -371,3 +371,14 @@ def test_confirm_overrides_creates_new_workspace_version():
     assert body["workspace_version"] == 2
     assert body["mode"] == "sandbox"
     assert body["committed_entries"][0]["key"] == "planner"
+
+
+def test_optimizer_can_bootstrap_session_without_avatar_dependency():
+    SESSIONS.clear()
+    r = client.post("/api/optimizador/sessions/bootstrap", json={"user_id": "u_opt", "session_id": "s_opt"})
+    assert r.status_code == 200
+    payload = r.json()
+    assert payload["user_id"] == "u_opt"
+    assert payload["session_id"] == "s_opt"
+    sessions = client.get("/api/optimizador/sessions").json()["items"]
+    assert any(row["session_key"] == "u_opt::s_opt" for row in sessions)
