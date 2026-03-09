@@ -55,3 +55,8 @@ HIGH_RISK_MODERATION_CATEGORIES = {
 }
 
 UNSAFE_OUTPUT_TERMS = ["hackea", "explosivo", "arma casera", "veneno"]
+
+CRITICAL_OUTPUT_GUARDRAIL_RULES = [
+    "pii_output_high_risk",
+    "unsafe_content_output_guardrail",
+]

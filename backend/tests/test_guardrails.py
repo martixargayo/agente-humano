@@ -47,7 +47,7 @@ def test_input_guardrails_allow_soft_and_block():
     assert block_result.decision == InputGuardrailDecision.block
 
 
-def test_output_guardrails_allow_rewrite_and_block():
+def test_output_guardrails_observe_only_for_non_critical_and_block_for_critical():
     policy = build_guardrails_policy(feature_input_guardrails=True, feature_output_guardrails=True, feature_moderation=False)
     planner = _planner()
 
@@ -55,12 +55,17 @@ def test_output_guardrails_allow_rewrite_and_block():
     assert allow_result.decision == OutputGuardrailDecision.allow
     assert allow_out.spoken_text == "Podemos avanzar con cautela."
 
-    rewrite_out, rewrite_result = run_output_guardrails(executor_output=_executor("Según el planner en esta fase, es 100% seguro."), planner_output=planner, user_turn=_user_turn("hola"), policy=policy, client=None)
-    assert rewrite_result.decision == OutputGuardrailDecision.rewrite
-    assert rewrite_out.spoken_text != "Según el planner en esta fase, es 100% seguro."
+    observed_out, observed_result = run_output_guardrails(executor_output=_executor("Según el planner en esta fase, es 100% seguro."), planner_output=planner, user_turn=_user_turn("hola"), policy=policy, client=None)
+    assert observed_result.decision == OutputGuardrailDecision.allow
+    assert observed_result.enforcement_action == "observed_not_applied"
+    assert "internal_language_guardrail" in observed_result.reasons
+    assert observed_result.output_changed is False
+    assert observed_out.spoken_text == "Según el planner en esta fase, es 100% seguro."
 
     block_out, block_result = run_output_guardrails(executor_output=_executor("DNI 12345678Z IBAN ES9121000418450200051332"), planner_output=planner, user_turn=_user_turn("hola"), policy=policy, client=None)
     assert block_result.decision == OutputGuardrailDecision.block
+    assert block_result.enforcement_action == "block_applied"
+    assert block_result.output_changed is True
     assert block_out.status == "refuse"
 
 
@@ -77,7 +82,8 @@ def test_output_specific_detections():
     assert "planner" in " ".join(result.detected_internal_terms)
     assert result.overclaim_signals
     assert result.planner_contract_signals.violations
-    assert output.spoken_text
+    assert result.enforcement_action == "observed_not_applied"
+    assert output.spoken_text == "según el planner, esto es garantizado"
 
 
 def test_input_guardrails_moderation_degrades_honestly():
@@ -124,7 +130,7 @@ def test_pipeline_output_guardrail_applies_after_executor(monkeypatch):
             "working_memory_new": {"current_topic": "precio", "pending_question": None, "last_turn_summary": "ok"},
         }, refusal=None, parse_error=None, exception_error=None, response=None, source=fc.StructuredCallSource.model)
         phase_call = fc.StructuredCallResult(parsed_json={"schema_version": "phase_classifier.v1", "current_phase": "propuesta_creativa"}, refusal=None, parse_error=None, exception_error=None, response=None, source=fc.StructuredCallSource.model)
-        return mem_call, 1, phase_call, 1, {}
+        return mem_call, 1, {"threading_policy":"stateless_parallel","threading_mode_effective":"stateless","request_context_has_conversation_id":False,"request_context_has_previous_response_id":False}, phase_call, 1, {"threading_policy":"stateless_parallel","threading_mode_effective":"stateless","request_context_has_conversation_id":False,"request_context_has_previous_response_id":False}, {}
 
     def _fake_call_structured(client, model, messages, response_model, reasoning_effort, request_context, store):
         _ = (client, model, messages, reasoning_effort, request_context, store)
@@ -136,10 +142,13 @@ def test_pipeline_output_guardrail_applies_after_executor(monkeypatch):
     monkeypatch.setattr(fc, "_call_structured", _fake_call_structured)
 
     reply, updated = run_negotiation_cognitive_turn(session, "Necesito propuesta", config)
-    assert "cautela" in reply.lower()
+    assert "cautela" not in reply.lower()
     trace = updated.world_state[f"{config.memory_key}_traces"][0]
-    assert trace["output_guardrail_decision"] == "rewrite"
-    assert trace["output_guardrail_rewrite_applied"] is True
+    assert trace["output_guardrail_decision"] == "allow"
+    assert trace["output_guardrail_rewrite_applied"] is False
+    assert trace["output_guardrail_triggered"] is True
+    assert trace["output_guardrail_enforcement_action"] == "observed_not_applied"
+    assert trace["output_guardrail_output_changed"] is False
     assert trace["output_guardrail_status_before"] == "deliver"
 
 
@@ -159,7 +168,7 @@ def test_pipeline_soft_restrict_continues_and_is_traced(monkeypatch):
             "working_memory_new": {"current_topic": "precio", "pending_question": None, "last_turn_summary": "ok"},
         }, refusal=None, parse_error=None, exception_error=None, response=None, source=fc.StructuredCallSource.model)
         phase_call = fc.StructuredCallResult(parsed_json={"schema_version": "phase_classifier.v1", "current_phase": "propuesta_creativa"}, refusal=None, parse_error=None, exception_error=None, response=None, source=fc.StructuredCallSource.model)
-        return mem_call, 1, phase_call, 1, {}
+        return mem_call, 1, {"threading_policy":"stateless_parallel","threading_mode_effective":"stateless","request_context_has_conversation_id":False,"request_context_has_previous_response_id":False}, phase_call, 1, {"threading_policy":"stateless_parallel","threading_mode_effective":"stateless","request_context_has_conversation_id":False,"request_context_has_previous_response_id":False}, {}
 
     def _fake_call_structured(client, model, messages, response_model, reasoning_effort, request_context, store):
         _ = (client, model, messages, reasoning_effort, request_context, store)
@@ -197,7 +206,7 @@ def test_last_refusals_excludes_rewrite_only_guardrail_reasons(monkeypatch):
             "working_memory_new": {"current_topic": "precio", "pending_question": None, "last_turn_summary": "ok"},
         }, refusal=None, parse_error=None, exception_error=None, response=None, source=fc.StructuredCallSource.model)
         phase_call = fc.StructuredCallResult(parsed_json={"schema_version": "phase_classifier.v1", "current_phase": "propuesta_creativa"}, refusal=None, parse_error=None, exception_error=None, response=None, source=fc.StructuredCallSource.model)
-        return mem_call, 1, phase_call, 1, {}
+        return mem_call, 1, {"threading_policy":"stateless_parallel","threading_mode_effective":"stateless","request_context_has_conversation_id":False,"request_context_has_previous_response_id":False}, phase_call, 1, {"threading_policy":"stateless_parallel","threading_mode_effective":"stateless","request_context_has_conversation_id":False,"request_context_has_previous_response_id":False}, {}
 
     def _fake_call_structured(client, model, messages, response_model, reasoning_effort, request_context, store):
         _ = (client, model, messages, reasoning_effort, request_context, store)
@@ -212,3 +221,36 @@ def test_last_refusals_excludes_rewrite_only_guardrail_reasons(monkeypatch):
     compact_trace = updated.world_state[config.memory_key]["trace"]
     assert "internal_language_guardrail" not in compact_trace["last_refusals"]
     assert "overclaim_guardrail" not in compact_trace["last_refusals"]
+
+
+
+def test_hola_not_rewritten_by_internal_guardrail(monkeypatch):
+    session = SessionState(user_id="u_hola", session_id="s_hola")
+    config = build_negotiation_pipeline_config().model_copy(update={"feature_traces": True})
+
+    def _fake_build_client():
+        return None
+
+    def _fake_execute_memory_and_phase(**kwargs):
+        mem_call = fc.StructuredCallResult(parsed_json={
+            "schema_version": "memory.v1",
+            "episodic_append": [],
+            "working_memory_new": {"current_topic": None, "pending_question": None, "last_turn_summary": "ok"},
+        }, refusal=None, parse_error=None, exception_error=None, response=None, source=fc.StructuredCallSource.model, model_called=True)
+        phase_call = fc.StructuredCallResult(parsed_json={"schema_version": "phase_classifier.v1", "current_phase": "clima_humano"}, refusal=None, parse_error=None, exception_error=None, response=None, source=fc.StructuredCallSource.model, model_called=True)
+        return mem_call, 1, {"threading_policy":"stateless_parallel","threading_mode_effective":"stateless","request_context_has_conversation_id":False,"request_context_has_previous_response_id":False}, phase_call, 1, {"threading_policy":"stateless_parallel","threading_mode_effective":"stateless","request_context_has_conversation_id":False,"request_context_has_previous_response_id":False}, {}
+
+    def _fake_call_structured(client, model, messages, response_model, reasoning_effort, request_context, store):
+        _ = (client, model, messages, reasoning_effort, request_context, store)
+        if response_model.__name__ == "PlannerOutput":
+            return fc.StructuredCallResult(parsed_json=_planner().model_dump(mode="json"), refusal=None, parse_error=None, exception_error=None, response=None, source=fc.StructuredCallSource.model, model_called=True)
+        return fc.StructuredCallResult(parsed_json=_executor("según el planner, hola").model_dump(mode="json"), refusal=None, parse_error=None, exception_error=None, response=None, source=fc.StructuredCallSource.model, model_called=True)
+
+    monkeypatch.setattr(fc, "_build_client", _fake_build_client)
+    monkeypatch.setattr(fc, "_execute_memory_and_phase", _fake_execute_memory_and_phase)
+    monkeypatch.setattr(fc, "_call_structured", _fake_call_structured)
+
+    reply, updated = run_negotiation_cognitive_turn(session, "Hola", config)
+    assert "seguridad y precisión" not in reply.lower()
+    trace = updated.world_state[f"{config.memory_key}_traces"][0]
+    assert trace["output_guardrail_enforcement_action"] == "observed_not_applied"

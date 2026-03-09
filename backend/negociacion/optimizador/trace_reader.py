@@ -10,6 +10,7 @@ def list_turns(user_id: str, session_id: str, conversation_id: str | None = None
     out: list[dict[str, Any]] = []
     for idx, turn in enumerate(turns, start=1):
         node_sources = [log.get("source") for log in turn.get("logs", []) if isinstance(log, dict)]
+        node_fallbacks = [bool(log.get("fallback_applied", log.get("fallback_used", False))) for log in turn.get("logs", []) if isinstance(log, dict)]
         meta = turn.get("_optimizador", {}) if isinstance(turn.get("_optimizador"), dict) else {}
         versioning = meta.get("versioning", {}) if isinstance(meta.get("versioning"), dict) else {}
         out.append(
@@ -19,7 +20,7 @@ def list_turns(user_id: str, session_id: str, conversation_id: str | None = None
                 "final_status": turn.get("final_status", "unknown"),
                 "total_latency_ms": turn.get("total_latency_ms", 0),
                 "guardrails_triggered": bool(turn.get("guardrails_triggered", False)),
-                "fallback_used": any(source in {"fallback", "parse_error", "exception", "refusal"} for source in node_sources),
+                "fallback_used": any(node_fallbacks) or any(source in {"fallback", "parse_error", "exception", "refusal"} for source in node_sources),
                 "conversation_id": turn.get("conversation_id_after") or turn.get("conversation_id_before"),
                 "has_override": bool(meta.get("applied_overrides")),
                 "version": int(versioning.get("version") or 1),

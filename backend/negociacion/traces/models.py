@@ -26,6 +26,8 @@ class StructuredCallResult(BaseModel):
     exception_error: str | None
     response: object | None
     source: StructuredCallSource
+    model_called: bool = False
+    raw_output_text: str | None = None
 
 
 class EvalGrades(BaseModel):
@@ -48,6 +50,25 @@ NodeInputSummary = MemoryInputSummary | PhaseInputSummary | PlannerInputSummary 
 NodeOutputSummary = MemoryOutputSummary | PhaseOutputSummary | PlannerOutputSummary | ExecutorOutputSummary
 
 
+class PromptArtifacts(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    developer_prompt_text: str | None = None
+    user_prompt_rendered: str | None = None
+    input_payload_json: str | None = None
+    model_target: str
+    prompt_version: str
+    input_schema_version: str
+    output_schema_version: str
+    threading_policy: str | None = None
+    threading_mode_effective: str | None = None
+    developer_prompt_hash: str | None = None
+    user_prompt_hash: str | None = None
+    payload_hash: str | None = None
+    developer_prompt_chars: int = 0
+    user_prompt_chars: int = 0
+    payload_chars: int = 0
+
+
 class RichNodeTrace(BaseModel):
     model_config = ConfigDict(extra="forbid")
     node: NodeName
@@ -66,6 +87,24 @@ class RichNodeTrace(BaseModel):
     exception_message: str | None
     input_summary: NodeInputSummary
     output_summary: NodeOutputSummary
+    model_called: bool = False
+    validation_succeeded: bool = False
+    fallback_applied: bool = False
+    guardrail_applied: bool = False
+    final_output_source: str = "unknown"
+    status_before_guardrail: str | None = None
+    status_after_guardrail: str | None = None
+    output_changed_by_guardrail: bool = False
+    raw_model_output_excerpt: str | None = None
+    validated_output_summary: NodeOutputSummary | None = None
+    fallback_output_summary: NodeOutputSummary | None = None
+    post_guardrail_output_summary: NodeOutputSummary | None = None
+    final_emitted_output_summary: NodeOutputSummary | None = None
+    threading_policy: str | None = None
+    threading_mode_effective: str | None = None
+    request_context_has_conversation_id: bool = False
+    request_context_has_previous_response_id: bool = False
+    prompt_artifacts: PromptArtifacts | None = None
 
 
 class TurnTrace(BaseModel):
@@ -94,6 +133,10 @@ class TurnTrace(BaseModel):
     final_reply_excerpt: str
     final_status: str
     assistant_turn_emitted: bool
+    executor_reply_text_before_guardrail: str | None = None
+    executor_status_before_guardrail: str | None = None
+    executor_reply_changed_by_guardrail: bool = False
+    final_output_source: str = "executor_post_guardrail"
 
     guardrails_triggered: bool
     guardrail_reasons: list[str]
@@ -111,6 +154,11 @@ class TurnTrace(BaseModel):
     output_guardrail_reasons: list[str] = Field(default_factory=list)
     output_guardrail_triggered: bool = False
     output_guardrail_rewrite_applied: bool = False
+    output_guardrail_enforcement_mode: str = "observe_only"
+    output_guardrail_enforcement_action: str = "none"
+    output_guardrail_observed_not_applied_rules: list[str] = Field(default_factory=list)
+    output_guardrail_enforced_rules: list[str] = Field(default_factory=list)
+    output_guardrail_output_changed: bool = False
     output_guardrail_status_before: str
     output_guardrail_status_after: str
     output_moderation_used: bool = False

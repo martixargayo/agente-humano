@@ -54,10 +54,12 @@ def _call(source: StructuredCallSource, refusal: str | None = None) -> Structure
         exception_error=None,
         response=None,
         source=source,
+        model_called=True,
+        raw_output_text='{"schema_version":"memory.v1"}',
     )
 
 
-def test_fallback_used_only_for_real_fallback_source():
+def test_fallback_applied_for_any_non_model_recovery_path():
     input_payload = _memory_input()
     output_payload = _memory_output()
 
@@ -67,6 +69,33 @@ def test_fallback_used_only_for_real_fallback_source():
     exception_trace = build_memory_node_trace(input_payload, output_payload, _call(StructuredCallSource.exception), 5, "applied")
 
     assert fallback_trace.fallback_used is True
-    assert refusal_trace.fallback_used is False
-    assert parse_error_trace.fallback_used is False
-    assert exception_trace.fallback_used is False
+    assert refusal_trace.fallback_used is True
+    assert parse_error_trace.fallback_used is True
+    assert exception_trace.fallback_used is True
+    assert fallback_trace.fallback_applied is True
+    assert refusal_trace.fallback_applied is True
+
+
+def test_trace_layers_and_threading_flags_are_explicit():
+    trace = build_memory_node_trace(
+        _memory_input(),
+        _memory_output(),
+        _call(StructuredCallSource.exception),
+        8,
+        "applied",
+        threading_info={
+            "threading_policy": "stateless_parallel",
+            "threading_mode_effective": "stateless",
+            "request_context_has_conversation_id": False,
+            "request_context_has_previous_response_id": False,
+        },
+    )
+
+    assert trace.model_called is True
+    assert trace.validation_succeeded is False
+    assert trace.fallback_applied is True
+    assert trace.final_output_source == "fallback_output"
+    assert trace.fallback_output_summary is not None
+    assert trace.threading_policy == "stateless_parallel"
+    assert trace.threading_mode_effective == "stateless"
+    assert trace.request_context_has_conversation_id is False

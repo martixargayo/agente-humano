@@ -90,6 +90,15 @@ def test_planner_output_fields_are_exact_and_forbid_legacy_keys():
     }
     assert prohibited.isdisjoint(PlannerOutput.model_fields.keys())
 
+
+def test_planner_output_json_schema_marks_memory_targets_as_required_for_strict_mode():
+    schema = PlannerOutput.model_json_schema()
+    required = set(schema.get("required", []))
+    properties = set(schema.get("properties", {}).keys())
+
+    assert "memory_targets" in required
+    assert required == properties
+
 def test_planner_output_schema_contract_and_message_split():
     output = PlannerOutput.model_validate(
         {
