@@ -258,10 +258,12 @@ def compare_turns(turn_a: str, turn_b: str) -> dict[str, Any]:
                 "input_trigger_changed": a.get("input_guardrail_triggered") != b.get("input_guardrail_triggered"),
                 "output_trigger_changed": a.get("output_guardrail_triggered") != b.get("output_guardrail_triggered"),
                 "output_rewrite_changed": a.get("output_guardrail_rewrite_applied") != b.get("output_guardrail_rewrite_applied"),
+                "output_enforcement_action_changed": a.get("output_guardrail_enforcement_action") != b.get("output_guardrail_enforcement_action"),
                 "input_moderation_changed": a.get("input_moderation_used") != b.get("input_moderation_used"),
                 "output_moderation_changed": a.get("output_moderation_used") != b.get("output_moderation_used"),
             },
             "node_changes": _node_diff(a, b),
+            "prompt_artifact_changes": _prompt_artifact_diff(a, b),
         },
     }
 
@@ -336,3 +338,39 @@ def _node_diff(a: dict[str, Any], b: dict[str, Any]) -> dict[str, dict[str, Any]
         if any(item[k] != item[k.replace("a_", "b_")] for k in ["a_status", "a_source", "a_latency_ms", "a_prompt_version", "a_output_summary"]):
             diff[name] = item
     return diff
+
+
+def _prompt_artifact_diff(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
+    a_nodes = a.get("nodes", {}) if isinstance(a.get("nodes"), dict) else {}
+    b_nodes = b.get("nodes", {}) if isinstance(b.get("nodes"), dict) else {}
+    names = sorted(set(a_nodes.keys()) | set(b_nodes.keys()))
+    out: dict[str, Any] = {}
+    for name in names:
+        a_node = a_nodes.get(name, {}) if isinstance(a_nodes.get(name), dict) else {}
+        b_node = b_nodes.get(name, {}) if isinstance(b_nodes.get(name), dict) else {}
+        a_art = a_node.get("prompt_artifacts", {}) if isinstance(a_node.get("prompt_artifacts"), dict) else {}
+        b_art = b_node.get("prompt_artifacts", {}) if isinstance(b_node.get("prompt_artifacts"), dict) else {}
+        changed_fields = {
+            "developer_prompt_text": a_art.get("developer_prompt_hash") != b_art.get("developer_prompt_hash"),
+            "user_prompt_rendered": a_art.get("user_prompt_hash") != b_art.get("user_prompt_hash"),
+            "input_payload_json": a_art.get("payload_hash") != b_art.get("payload_hash"),
+            "prompt_version": a_art.get("prompt_version") != b_art.get("prompt_version"),
+            "model_target": a_art.get("model_target") != b_art.get("model_target"),
+            "threading_policy": a_art.get("threading_policy") != b_art.get("threading_policy"),
+        }
+        if any(changed_fields.values()):
+            out[name] = {
+                "changed": True,
+                "fields": changed_fields,
+                "a_hashes": {
+                    "developer": a_art.get("developer_prompt_hash"),
+                    "user": a_art.get("user_prompt_hash"),
+                    "payload": a_art.get("payload_hash"),
+                },
+                "b_hashes": {
+                    "developer": b_art.get("developer_prompt_hash"),
+                    "user": b_art.get("user_prompt_hash"),
+                    "payload": b_art.get("payload_hash"),
+                },
+            }
+    return out

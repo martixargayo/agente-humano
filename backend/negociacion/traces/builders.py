@@ -4,7 +4,7 @@ from ..nodes.executor_node import ExecutorInput, ExecutorOutput
 from ..nodes.memory_node import MemoryInput, MemoryOutput
 from ..nodes.phase_classifier_node import PhaseClassifierInput, PhaseClassifierOutput
 from ..nodes.planner_node import PlannerInput, PlannerOutput
-from .models import NodeInputSummary, NodeOutputSummary, RichNodeTrace, StructuredCallResult
+from .models import NodeInputSummary, NodeOutputSummary, PromptArtifacts, RichNodeTrace, StructuredCallResult
 from ..state.canonical_state import MemoryWorkingState, PlannerState
 from ..state.shared_types import NodeName, StructuredCallSource
 from .constants import EXCERPT_MAX_CHARS
@@ -41,7 +41,7 @@ def _working_summary(working: MemoryWorkingState) -> MemoryWorkingSummary:
     )
 
 
-def build_memory_node_trace(input_payload: MemoryInput, output_payload: MemoryOutput, call_result: StructuredCallResult, latency_ms: int, status: str) -> RichNodeTrace:
+def build_memory_node_trace(input_payload: MemoryInput, output_payload: MemoryOutput, call_result: StructuredCallResult, latency_ms: int, status: str, threading_info: dict[str, object] | None = None, prompt_artifacts: PromptArtifacts | None = None) -> RichNodeTrace:
     input_summary = MemoryInputSummary(
         user_text_excerpt=excerpt(input_payload.user_turn.normalized_text) or "",
         recent_dialogue_count=len(input_payload.recent_dialogue_short),
@@ -58,10 +58,10 @@ def build_memory_node_trace(input_payload: MemoryInput, output_payload: MemoryOu
             last_turn_summary_excerpt=excerpt(output_payload.working_memory_new.last_turn_summary),
         ),
     )
-    return _build_node_trace(NodeName.memory, input_payload.trace_meta.model_target, input_payload.trace_meta.prompt_version, input_payload.schema_version, output_payload.schema_version, status, call_result, latency_ms, input_summary, output_summary, None)
+    return _build_node_trace(NodeName.memory, input_payload.trace_meta.model_target, input_payload.trace_meta.prompt_version, input_payload.schema_version, output_payload.schema_version, status, call_result, latency_ms, input_summary, output_summary, None, threading_info=threading_info, prompt_artifacts=prompt_artifacts)
 
 
-def build_phase_node_trace(input_payload: PhaseClassifierInput, output_payload: PhaseClassifierOutput, call_result: StructuredCallResult, latency_ms: int) -> RichNodeTrace:
+def build_phase_node_trace(input_payload: PhaseClassifierInput, output_payload: PhaseClassifierOutput, call_result: StructuredCallResult, latency_ms: int, threading_info: dict[str, object] | None = None, prompt_artifacts: PromptArtifacts | None = None) -> RichNodeTrace:
     input_summary = PhaseInputSummary(
         previous_phase=input_payload.previous_phase.value if input_payload.previous_phase else None,
         recent_phase_history=[phase.value for phase in input_payload.recent_phase_history],
@@ -69,7 +69,7 @@ def build_phase_node_trace(input_payload: PhaseClassifierInput, output_payload: 
         user_text_excerpt=excerpt(input_payload.current_user_turn.normalized_text) or "",
     )
     output_summary = PhaseOutputSummary(current_phase=output_payload.current_phase.value)
-    return _build_node_trace(NodeName.phase_classifier, input_payload.trace_meta.model_target, input_payload.trace_meta.prompt_version, input_payload.schema_version, output_payload.schema_version, output_payload.current_phase.value, call_result, latency_ms, input_summary, output_summary, None)
+    return _build_node_trace(NodeName.phase_classifier, input_payload.trace_meta.model_target, input_payload.trace_meta.prompt_version, input_payload.schema_version, output_payload.schema_version, output_payload.current_phase.value, call_result, latency_ms, input_summary, output_summary, None, threading_info=threading_info, prompt_artifacts=prompt_artifacts)
 
 
 def _planner_state_summary(planner_state: PlannerState) -> PlannerStateSummary:
@@ -91,7 +91,7 @@ def _limits_summary(max_sentences: int, max_questions: int, allow_topic_shift: b
     )
 
 
-def build_planner_node_trace(input_payload: PlannerInput, output_payload: PlannerOutput, call_result: StructuredCallResult, latency_ms: int) -> RichNodeTrace:
+def build_planner_node_trace(input_payload: PlannerInput, output_payload: PlannerOutput, call_result: StructuredCallResult, latency_ms: int, threading_info: dict[str, object] | None = None, prompt_artifacts: PromptArtifacts | None = None) -> RichNodeTrace:
     input_summary = PlannerInputSummary(
         current_phase=input_payload.current_phase.value,
         phase_card_phase=input_payload.phase_card.phase.value,
@@ -123,10 +123,23 @@ def build_planner_node_trace(input_payload: PlannerInput, output_payload: Planne
         memory_targets=list(output_payload.memory_targets),
         done_criteria=list(output_payload.done_criteria),
     )
-    return _build_node_trace(NodeName.planner, input_payload.trace_meta.model_target, input_payload.trace_meta.prompt_version, input_payload.schema_version, output_payload.schema_version, output_payload.status, call_result, latency_ms, input_summary, output_summary, None)
+    return _build_node_trace(NodeName.planner, input_payload.trace_meta.model_target, input_payload.trace_meta.prompt_version, input_payload.schema_version, output_payload.schema_version, output_payload.status, call_result, latency_ms, input_summary, output_summary, None, threading_info=threading_info, prompt_artifacts=prompt_artifacts)
 
 
-def build_executor_node_trace(input_payload: ExecutorInput, output_payload: ExecutorOutput, call_result: StructuredCallResult, latency_ms: int, status: str) -> RichNodeTrace:
+def build_executor_node_trace(
+    input_payload: ExecutorInput,
+    validated_output: ExecutorOutput,
+    final_output: ExecutorOutput,
+    call_result: StructuredCallResult,
+    latency_ms: int,
+    status: str,
+    *,
+    guardrail_applied: bool,
+    status_before_guardrail: str,
+    status_after_guardrail: str,
+    threading_info: dict[str, object] | None = None,
+    prompt_artifacts: PromptArtifacts | None = None,
+) -> RichNodeTrace:
     input_summary = ExecutorInputSummary(
         current_phase=input_payload.current_phase.value,
         phase_card_phase=input_payload.phase_card.phase.value,
@@ -144,14 +157,41 @@ def build_executor_node_trace(input_payload: ExecutorInput, output_payload: Exec
             input_payload.response_limits.allow_personal_disclosure,
         ),
     )
-    output_summary = ExecutorOutputSummary(
-        status=output_payload.status,
-        spoken_text_excerpt=excerpt(output_payload.spoken_text) or "",
-        spoken_text_length=len(output_payload.spoken_text),
-        memory_used=list(output_payload.memory_used),
-        refusal_reason=output_payload.refusal_reason,
+    validated_summary = ExecutorOutputSummary(
+        status=validated_output.status,
+        spoken_text_excerpt=excerpt(validated_output.spoken_text) or "",
+        spoken_text_length=len(validated_output.spoken_text),
+        memory_used=list(validated_output.memory_used),
+        refusal_reason=validated_output.refusal_reason,
     )
-    return _build_node_trace(NodeName.executor, input_payload.trace_meta.model_target, input_payload.trace_meta.prompt_version, input_payload.schema_version, output_payload.schema_version, status, call_result, latency_ms, input_summary, output_summary, output_payload.refusal_reason)
+    final_summary = ExecutorOutputSummary(
+        status=final_output.status,
+        spoken_text_excerpt=excerpt(final_output.spoken_text) or "",
+        spoken_text_length=len(final_output.spoken_text),
+        memory_used=list(final_output.memory_used),
+        refusal_reason=final_output.refusal_reason,
+    )
+    return _build_node_trace(
+        NodeName.executor,
+        input_payload.trace_meta.model_target,
+        input_payload.trace_meta.prompt_version,
+        input_payload.schema_version,
+        final_output.schema_version,
+        status,
+        call_result,
+        latency_ms,
+        input_summary,
+        final_summary,
+        final_output.refusal_reason,
+        guardrail_applied=guardrail_applied,
+        status_before_guardrail=status_before_guardrail,
+        status_after_guardrail=status_after_guardrail,
+        validated_output_summary=validated_summary,
+        post_guardrail_output_summary=final_summary if guardrail_applied else None,
+        final_emitted_output_summary=final_summary,
+        threading_info=threading_info,
+        prompt_artifacts=prompt_artifacts,
+    )
 
 
 def _parse_exception(exception_error: str | None) -> tuple[str | None, str | None]:
@@ -163,9 +203,43 @@ def _parse_exception(exception_error: str | None) -> tuple[str | None, str | Non
     return "Exception", exception_error
 
 
-def _build_node_trace(node: NodeName, model_target: str, prompt_version: str, input_schema_version: str, output_schema_version: str, status: str, call_result: StructuredCallResult, latency_ms: int, input_summary: NodeInputSummary, output_summary: NodeOutputSummary, refusal_reason: str | None) -> RichNodeTrace:
+def _build_node_trace(
+    node: NodeName,
+    model_target: str,
+    prompt_version: str,
+    input_schema_version: str,
+    output_schema_version: str,
+    status: str,
+    call_result: StructuredCallResult,
+    latency_ms: int,
+    input_summary: NodeInputSummary,
+    output_summary: NodeOutputSummary,
+    refusal_reason: str | None,
+    *,
+    guardrail_applied: bool = False,
+    status_before_guardrail: str | None = None,
+    status_after_guardrail: str | None = None,
+    validated_output_summary: NodeOutputSummary | None = None,
+    post_guardrail_output_summary: NodeOutputSummary | None = None,
+    final_emitted_output_summary: NodeOutputSummary | None = None,
+    threading_info: dict[str, object] | None = None,
+    prompt_artifacts: PromptArtifacts | None = None,
+) -> RichNodeTrace:
     exception_type, exception_message = _parse_exception(call_result.exception_error)
     source = call_result.source if call_result.source in set(StructuredCallSource) else StructuredCallSource.exception
+    validation_succeeded = source == StructuredCallSource.model
+    fallback_applied = source in {StructuredCallSource.exception, StructuredCallSource.parse_error, StructuredCallSource.refusal, StructuredCallSource.fallback}
+
+    final_source = "validated_output" if validation_succeeded else "fallback_output"
+    if guardrail_applied:
+        final_source = "post_guardrail_output"
+
+    effective_validated_summary = validated_output_summary if validated_output_summary is not None else (output_summary if validation_succeeded else None)
+    fallback_summary = output_summary if fallback_applied else None
+    final_summary = final_emitted_output_summary if final_emitted_output_summary is not None else output_summary
+
+    thread = threading_info or {}
+
     return RichNodeTrace(
         node=node,
         node_name=node.value,
@@ -176,11 +250,29 @@ def _build_node_trace(node: NodeName, model_target: str, prompt_version: str, in
         prompt_version=prompt_version,
         input_schema_version=input_schema_version,
         output_schema_version=output_schema_version,
-        fallback_used=source == StructuredCallSource.fallback,
+        fallback_used=fallback_applied,
         refusal_reason=refusal_reason or call_result.refusal,
         parse_error=call_result.parse_error,
         exception_type=exception_type,
         exception_message=exception_message,
         input_summary=input_summary,
         output_summary=output_summary,
+        model_called=call_result.model_called,
+        validation_succeeded=validation_succeeded,
+        fallback_applied=fallback_applied,
+        guardrail_applied=guardrail_applied,
+        final_output_source=final_source,
+        status_before_guardrail=status_before_guardrail,
+        status_after_guardrail=status_after_guardrail,
+        output_changed_by_guardrail=bool(guardrail_applied and status_before_guardrail != status_after_guardrail),
+        raw_model_output_excerpt=excerpt(call_result.raw_output_text),
+        validated_output_summary=effective_validated_summary,
+        fallback_output_summary=fallback_summary,
+        post_guardrail_output_summary=post_guardrail_output_summary,
+        final_emitted_output_summary=final_summary,
+        threading_policy=thread.get("threading_policy"),
+        threading_mode_effective=thread.get("threading_mode_effective"),
+        request_context_has_conversation_id=bool(thread.get("request_context_has_conversation_id", False)),
+        request_context_has_previous_response_id=bool(thread.get("request_context_has_previous_response_id", False)),
+        prompt_artifacts=prompt_artifacts,
     )

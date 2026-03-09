@@ -66,7 +66,7 @@ from ..traces.builders import (
     excerpt,
 )
 from ..traces.constants import TRACE_VERSION
-from ..traces.models import EvalGrades, SDKCompatibilityInfo, StructuredCallResult, TurnTrace
+from ..traces.models import EvalGrades, PromptArtifacts, SDKCompatibilityInfo, StructuredCallResult, TurnTrace
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +80,50 @@ def set_tts_prefetch_hook(hook: Callable[[str], None] | None) -> None:
 OPENAI_MIN_VERSION = "1.40.0"
 PHASE_CLASSIFIER_INPUT_SCHEMA_VERSION = "phase_classifier_input.v1"
 PHASE_CLASSIFIER_OUTPUT_SCHEMA_VERSION = "phase_classifier.v1"
+
+
+NODE_THREADING_POLICIES: dict[str, str] = {
+    "memory": "stateless_parallel",
+    "phase_classifier": "stateless_parallel",
+    "planner": "stateful_sequential",
+    "executor": "stateful_sequential",
+}
+
+
+def _node_threading_policy(node_name: str) -> str:
+    return NODE_THREADING_POLICIES.get(node_name, "stateful_sequential")
+
+
+def _request_context_mode(context: dict[str, str]) -> str:
+    if context.get("conversation"):
+        return "conversation"
+    if context.get("previous_response_id"):
+        return "previous_response_id"
+    return "stateless"
+
+
+def _node_request_context(node_name: str, shared_context: dict[str, str]) -> tuple[dict[str, str], dict[str, object]]:
+    policy = _node_threading_policy(node_name)
+    if policy == "stateless_parallel":
+        effective: dict[str, str] = {}
+    else:
+        effective = dict(shared_context)
+    diagnostics = {
+        "threading_policy": policy,
+        "threading_mode_effective": _request_context_mode(effective),
+        "request_context_has_conversation_id": bool(effective.get("conversation")),
+        "request_context_has_previous_response_id": bool(effective.get("previous_response_id")),
+    }
+    logger.info(
+        "node_threading_policy node=%s policy=%s mode=%s has_conversation=%s has_previous_response_id=%s",
+        node_name,
+        diagnostics["threading_policy"],
+        diagnostics["threading_mode_effective"],
+        diagnostics["request_context_has_conversation_id"],
+        diagnostics["request_context_has_previous_response_id"],
+    )
+    return effective, diagnostics
+
 
 
 class NegotiationTurnConfig(BaseModel):
@@ -501,6 +545,37 @@ def _extract_refusal_text(response: object) -> str | None:
     return None
 
 
+
+
+def _hash_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    import hashlib
+
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _build_prompt_artifacts(messages: list[dict[str, str]], payload_json: str, model_target: str, prompt_version: str, input_schema_version: str, output_schema_version: str, threading_info: dict[str, object]) -> PromptArtifacts:
+    developer = next((m.get("content") for m in messages if m.get("role") == "developer"), None)
+    user = next((m.get("content") for m in messages if m.get("role") == "user"), None)
+    return PromptArtifacts(
+        developer_prompt_text=developer,
+        user_prompt_rendered=user,
+        input_payload_json=payload_json,
+        model_target=model_target,
+        prompt_version=prompt_version,
+        input_schema_version=input_schema_version,
+        output_schema_version=output_schema_version,
+        threading_policy=str(threading_info.get("threading_policy")) if threading_info.get("threading_policy") is not None else None,
+        threading_mode_effective=str(threading_info.get("threading_mode_effective")) if threading_info.get("threading_mode_effective") is not None else None,
+        developer_prompt_hash=_hash_text(developer),
+        user_prompt_hash=_hash_text(user),
+        payload_hash=_hash_text(payload_json),
+        developer_prompt_chars=len(developer or ""),
+        user_prompt_chars=len(user or ""),
+        payload_chars=len(payload_json),
+    )
+
 def _call_structured(
     client: openai.OpenAI | None,
     model: str,
@@ -511,7 +586,7 @@ def _call_structured(
     store: bool,
 ) -> StructuredCallResult:
     if client is None:
-        return StructuredCallResult(parsed_json=None, refusal=None, parse_error=None, exception_error="client_unavailable", response=None, source=StructuredCallSource.fallback)
+        return StructuredCallResult(parsed_json=None, refusal=None, parse_error=None, exception_error="client_unavailable", response=None, source=StructuredCallSource.fallback, model_called=False, raw_output_text=None)
 
     kwargs = {
         "model": model,
@@ -525,20 +600,20 @@ def _call_structured(
     try:
         response = client.responses.create(**kwargs)
     except Exception as exc:
-        return StructuredCallResult(parsed_json=None, refusal=None, parse_error=None, exception_error=str(exc), response=None, source=StructuredCallSource.exception)
+        return StructuredCallResult(parsed_json=None, refusal=None, parse_error=None, exception_error=str(exc), response=None, source=StructuredCallSource.exception, model_called=True, raw_output_text=None)
 
     refusal = _extract_refusal_text(response)
     if refusal:
-        return StructuredCallResult(parsed_json=None, refusal=refusal, parse_error=None, exception_error=None, response=response, source=StructuredCallSource.refusal)
+        return StructuredCallResult(parsed_json=None, refusal=refusal, parse_error=None, exception_error=None, response=response, source=StructuredCallSource.refusal, model_called=True, raw_output_text=getattr(response, "output_text", None))
 
     output_text = getattr(response, "output_text", "")
     try:
         parsed_json = json.loads(output_text or "{}")
         response_model.model_validate(parsed_json)
     except Exception as exc:
-        return StructuredCallResult(parsed_json=None, refusal=None, parse_error=str(exc), exception_error=None, response=response, source=StructuredCallSource.parse_error)
+        return StructuredCallResult(parsed_json=None, refusal=None, parse_error=str(exc), exception_error=None, response=response, source=StructuredCallSource.parse_error, model_called=True, raw_output_text=output_text)
 
-    return StructuredCallResult(parsed_json=parsed_json, refusal=None, parse_error=None, exception_error=None, response=response, source=StructuredCallSource.model)
+    return StructuredCallResult(parsed_json=parsed_json, refusal=None, parse_error=None, exception_error=None, response=response, source=StructuredCallSource.model, model_called=True, raw_output_text=output_text)
 
 
 # ==================================================
@@ -652,6 +727,9 @@ def _default_output_guardrail_result(status: str) -> OutputGuardrailResult:
         status_before=status,
         status_after=status,
         planner_contract_signals={"planner_status": "unknown", "executor_status": status, "violations": []},
+        enforcement_mode="observe_only",
+        enforcement_action="none",
+        output_changed=False,
     )
 
 
@@ -713,12 +791,11 @@ def _execute_memory_and_phase(
     phase_classifier_prompt: str,
     memory_input: MemoryInput,
     phase_input: PhaseClassifierInput,
-) -> tuple[StructuredCallResult, int, StructuredCallResult, int, dict[str, str]]:
-    """Run memory+phase with explicit threading mode semantics.
+) -> tuple[StructuredCallResult, int, dict[str, object], StructuredCallResult, int, dict[str, object], dict[str, str]]:
+    """Run memory+phase in parallel with explicit per-node threading isolation."""
 
-    - conversation: parallel allowed
-    - previous_response_id: forced sequential to preserve deterministic parent chain
-    """
+    memory_context, memory_threading = _node_request_context("memory", request_context)
+    phase_context, phase_threading = _node_request_context("phase_classifier", request_context)
 
     def _run_memory_call(ctx: dict[str, str]) -> tuple[StructuredCallResult, int]:
         mem_start = time.perf_counter()
@@ -748,31 +825,15 @@ def _execute_memory_and_phase(
         latency = int((time.perf_counter() - phase_start) * 1000)
         return call, latency
 
-    if canonical_state.openai_thread.thread_mode == ThreadMode.previous_response_id:
-        # No paralelizar ramas que compartan el mismo parent previous_response_id.
-        mem_call, mem_latency = _run_memory_call(request_context)
-        if mem_call.response is not None:
-            update_thread_after_response(canonical_state.openai_thread, mem_call.response)
-        request_context = refresh_request_context(client, canonical_state, config.thread_mode_default)
-
-        phase_call, phase_latency = _run_phase_call(request_context)
-        if phase_call.response is not None:
-            update_thread_after_response(canonical_state.openai_thread, phase_call.response)
-        request_context = refresh_request_context(client, canonical_state, config.thread_mode_default)
-        return mem_call, mem_latency, phase_call, phase_latency, request_context
-
     with ThreadPoolExecutor(max_workers=2) as executor:
-        mem_future = executor.submit(_run_memory_call, request_context)
-        phase_future = executor.submit(_run_phase_call, request_context)
+        mem_future = executor.submit(_run_memory_call, memory_context)
+        phase_future = executor.submit(_run_phase_call, phase_context)
         mem_call, mem_latency = mem_future.result()
         phase_call, phase_latency = phase_future.result()
 
-    if mem_call.response is not None:
-        update_thread_after_response(canonical_state.openai_thread, mem_call.response)
-    if phase_call.response is not None:
-        update_thread_after_response(canonical_state.openai_thread, phase_call.response)
-    request_context = refresh_request_context(client, canonical_state, config.thread_mode_default)
-    return mem_call, mem_latency, phase_call, phase_latency, request_context
+    # Memory/phase are intentionally stateless-isolated in parallel; do not update shared thread context from them.
+    next_request_context = refresh_request_context(client, canonical_state, config.thread_mode_default)
+    return mem_call, mem_latency, memory_threading, phase_call, phase_latency, phase_threading, next_request_context
 
 
 def _memory_fallback(canonical_state: CanonicalState, turn_id: str) -> MemoryOutput:
@@ -869,6 +930,7 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
     nodes: dict = {}
     planner_output = _planner_fallback()
     executor_output = _executor_fallback(planner_output, status="clarify")
+    executor_output_before_guardrail = executor_output.model_copy(deep=True)
 
     # v1 semantics: soft_restrict is a risk marker only; it does not alter normal node execution yet.
     if input_result.decision in {InputGuardrailDecision.allow, InputGuardrailDecision.soft_restrict}:
@@ -879,13 +941,14 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
     if input_result.decision == InputGuardrailDecision.block:
         reply = build_input_block_response()
         executor_output = _executor_fallback(planner_output, status="refuse", refusal_reason="input_guardrail_block")
+        executor_output_before_guardrail = executor_output.model_copy(deep=True)
         executor_output = executor_output.model_copy(update={"spoken_text": reply})
     else:
         request_context = refresh_request_context(client, canonical_state, config.thread_mode_default)
 
         memory_input = build_memory_input(canonical_state, recent_dialogue, user_turn, memory_trace_meta)
         phase_input = build_phase_input(canonical_state, recent_dialogue, user_turn, phase_trace_meta)
-        mem_call, mem_latency, phase_call, phase_latency, request_context = _execute_memory_and_phase(
+        memory_phase_result = _execute_memory_and_phase(
             client=client,
             config=config,
             canonical_state=canonical_state,
@@ -895,17 +958,45 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
             memory_input=memory_input,
             phase_input=phase_input,
         )
+        if len(memory_phase_result) == 7:
+            mem_call, mem_latency, mem_threading, phase_call, phase_latency, phase_threading, request_context = memory_phase_result
+        else:
+            mem_call, mem_latency, phase_call, phase_latency, request_context = memory_phase_result
+            mem_threading = _node_request_context("memory", request_context)[1]
+            phase_threading = _node_request_context("phase_classifier", request_context)[1]
 
+        memory_messages = build_memory_messages(memory_prompt, memory_input)
+        phase_messages = build_phase_classifier_messages_payload(phase_classifier_prompt, phase_input)
         memory_patch = _resolve_memory_call_result(canonical_state, turn_id, mem_call)
         phase_output = _resolve_phase_call_result(canonical_state, phase_call)
         apply_memory_output_to_state(canonical_state, memory_patch)
         apply_phase_classifier_output_to_state(canonical_state, phase_output)
-        logs.append(build_memory_node_trace(memory_input, memory_patch, mem_call, mem_latency, "applied"))
-        logs.append(build_phase_node_trace(phase_input, phase_output, phase_call, phase_latency))
+        memory_artifacts = _build_prompt_artifacts(
+            memory_messages,
+            memory_input.model_dump_json(),
+            memory_trace_meta.model_target,
+            memory_trace_meta.prompt_version,
+            memory_input.schema_version,
+            memory_patch.schema_version,
+            mem_threading,
+        )
+        phase_artifacts = _build_prompt_artifacts(
+            phase_messages,
+            phase_input.model_dump_json(),
+            phase_trace_meta.model_target,
+            phase_trace_meta.prompt_version,
+            phase_input.schema_version,
+            phase_output.schema_version,
+            phase_threading,
+        )
+        logs.append(build_memory_node_trace(memory_input, memory_patch, mem_call, mem_latency, "applied", mem_threading, memory_artifacts))
+        logs.append(build_phase_node_trace(phase_input, phase_output, phase_call, phase_latency, phase_threading, phase_artifacts))
 
         planner_input = build_planner_input(canonical_state, recent_dialogue, user_turn, planner_trace_meta, config.prompts_dir)
+        planner_request_context, planner_threading = _node_request_context("planner", request_context)
+        planner_messages = build_planner_messages(planner_prompt, planner_input)
         plan_start = time.perf_counter()
-        planner_call = _call_structured(client, config.model_planner, build_planner_messages(planner_prompt, planner_input), PlannerOutput, config.reasoning_effort_planner, request_context, config.planner_store)
+        planner_call = _call_structured(client, config.model_planner, planner_messages, PlannerOutput, config.reasoning_effort_planner, planner_request_context, config.planner_store)
         planner_output = _planner_fallback()
         if planner_call.source == StructuredCallSource.model and planner_call.parsed_json is not None:
             planner_output = PlannerOutput.model_validate(planner_call.parsed_json)
@@ -917,11 +1008,22 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
         if planner_call.response is not None:
             update_thread_after_response(canonical_state.openai_thread, planner_call.response)
         request_context = refresh_request_context(client, canonical_state, config.thread_mode_default)
-        logs.append(build_planner_node_trace(planner_input, planner_output, planner_call, plan_latency))
+        planner_artifacts = _build_prompt_artifacts(
+            planner_messages,
+            planner_input.model_dump_json(),
+            planner_trace_meta.model_target,
+            planner_trace_meta.prompt_version,
+            planner_input.schema_version,
+            planner_output.schema_version,
+            planner_threading,
+        )
+        logs.append(build_planner_node_trace(planner_input, planner_output, planner_call, plan_latency, planner_threading, planner_artifacts))
 
         executor_input = build_executor_input(canonical_state, recent_dialogue, planner_output, user_turn, executor_trace_meta, config.max_executor_recent_turns, config.prompts_dir)
+        executor_request_context, executor_threading = _node_request_context("executor", request_context)
+        executor_messages = build_executor_messages(executor_prompt, executor_input)
         exe_start = time.perf_counter()
-        executor_call = _call_structured(client, config.model_executor, build_executor_messages(executor_prompt, executor_input), ExecutorOutput, "low", request_context, config.executor_store)
+        executor_call = _call_structured(client, config.model_executor, executor_messages, ExecutorOutput, "low", executor_request_context, config.executor_store)
         executor_output = _executor_fallback(planner_output)
         if executor_call.source == StructuredCallSource.model and executor_call.parsed_json is not None:
             executor_output = ExecutorOutput.model_validate(executor_call.parsed_json)
@@ -932,6 +1034,7 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
         if executor_call.response is not None:
             update_thread_after_response(canonical_state.openai_thread, executor_call.response)
 
+        executor_output_before_guardrail = executor_output.model_copy(deep=True)
         executor_output, output_result = run_output_guardrails(
             executor_output=executor_output,
             planner_output=planner_output,
@@ -939,7 +1042,16 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
             policy=policy,
             client=client,
         )
-        logs.append(build_executor_node_trace(executor_input, executor_output, executor_call, exe_latency, executor_output.status))
+        executor_artifacts = _build_prompt_artifacts(
+            executor_messages,
+            executor_input.model_dump_json(),
+            executor_trace_meta.model_target,
+            executor_trace_meta.prompt_version,
+            executor_input.schema_version,
+            executor_output.schema_version,
+            executor_threading,
+        )
+        logs.append(build_executor_node_trace(executor_input, executor_output_before_guardrail, executor_output, executor_call, exe_latency, executor_output.status, guardrail_applied=output_result.rewrite_applied or output_result.status_before != output_result.status_after, status_before_guardrail=output_result.status_before, status_after_guardrail=output_result.status_after, threading_info=executor_threading, prompt_artifacts=executor_artifacts))
         nodes = {log.node.value: log for log in logs}
         reply = executor_output.spoken_text
 
@@ -958,7 +1070,8 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
     grades = _evaluate_stub(planner_output, executor_output) if config.feature_eval_hooks else EvalGrades(planner_coherence="disabled", executor_naturalness="disabled", planner_executor_agreement=True, safety_compliance=True)
 
     combined_guardrail_reasons = sorted(set(input_result.reasons + output_result.reasons))
-    guardrails_triggered = input_result.decision != InputGuardrailDecision.allow or output_result.decision != OutputGuardrailDecision.allow
+    output_triggered = bool(output_result.reasons)
+    guardrails_triggered = input_result.decision != InputGuardrailDecision.allow or output_triggered
 
     turn_trace = TurnTrace(
         trace_version=TRACE_VERSION,
@@ -980,6 +1093,10 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
         final_reply_excerpt=excerpt(reply) or "",
         final_status=executor_output.status,
         assistant_turn_emitted=True,
+        executor_reply_text_before_guardrail=executor_output_before_guardrail.spoken_text,
+        executor_status_before_guardrail=executor_output_before_guardrail.status,
+        executor_reply_changed_by_guardrail=executor_output_before_guardrail.spoken_text != reply or executor_output_before_guardrail.status != executor_output.status,
+        final_output_source="executor_post_guardrail" if (output_result.rewrite_applied or output_result.status_before != output_result.status_after) else "executor_validated",
         guardrails_triggered=guardrails_triggered,
         guardrail_reasons=combined_guardrail_reasons,
         guardrail_rewrite_applied=output_result.rewrite_applied,
@@ -992,8 +1109,13 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
         input_moderation_flags=input_result.moderation_flags,
         output_guardrail_decision=output_result.decision.value,
         output_guardrail_reasons=output_result.reasons,
-        output_guardrail_triggered=output_result.decision != OutputGuardrailDecision.allow,
+        output_guardrail_triggered=output_triggered,
         output_guardrail_rewrite_applied=output_result.rewrite_applied,
+        output_guardrail_enforcement_mode=output_result.enforcement_mode,
+        output_guardrail_enforcement_action=output_result.enforcement_action,
+        output_guardrail_observed_not_applied_rules=output_result.observed_not_applied_rules,
+        output_guardrail_enforced_rules=output_result.enforced_rules,
+        output_guardrail_output_changed=output_result.output_changed,
         output_guardrail_status_before=output_result.status_before,
         output_guardrail_status_after=output_result.status_after,
         output_moderation_used=output_result.moderation_used,

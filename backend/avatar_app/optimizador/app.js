@@ -182,15 +182,34 @@ function renderTab() {
   if (tab === "Chat") html += `<div class='panel'><div class='card' id='chatHistory'>${state.dialogue.map((d) => `<div class='msg ${d.role}'>${d.role === "user" ? "Usuario" : "IA"}: ${escapeHtml(d.text || "")}</div>`).join("")}${state.waitingReply ? "<div class='msg assistant pending'>IA: pensando...</div>" : ""}</div><div class='card'><textarea id='chatInput' placeholder='Escribe tu mensaje...'>${escapeHtml(state.chatDraft)}</textarea><div class='sendRow'><span class='hint'>El próximo mensaje se envía con versión v${state.overrides.workspace_version || 1}.</span><button id='sendBtn'>Enviar</button></div></div></div>`;
   if (tab === "Timeline") html += `<div class='card'>${(t.logs || []).map((l) => `<div class='timeline-item ${statusClass(l.source, l.status)}'><b>${l.node_name}</b> · ${l.status} · ${l.latency_ms}ms · ${l.source}</div>`).join("") || "Sin datos"}</div>`;
   if (tab === "Nodos") html += `<div class='grid2'>${Object.entries(t.nodes || {}).map(([k, v]) => `<div class='card'><h3>${k}</h3><pre>${escapeHtml(JSON.stringify(v, null, 2))}</pre></div>`).join("")}</div>`;
-  if (tab === "Guardrails") html += `<div class='grid2'><div class='card'><h3>Input</h3><pre>${escapeHtml(JSON.stringify({decision:t.input_guardrail_decision,reasons:t.input_guardrail_reasons,triggered:t.input_guardrail_triggered,moderation:t.input_moderation_used},null,2))}</pre></div><div class='card'><h3>Output</h3><pre>${escapeHtml(JSON.stringify({decision:t.output_guardrail_decision,reasons:t.output_guardrail_reasons,triggered:t.output_guardrail_triggered,rewrite:t.output_guardrail_rewrite_applied,moderation:t.output_moderation_used},null,2))}</pre></div></div>`;
+  if (tab === "Guardrails") html += `<div class='grid2'><div class='card'><h3>Input</h3><pre>${escapeHtml(JSON.stringify({decision:t.input_guardrail_decision,reasons:t.input_guardrail_reasons,triggered:t.input_guardrail_triggered,moderation:t.input_moderation_used},null,2))}</pre></div><div class='card'><h3>Output</h3><pre>${escapeHtml(JSON.stringify({decision:t.output_guardrail_decision,reasons:t.output_guardrail_reasons,triggered:t.output_guardrail_triggered,rewrite:t.output_guardrail_rewrite_applied,enforcement_mode:t.output_guardrail_enforcement_mode,enforcement_action:t.output_guardrail_enforcement_action,observed_not_applied_rules:t.output_guardrail_observed_not_applied_rules,enforced_rules:t.output_guardrail_enforced_rules,output_changed:t.output_guardrail_output_changed,moderation:t.output_moderation_used},null,2))}</pre></div></div>`;
   if (tab === "Trace") html += `<div class='card'><pre>${escapeHtml(JSON.stringify(t, null, 2))}</pre></div>`;
   if (tab === "Evals") html += `<div class='card'>${Object.keys(EVAL_TOOLTIPS).map((a)=>`<button class='evalBtn' data-act='${a}' title='${EVAL_TOOLTIPS[a]}'>${a}</button>`).join(" ")}<pre id='evalOut'>${escapeHtml(state.evalOut)}</pre></div>`;
   if (tab === "Datasets / Casos") html += `<div class='card'><pre>${escapeHtml(JSON.stringify(state.cases.slice(-30), null, 2))}</pre></div>`;
-  if (tab === "Prompts") html += `<div class='panel'>${state.prompts.map((p) => {
+  if (tab === "Prompts") html += `<div class='panel'>${Object.entries(t.nodes || {}).map(([k, v]) => {
+    const art = v?.prompt_artifacts || {};
+    return `<div class='card'><h3>${k} · artifacts</h3>
+      <pre>${escapeHtml(JSON.stringify({
+        model_target: art.model_target,
+        prompt_version: art.prompt_version,
+        input_schema_version: art.input_schema_version,
+        output_schema_version: art.output_schema_version,
+        threading_policy: art.threading_policy,
+        threading_mode_effective: art.threading_mode_effective,
+        developer_prompt_hash: art.developer_prompt_hash,
+        user_prompt_hash: art.user_prompt_hash,
+        payload_hash: art.payload_hash,
+      }, null, 2))}</pre>
+      <h4>Developer prompt</h4><pre>${escapeHtml(art.developer_prompt_text || "")}</pre>
+      <h4>User prompt renderizado</h4><pre>${escapeHtml(art.user_prompt_rendered || "")}</pre>
+      <h4>Payload inyectado</h4><pre>${escapeHtml(art.input_payload_json || "")}</pre>
+    </div>`;
+  }).join("")}
+  ${state.prompts.map((p) => {
     const found = (state.draftEntries || []).find((e) => e.category === "prompt" && e.key === p.node);
     const val = found ? found.value : p.base_text;
     const changed = (found?.value ?? p.base_text) !== p.base_text;
-    return `<div class='card ${state.editing ? "editable" : ""} ${changed ? "changed" : ""}'><h3>${p.node}</h3><textarea class='promptTextarea' data-node='${p.node}' ${state.editing ? "" : "disabled"}>${escapeHtml(val)}</textarea></div>`;
+    return `<div class='card ${state.editing ? "editable" : ""} ${changed ? "changed" : ""}'><h3>${p.node} · base editable</h3><textarea class='promptTextarea' data-node='${p.node}' ${state.editing ? "" : "disabled"}>${escapeHtml(val)}</textarea></div>`;
   }).join("")}</div>`;
   if (tab === "Cambios") html += renderChanges();
   if (tab === "Diálogo") html += `<div class='card'>${state.dialogue.map((d) => `<div class='msg ${d.role}'><b>${d.role}:</b> ${escapeHtml(d.text || "")}</div>`).join("")}</div>`;
