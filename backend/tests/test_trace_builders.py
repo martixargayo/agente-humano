@@ -9,7 +9,7 @@ from negociacion.nodes.memory_node import (
     TraceMeta,
     UserTurn,
 )
-from negociacion.state.canonical_state import MemoryWorkingState
+from negociacion.state.canonical_state import MemoryWorkingState, NegotiationState, SceneState
 from negociacion.state.shared_types import StructuredCallSource
 from negociacion.traces.builders import build_memory_node_trace
 from negociacion.traces.models import StructuredCallResult
@@ -33,6 +33,7 @@ def _memory_input() -> MemoryInput:
         ),
         recent_dialogue_short=[DialogueMessage(role="user", text="hola")],
         memory_working_current=MemoryWorkingState(current_topic=None, pending_question=None, last_turn_summary=None),
+        scene_state=SceneState(copresent=True, encounter_in_progress=True, conversation_only=True),
         recent_memory_episodic_short=[],
         trace_meta=TraceMeta(turn_id="t1", prompt_version="memory_v3", schema_version="memory_input.v1", model_target="gpt-5-nano"),
     )
@@ -43,6 +44,7 @@ def _memory_output() -> MemoryOutput:
         schema_version="memory.v1",
         episodic_append=[],
         working_memory_new=MemoryWorking(current_topic=None, pending_question=None, last_turn_summary="sin cambios"),
+        negotiation_state=NegotiationState(),
     )
 
 

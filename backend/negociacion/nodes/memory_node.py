@@ -4,7 +4,12 @@ from typing import List, Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from ..state.canonical_state import MemoryEpisodicItem as CanonicalMemoryEpisodicItem, MemoryWorkingState, SceneState
+from ..state.canonical_state import (
+    MemoryEpisodicItem as CanonicalMemoryEpisodicItem,
+    MemoryWorkingState,
+    NegotiationState,
+    SceneState,
+)
 
 
 class DialogueMessage(BaseModel):
@@ -76,3 +81,4 @@ class MemoryOutput(BaseModel):
     schema_version: Literal["memory.v1"]
     episodic_append: list[MemoryEpisodicItem]
     working_memory_new: MemoryWorking
+    negotiation_state: NegotiationState

@@ -10,20 +10,35 @@ class MemoryWorkingSummary(BaseModel):
     last_turn_summary_excerpt: str | None
 
 
+class NegotiationOfferSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    summary: str | None
+    price_amount: float | None
+    currency: str | None
+    extras_count: int
+    conditions_count: int
+    is_currently_active: bool | None
+    source_turn_role: str | None
+
+
+class NegotiationStateSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status: str
+    active_axes: list[str]
+    last_offer_self: NegotiationOfferSummary | None
+    last_offer_other: NegotiationOfferSummary | None
+    tentative_agreement_summary: str | None
+    blockers_count: int
+    blockers: list[str]
+    next_open_loop: str | None
+
+
 class PlannerLimitsSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
     max_sentences: int
     max_questions: int
     allow_topic_shift: bool
     allow_personal_disclosure: bool
-
-
-class PlannerNegotiationStateSummary(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    last_offer_self: str | None
-    last_offer_other: str | None
-    blockers_count: int
-    blockers: list[str]
 
 
 class PlannerStateSummary(BaseModel):
@@ -49,6 +64,7 @@ class MemoryOutputSummary(BaseModel):
     episodic_append_count: int
     episodic_append_event_types: list[str]
     working_memory_new: MemoryWorkingSummary
+    negotiation_state: NegotiationStateSummary
 
 
 class PhaseInputSummary(BaseModel):
@@ -72,7 +88,7 @@ class PlannerInputSummary(BaseModel):
     user_text_excerpt: str
     recent_dialogue_count: int
     memory_working: MemoryWorkingSummary
-    negotiation_state: PlannerNegotiationStateSummary
+    negotiation_state: NegotiationStateSummary
     planner_state: PlannerStateSummary
     selected_memory_count: int
     selected_memory_ids: list[str]
