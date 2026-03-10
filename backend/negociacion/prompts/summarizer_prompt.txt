@@ -96,6 +96,7 @@ Debes devolver siempre estos tres campos:
 - Debe representar el eje operativo dominante AHORA MISMO para el siguiente turno.
 - Prioriza el tema material más reciente si cambia claramente el foco conversacional.
 - No mantengas un tema anterior solo porque siga siendo vagamente relevante.
+- Si el último turno del assistant abrió una pregunta clara sobre un eje concreto y el usuario responde ese eje de forma suficiente, `current_topic` debe pasar a ese eje concreto, salvo que el mismo turno del usuario abra otro eje más dominante.
 - Si el usuario introduce una oferta, cifra, condición o bloqueo nuevo, normalmente `current_topic` debe moverse a ese eje.
 - Si no hay un eje dominante claro, usa `null`.
 
@@ -115,24 +116,70 @@ Debes devolver siempre estos tres campos:
 - No mezcles el turno actual con interpretación estratégica.
 - No añadas motivaciones no dichas.
 
-
 # Negotiation state policy
-`negotiation_state` es un snapshot compacto y operativo de la negociación vigente.
+`negotiation_state` es un snapshot compacto y operativo de la negociación vigente para el siguiente planner.
 
 Debes recalcularlo desde cero en cada turno usando:
 1. `user_turn`
 2. `recent_dialogue_short`
-3. `memory_working_current` y estado actual solo como contexto auxiliar
+3. `memory_working_current` y `negotiation_state` actual solo como contexto auxiliar
 
-Reglas:
+## Authority rule
+- La evidencia principal es el turno actual del usuario y el intercambio reciente.
+- El estado previo solo debe conservarse si sigue siendo compatible con la evidencia reciente.
+- Si el turno actual o el intercambio reciente contradicen un subcampo previo, actualízalo.
+- No arrastres por inercia ofertas, ejes, bloqueos ni acuerdos que ya no estén operativamente vivos.
+
+## Snapshot rule
 - No dupliques historia larga dentro de `negotiation_state`.
-- Usa estructura explícita y estable; evita texto libre largo.
-- Si el turno actual responde a una oferta previa del assistant, conserva esa oferta en `last_offer_self` si sigue vigente.
-- Si aparece una nueva oferta del usuario, actualiza `last_offer_other`.
-- Si una oferta fue reemplazada por otra más reciente, la anterior no debe quedar como activa vigente.
-- Usa `active_axes` para ejes compactos (ej. `price`, `extras`, `paperwork`, `closing_timing`, `transfer_costs`, `delivery`, `risk`, `warranty`).
-- Si hay acuerdo tentativo explícito, rellena `tentative_agreement`.
-- Si no hay suficiente evidencia para un subcampo, usa `null` o lista vacía según el schema; no inventes.
+- No copies transcript.
+- Usa estructura explícita y compacta; evita texto libre largo.
+- `negotiation_state` debe describir la situación negociadora viva ahora, no el historial completo.
+
+## Offer tracking rule
+- `last_offer_self` es la oferta vigente más reciente hecha por el assistant, si sigue operativamente viva.
+- `last_offer_other` es la oferta vigente más reciente hecha por el usuario, si sigue operativamente viva.
+- Una oferta sigue viva salvo que:
+  1. la misma parte la reemplace por otra más reciente,
+  2. quede desplazada por un acuerdo tentativo sobre otros términos,
+  3. o el intercambio la deje claramente superada como foco negociador.
+- Si el turno actual responde a una oferta previa del assistant y esa oferta sigue siendo la referencia negociadora viva, consérvala en `last_offer_self`.
+- Si aparece una nueva oferta del usuario o el usuario modifica una oferta anterior, actualiza `last_offer_other`.
+- Si una oferta fue reemplazada por otra más reciente de la misma parte, la anterior no debe quedar como vigente.
+
+## Offer structure rule
+- En `summary`, usa una frase breve y factual.
+- Extrae `price_amount` solo si hay una cifra explícita.
+- Normaliza `currency` cuando sea explícita o inequívoca en el turno/contexto reciente.
+- Usa `extras` para elementos añadidos al trato principal (por ejemplo ruedas u otros extras del coche).
+- Usa `conditions` para condiciones operativas o de cierre (por ejemplo cierre hoy, papeleo hoy, transferencia incluida, reparto de gastos).
+- No metas en `extras` lo que en realidad son `conditions`.
+- No inventes precio, moneda, extras ni condiciones ausentes.
+
+## Active axes rule
+- `active_axes` debe contener solo ejes negociadores vivos ahora mismo.
+- Usa solo estos valores exactos cuando apliquen:
+  `price`, `extras`, `paperwork`, `closing_timing`, `transfer_costs`, `delivery`, `risk`, `warranty`
+- No inventes alias ni sinónimos.
+- Incluye solo ejes con evidencia clara en el turno actual o en el intercambio reciente todavía vivo.
+
+## Tentative agreement rule
+- Rellena `tentative_agreement` solo si hay convergencia explícita entre ambas partes sobre términos sustancialmente alineados.
+- No lo rellenes por una propuesta unilateral, una cifra sugerida, una invitación tipo "¿te parece bien?" o una mera aproximación.
+- Si existe acuerdo tentativo, resume solo los términos ya alineados con evidencia clara.
+
+## Blockers and open loop rule
+- Usa `blockers` solo para obstáculos explícitos o restricciones claras, no para dudas genéricas ni inferencias.
+- `next_open_loop` debe ser el único fleco negociador principal que sigue abierto ahora mismo, si existe.
+- Si no hay un fleco claro y único, usa `null`.
+
+## Non-duplication rule
+- No conviertas `negotiation_state` en una copia de `episodic_append`.
+- No repitas innecesariamente en `summary`, `extras` y `conditions` la misma información con palabras distintas.
+
+## Uncertainty rule
+- Si no hay suficiente evidencia para un subcampo, usa `null` o lista vacía según el schema.
+- No inventes.
 
 # Completion criteria
 Tu trabajo está completo solo cuando:
