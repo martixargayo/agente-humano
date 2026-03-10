@@ -10,18 +10,22 @@
     "planner_bias": [
       "Favorece movimientos mínimos y sociales, no negociadores.",
       "Trata esta fase como control de ritmo y tono, no como obligación de sacar información.",
-      "Si el vendedor mezcla clima y contenido útil, prioriza responder lo útil sin perder naturalidad."
+      "Si el vendedor mezcla clima y contenido útil, prioriza responder lo útil sin perder naturalidad.",
+      "A menudo el mejor turno en esta fase es responder bien y no empujar nada más.",
+      "Si todavía no toca negociar, conserva la iniciativa del vendedor en vez de abrir tú nuevos ejes."
     ],
     "good_moves": [
       "Responder de forma directa y humana a saludos, presentación o preguntas personales ligeras.",
       "Validar breve y ceder iniciativa si el turno es puramente social.",
-      "Hacer un puente muy corto al tema del coche solo si el vendedor ya lo ha abierto claramente."
+      "Hacer un puente muy corto al tema del coche solo si el vendedor ya lo ha abierto claramente.",
+      "Responder y cerrar de forma natural sin rematar con una pregunta o un pivote si no hace falta."
     ],
     "avoid": [
       "Introducir coche, precio, estado, papeles u oferta por iniciativa propia si el vendedor sigue en social.",
       "Forzar rapport de plantilla o preguntas por inercia.",
       "Sonar teatral, misterioso, demasiado estratégico o artificial.",
-      "Convertir una pregunta personal en pivote negociador sin señal clara."
+      "Convertir una pregunta personal en pivote negociador sin señal clara.",
+      "Usar información interna del caso para precipitar discovery o negociación antes de tiempo."
     ],
     "question_policy": {
       "default_max_questions": 0,
@@ -43,42 +47,53 @@
     "done_signals": [
       "El turno queda respondido con naturalidad y sin empujar agenda.",
       "La conversación sigue fluida y creíble.",
-      "No se introduce negociación si todavía no toca."
+      "No se introduce negociación si todavía no toca.",
+      "El vendedor mantiene la iniciativa si todavía no hay una señal clara para mover el trato."
     ]
   },
   "descubrimiento_y_comprension": {
     "phase": "descubrimiento_y_comprension",
-    "phase_objective": "Reducir incertidumbre y entender las variables relevantes del Mustang y del trato sin convertir el turno en interrogatorio.",
+    "phase_objective": "Reducir incertidumbre y entender las variables relevantes del Mustang y del trato sin convertir el turno en interrogatorio ni obligarte a mover en cada respuesta.",
     "what_good_progress_looks_like": [
       "Se obtiene o consolida una pieza útil de claridad sobre coche, contexto o condiciones.",
       "Se avanza sobre un solo eje relevante por turno.",
-      "Se evita repreguntar lo ya suficientemente tratado o no disponible."
+      "Se evita repreguntar lo ya suficientemente tratado o no disponible.",
+      "A veces el mejor avance es responder con criterio y dejar que el vendedor siga desarrollando su posición."
     ],
     "planner_bias": [
       "Favorece claridad mínima suficiente antes de pasar a proponer.",
       "Prefiere foco estrecho: un dato útil por turno.",
-      "Si el vendedor ya ha dado contexto útil, valida y cambia de eje en vez de repetir."
+      "Si el vendedor ya ha dado contexto útil, valida y cambia de eje en vez de repetir.",
+      "Favorece que el vendedor aporte contexto y se retrate más, en vez de abrir tú varios frentes.",
+      "Si ya hay claridad suficiente, no preguntes por sistema: puedes responder y sostener el eje."
     ],
     "good_moves": [
       "Elegir un único eje con valor decisional: estado, mantenimiento, documentación, motivo de venta, tiempos o condiciones básicas.",
       "Usar movimientos que extraigan claridad sin sonar inquisitivos.",
-      "Condicionar suavemente el avance si falta una pieza importante."
+      "Condicionar suavemente el avance si falta una pieza importante.",
+      "Explorar, si encaja de forma natural y no prematura, señales sobre demanda, otros interesados o alternativas del vendedor para medir margen.",
+      "Responder con criterio y dejar espacio para que el vendedor amplíe o se retrate más cuando eso dé mejor posición que una nueva pregunta."
     ],
     "avoid": [
       "Hacer listas de preguntas o abrir varios frentes en el mismo turno.",
       "Pedir fotos, documentos o acciones físicas.",
       "Reabrir un tema ya cubierto o perseguir un dato que el vendedor no puede dar.",
-      "Pasar a números o cierre sin base mínima de claridad."
+      "Pasar a números o cierre sin base mínima de claridad.",
+      "Revelar o insinuar información privada sensible del negotiation_brief.",
+      "Usar el negotiation_brief como discurso explícito frente al vendedor.",
+      "Preguntar por rutina cuando basta con responder, validar o sostener el eje."
     ],
     "question_policy": {
       "default_max_questions": 1,
       "when_to_ask": [
         "Solo si la pregunta desbloquea una decisión real.",
-        "Solo si no puedes avanzar mejor con validación, marco o condición."
+        "Solo si no puedes avanzar mejor con validación, marco o condición.",
+        "Si sirve para descubrir margen real del vendedor, presión externa o alternativas suyas de forma natural y no prematura."
       ],
       "when_not_to_ask": [
         "Cuando el vendedor ya respondió suficiente para este eje.",
-        "Cuando la pregunta sería una reformulación de algo ya contestado."
+        "Cuando la pregunta sería una reformulación de algo ya contestado.",
+        "Cuando una respuesta breve y bien puesta deja mejor la carga en el vendedor."
       ]
     },
     "valid_topics": [
@@ -87,47 +102,60 @@
       "documentación y situación operativa básica",
       "motivo de venta",
       "urgencia y tiempos del vendedor",
-      "condiciones básicas que afectan al trato"
+      "condiciones básicas que afectan al trato",
+      "otros interesados, alternativas o presión real del vendedor, si surge de forma natural"
     ],
     "done_signals": [
       "Se reduce una incertidumbre relevante.",
       "El planner ya tiene mejor base para proponer o condicionar.",
-      "El turno no suena a interrogatorio ni deja frentes innecesarios abiertos."
+      "El turno no suena a interrogatorio ni deja frentes innecesarios abiertos.",
+      "No hace falta haber preguntado para que el turno sea bueno si la respuesta deja al vendedor mejor colocado para seguir mostrando información."
     ]
   },
   "propuesta_creativa": {
     "phase": "propuesta_creativa",
-    "phase_objective": "Transformar el interés en una propuesta concreta, coherente y negociable que acerque el acuerdo sin regalar valor.",
+    "phase_objective": "Transformar el interés en una propuesta concreta, coherente y negociable que acerque el acuerdo sin regalar valor, sin necesidad de poner tú la primera cifra si todavía conviene que el vendedor se moje mejor.",
     "what_good_progress_looks_like": [
       "Se pone sobre la mesa una propuesta clara que el vendedor puede aceptar, rechazar o ajustar.",
       "La propuesta intercambia valor de forma explícita y comprensible.",
-      "Se mueve el trato hacia una estructura más cerrable."
+      "Se mueve el trato hacia una estructura más cerrable.",
+      "También cuenta como progreso conseguir que el vendedor concrete mejor su expectativa o condición antes de formular tu oferta."
     ],
     "planner_bias": [
       "Favorece una sola propuesta principal por turno.",
       "Prefiere tradeoff claro frente a petición unilateral.",
-      "Usa creatividad solo dentro del trato del coche: precio, papeles, entrega, garantías razonables, extras y comodidad operativa."
+      "Usa creatividad solo dentro del trato del coche: precio, papeles, entrega, garantías razonables, extras y comodidad operativa.",
+      "No te precipites a anclar con oferta propia si todavía puedes conseguir mejor información o mejor posicionamiento del vendedor.",
+      "Usa el negotiation_brief para valorar internamente si una concesión suma valor real o solo facilita el acuerdo."
     ],
     "good_moves": [
       "Hacer una oferta única con reciprocidad visible.",
       "Vincular mejora de precio a rapidez, certeza, flexibilidad o reparto de cargas.",
       "Construir una opción concreta que reduzca fricción para ambas partes.",
-      "Usar dos opciones solo si hay bloqueo real y ambas son equivalentes para el comprador."
+      "Usar dos opciones solo si hay bloqueo real y ambas son equivalentes para el comprador.",
+      "Hacer que el vendedor concrete qué espera o qué necesitaría para avanzar, si todavía no se ha retratado lo suficiente.",
+      "Usar una formulación condicional o exploratoria antes que una cifra cerrada cuando eso te dé mejor posición."
     ],
     "avoid": [
       "Lanzar varias ofertas a la vez sin necesidad.",
       "Pedir rebaja y además pedir más concesiones sin ofrecer nada a cambio.",
       "Inventar extras, condiciones o bienes fuera del trato principal.",
-      "Usar creatividad opaca, ilegal o poco creíble."
+      "Usar creatividad opaca, ilegal o poco creíble.",
+      "Sentirte obligado a hacer una oferta propia solo porque la fase ya es propositiva.",
+      "Convertir las monedas del comprador en regalos no correspondidos.",
+      "Revelar el marco interno de valoración del negotiation_brief."
     ],
     "question_policy": {
-      "default_max_questions": 0,
+      "default_max_questions": 1,
       "when_to_ask": [
-        "Solo si una pregunta operativa desbloquea la aceptación o el ajuste de la propuesta."
+        "Solo si una pregunta operativa desbloquea la aceptación o el ajuste de la propuesta.",
+        "Si sirve para que el vendedor revele precio, condición o expectativa antes de que tú ancles.",
+        "Si evita hacer una oferta prematura peor posicionada."
       ],
       "when_not_to_ask": [
         "Cuando puedes mover mejor con una propuesta declarativa o condicional.",
-        "Cuando la pregunta sustituiría a una propuesta que ya debería estar formulada."
+        "Cuando la pregunta sustituiría a una propuesta que ya debería estar formulada.",
+        "Cuando el vendedor ya ha dejado clara su expectativa y toca proponer o condicionar."
       ]
     },
     "valid_topics": [
@@ -136,49 +164,64 @@
       "papeleo y reparto de trámites",
       "garantía razonable o reparto de riesgos",
       "extras relevantes del coche",
-      "cierre rápido condicionado"
+      "cierre rápido condicionado",
+      "hacer que el vendedor concrete su expectativa o condición antes de dar cifra propia"
     ],
     "done_signals": [
       "El vendedor tiene una propuesta concreta sobre la mesa.",
       "La propuesta mejora precio, riesgo o compromiso sin ser one-sided.",
-      "El trato queda más cerca de una negociación fina o del cierre."
+      "El trato queda más cerca de una negociación fina o del cierre.",
+      "No siempre hace falta haber lanzado oferta propia; también vale dejar mejor colocado el siguiente movimiento."
     ]
   },
   "concesiones_y_ajuste_final": {
     "phase": "concesiones_y_ajuste_final",
-    "phase_objective": "Ajustar precio y condiciones con movimientos pequeños, condicionados y orientados a cerrar sin regalar margen.",
+    "phase_objective": "Ajustar precio y condiciones con movimientos pequeños, condicionados y orientados a cerrar sin regalar margen, sin convertir cada turno en una nueva cesión, contraoferta o pregunta.",
     "what_good_progress_looks_like": [
       "Se estrecha la distancia real entre posiciones.",
       "Cada concesión obtiene una contrapartida clara.",
-      "El acuerdo queda más cerrable después del turno."
+      "El acuerdo queda más cerrable después del turno.",
+      "A veces el mejor resultado del turno es sostener posición o hacer que el vendedor concrete mejor su cesión."
     ],
     "planner_bias": [
       "Favorece mejoras pequeñas y siempre condicionadas.",
       "No acepta demasiado pronto si aún hay palanca razonable.",
-      "Si el precio no mejora, intenta ganar valor en otras monedas del trato."
+      "Si el precio no mejora, intenta ganar valor en otras monedas del trato.",
+      "Usa el negotiation_brief para distinguir entre concesiones que añaden valor real y concesiones que solo facilitan el acuerdo.",
+      "No subas precio por mera comodidad operativa si no entra valor real o reducción clara de riesgo.",
+      "Si el vendedor aún puede moverse más, no te precipites a cerrar ni a cargar tú con el siguiente movimiento."
     ],
     "good_moves": [
       "Contraoferta pequeña y defendible.",
       "Subir o ceder solo a cambio de papeles, garantía, extras, entrega o certeza operativa.",
       "Dar un último empujón elegante con condición de cierre.",
-      "Resolver un fleco concreto que bloquea el acuerdo."
+      "Resolver un fleco concreto que bloquea el acuerdo.",
+      "Mantener tu posición con calma si la oferta del vendedor no mejora suficiente el valor total del trato.",
+      "Aceptar pagar algo más solo cuando el vendedor añade valor real suficiente o reduce riesgo de forma clara.",
+      "Usar pago en efectivo, papeleo o rapidez solo como palancas negociadoras con retorno, no como concesiones gratis.",
+      "Hacer que el vendedor concrete exactamente qué da a cambio si te pide subir."
     ],
     "avoid": [
       "Concesiones gratis.",
       "Volver a discovery largo cuando ya hay base suficiente.",
       "Regatear infinitamente sin nueva palanca.",
       "Justificar de más o sonar agresivo.",
-      "Reabrir ejes ya suficientemente resueltos."
+      "Reabrir ejes ya suficientemente resueltos.",
+      "Pagar más por elementos que solo facilitan el acuerdo pero no añaden valor real.",
+      "Entregar espontáneamente tu margen real, tu alternativa o tu valoración interna.",
+      "Responder cada movimiento del vendedor con otra concesión automática."
     ],
     "question_policy": {
       "default_max_questions": 1,
       "when_to_ask": [
         "Solo para confirmar una condición operativa que realmente acerque el cierre.",
-        "Solo si la confirmación no puede sustituirse mejor por una formulación condicional."
+        "Solo si la confirmación no puede sustituirse mejor por una formulación condicional.",
+        "Para hacer que el vendedor concrete qué contrapartida real ofrece si quiere mover el precio."
       ],
       "when_not_to_ask": [
         "Cuando el movimiento puede expresarse como propuesta o condición declarativa.",
-        "Cuando la pregunta serviría solo para seguir regateando sin avanzar."
+        "Cuando la pregunta serviría solo para seguir regateando sin avanzar.",
+        "Cuando una respuesta firme o una condición declarativa deja mejor la carga en el vendedor."
       ]
     },
     "valid_topics": [
@@ -186,27 +229,33 @@
       "subo si tú haces X",
       "precio frente a comodidad operativa",
       "reparto final de costes o cargas",
-      "último ajuste para cerrar"
+      "último ajuste para cerrar",
+      "valor real frente a simple facilidad de cierre",
+      "contrapartidas del vendedor con impacto económico o de riesgo"
     ],
     "done_signals": [
       "La distancia entre comprador y vendedor se reduce de forma real.",
       "Cada cesión queda atada a una contrapartida.",
-      "Después del turno ya se vislumbra un cierre operativo cercano."
+      "Después del turno ya se vislumbra un cierre operativo cercano.",
+      "El turno puede ser bueno aunque no haya cesión propia nueva, si el vendedor queda obligado a mejorar o concretar."
     ]
   },
   "formalizacion_del_acuerdo": {
-      "phase": "formalizacion_del_acuerdo",
-      "phase_objective": "Dejar claros y resumidos los términos ya acordados para facilitar el cierre.",
-      "good_moves": [
-        "Repetir de forma compacta lo ya acordado.",
-        "Dejar claro precio, qué incluye y siguiente paso.",
-        "Cerrar con confirmación operativa simple si hace falta."
-      ],
-      "avoid": [
-        "Reabrir precio o condiciones ya acordadas.",
-        "Introducir requisitos nuevos.",
-        "Volver a discovery o a dudas técnicas que ya no tocan.",
-        "Complicar el cierre con detalle innecesario."
-      ]
-    }
+    "phase": "formalizacion_del_acuerdo",
+    "phase_objective": "Dejar claros y resumidos los términos ya acordados para facilitar el cierre, sin reabrir valoraciones internas ni añadir negociación nueva.",
+    "good_moves": [
+      "Repetir de forma compacta lo ya acordado.",
+      "Dejar claro precio, qué incluye y siguiente paso.",
+      "Cerrar con confirmación operativa simple si hace falta.",
+      "Responder de forma compacta y suficiente, sin añadir explicación, intención ni nueva pregunta si el acuerdo ya está claro."
+    ],
+    "avoid": [
+      "Reabrir precio o condiciones ya acordadas.",
+      "Introducir requisitos nuevos.",
+      "Volver a discovery o a dudas técnicas que ya no tocan.",
+      "Complicar el cierre con detalle innecesario.",
+      "Revelar el razonamiento interno por el que el acuerdo te encaja.",
+      "Usar el negotiation_brief para renegociar algo que ya está suficientemente cerrado."
+    ]
   }
+}
