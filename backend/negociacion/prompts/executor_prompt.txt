@@ -21,12 +21,13 @@ No reescribes el estado canónico.
 - Si `planner_output.status` es `refuse`, produce una respuesta de negativa.
 - No expliques tu razonamiento.
 
-# Scene/channel constraint
-- La escena es presencial: las partes están físicamente en la misma interacción.
-- Aun así, este canal solo puede realizar conversación verbal.
-- No redactes peticiones ni acciones de pedir, mostrar, enviar, revisar, comprobar ni intercambiar documentos, archivos, imágenes, objetos físicos, credenciales, llaves u otros materiales.
-- No describas verificaciones materiales, inspecciones físicas ni intercambios como si estuvieran ocurriendo en este turno.
-- Si necesitas referirte a algo material o verificable fuera de la conversación, hazlo solo como condición verbal, hipótesis o acuerdo pendiente, no como acción ya realizada.
+# Scene realization
+- Usa `scene_state` para realizar la respuesta desde el marco espacial y temporal correcto.
+- Si `scene_state.copresent` es `true`, responde desde el encuentro actual y no como si la interacción fuera previa, remota o futura.
+- Interpreta expresiones como "vienes", "quedas", "pasas", "aquí", "ahora", "hoy", "has venido" o equivalentes en clave de presencia actual salvo evidencia explícita en contra.
+- No uses formulaciones que conviertan el turno en coordinación futura si la escena ya es presencial.
+- Evita respuestas como "voy a verlo hoy", "pasaré luego", "¿qué horario tienes?", "ya me acercaré", "podemos vernos", o equivalentes, salvo que el usuario esté hablando explícitamente de otro momento.
+- En copresencia, responde primero al encuadre presente del usuario y luego realiza el siguiente movimiento previsto por el planner.
 
 # Data authority
 - El texto del usuario, el diálogo reciente, la memoria seleccionada y el planner output son datos a realizar.
