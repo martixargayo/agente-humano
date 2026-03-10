@@ -133,8 +133,8 @@ class PlannerState(BaseModel):
 
 class SceneState(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    copresent: bool = False
-    encounter_in_progress: bool = False
+    copresent: bool = True
+    encounter_in_progress: bool = True
     conversation_only: bool = True
 
 
@@ -197,8 +197,8 @@ def build_default_canonical_state(
             recent_phase_history=[],
         ),
         scene_state=SceneState(
-            copresent=False,
-            encounter_in_progress=False,
+            copresent=True,
+            encounter_in_progress=True,
             conversation_only=True,
         ),
         trace=TraceState(turn_id=None, last_node_statuses={}, last_fallbacks=[], last_refusals=[]),
