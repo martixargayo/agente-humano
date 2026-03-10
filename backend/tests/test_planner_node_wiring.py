@@ -49,6 +49,7 @@ def test_build_planner_input_exact_fields_and_sources():
         "schema_version",
         "task_contract",
         "persona_policy",
+        "negotiation_brief",
         "current_phase",
         "phase_card",
         "user_turn",
@@ -63,6 +64,7 @@ def test_build_planner_input_exact_fields_and_sources():
     assert dumped["task_contract"]["node_name"] == "planner"
     assert dumped["task_contract"]["output_schema_version"] == "planner.v3"
     assert dumped["persona_policy"] == state.persona.policy.model_dump(mode="json")
+    assert dumped["negotiation_brief"] == state.negotiation_brief.model_dump(mode="json")
     assert dumped["current_phase"] == state.planner_state.current_phase.value
     assert dumped["scene_state"] == state.scene_state.model_dump(mode="json")
 
@@ -270,6 +272,18 @@ def test_persona_file_exists_and_default_state_uses_it():
     assert state.scene_state.conversation_only is True
 
 
+def test_negotiation_brief_file_exists_and_default_state_uses_it():
+    path = Path("backend/negociacion/prompts/negotiation_brief.json")
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    assert raw["schema_version"] == "negotiation_brief.v1"
+
+    state = build_default_canonical_state(session_id="sbrief", thread_mode=ThreadMode.conversation)
+    assert state.negotiation_brief.schema_version == "negotiation_brief.v1"
+    assert state.negotiation_brief.contexto_de_mercado.valor_estimado == raw["contexto_de_mercado"]["valor_estimado"]
+    assert state.negotiation_brief.mapa_de_valor.items[1].valor_aproximado_eur is None
+    assert state.negotiation_brief.mapa_de_valor.items[2].valor_aproximado_eur is None
+
+
 
 
 def test_default_state_uses_emergency_persona_if_file_missing(monkeypatch):
@@ -312,6 +326,20 @@ def test_default_state_uses_emergency_persona_if_structure_invalid(monkeypatch):
 
     state = build_default_canonical_state(session_id="sstructure", thread_mode=ThreadMode.conversation)
     assert state.persona.policy.objetivo_privado == canonical_state_module.EMERGENCY_PERSONA_DEFAULTS["policy"]["objetivo_privado"]
+
+
+def test_default_state_uses_emergency_negotiation_brief_if_file_missing(monkeypatch):
+    original_read_text = canonical_state_module.Path.read_text
+
+    def _fake_read_text(self, *args, **kwargs):
+        if self.name == "negotiation_brief.json":
+            raise FileNotFoundError("missing brief")
+        return original_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(canonical_state_module.Path, "read_text", _fake_read_text)
+
+    state = build_default_canonical_state(session_id="sbrief_missing", thread_mode=ThreadMode.conversation)
+    assert state.negotiation_brief.contexto_de_mercado.valor_estimado == canonical_state_module.EMERGENCY_NEGOTIATION_BRIEF_DEFAULTS["contexto_de_mercado"]["valor_estimado"]
 
 def test_planner_uses_policy_and_executor_uses_expressive_from_canonical():
     state = _build_state()

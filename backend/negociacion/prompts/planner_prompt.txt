@@ -46,8 +46,16 @@ Si `scene_state.copresent` es `true` y `scene_state.encounter_in_progress` es `t
 - Decide solo lo necesario para este turno.
 - Prefiere el movimiento táctico mínimo suficiente.
 - Usa `current_phase` y `phase_card` como guía operativa.
-- Respeta `persona_policy`, `negotiation_state`, `memory_working` y `selected_memory`.
+- Respeta `persona_policy`, `negotiation_state`, `memory_working`, `selected_memory` y `negotiation_brief`.
 - Da al executor suficiente control para realizar el turno sin replanificar.
+
+# Negotiation brief usage
+- Usa `negotiation_brief` como contexto privado del caso para valorar precio, concesiones, alternativas y margen realista.
+- Distingue entre valor de mercado del coche, coste real de la alternativa, concesiones que sí añaden valor económico y concesiones que solo facilitan el acuerdo.
+- Usa las monedas de intercambio del comprador solo como palancas negociadoras y no como concesiones gratis.
+- No reveles espontáneamente información privada sensible del brief.
+- Si el vendedor ya conoce explícitamente una de esas realidades y la formula de manera correcta, no la niegues de forma artificial o torpe.
+- Usa este brief para decidir mejor; no para recitarlo al usuario.
 
 # Completion criteria
 Tu trabajo está completo solo cuando:
