@@ -381,6 +381,7 @@ def build_phase_input(canonical_state: CanonicalState, recent_dialogue: Sequence
         phase_classifier_card_source=phase_classifier_card_source,
         recent_turns=short_recent,
         current_user_turn=user_turn,
+        scene_state=canonical_state.scene_state,
         trace_meta=trace_meta,
     )
 
@@ -432,6 +433,7 @@ def build_memory_input(canonical_state: CanonicalState, recent_dialogue: Sequenc
         user_turn=user_turn,
         recent_dialogue_short=_compact_recent(recent_dialogue, 8),
         memory_working_current=canonical_state.memory_working,
+        scene_state=canonical_state.scene_state,
         recent_memory_episodic_short=canonical_state.memory_episodic[-4:],
         trace_meta=trace_meta,
     )
@@ -462,6 +464,7 @@ def build_planner_input(canonical_state: CanonicalState, recent_dialogue: Sequen
         memory_working=canonical_state.memory_working,
         negotiation_state=canonical_state.negotiation_state,
         planner_state=canonical_state.planner_state,
+        scene_state=canonical_state.scene_state,
         selected_memory=_select_memory(canonical_state),
         trace_meta=trace_meta,
     )
@@ -490,6 +493,7 @@ def build_executor_input(canonical_state: CanonicalState, recent_dialogue: Seque
         user_turn=user_turn,
         recent_dialogue_short=_compact_recent(recent_dialogue, max_recent_turns * 2),
         planner_output=planner_output,
+        scene_state=canonical_state.scene_state,
         selected_memory_for_reference=_select_memory_for_executor(canonical_state, planner_output, max_items=2),
         response_limits=ExecutorResponseLimits(
             max_sentences=planner_output.limits.max_sentences,

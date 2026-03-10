@@ -56,6 +56,7 @@ def test_build_planner_input_exact_fields_and_sources():
         "memory_working",
         "negotiation_state",
         "planner_state",
+        "scene_state",
         "selected_memory",
         "trace_meta",
     }
@@ -63,6 +64,7 @@ def test_build_planner_input_exact_fields_and_sources():
     assert dumped["task_contract"]["output_schema_version"] == "planner.v3"
     assert dumped["persona_policy"] == state.persona.policy.model_dump(mode="json")
     assert dumped["current_phase"] == state.planner_state.current_phase.value
+    assert dumped["scene_state"] == state.scene_state.model_dump(mode="json")
 
 
 
@@ -263,6 +265,9 @@ def test_persona_file_exists_and_default_state_uses_it():
     state = build_default_canonical_state(session_id="s100", thread_mode=ThreadMode.conversation)
     assert state.persona.policy.identidad_operativa == raw["policy"]["identidad_operativa"]
     assert state.persona.expressive.voz_y_estilo == raw["expressive"]["voz_y_estilo"]
+    assert state.scene_state.copresent is False
+    assert state.scene_state.encounter_in_progress is False
+    assert state.scene_state.conversation_only is True
 
 
 

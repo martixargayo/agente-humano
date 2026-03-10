@@ -59,12 +59,14 @@ def test_build_phase_input_exact_fields_and_sources():
         "phase_classifier_card_source",
         "recent_turns",
         "current_user_turn",
+        "scene_state",
         "trace_meta",
     }
     assert dumped["schema_version"] == "phase_classifier_input.v1"
     assert dumped["previous_phase"] == "descubrimiento_y_comprension"
     assert dumped["recent_phase_history"] == ["clima_humano", "descubrimiento_y_comprension"]
     assert dumped["recent_turns"] == [{"role": "assistant", "text": "¿Qué presupuesto tienes?"}]
+    assert dumped["scene_state"] == state.scene_state.model_dump(mode="json")
     assert "phase_classifier_card" in dumped["phase_classifier_card"]
     assert dumped["phase_classifier_card_source"].endswith("backend/negociacion/prompts/phase_classifier_card.json")
 

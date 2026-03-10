@@ -4,7 +4,7 @@ from typing import Any, List, Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from ..state.canonical_state import MemoryWorkingState, NegotiationState, PersonaPolicy, PlannerState
+from ..state.canonical_state import MemoryWorkingState, NegotiationState, PersonaPolicy, PlannerState, SceneState
 from .memory_node import DialogueMessage, TraceMeta, UserTurn
 from ..state.shared_types import NegotiationPhase
 
@@ -53,6 +53,7 @@ class PlannerInput(BaseModel):
     memory_working: MemoryWorkingState
     negotiation_state: NegotiationState
     planner_state: PlannerState
+    scene_state: SceneState
     selected_memory: List[SelectedMemoryItem]
     trace_meta: TraceMeta
 

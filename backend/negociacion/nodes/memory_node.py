@@ -4,7 +4,7 @@ from typing import List, Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from ..state.canonical_state import MemoryEpisodicItem as CanonicalMemoryEpisodicItem, MemoryWorkingState
+from ..state.canonical_state import MemoryEpisodicItem as CanonicalMemoryEpisodicItem, MemoryWorkingState, SceneState
 
 
 class DialogueMessage(BaseModel):
@@ -66,6 +66,7 @@ class MemoryInput(BaseModel):
     user_turn: UserTurn
     recent_dialogue_short: List[DialogueMessage]
     memory_working_current: MemoryWorkingState
+    scene_state: SceneState
     recent_memory_episodic_short: List[CanonicalMemoryEpisodicItem]
     trace_meta: TraceMeta
 

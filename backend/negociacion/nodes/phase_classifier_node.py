@@ -5,6 +5,7 @@ from typing import Any, List, Literal
 from pydantic import BaseModel, ConfigDict
 
 from .memory_node import DialogueMessage, TraceMeta, UserTurn
+from ..state.canonical_state import SceneState
 from ..state.shared_types import NegotiationPhase
 
 
@@ -17,6 +18,7 @@ class PhaseClassifierInput(BaseModel):
     phase_classifier_card_source: str
     recent_turns: List[DialogueMessage]
     current_user_turn: UserTurn
+    scene_state: SceneState
     trace_meta: TraceMeta
 
 
@@ -34,6 +36,7 @@ def build_phase_classifier_input(
     phase_classifier_card_source: str,
     recent_turns: List[DialogueMessage],
     current_user_turn: UserTurn,
+    scene_state: SceneState,
     trace_meta: TraceMeta,
 ) -> PhaseClassifierInput:
     return PhaseClassifierInput(
@@ -44,6 +47,7 @@ def build_phase_classifier_input(
         phase_classifier_card_source=phase_classifier_card_source,
         recent_turns=recent_turns,
         current_user_turn=current_user_turn,
+        scene_state=scene_state,
         trace_meta=trace_meta,
     )
 

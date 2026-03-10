@@ -49,12 +49,14 @@ def test_build_memory_input_exact_fields_and_sources():
         "user_turn",
         "recent_dialogue_short",
         "memory_working_current",
+        "scene_state",
         "recent_memory_episodic_short",
         "trace_meta",
     }
     assert dumped["schema_version"] == "memory_input.v1"
     assert dumped["memory_working_current"] == state.memory_working.model_dump(mode="json")
     assert dumped["recent_memory_episodic_short"] == [x.model_dump(mode="json") for x in state.memory_episodic]
+    assert dumped["scene_state"] == state.scene_state.model_dump(mode="json")
     assert dumped["task_contract"]["node_name"] == "memory"
     assert dumped["task_contract"]["output_schema_version"] == "memory.v1"
 
