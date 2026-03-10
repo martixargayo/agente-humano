@@ -654,6 +654,25 @@ def freeze_prompt_artifacts(
     return FrozenPromptCall(payload_snapshot=payload_snapshot, payload_json=payload_json, messages=messages, artifacts=artifacts)
 
 
+def _normalize_schema_for_strict_json_schema(schema: object) -> object:
+    """Normalize JSON Schema so every object with properties has full required keys.
+
+    OpenAI Structured Outputs strict mode requires each object to explicitly list
+    every key from `properties` in `required`; optionality must be expressed with
+    nullable types (e.g. anyOf[..., null]) instead of omitting keys from required.
+    """
+
+    if isinstance(schema, dict):
+        normalized = {key: _normalize_schema_for_strict_json_schema(value) for key, value in schema.items()}
+        properties = normalized.get("properties")
+        if isinstance(properties, dict):
+            normalized["required"] = list(properties.keys())
+        return normalized
+    if isinstance(schema, list):
+        return [_normalize_schema_for_strict_json_schema(item) for item in schema]
+    return schema
+
+
 def _call_structured(
     client: openai.OpenAI | None,
     model: str,
@@ -669,7 +688,14 @@ def _call_structured(
     kwargs = {
         "model": model,
         "input": messages,
-        "text": {"format": {"type": "json_schema", "name": response_model.__name__, "schema": response_model.model_json_schema(), "strict": True}},
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": response_model.__name__,
+                "schema": _normalize_schema_for_strict_json_schema(response_model.model_json_schema()),
+                "strict": True,
+            }
+        },
         "reasoning": {"effort": reasoning_effort},
         "store": store,
         **request_context,

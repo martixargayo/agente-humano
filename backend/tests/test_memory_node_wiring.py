@@ -203,6 +203,44 @@ def test_call_structured_uses_strict_json_schema_and_validates():
     assert client.responses.kwargs["text"]["format"]["strict"] is True
 
 
+
+
+def _iter_object_nodes(schema: object):
+    if isinstance(schema, dict):
+        if schema.get("type") == "object" or "properties" in schema:
+            yield schema
+        for value in schema.values():
+            yield from _iter_object_nodes(value)
+    elif isinstance(schema, list):
+        for item in schema:
+            yield from _iter_object_nodes(item)
+
+
+def test_call_structured_normalizes_schema_required_for_all_object_properties():
+    client = _FakeClient()
+    _call_structured(
+        client=client,
+        model="gpt-5-nano",
+        messages=[{"role": "developer", "content": "x"}],
+        response_model=MemoryOutput,
+        reasoning_effort="low",
+        request_context={},
+        store=False,
+    )
+
+    schema = client.responses.kwargs["text"]["format"]["schema"]
+    for node in _iter_object_nodes(schema):
+        properties = node.get("properties")
+        if not isinstance(properties, dict):
+            continue
+        required = node.get("required")
+        assert isinstance(required, list)
+        assert set(required) == set(properties.keys())
+
+    offer = schema["$defs"]["NegotiationOffer"]
+    assert "summary" in offer["properties"]
+    assert "summary" in offer["required"]
+
 def test_memory_negotiation_case_a_user_offer_updates_last_offer_other():
     state = _build_state()
     output = MemoryOutput.model_validate(
