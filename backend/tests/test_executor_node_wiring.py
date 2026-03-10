@@ -75,6 +75,7 @@ def test_build_executor_input_exact_fields_and_sources():
         "user_turn",
         "recent_dialogue_short",
         "planner_output",
+        "scene_state",
         "selected_memory_for_reference",
         "response_limits",
         "trace_meta",
@@ -82,6 +83,7 @@ def test_build_executor_input_exact_fields_and_sources():
     assert dumped["persona_expressive"]["voz_y_estilo"] == "voz_test_7"
     assert dumped["current_phase"] == state.planner_state.current_phase.value
     assert dumped["planner_output"]["schema_version"] == "planner.v3"
+    assert dumped["scene_state"] == state.scene_state.model_dump(mode="json")
     assert dumped["response_limits"]["max_sentences"] == dumped["planner_output"]["limits"]["max_sentences"]
     assert dumped["task_contract"]["node_name"] == "executor"
     assert dumped["task_contract"]["output_schema_version"] == "executor.v1"

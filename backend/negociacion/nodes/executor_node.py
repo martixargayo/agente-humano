@@ -4,7 +4,7 @@ from typing import List, Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from ..state.canonical_state import PersonaExpressive
+from ..state.canonical_state import PersonaExpressive, SceneState
 from .memory_node import DialogueMessage, TraceMeta, UserTurn
 from .planner_node import PhaseCard, PlannerOutput, SelectedMemoryItem
 from ..state.shared_types import NegotiationPhase
@@ -36,6 +36,7 @@ class ExecutorInput(BaseModel):
     user_turn: UserTurn
     recent_dialogue_short: List[DialogueMessage]
     planner_output: PlannerOutput
+    scene_state: SceneState
     selected_memory_for_reference: List[SelectedMemoryItem]
     response_limits: ExecutorResponseLimits
     trace_meta: TraceMeta

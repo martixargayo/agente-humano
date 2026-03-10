@@ -131,6 +131,13 @@ class PlannerState(BaseModel):
     recent_phase_history: list[NegotiationPhase] = Field(default_factory=list)
 
 
+class SceneState(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    copresent: bool = False
+    encounter_in_progress: bool = False
+    conversation_only: bool = True
+
+
 class TraceState(BaseModel):
     model_config = ConfigDict(extra="forbid")
     turn_id: str | None
@@ -151,6 +158,7 @@ class CanonicalState(BaseModel):
     memory_working: MemoryWorkingState
     negotiation_state: NegotiationState
     planner_state: PlannerState
+    scene_state: SceneState
     trace: TraceState
 
 
@@ -187,6 +195,11 @@ def build_default_canonical_state(
             topics_touched_current_phase=[],
             topics_touched_previous_phases=[],
             recent_phase_history=[],
+        ),
+        scene_state=SceneState(
+            copresent=False,
+            encounter_in_progress=False,
+            conversation_only=True,
         ),
         trace=TraceState(turn_id=None, last_node_statuses={}, last_fallbacks=[], last_refusals=[]),
     )
