@@ -7,6 +7,18 @@ from negociacion.orchestration.flow_config import build_negotiation_pipeline_con
 from negociacion.state.shared_types import StructuredCallSource
 
 
+def _negotiation_state() -> dict[str, object]:
+    return {
+        "status": "inactive",
+        "active_axes": [],
+        "last_offer_self": None,
+        "last_offer_other": None,
+        "tentative_agreement": None,
+        "blockers": [],
+        "next_open_loop": None,
+    }
+
+
 def _model(parsed_json: dict) -> fc.StructuredCallResult:
     return fc.StructuredCallResult(
         parsed_json=parsed_json,
@@ -31,6 +43,7 @@ def test_trace_invariants_observed_not_applied_means_output_not_changed(monkeypa
             "schema_version": "memory.v1",
             "episodic_append": [],
             "working_memory_new": {"current_topic": None, "pending_question": None, "last_turn_summary": "ok"},
+            "negotiation_state": _negotiation_state(),
         })
         phase_call = _model({"schema_version": "phase_classifier.v1", "current_phase": "clima_humano"})
         info = {"threading_policy": "stateless_parallel", "threading_mode_effective": "stateless", "request_context_has_conversation_id": False, "request_context_has_previous_response_id": False}
@@ -82,6 +95,7 @@ def test_trace_invariants_fallback_has_fallback_summary_and_source(monkeypatch):
             "schema_version": "memory.v1",
             "episodic_append": [],
             "working_memory_new": {"current_topic": None, "pending_question": None, "last_turn_summary": "ok"},
+            "negotiation_state": _negotiation_state(),
         })
         phase_call = _model({"schema_version": "phase_classifier.v1", "current_phase": "clima_humano"})
         info = {"threading_policy": "stateless_parallel", "threading_mode_effective": "stateless", "request_context_has_conversation_id": False, "request_context_has_previous_response_id": False}

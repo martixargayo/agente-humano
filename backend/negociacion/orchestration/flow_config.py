@@ -422,10 +422,11 @@ def build_memory_input(canonical_state: CanonicalState, recent_dialogue: Sequenc
         schema_version="memory_input.v1",
         task_contract=MemoryTaskContract(
             node_name="memory",
-            objective="actualizar memoria episódica y memoria de trabajo",
+            objective="actualizar memoria episódica, memoria de trabajo y estado negociador vivo",
             completion_criteria=[
                 "episodic_append contiene solo eventos nuevos, relevantes y no duplicados",
                 "working_memory_new viene completo y factual",
+                "negotiation_state refleja un snapshot operativo actualizado",
                 "la salida cumple exactamente el schema MemoryOutput",
             ],
             output_schema_version="memory.v1",
@@ -776,6 +777,7 @@ def apply_memory_output_to_state(canonical_state: CanonicalState, output: Memory
     canonical_state.memory_working.current_topic = output.working_memory_new.current_topic
     canonical_state.memory_working.pending_question = output.working_memory_new.pending_question
     canonical_state.memory_working.last_turn_summary = output.working_memory_new.last_turn_summary
+    canonical_state.negotiation_state = output.negotiation_state.model_copy(deep=True)
 
 
 def apply_planner_output_to_state(canonical_state: CanonicalState, planner_output: PlannerOutput) -> None:
@@ -946,6 +948,7 @@ def _memory_fallback(canonical_state: CanonicalState, turn_id: str) -> MemoryOut
             pending_question=canonical_state.memory_working.pending_question,
             last_turn_summary=canonical_state.memory_working.last_turn_summary or f"turn {turn_id}: sin cambios de memoria",
         ),
+        negotiation_state=canonical_state.negotiation_state.model_copy(deep=True),
     )
 
 

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+from pydantic import field_validator
 
 from .shared_types import NegotiationPhase, ThreadMode
 
@@ -114,11 +115,50 @@ class MemoryWorkingState(BaseModel):
     # /// Arranca en `None` al crear sesión; tras el primer turno memory node lo refresca con string factual.
 
 
+class NegotiationOffer(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    summary: str | None = None
+    price_amount: float | None = None
+    currency: str | None = None
+    extras: list[str] = Field(default_factory=list)
+    conditions: list[str] = Field(default_factory=list)
+    is_currently_active: bool = True
+    source_turn_role: Literal["user", "assistant"] | None = None
+
+
+class TentativeAgreement(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    summary: str | None = None
+    price_amount: float | None = None
+    currency: str | None = None
+    extras: list[str] = Field(default_factory=list)
+    conditions: list[str] = Field(default_factory=list)
+
+
 class NegotiationState(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    last_offer_self: str | None
-    last_offer_other: str | None
+    status: str = "inactive"
+    active_axes: list[str] = Field(default_factory=list)
+    last_offer_self: NegotiationOffer | None = None
+    last_offer_other: NegotiationOffer | None = None
+    tentative_agreement: TentativeAgreement | None = None
     blockers: list[str] = Field(default_factory=list)
+    next_open_loop: str | None = None
+
+    @field_validator("last_offer_self", "last_offer_other", mode="before")
+    @classmethod
+    def _coerce_legacy_offer(cls, value: object) -> object:
+        if isinstance(value, str):
+            return {
+                "summary": value,
+                "price_amount": None,
+                "currency": None,
+                "extras": [],
+                "conditions": [],
+                "is_currently_active": True,
+                "source_turn_role": None,
+            }
+        return value
 
 
 class PlannerState(BaseModel):
@@ -187,7 +227,15 @@ def build_default_canonical_state(
         ),
         memory_episodic=[],
         memory_working=MemoryWorkingState(current_topic=None, pending_question=None, last_turn_summary=None),
-        negotiation_state=NegotiationState(last_offer_self=None, last_offer_other=None, blockers=[]),
+        negotiation_state=NegotiationState(
+            status="inactive",
+            active_axes=[],
+            last_offer_self=None,
+            last_offer_other=None,
+            tentative_agreement=None,
+            blockers=[],
+            next_open_loop=None,
+        ),
         planner_state=PlannerState(
             current_phase=None,
             previous_phase=None,

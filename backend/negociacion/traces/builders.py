@@ -5,7 +5,7 @@ from ..nodes.memory_node import MemoryInput, MemoryOutput
 from ..nodes.phase_classifier_node import PhaseClassifierInput, PhaseClassifierOutput
 from ..nodes.planner_node import PlannerInput, PlannerOutput
 from .models import NodeInputSummary, NodeOutputSummary, PromptArtifacts, RichNodeTrace, StructuredCallResult
-from ..state.canonical_state import MemoryWorkingState, PlannerState
+from ..state.canonical_state import MemoryWorkingState, NegotiationOffer, NegotiationState, PlannerState
 from ..state.shared_types import NodeName, StructuredCallSource
 from .constants import EXCERPT_MAX_CHARS
 from .summaries import (
@@ -18,7 +18,8 @@ from .summaries import (
     PhaseOutputSummary,
     PlannerInputSummary,
     PlannerLimitsSummary,
-    PlannerNegotiationStateSummary,
+    NegotiationOfferSummary,
+    NegotiationStateSummary,
     PlannerOutputSummary,
     PlannerStateSummary,
 )
@@ -57,6 +58,7 @@ def build_memory_node_trace(input_payload: MemoryInput, output_payload: MemoryOu
             pending_question=output_payload.working_memory_new.pending_question,
             last_turn_summary_excerpt=excerpt(output_payload.working_memory_new.last_turn_summary),
         ),
+        negotiation_state=_negotiation_summary(output_payload.negotiation_state),
     )
     return _build_node_trace(NodeName.memory, input_payload.trace_meta.model_target, input_payload.trace_meta.prompt_version, input_payload.schema_version, output_payload.schema_version, status, call_result, latency_ms, input_summary, output_summary, None, threading_info=threading_info, prompt_artifacts=prompt_artifacts)
 
@@ -83,6 +85,33 @@ def _planner_state_summary(planner_state: PlannerState) -> PlannerStateSummary:
     )
 
 
+def _offer_summary(offer: NegotiationOffer | None) -> NegotiationOfferSummary | None:
+    if offer is None:
+        return None
+    return NegotiationOfferSummary(
+        summary=excerpt(offer.summary),
+        price_amount=offer.price_amount,
+        currency=offer.currency,
+        extras_count=len(offer.extras),
+        conditions_count=len(offer.conditions),
+        is_currently_active=offer.is_currently_active,
+        source_turn_role=offer.source_turn_role,
+    )
+
+
+def _negotiation_summary(negotiation: NegotiationState) -> NegotiationStateSummary:
+    return NegotiationStateSummary(
+        status=negotiation.status,
+        active_axes=list(negotiation.active_axes),
+        last_offer_self=_offer_summary(negotiation.last_offer_self),
+        last_offer_other=_offer_summary(negotiation.last_offer_other),
+        tentative_agreement_summary=excerpt(negotiation.tentative_agreement.summary) if negotiation.tentative_agreement else None,
+        blockers_count=len(negotiation.blockers),
+        blockers=list(negotiation.blockers),
+        next_open_loop=excerpt(negotiation.next_open_loop),
+    )
+
+
 def _limits_summary(max_sentences: int, max_questions: int, allow_topic_shift: bool, allow_personal_disclosure: bool) -> PlannerLimitsSummary:
     return PlannerLimitsSummary(
         max_sentences=max_sentences,
@@ -99,12 +128,7 @@ def build_planner_node_trace(input_payload: PlannerInput, output_payload: Planne
         user_text_excerpt=excerpt(input_payload.user_turn.normalized_text) or "",
         recent_dialogue_count=len(input_payload.recent_dialogue_short),
         memory_working=_working_summary(input_payload.memory_working),
-        negotiation_state=PlannerNegotiationStateSummary(
-            last_offer_self=input_payload.negotiation_state.last_offer_self,
-            last_offer_other=input_payload.negotiation_state.last_offer_other,
-            blockers_count=len(input_payload.negotiation_state.blockers),
-            blockers=list(input_payload.negotiation_state.blockers),
-        ),
+        negotiation_state=_negotiation_summary(input_payload.negotiation_state),
         planner_state=_planner_state_summary(input_payload.planner_state),
         selected_memory_count=len(input_payload.selected_memory),
         selected_memory_ids=[item.memory_id for item in input_payload.selected_memory],

@@ -19,6 +19,18 @@ from negociacion.traces.builders import build_memory_node_trace
 from negociacion.traces.models import PromptArtifacts, StructuredCallResult
 
 
+def _negotiation_state() -> dict[str, object]:
+    return {
+        "status": "inactive",
+        "active_axes": [],
+        "last_offer_self": None,
+        "last_offer_other": None,
+        "tentative_agreement": None,
+        "blockers": [],
+        "next_open_loop": None,
+    }
+
+
 def _extract_between(text: str, start: str, end: str) -> str:
     s = text.index(start) + len(start)
     e = text.index(end)
@@ -85,6 +97,7 @@ def test_trace_builder_uses_prompt_artifacts_without_recomputing():
             "schema_version": "memory.v1",
             "episodic_append": [],
             "working_memory_new": {"current_topic": None, "pending_question": None, "last_turn_summary": "ok"},
+            "negotiation_state": _negotiation_state(),
         }
     )
     artifacts = PromptArtifacts(
@@ -125,7 +138,7 @@ def test_e2e_hola_freezes_same_payload_for_call_and_trace_in_memory_planner_exec
         assert "MUTATED" not in memory_payload
         assert "MUTATED" not in phase_payload
         info = {"threading_policy": "stateless_parallel", "threading_mode_effective": "stateless", "request_context_has_conversation_id": False, "request_context_has_previous_response_id": False}
-        mem_call = StructuredCallResult(parsed_json={"schema_version": "memory.v1", "episodic_append": [], "working_memory_new": {"current_topic": None, "pending_question": None, "last_turn_summary": "hola"}}, refusal=None, parse_error=None, exception_error=None, response=None, source=StructuredCallSource.model, model_called=True)
+        mem_call = StructuredCallResult(parsed_json={"schema_version": "memory.v1", "episodic_append": [], "working_memory_new": {"current_topic": None, "pending_question": None, "last_turn_summary": "hola"}, "negotiation_state": _negotiation_state()}, refusal=None, parse_error=None, exception_error=None, response=None, source=StructuredCallSource.model, model_called=True)
         phase_call = StructuredCallResult(parsed_json={"schema_version": "phase_classifier.v1", "current_phase": "clima_humano"}, refusal=None, parse_error=None, exception_error=None, response=None, source=StructuredCallSource.model, model_called=True)
         return mem_call, 1, info, phase_call, 1, info, {}
 

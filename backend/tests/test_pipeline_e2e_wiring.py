@@ -11,6 +11,18 @@ from negociacion.orchestration.flow_config import (
 from negociacion.state.shared_types import NodeName, StructuredCallSource, ThreadMode
 
 
+def _negotiation_state() -> dict[str, object]:
+    return {
+        "status": "inactive",
+        "active_axes": [],
+        "last_offer_self": None,
+        "last_offer_other": None,
+        "tentative_agreement": None,
+        "blockers": [],
+        "next_open_loop": None,
+    }
+
+
 def _fake_model_result(parsed_json: dict, response_obj: object | None = None) -> StructuredCallResult:
     return StructuredCallResult(
         parsed_json=parsed_json,
@@ -60,6 +72,7 @@ def test_e2e_pipeline_wires_nodes_and_persists_trace_and_state(monkeypatch):
                     "pending_question": "¿confirmas presupuesto?",
                     "last_turn_summary": "resumen memoria",
                 },
+                "negotiation_state": _negotiation_state(),
             }
         )
         phase_call = _fake_model_result(
@@ -175,6 +188,7 @@ def test_turn_trace_rich_schema_for_grading_and_compact_canonical_trace(monkeypa
                     "pending_question": "¿encaja?",
                     "last_turn_summary": "resumen de salida",
                 },
+                "negotiation_state": _negotiation_state(),
             }
         )
         phase_call = _fake_model_result({"schema_version": "phase_classifier.v1", "current_phase": "propuesta_creativa"})
@@ -270,12 +284,14 @@ def test_turn_trace_rich_schema_for_grading_and_compact_canonical_trace(monkeypa
         "episodic_append_count",
         "episodic_append_event_types",
         "working_memory_new",
+        "negotiation_state",
     }
 
     phase_node = trace["nodes"]["phase_classifier"]
     assert set(phase_node["input_summary"].keys()) == {
         "previous_phase",
         "recent_phase_history",
+        "phase_classifier_card_source",
         "recent_turn_count",
         "user_text_excerpt",
     }
@@ -352,6 +368,7 @@ def test_planner_refuse_status_does_not_create_fake_refusal_reason(monkeypatch):
                     "pending_question": None,
                     "last_turn_summary": "mem",
                 },
+                "negotiation_state": _negotiation_state(),
             }
         )
         phase_call = _fake_model_result({"schema_version": "phase_classifier.v1", "current_phase": "propuesta_creativa"})
@@ -420,6 +437,7 @@ def test_planner_exception_sets_fallback_applied_trace_flags(monkeypatch):
             "schema_version": "memory.v1",
             "episodic_append": [],
             "working_memory_new": {"current_topic": None, "pending_question": None, "last_turn_summary": "ok"},
+            "negotiation_state": _negotiation_state(),
         })
         phase_call = _fake_model_result({"schema_version": "phase_classifier.v1", "current_phase": "clima_humano"})
         return mem_call, 5, {"threading_policy":"stateless_parallel","threading_mode_effective":"stateless","request_context_has_conversation_id":False,"request_context_has_previous_response_id":False}, phase_call, 5, {"threading_policy":"stateless_parallel","threading_mode_effective":"stateless","request_context_has_conversation_id":False,"request_context_has_previous_response_id":False}, {"conversation": "conv-fb"}
@@ -476,6 +494,7 @@ def test_e2e_hola_regression_no_meta_rewrite_and_prompt_artifacts_present(monkey
             "schema_version": "memory.v1",
             "episodic_append": [],
             "working_memory_new": {"current_topic": None, "pending_question": None, "last_turn_summary": "hola"},
+            "negotiation_state": _negotiation_state(),
         })
         phase_call = _fake_model_result({"schema_version": "phase_classifier.v1", "current_phase": "clima_humano"})
         info = {"threading_policy": "stateless_parallel", "threading_mode_effective": "stateless", "request_context_has_conversation_id": False, "request_context_has_previous_response_id": False}
@@ -525,6 +544,7 @@ def test_e2e_mustang_opening_keeps_trace_and_prompt_artifacts_consistent(monkeyp
             "schema_version": "memory.v1",
             "episodic_append": [{"event_type": "important_fact", "event_summary": "interés en Mustang", "turn_id": "t1"}],
             "working_memory_new": {"current_topic": "mustang", "pending_question": None, "last_turn_summary": "interesado en mustang"},
+            "negotiation_state": _negotiation_state(),
         })
         phase_call = _fake_model_result({"schema_version": "phase_classifier.v1", "current_phase": "descubrimiento_y_comprension"})
         info = {"threading_policy": "stateless_parallel", "threading_mode_effective": "stateless", "request_context_has_conversation_id": False, "request_context_has_previous_response_id": False}
@@ -585,6 +605,7 @@ def test_e2e_hola_prompt_artifacts_include_full_phase_card(monkeypatch):
                     "pending_question": None,
                     "last_turn_summary": "saludo inicial",
                 },
+                "negotiation_state": _negotiation_state(),
             }
         )
         phase_call = _fake_model_result(
