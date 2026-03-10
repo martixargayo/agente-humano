@@ -4,7 +4,14 @@ from typing import Any, List, Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from ..state.canonical_state import MemoryWorkingState, NegotiationState, PersonaPolicy, PlannerState, SceneState
+from ..state.canonical_state import (
+    MemoryWorkingState,
+    NegotiationBriefState,
+    NegotiationState,
+    PersonaPolicy,
+    PlannerState,
+    SceneState,
+)
 from .memory_node import DialogueMessage, TraceMeta, UserTurn
 from ..state.shared_types import NegotiationPhase
 
@@ -46,6 +53,7 @@ class PlannerInput(BaseModel):
     schema_version: Literal["planner_input.v1"]
     task_contract: PlannerTaskContract
     persona_policy: PersonaPolicy
+    negotiation_brief: NegotiationBriefState
     current_phase: NegotiationPhase
     phase_card: PhaseCard
     user_turn: UserTurn

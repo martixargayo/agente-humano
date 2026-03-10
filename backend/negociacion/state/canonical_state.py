@@ -29,6 +29,86 @@ EMERGENCY_PERSONA_DEFAULTS: dict[str, dict[str, object]] = {
     },
 }
 
+EMERGENCY_NEGOTIATION_BRIEF_DEFAULTS: dict[str, object] = {
+    "schema_version": "negotiation_brief.v1",
+    "contexto_de_mercado": {
+        "valor_estimado": "El valor de mercado estimado de este modelo está en torno a 6000-6500 euros.",
+        "lectura": "Ese rango refleja el valor base de mercado del coche, no el coste real de recurrir a la mejor alternativa disponible para Carlos.",
+    },
+    "realidad_de_la_alternativa": {
+        "resumen": "Carlos no tiene una alternativa equivalente cómoda en la zona.",
+        "detalle": "Comprar una unidad parecida fuera implica sumar transporte y matriculación.",
+        "coste_equivalente_aproximado": "La mejor alternativa real se acerca a 8000 euros de coste total.",
+        "lectura": "Por eso Carlos intentará acercarse al precio de mercado, pero sabe que debe ser realista si quiere este coche concreto.",
+    },
+    "objetivo_y_marco_de_decision": {
+        "objetivo": "Intentar comprar por precio de mercado o lo más cerca posible.",
+        "realismo": "Carlos sabe que le interesa este coche y que su alternativa real es más cara que el mercado base.",
+        "criterio": "Empujará para mejorar el precio, pero un acuerdo por debajo de 8000 puede seguir pareciéndole bueno si el conjunto del trato encaja.",
+        "por_encima_de_eso": "Por encima de ese nivel solo le compensa si el vendedor añade valor real suficiente o reduce riesgo de forma clara.",
+    },
+    "mapa_de_valor": {
+        "nota": "Los valores aproximados sirven también como referencia para estimar el valor de otras concesiones parecidas que aparezcan en la negociación.",
+        "items": [
+            {
+                "elemento": "1 año de garantía",
+                "valor_aproximado_eur": 600,
+                "tipo_de_efecto": "suma_valor_real",
+                "lectura": "Reduce riesgo postcompra y puede justificar pagar más.",
+            },
+            {
+                "elemento": "ITV pasada antes de venderlo",
+                "valor_aproximado_eur": None,
+                "tipo_de_efecto": "suma_valor_real",
+                "lectura": "Reduce coste y fricción inmediata y puede justificar algo más de precio.",
+            },
+            {
+                "elemento": "pack o kit de ruedas",
+                "valor_aproximado_eur": None,
+                "tipo_de_efecto": "suma_valor_real",
+                "lectura": "Añade valor material directo y puede compensar parte del precio.",
+            },
+            {
+                "elemento": "cerrar hoy mismo",
+                "valor_aproximado_eur": 0,
+                "tipo_de_efecto": "facilita_acuerdo",
+                "lectura": "No justifica pagar más por sí solo, pero puede hacer a Carlos algo más flexible para cerrar.",
+            },
+            {
+                "elemento": "operativa sencilla y poco roce",
+                "valor_aproximado_eur": 0,
+                "tipo_de_efecto": "facilita_acuerdo",
+                "lectura": "No suma valor económico real al coche, pero ayuda a rebajar resistencia para llegar a un entendimiento.",
+            },
+        ],
+    },
+    "monedas_de_intercambio_del_comprador": {
+        "puede_ofrecer": [
+            {
+                "elemento": "pago en efectivo",
+                "uso": "Puede usarse para intentar que el vendedor baje expectativas o cierre antes.",
+            },
+            {
+                "elemento": "encargarse del papeleo",
+                "uso": "Puede usarse como contrapartida operativa para pedir mejor precio o mejores condiciones.",
+            },
+            {
+                "elemento": "rapidez y facilidad para cerrar",
+                "uso": "Puede usarse para reducir fricción del vendedor, pero no debe regalarse sin retorno.",
+            },
+        ]
+    },
+    "informacion_privada_sensible": {
+        "no_conviene_revelar_espontaneamente": [
+            "El coste real de su alternativa.",
+            "La escasez de alternativas equivalentes en la zona.",
+            "Su flexibilidad real.",
+            "Qué concesiones valora más internamente.",
+        ],
+        "lectura": "Si el vendedor no lo sabe y lo intenta descubrir, conviene evitar revelarlo. Si el vendedor ya lo sabe de forma explícita y lo dice correctamente, no tiene sentido negarlo de manera artificial.",
+    },
+}
+
 
 def _load_persona_defaults() -> dict[str, dict[str, object]]:
     path = Path(__file__).resolve().parent.parent / "prompts" / "persona.json"
@@ -43,6 +123,17 @@ def _load_persona_defaults() -> dict[str, dict[str, object]]:
     if not isinstance(policy, dict) or not isinstance(expressive, dict):
         return EMERGENCY_PERSONA_DEFAULTS
     return {"policy": policy, "expressive": expressive}
+
+
+def _load_negotiation_brief_defaults() -> dict[str, object]:
+    path = Path(__file__).resolve().parent.parent / "prompts" / "negotiation_brief.json"
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return EMERGENCY_NEGOTIATION_BRIEF_DEFAULTS
+    if not isinstance(raw, dict):
+        return EMERGENCY_NEGOTIATION_BRIEF_DEFAULTS
+    return raw
 
 
 class SessionMeta(BaseModel):
@@ -91,6 +182,74 @@ class PersonaState(BaseModel):
     model_config = ConfigDict(extra="forbid")
     policy: PersonaPolicy
     expressive: PersonaExpressive
+
+
+class NegotiationBriefMarketContext(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    valor_estimado: str
+    lectura: str
+
+
+class NegotiationBriefAlternativeReality(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    resumen: str
+    detalle: str
+    coste_equivalente_aproximado: str
+    lectura: str
+
+
+class NegotiationBriefObjectiveFrame(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    objetivo: str
+    realismo: str
+    criterio: str
+    por_encima_de_eso: str
+
+
+class NegotiationBriefValueItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    elemento: str
+    valor_aproximado_eur: float | None
+    tipo_de_efecto: str
+    lectura: str
+
+
+class NegotiationBriefValueMap(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    nota: str
+    items: list[NegotiationBriefValueItem]
+
+
+class NegotiationBriefBuyerTradeoffItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    elemento: str
+    uso: str
+
+
+class NegotiationBriefBuyerTradeoffs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    puede_ofrecer: list[NegotiationBriefBuyerTradeoffItem]
+
+
+class NegotiationBriefSensitiveInfo(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    no_conviene_revelar_espontaneamente: list[str]
+    lectura: str
+
+
+class NegotiationBriefState(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    schema_version: Literal["negotiation_brief.v1"]
+    contexto_de_mercado: NegotiationBriefMarketContext
+    realidad_de_la_alternativa: NegotiationBriefAlternativeReality
+    objetivo_y_marco_de_decision: NegotiationBriefObjectiveFrame
+    mapa_de_valor: NegotiationBriefValueMap
+    monedas_de_intercambio_del_comprador: NegotiationBriefBuyerTradeoffs
+    informacion_privada_sensible: NegotiationBriefSensitiveInfo
+
+
+def _default_negotiation_brief_state() -> NegotiationBriefState:
+    return NegotiationBriefState.model_validate(_load_negotiation_brief_defaults())
 
 
 class MemoryEpisodicItem(BaseModel):
@@ -194,6 +353,7 @@ class CanonicalState(BaseModel):
     session: SessionMeta
     openai_thread: OpenAIThreadState
     persona: PersonaState
+    negotiation_brief: NegotiationBriefState = Field(default_factory=_default_negotiation_brief_state)
     memory_episodic: list[MemoryEpisodicItem]
     memory_working: MemoryWorkingState
     negotiation_state: NegotiationState
@@ -212,6 +372,7 @@ def build_default_canonical_state(
 ) -> CanonicalState:
     timestamp = now_iso or datetime.now(timezone.utc).isoformat()
     persona_defaults = _load_persona_defaults()
+    negotiation_brief_defaults = _load_negotiation_brief_defaults()
     return CanonicalState(
         session=SessionMeta(
             session_id=session_id,
@@ -225,6 +386,7 @@ def build_default_canonical_state(
             policy=PersonaPolicy.model_validate(persona_defaults["policy"]),
             expressive=PersonaExpressive.model_validate(persona_defaults["expressive"]),
         ),
+        negotiation_brief=NegotiationBriefState.model_validate(negotiation_brief_defaults),
         memory_episodic=[],
         memory_working=MemoryWorkingState(current_topic=None, pending_question=None, last_turn_summary=None),
         negotiation_state=NegotiationState(

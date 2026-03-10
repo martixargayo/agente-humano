@@ -458,6 +458,7 @@ def build_planner_input(canonical_state: CanonicalState, recent_dialogue: Sequen
             output_schema_version="planner.v3",
         ),
         persona_policy=canonical_state.persona.policy,
+        negotiation_brief=canonical_state.negotiation_brief,
         current_phase=current_phase,
         phase_card=phase_card,
         user_turn=user_turn,
