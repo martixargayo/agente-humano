@@ -36,7 +36,17 @@ def test_api_negotiation_turn_returns_canonical_metadata(monkeypatch):
         return SimpleNamespace(
             reply="ok",
             updated_state=SessionState(user_id="u", session_id="s"),
-            turn_trace=SimpleNamespace(),
+            turn_trace=SimpleNamespace(
+                conversation_id_before=None,
+                previous_response_id_before=None,
+                memory_input_hash="m",
+                phase_input_hash="ph",
+                planner_input_hash="pl_in",
+                executor_input_hash="ex_in",
+                planner_output_hash="pl_out",
+                executor_output_before_guardrail_hash="ex_out",
+                final_reply_text="ok",
+            ),
             effective_config={"a": 1},
             effective_config_hash="hash123",
             execution_profile=NegotiationExecutionProfile.canonical_negotiation,
@@ -64,6 +74,7 @@ def test_api_negotiation_turn_returns_canonical_metadata(monkeypatch):
     assert payload["execution_profile"] == "canonical_negotiation"
     assert payload["channel"] == "avatar"
     assert payload["prompts_dir_effective"] == "/tmp/prompts"
+    assert payload["trace_probe"]["planner_output_hash"] == "pl_out"
 
 
 def test_negociar_is_thin_wrapper_over_canonical(monkeypatch):

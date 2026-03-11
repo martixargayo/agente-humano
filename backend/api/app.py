@@ -304,6 +304,7 @@ class NegotiationTurnResponse(BaseModel):
     execution_profile: str
     channel: str
     prompts_dir_effective: str
+    trace_probe: dict[str, str | None]
 
 
 class NegotiationResetRequest(BaseModel):
@@ -350,7 +351,9 @@ def _ensure_namespaced_session_id(session_id: str, namespace: str) -> str:
 
 def _resolve_negotiation_session_id(*, channel: str, session_id: str) -> str:
     if channel == "avatar":
-        return _ensure_namespaced_session_id(session_id, "neg")
+        # Avatar negociación debe usar la misma semántica de sesión que el canónico
+        # del optimizador (sin namespacing oculto), para evitar bifurcación de estado.
+        return session_id
     return session_id
 
 
@@ -376,6 +379,17 @@ def _run_canonical_negotiation(payload: NegotiationTurnRequest) -> NegotiationTu
         execution_profile=result.execution_profile.value,
         channel=result.channel.value,
         prompts_dir_effective=result.prompts_dir_effective,
+        trace_probe={
+            "conversation_id_before": result.turn_trace.conversation_id_before,
+            "previous_response_id_before": result.turn_trace.previous_response_id_before,
+            "memory_input_hash": result.turn_trace.memory_input_hash,
+            "phase_input_hash": result.turn_trace.phase_input_hash,
+            "planner_input_hash": result.turn_trace.planner_input_hash,
+            "executor_input_hash": result.turn_trace.executor_input_hash,
+            "planner_output_hash": result.turn_trace.planner_output_hash,
+            "executor_output_before_guardrail_hash": result.turn_trace.executor_output_before_guardrail_hash,
+            "final_reply_text": result.turn_trace.final_reply_text,
+        },
     )
 
 

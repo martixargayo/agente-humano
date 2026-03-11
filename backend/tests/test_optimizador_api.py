@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from api.app import app
 from negociacion.optimizador import datasets_bridge, experiments_bridge, services, storage
-from sessions.state import SESSIONS, get_session_state
+from sessions.state import SESSIONS, get_session_state, reset_session_state
 
 client = TestClient(app)
 
@@ -218,6 +218,7 @@ def test_overrides_scope_and_validation_and_application(monkeypatch):
         })()
 
     monkeypatch.setattr(services, "run_negotiation_turn_canonical", _fake_canonical)
+
     run = client.post(
         "/api/optimizador/sandbox/turn",
         json={"optimizer_session_id": "default", "user_id": "u1", "session_id": "s1", "message": "hola", "conversation_id": "conv-1"},
@@ -318,6 +319,7 @@ def test_contextual_phase_cards_and_persona_used_and_tracked(monkeypatch):
         })()
 
     monkeypatch.setattr(services, "run_negotiation_turn_canonical", _fake_canonical)
+
     r = client.post(
         "/api/optimizador/sandbox/turn",
         json={"optimizer_session_id": "default", "user_id": "u1", "session_id": "s1", "message": "hola", "conversation_id": "conv-1"},
@@ -328,6 +330,74 @@ def test_contextual_phase_cards_and_persona_used_and_tracked(monkeypatch):
 
     turn = services.get_turn("sandbox_ctx")
     assert turn and turn.get("_optimizador", {}).get("applied_overrides", {}).get("contextual")
+
+
+def test_avatar_and_optimizer_canonical_endpoints_match_on_clean_text_turn(monkeypatch):
+    from datetime import datetime, timezone
+    from negociacion.orchestration import flow_config as flow
+
+    class _FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(flow.uuid, "uuid4", lambda: "turn-fixed-cmp")
+    monkeypatch.setattr(flow, "datetime", _FixedDateTime)
+
+    SESSIONS.clear()
+    experiments_bridge.reset_state("default")
+
+    user_id = "u_cmp"
+    session_id = "s_cmp"
+    message = "Hola, quiero hablar del precio."
+
+    avatar_res = client.post(
+        "/api/negotiation/turn",
+        json={
+            "user_id": user_id,
+            "session_id": session_id,
+            "message": message,
+            "channel": "avatar",
+            "execution_profile": "canonical_negotiation",
+        },
+    )
+    assert avatar_res.status_code == 200
+    avatar_payload = avatar_res.json()
+    avatar_trace = avatar_payload["trace_probe"]
+
+    # Limpiar sesión para que el optimizador canónico arranque desde estado idéntico.
+    reset_session_state(user_id, session_id)
+
+    optimizer_res = client.post(
+        "/api/optimizador/sandbox/turn",
+        json={
+            "optimizer_session_id": "default",
+            "user_id": user_id,
+            "session_id": session_id,
+            "message": message,
+            "conversation_id": None,
+            "scope_turn_id": None,
+            "repeat_from_turn_id": None,
+        },
+    )
+    assert optimizer_res.status_code == 200
+    optimizer_payload = optimizer_res.json()
+    turn_id = optimizer_payload["turn"]["turn_id"]
+    turn = client.get(f"/api/optimizador/turns/{turn_id}").json()
+
+    assert optimizer_payload["execution_profile"] == "canonical_negotiation"
+    assert avatar_payload["effective_config_hash"] == optimizer_payload["effective_config_hash"]
+    assert avatar_payload["prompts_dir_effective"] == optimizer_payload["prompts_dir_effective"]
+
+    assert avatar_trace["conversation_id_before"] == turn.get("conversation_id_before")
+    assert avatar_trace["previous_response_id_before"] == turn.get("previous_response_id_before")
+    assert avatar_trace["memory_input_hash"] == turn["memory_input_hash"]
+    assert avatar_trace["phase_input_hash"] == turn["phase_input_hash"]
+    assert avatar_trace["planner_input_hash"] == turn["planner_input_hash"]
+    assert avatar_trace["executor_input_hash"] == turn["executor_input_hash"]
+    assert avatar_trace["planner_output_hash"] == turn["planner_output_hash"]
+    assert avatar_trace["executor_output_before_guardrail_hash"] == turn["executor_output_before_guardrail_hash"]
+    assert avatar_trace["final_reply_text"] == turn["final_reply_text"]
 
 
 def test_contextual_override_invalid_persona_rejected():

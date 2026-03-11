@@ -203,13 +203,15 @@ const AgentMode = {
   NEGOTIATION: 'negotiation',
 };
 
+const AVATAR_NEGOTIATION_ONLY = true;
+
 const AgentModeLabels = {
   [AgentMode.CHAT]: 'Chat',
   [AgentMode.NEGOTIATION]: 'Negociación',
 };
 
 let currentInputMode = InputMode.TALK;
-let currentAgentMode = AgentMode.CHAT;
+let currentAgentMode = AgentMode.NEGOTIATION;
 let hasMicPermission = false;
 
 const AudioDebug = {
@@ -2531,40 +2533,21 @@ async function requestTTS(text) {
 }
 
 async function fetchAgentReply(message, { mode = AgentMode.CHAT } = {}) {
-  if (mode === AgentMode.NEGOTIATION) {
-    const identity = getOrCreateSessionIdentity(AVATAR_NEGOTIATION_SESSION_STORAGE_KEY, 'avatar_neg');
-    const res = await fetch(`${BACKEND_URL}/api/negotiation/turn`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        user_id: identity.user_id,
-        session_id: identity.session_id,
-        message,
-        channel: 'avatar',
-        execution_profile: 'canonical_negotiation',
-      }),
-    });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`Error agente: ${res.status} ${errText}`);
-    }
-
-    const data = await res.json();
-    return {
-      replyText: data.reply || '',
-      emotion: data.emotion || 'neutral',
-      intensity: data.tone === 'excited' ? 1.25 : data.tone === 'calm' ? 0.8 : 1.0,
-      finishButtonArmed: Boolean(data.finish_button_armed),
-    };
+  if (mode !== AgentMode.NEGOTIATION) {
+    throw new Error('Modo no permitido: avatar solo usa negociación canónica.');
   }
 
-  const endpoint = '/chat';
-  const chatIdentity = getOrCreateSessionIdentity(AVATAR_CHAT_SESSION_STORAGE_KEY, 'avatar_chat');
-  const res = await fetch(`${BACKEND_URL}${endpoint}`, {
+  const identity = getOrCreateSessionIdentity(AVATAR_NEGOTIATION_SESSION_STORAGE_KEY, 'avatar_neg');
+  const res = await fetch(`${BACKEND_URL}/api/negotiation/turn`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_id: chatIdentity.user_id, session_id: chatIdentity.session_id, message }),
+    body: JSON.stringify({
+      user_id: identity.user_id,
+      session_id: identity.session_id,
+      message,
+      channel: 'avatar',
+      execution_profile: 'canonical_negotiation',
+    }),
   });
 
   if (!res.ok) {
@@ -3807,7 +3790,11 @@ function setInputMode(mode) {
 }
 
 function setAgentMode(mode) {
-  const nextMode = Object.values(AgentMode).includes(mode) ? mode : AgentMode.CHAT;
+  const nextMode = AVATAR_NEGOTIATION_ONLY
+    ? AgentMode.NEGOTIATION
+    : Object.values(AgentMode).includes(mode)
+      ? mode
+      : AgentMode.CHAT;
   currentAgentMode = nextMode;
 
   if (ui.conversationModeCurrent) {
@@ -4050,7 +4037,9 @@ async function sendTextTurn(message) {
   updateReplyText('…');
 
   try {
-    const demoTurn = demoFeedbackMode.getReplyForTurn();
+    const demoTurn = currentAgentMode === AgentMode.NEGOTIATION
+      ? { shouldSkipBackend: false, replyText: null }
+      : demoFeedbackMode.getReplyForTurn();
     const turnReply = demoTurn.shouldSkipBackend
       ? {
           replyText: demoTurn.replyText,
