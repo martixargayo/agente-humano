@@ -16,6 +16,7 @@ PHASE_DECISION_HINTS = {
     "propuesta_creativa": {"counter", "ask", "hold"},
     "concesiones_y_ajuste_final": {"counter", "accept", "close", "ask"},
     "formalizacion_del_acuerdo": {"close", "accept", "ask"},
+    "abandono_de_la_negociacion": {"close", "hold", "accept"},
 }
 
 

@@ -21,6 +21,7 @@ class NegotiationPhase(str, Enum):
     propuesta_creativa = "propuesta_creativa"
     concesiones_y_ajuste_final = "concesiones_y_ajuste_final"
     formalizacion_del_acuerdo = "formalizacion_del_acuerdo"
+    abandono_de_la_negociacion = "abandono_de_la_negociacion"
 
 
 class SafetyPolicyAction(str, Enum):
