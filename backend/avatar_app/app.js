@@ -2441,6 +2441,39 @@ function base64ToAudioData(b64, mimeType = 'audio/wav') {
 
 const BACKEND_URL = window.location.origin;
 
+const AVATAR_CHAT_SESSION_STORAGE_KEY = 'avatar_chat_session_v1';
+const AVATAR_NEGOTIATION_SESSION_STORAGE_KEY = 'avatar_negotiation_session_v1';
+
+function createSessionIdentity(prefix) {
+  const random = (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function')
+    ? globalThis.crypto.randomUUID()
+    : `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  return {
+    user_id: `${prefix}_user`,
+    session_id: `${prefix}_${random}`,
+  };
+}
+
+function getOrCreateSessionIdentity(storageKey, prefix) {
+  try {
+    const raw = localStorage.getItem(storageKey);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed.user_id === 'string' && typeof parsed.session_id === 'string') return parsed;
+    }
+  } catch (_) {}
+  const created = createSessionIdentity(prefix);
+  try { localStorage.setItem(storageKey, JSON.stringify(created)); } catch (_) {}
+  return created;
+}
+
+function resetNegotiationSessionIdentity() {
+  const created = createSessionIdentity('avatar_neg');
+  try { localStorage.setItem(AVATAR_NEGOTIATION_SESSION_STORAGE_KEY, JSON.stringify(created)); } catch (_) {}
+  return created;
+}
+
+
 // =========================
 // WARMUP TTS DEL FRONTEND
 // =========================
@@ -2498,11 +2531,40 @@ async function requestTTS(text) {
 }
 
 async function fetchAgentReply(message, { mode = AgentMode.CHAT } = {}) {
-  const endpoint = mode === AgentMode.NEGOTIATION ? '/negociar' : '/chat';
+  if (mode === AgentMode.NEGOTIATION) {
+    const identity = getOrCreateSessionIdentity(AVATAR_NEGOTIATION_SESSION_STORAGE_KEY, 'avatar_neg');
+    const res = await fetch(`${BACKEND_URL}/api/negotiation/turn`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: identity.user_id,
+        session_id: identity.session_id,
+        message,
+        channel: 'avatar',
+        execution_profile: 'canonical_negotiation',
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Error agente: ${res.status} ${errText}`);
+    }
+
+    const data = await res.json();
+    return {
+      replyText: data.reply || '',
+      emotion: data.emotion || 'neutral',
+      intensity: data.tone === 'excited' ? 1.25 : data.tone === 'calm' ? 0.8 : 1.0,
+      finishButtonArmed: Boolean(data.finish_button_armed),
+    };
+  }
+
+  const endpoint = '/chat';
+  const chatIdentity = getOrCreateSessionIdentity(AVATAR_CHAT_SESSION_STORAGE_KEY, 'avatar_chat');
   const res = await fetch(`${BACKEND_URL}${endpoint}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_id: 'web_user', session_id: 'sesion_demo', message }),
+    body: JSON.stringify({ user_id: chatIdentity.user_id, session_id: chatIdentity.session_id, message }),
   });
 
   if (!res.ok) {
@@ -3634,6 +3696,7 @@ const ui = {
   conversationModeOptions: Array.from(document.querySelectorAll('[data-agent-mode]')),
   textInput: document.getElementById('textInput'),
   sendTextBtn: document.getElementById('sendTextBtn'),
+  newNegotiationConversationBtn: document.getElementById('newNegotiationConversationBtn'),
   finishNegotiationBtn: document.getElementById('finishNegotiationBtn'),
 };
 
@@ -4976,3 +5039,24 @@ function drawNeckEditorOverlay() {
 if (DEBUG_EDIT_ENABLED) {
   initNeckEditorOverlay();
 }
+
+
+window.AvatarNegotiationSession = {
+  reset: async () => {
+    const identity = getOrCreateSessionIdentity(AVATAR_NEGOTIATION_SESSION_STORAGE_KEY, 'avatar_neg');
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/negotiation/session/new_conversation`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(identity),
+      });
+      if (res.ok) {
+        const payload = await res.json();
+        const nextIdentity = { user_id: identity.user_id, session_id: payload.session_id };
+        localStorage.setItem(AVATAR_NEGOTIATION_SESSION_STORAGE_KEY, JSON.stringify(nextIdentity));
+        return nextIdentity;
+      }
+    } catch (_) {}
+    return resetNegotiationSessionIdentity();
+  },
+};

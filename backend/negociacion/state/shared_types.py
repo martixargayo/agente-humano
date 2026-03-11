@@ -59,3 +59,13 @@ class SDKCompatibilityStatus(str, Enum):
     compatible = "compatible"
     below_minimum = "below_minimum"
     unknown = "unknown"
+
+
+class NegotiationChannel(str, Enum):
+    avatar = "avatar"
+    optimizer = "optimizer"
+
+
+class NegotiationExecutionProfile(str, Enum):
+    canonical_negotiation = "canonical_negotiation"
+    experimental_negotiation = "experimental_negotiation"

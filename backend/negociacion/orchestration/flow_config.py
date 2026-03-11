@@ -47,6 +47,8 @@ from ..nodes.planner_node import (
     SelectedMemoryItem,
 )
 from ..state.shared_types import (
+    NegotiationChannel,
+    NegotiationExecutionProfile,
     NodeName,
     NegotiationPhase,
     SDKCompatibilityStatus,
@@ -257,6 +259,15 @@ class StateRepository:
             session_state.world_state[f"{self.memory_key}_traces"] = traces
         traces.append(turn_trace.model_dump(mode="json"))
 
+
+
+
+@dataclass
+class NegotiationTurnDetailedResult:
+    reply: str
+    updated_state: SessionState
+    turn_trace: TurnTrace
+    finish_button_armed: bool
 
 def build_negotiation_pipeline_config() -> NegotiationTurnConfig:
     return NegotiationTurnConfig(
@@ -602,6 +613,13 @@ def _hash_text(value: str | None) -> str | None:
     import hashlib
 
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _hash_payload(payload: dict[str, Any]) -> str:
+    import hashlib
+
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -1030,7 +1048,16 @@ def _read_text(path: Path, fallback: str) -> str:
 # Pipeline principal del turno
 # ==================================================
 
-def run_negotiation_cognitive_turn(state: SessionState, user_message: str, config: NegotiationTurnConfig) -> tuple[str, SessionState]:
+def run_negotiation_cognitive_turn_detailed(
+    state: SessionState,
+    user_message: str,
+    config: NegotiationTurnConfig,
+    *,
+    channel: NegotiationChannel = NegotiationChannel.optimizer,
+    execution_profile: NegotiationExecutionProfile = NegotiationExecutionProfile.canonical_negotiation,
+    effective_config: dict[str, Any] | None = None,
+    effective_config_hash: str | None = None,
+) -> NegotiationTurnDetailedResult:
     sdk_info = check_openai_sdk_compatibility(strict=config.enforce_sdk_compatibility)
 
     repo = StateRepository(memory_key=config.memory_key)
@@ -1279,6 +1306,17 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
         schema_version_executor=executor_output.schema_version,
         sdk_compatibility=sdk_info,
         grades=grades,
+        execution_profile=execution_profile.value,
+        channel=channel.value,
+        prompts_dir_effective=str(config.prompts_dir),
+        effective_config_hash=effective_config_hash,
+        effective_config=effective_config if effective_config is not None else config.model_dump(mode="json"),
+        memory_input_hash=memory_frozen.artifacts.payload_hash if input_result.decision != InputGuardrailDecision.block else None,
+        phase_input_hash=phase_frozen.artifacts.payload_hash if input_result.decision != InputGuardrailDecision.block else None,
+        planner_input_hash=planner_frozen.artifacts.payload_hash if input_result.decision != InputGuardrailDecision.block else None,
+        executor_input_hash=executor_frozen.artifacts.payload_hash if input_result.decision != InputGuardrailDecision.block else None,
+        planner_output_hash=_hash_payload(planner_output.model_dump(mode="json")),
+        executor_output_before_guardrail_hash=_hash_payload(executor_output_before_guardrail.model_dump(mode="json")),
         logs=logs,
         nodes=nodes,
     )
@@ -1293,4 +1331,14 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
         repo.append_trace(state, turn_trace)
 
     save_session_state(state)
-    return reply, state
+    return NegotiationTurnDetailedResult(
+        reply=reply,
+        updated_state=state,
+        turn_trace=turn_trace,
+        finish_button_armed=bool(canonical_state.ui_state.finish_button_armed),
+    )
+
+
+def run_negotiation_cognitive_turn(state: SessionState, user_message: str, config: NegotiationTurnConfig) -> tuple[str, SessionState]:
+    detailed = run_negotiation_cognitive_turn_detailed(state, user_message, config)
+    return detailed.reply, detailed.updated_state
