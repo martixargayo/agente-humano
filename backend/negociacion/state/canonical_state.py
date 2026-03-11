@@ -345,6 +345,11 @@ class TraceState(BaseModel):
     last_refusals: list[str] = Field(default_factory=list)
 
 
+class NegotiationUiState(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    finish_button_armed: bool = False
+
+
 class CanonicalState(BaseModel):
     """Fuente mínima de verdad del dominio de negociación."""
 
@@ -359,6 +364,7 @@ class CanonicalState(BaseModel):
     negotiation_state: NegotiationState
     planner_state: PlannerState
     scene_state: SceneState
+    ui_state: NegotiationUiState = Field(default_factory=NegotiationUiState)
     trace: TraceState
 
 
@@ -411,5 +417,6 @@ def build_default_canonical_state(
             encounter_in_progress=True,
             conversation_only=True,
         ),
+        ui_state=NegotiationUiState(finish_button_armed=False),
         trace=TraceState(turn_id=None, last_node_statuses={}, last_fallbacks=[], last_refusals=[]),
     )

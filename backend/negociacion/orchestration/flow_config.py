@@ -54,6 +54,7 @@ from ..state.shared_types import (
     ThreadMode,
 )
 from ..guards.builders import build_input_block_response
+from .finish_button_rules import evaluate_finish_button_triggers
 from ..guards.input import run_input_guardrails
 from ..guards.models import InputGuardrailDecision, InputGuardrailResult, OutputGuardrailDecision, OutputGuardrailResult
 from ..guards.output import run_output_guardrails
@@ -820,6 +821,12 @@ def apply_phase_classifier_output_to_state(canonical_state: CanonicalState, phas
     # /// La lógica de mover tópicos entre current/previous phases depende del contrato final planner-memory y no se define aquí.
 
 
+def apply_finish_button_state(canonical_state: CanonicalState) -> None:
+    armed_prev = canonical_state.ui_state.finish_button_armed
+    trigger_eval = evaluate_finish_button_triggers(canonical_state)
+    canonical_state.ui_state.finish_button_armed = armed_prev or trigger_eval.should_arm
+
+
 # ==================================================
 # E) Guardarraíles
 # ==================================================
@@ -1126,6 +1133,7 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
         phase_output = _resolve_phase_call_result(canonical_state, phase_call)
         apply_memory_output_to_state(canonical_state, memory_patch)
         apply_phase_classifier_output_to_state(canonical_state, phase_output)
+        apply_finish_button_state(canonical_state)
         logs.append(build_memory_node_trace(memory_frozen.payload_snapshot, memory_patch, mem_call, mem_latency, "applied", mem_threading, memory_frozen.artifacts))
         logs.append(build_phase_node_trace(phase_frozen.payload_snapshot, phase_output, phase_call, phase_latency, phase_threading, phase_frozen.artifacts))
 

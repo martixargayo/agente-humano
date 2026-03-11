@@ -2515,6 +2515,7 @@ async function fetchAgentReply(message, { mode = AgentMode.CHAT } = {}) {
     replyText: data.reply || '',
     emotion: data.emotion || 'neutral',
     intensity: data.tone === 'excited' ? 1.25 : data.tone === 'calm' ? 0.8 : 1.0,
+    finishButtonArmed: Boolean(data.finish_button_armed),
   };
 }
 
@@ -3633,6 +3634,7 @@ const ui = {
   conversationModeOptions: Array.from(document.querySelectorAll('[data-agent-mode]')),
   textInput: document.getElementById('textInput'),
   sendTextBtn: document.getElementById('sendTextBtn'),
+  finishNegotiationBtn: document.getElementById('finishNegotiationBtn'),
 };
 
 const chatUiContainers = [
@@ -3648,6 +3650,17 @@ if (DEBUG_EDIT_ENABLED) {
 }
 
 let statusResetId = null;
+let finishButtonArmed = false;
+
+function updateFinishNegotiationButton() {
+  if (!ui.finishNegotiationBtn) return;
+  ui.finishNegotiationBtn.classList.toggle('is-armed', finishButtonArmed);
+}
+
+function armFinishButton(nextArmed) {
+  finishButtonArmed = finishButtonArmed || Boolean(nextArmed);
+  updateFinishNegotiationButton();
+}
 
 function updateReplyText(text) {
   if (!ui.lastReply || !ui.replyContainer) return;
@@ -3983,6 +3996,7 @@ async function sendTextTurn(message) {
         }
       : await fetchAgentReply(message, { mode: currentAgentMode });
 
+    armFinishButton(turnReply.finishButtonArmed);
     updateReplyText(turnReply.replyText);
     await enterSpeaking(turnReply.replyText, {
       emotion: turnReply.emotion,
@@ -4080,6 +4094,14 @@ if (!DEBUG_EDIT_ENABLED) {
   if (ui.sendTextBtn) {
     ui.sendTextBtn.addEventListener('click', handleTextSend);
   }
+
+  if (ui.finishNegotiationBtn) {
+    ui.finishNegotiationBtn.addEventListener('click', () => {
+      console.log('finish button clicked');
+    });
+  }
+
+  updateFinishNegotiationButton();
   if (ui.textInput) {
     ui.textInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {

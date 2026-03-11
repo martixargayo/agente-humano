@@ -284,6 +284,7 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     reply: str
+    finish_button_armed: bool = False
 
 class TTSRequest(BaseModel):
     text: str
@@ -311,7 +312,7 @@ def chat_endpoint(payload: ChatRequest):
         )
 
         reply, _ = run_agent(state, payload.message)
-        return ChatResponse(reply=reply)
+        return ChatResponse(reply=reply, finish_button_armed=False)
 
     except Exception as e:
         raise HTTPException(
@@ -327,8 +328,14 @@ def negociar_endpoint(payload: ChatRequest):
             session_id=payload.session_id,
         )
 
-        reply, _ = run_negotiation_agent(state, payload.message)
-        return ChatResponse(reply=reply)
+        reply, updated_state = run_negotiation_agent(state, payload.message)
+        finish_button_armed = False
+        negotiation_canonical = updated_state.world_state.get("negotiation_canonical", {}) if isinstance(updated_state.world_state, dict) else {}
+        if isinstance(negotiation_canonical, dict):
+            ui_state = negotiation_canonical.get("ui_state", {})
+            if isinstance(ui_state, dict):
+                finish_button_armed = bool(ui_state.get("finish_button_armed", False))
+        return ChatResponse(reply=reply, finish_button_armed=finish_button_armed)
 
     except Exception as e:
         raise HTTPException(
