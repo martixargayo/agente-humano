@@ -294,6 +294,14 @@ class TentativeAgreement(BaseModel):
     conditions: list[str] = Field(default_factory=list)
 
 
+class NegotiationStallState(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    is_hard_stalemate: bool = False
+    stalemate_reason: str | None = None
+    self_ultimatum_active: bool = False
+    self_ultimatum_summary: str | None = None
+
+
 class NegotiationState(BaseModel):
     model_config = ConfigDict(extra="forbid")
     status: str = "inactive"
@@ -301,6 +309,7 @@ class NegotiationState(BaseModel):
     last_offer_self: NegotiationOffer | None = None
     last_offer_other: NegotiationOffer | None = None
     tentative_agreement: TentativeAgreement | None = None
+    stall_state: NegotiationStallState = Field(default_factory=NegotiationStallState)
     blockers: list[str] = Field(default_factory=list)
     next_open_loop: str | None = None
 
@@ -401,6 +410,12 @@ def build_default_canonical_state(
             last_offer_self=None,
             last_offer_other=None,
             tentative_agreement=None,
+            stall_state=NegotiationStallState(
+                is_hard_stalemate=False,
+                stalemate_reason=None,
+                self_ultimatum_active=False,
+                self_ultimatum_summary=None,
+            ),
             blockers=[],
             next_open_loop=None,
         ),

@@ -34,6 +34,12 @@ def _negotiation_base() -> dict[str, object]:
         "last_offer_self": None,
         "last_offer_other": None,
         "tentative_agreement": None,
+        "stall_state": {
+            "is_hard_stalemate": False,
+            "stalemate_reason": None,
+            "self_ultimatum_active": False,
+            "self_ultimatum_summary": None,
+        },
         "blockers": [],
         "next_open_loop": "cerrar precio final",
     }
@@ -407,3 +413,93 @@ def test_memory_negotiation_case_d_tentative_agreement_reaches_planner():
     assert planner_input.negotiation_state.tentative_agreement is not None
     assert planner_input.negotiation_state.last_offer_self is not None
     assert planner_input.negotiation_state.last_offer_other is not None
+
+
+def test_memory_stall_state_defaults_for_normal_active_negotiation():
+    output = MemoryOutput.model_validate(
+        {
+            "schema_version": "memory.v1",
+            "episodic_append": [],
+            "working_memory_new": {"current_topic": "precio", "pending_question": None, "last_turn_summary": "contraoferta normal"},
+            "negotiation_state": _negotiation_base(),
+        }
+    )
+
+    assert output.negotiation_state.stall_state.is_hard_stalemate is False
+    assert output.negotiation_state.stall_state.stalemate_reason is None
+    assert output.negotiation_state.stall_state.self_ultimatum_active is False
+    assert output.negotiation_state.stall_state.self_ultimatum_summary is None
+
+
+def test_memory_stall_state_hard_stalemate_with_reason():
+    output = MemoryOutput.model_validate(
+        {
+            "schema_version": "memory.v1",
+            "episodic_append": [],
+            "working_memory_new": {"current_topic": "precio", "pending_question": None, "last_turn_summary": "sin convergencia tras varias rondas"},
+            "negotiation_state": {
+                **_negotiation_base(),
+                "stall_state": {
+                    "is_hard_stalemate": True,
+                    "stalemate_reason": "multiple_adjustments_without_convergence",
+                    "self_ultimatum_active": False,
+                    "self_ultimatum_summary": None,
+                },
+            },
+        }
+    )
+
+    assert output.negotiation_state.stall_state.is_hard_stalemate is True
+    assert output.negotiation_state.stall_state.stalemate_reason == "multiple_adjustments_without_convergence"
+
+
+def test_memory_stall_state_assistant_ultimatum_active_with_summary():
+    output = MemoryOutput.model_validate(
+        {
+            "schema_version": "memory.v1",
+            "episodic_append": [],
+            "working_memory_new": {"current_topic": "cierre", "pending_question": None, "last_turn_summary": "assistant marcó última propuesta"},
+            "negotiation_state": {
+                **_negotiation_base(),
+                "stall_state": {
+                    "is_hard_stalemate": True,
+                    "stalemate_reason": "price_gap_persistent",
+                    "self_ultimatum_active": True,
+                    "self_ultimatum_summary": "Máximo 7000 EUR con garantía de 1 año",
+                },
+            },
+        }
+    )
+
+    assert output.negotiation_state.stall_state.self_ultimatum_active is True
+    assert output.negotiation_state.stall_state.self_ultimatum_summary is not None
+
+
+def test_memory_stall_state_firm_counteroffer_is_not_ultimatum():
+    output = MemoryOutput.model_validate(
+        {
+            "schema_version": "memory.v1",
+            "episodic_append": [],
+            "working_memory_new": {"current_topic": "precio", "pending_question": None, "last_turn_summary": "contraoferta firme"},
+            "negotiation_state": {
+                **_negotiation_base(),
+                "stall_state": {
+                    "is_hard_stalemate": False,
+                    "stalemate_reason": None,
+                    "self_ultimatum_active": False,
+                    "self_ultimatum_summary": None,
+                },
+            },
+        }
+    )
+
+    assert output.negotiation_state.stall_state.self_ultimatum_active is False
+
+
+def test_canonical_state_includes_stall_state_defaults_and_schema_compatibility():
+    state = build_default_canonical_state(session_id="s-stall", thread_mode=ThreadMode.conversation)
+
+    assert state.negotiation_state.stall_state.is_hard_stalemate is False
+    assert state.negotiation_state.stall_state.stalemate_reason is None
+    assert state.negotiation_state.stall_state.self_ultimatum_active is False
+    assert state.negotiation_state.stall_state.self_ultimatum_summary is None
