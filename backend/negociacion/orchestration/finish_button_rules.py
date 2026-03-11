@@ -18,4 +18,7 @@ def evaluate_finish_button_triggers(canonical_state: CanonicalState) -> FinishBu
     if canonical_state.planner_state.current_phase == NegotiationPhase.formalizacion_del_acuerdo:
         reasons.append("phase_formalizacion_del_acuerdo")
 
+    if canonical_state.planner_state.current_phase == NegotiationPhase.abandono_de_la_negociacion:
+        reasons.append("phase_abandono_de_la_negociacion")
+
     return FinishButtonTriggerEvaluation(should_arm=bool(reasons), reasons=tuple(reasons))

@@ -28,3 +28,14 @@ def test_load_phase_cards_supports_other_phase_without_placeholder_only_payload(
     assert "good_moves" in formalizacion
     assert "avoid" in formalizacion
     assert formalizacion.get("guidance")
+
+
+def test_load_phase_cards_supports_abandono_phase():
+    cards = _load_phase_cards("backend/negociacion/prompts")
+
+    abandono = cards[NegotiationPhase.abandono_de_la_negociacion].model_dump(mode="json")
+    assert abandono["phase"] == "abandono_de_la_negociacion"
+    assert "phase_objective" in abandono
+    assert "good_moves" in abandono
+    assert "avoid" in abandono
+    assert abandono.get("guidance")

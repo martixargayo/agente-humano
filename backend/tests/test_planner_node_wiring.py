@@ -96,6 +96,24 @@ def test_build_planner_input_injects_full_phase_card_from_source_of_truth():
     assert phase_card["question_policy"]["default_max_questions"] == 0
     assert "done_signals" in phase_card
     assert phase_card.get("guidance")
+
+
+def test_build_planner_input_uses_abandono_phase_card_when_current_phase_is_abandono():
+    state = _build_state()
+    state.planner_state.current_phase = NegotiationPhase.abandono_de_la_negociacion
+    user_turn = _build_user_turn("Gracias, lo dejamos aquí", "2026-01-01T00:00:00Z")
+    trace_meta = {
+        "turn_id": "10c",
+        "prompt_version": "planner_v3",
+        "schema_version": "planner_input.v1",
+        "model_target": "o4-mini",
+    }
+
+    payload = build_planner_input(state, [], user_turn, trace_meta, "backend/negociacion/prompts")  # type: ignore[arg-type]
+    dumped = payload.model_dump(mode="json")
+
+    assert dumped["current_phase"] == "abandono_de_la_negociacion"
+    assert dumped["phase_card"]["phase"] == "abandono_de_la_negociacion"
 def test_planner_output_fields_are_exact_and_forbid_legacy_keys():
     assert set(PlannerOutput.model_fields.keys()) == {
         "schema_version",

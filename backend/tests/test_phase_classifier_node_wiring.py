@@ -81,6 +81,16 @@ def test_phase_output_schema_contract():
     assert output.schema_version == PHASE_CLASSIFIER_OUTPUT_SCHEMA_VERSION
 
 
+def test_phase_output_schema_accepts_abandono_phase():
+    output = PhaseClassifierOutput.model_validate(
+        {
+            "schema_version": "phase_classifier.v1",
+            "current_phase": "abandono_de_la_negociacion",
+        }
+    )
+    assert output.current_phase == NegotiationPhase.abandono_de_la_negociacion
+
+
 def test_apply_phase_output_updates_only_current_previous_phase():
     state = _build_state()
     output = PhaseClassifierOutput(schema_version="phase_classifier.v1", current_phase=NegotiationPhase.propuesta_creativa)
@@ -159,6 +169,7 @@ def test_phase_cards_placeholder_file_exists_and_has_all_phases():
         NegotiationPhase.propuesta_creativa,
         NegotiationPhase.concesiones_y_ajuste_final,
         NegotiationPhase.formalizacion_del_acuerdo,
+        NegotiationPhase.abandono_de_la_negociacion,
     }
 
     path = PROMPTS_DIR / "phase_cards.json"
@@ -169,6 +180,7 @@ def test_phase_cards_placeholder_file_exists_and_has_all_phases():
         "propuesta_creativa",
         "concesiones_y_ajuste_final",
         "formalizacion_del_acuerdo",
+        "abandono_de_la_negociacion",
     }
 
 
@@ -208,6 +220,13 @@ def test_phase_cards_custom_prompts_dir_is_used_by_planner_and_executor(tmp_path
                 "formalizacion_del_acuerdo": {
                     "phase_id": "formalizacion_del_acuerdo",
                     "objective": "f",
+                    "normal_moves": [],
+                    "stay_in_phase_when": [],
+                    "exit_phase_when": [],
+                },
+                "abandono_de_la_negociacion": {
+                    "phase_id": "abandono_de_la_negociacion",
+                    "objective": "a",
                     "normal_moves": [],
                     "stay_in_phase_when": [],
                     "exit_phase_when": [],

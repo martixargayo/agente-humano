@@ -30,6 +30,18 @@ def test_finish_button_latch_stays_armed_after_phase_changes():
     apply_finish_button_state(state)
     assert state.ui_state.finish_button_armed is True
 
+
+def test_finish_button_rule_arms_on_abandono_phase():
+    state = build_default_canonical_state(session_id="s1", thread_mode=ThreadMode.conversation)
+    state.planner_state.current_phase = NegotiationPhase.abandono_de_la_negociacion
+
+    evaluation = evaluate_finish_button_triggers(state)
+
+    assert evaluation.should_arm is True
+    assert "phase_abandono_de_la_negociacion" in evaluation.reasons
+    apply_finish_button_state(state)
+    assert state.ui_state.finish_button_armed is True
+
     apply_phase_classifier_output_to_state(
         state,
         PhaseClassifierOutput(
