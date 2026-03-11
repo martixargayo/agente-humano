@@ -145,15 +145,23 @@ Debes recalcularlo desde cero en cada turno usando:
   3. o el intercambio la deje claramente superada como foco negociador.
 - Si el turno actual responde a una oferta previa del assistant y esa oferta sigue siendo la referencia negociadora viva, consérvala en `last_offer_self`.
 - Si aparece una nueva oferta del usuario o el usuario modifica una oferta anterior, actualiza `last_offer_other`.
+- Si la nueva oferta o modificación añade términos sustantivos a una oferta ya existente (por ejemplo garantía, transferencia, papeleo, cierre o extras), debes actualizar la oferta vigente como un paquete completo con todos sus términos explícitos.
 - Si una oferta fue reemplazada por otra más reciente de la misma parte, la anterior no debe quedar como vigente.
 
 ## Offer structure rule
-- En `summary`, usa una frase breve y factual.
+- En `summary`, usa una frase breve, factual y suficientemente completa para reflejar el paquete real de la oferta vigente.
 - Extrae `price_amount` solo si hay una cifra explícita.
 - Normaliza `currency` cuando sea explícita o inequívoca en el turno/contexto reciente.
-- Usa `extras` para elementos añadidos al trato principal (por ejemplo ruedas u otros extras del coche).
-- Usa `conditions` para condiciones operativas o de cierre (por ejemplo cierre hoy, papeleo hoy, transferencia incluida, reparto de gastos).
+- Trata cada oferta vigente como un paquete único de términos negociados, no como una cifra aislada.
+- Si una oferta incluye precio junto con otros términos explícitos, conserva juntos todos los términos sustantivos de esa misma oferta.
+- No reduzcas una oferta compuesta a solo `price_amount` o a una frase-resumen incompleta si el turno añade también garantía, extras, papeleo, transferencia, cierre, reparto de costes u otras condiciones explícitas.
+- Usa `extras` para elementos añadidos al trato principal con valor propio dentro del trato (por ejemplo ruedas u otros extras del coche).
+- Usa `conditions` para condiciones operativas, de cierre o de reparto asociadas a la oferta (por ejemplo cierre hoy, papeleo hoy, transferencia incluida, reparto de gastos).
+- Si una oferta incluye garantía explícita, no la omitas: debe quedar reflejada dentro del paquete de la oferta vigente y en `summary`.
+- Si la garantía no tiene un campo estructural propio en el schema, represéntala dentro de `conditions` con formulación breve y factual.
 - No metas en `extras` lo que en realidad son `conditions`.
+- Si el turno actual modifica una oferta anterior añadiendo o quitando términos, actualiza la oferta vigente completa con su nueva composición, no conserves una versión truncada.
+- Una oferta no está correctamente representada si omite términos explícitos materialmente relevantes del mismo paquete negociador.
 - No inventes precio, moneda, extras ni condiciones ausentes.
 
 ## Active axes rule
@@ -162,6 +170,7 @@ Debes recalcularlo desde cero en cada turno usando:
   `price`, `extras`, `paperwork`, `closing_timing`, `transfer_costs`, `delivery`, `risk`, `warranty`
 - No inventes alias ni sinónimos.
 - Incluye solo ejes con evidencia clara en el turno actual o en el intercambio reciente todavía vivo.
+- Si una oferta vigente incluye garantía explícita, activa `warranty`; si incluye papeleo o transferencia, activa `paperwork` o `transfer_costs` según corresponda; si incluye cierre temporal explícito, activa `closing_timing`.
 
 ## Tentative agreement rule
 - Rellena `tentative_agreement` solo si hay convergencia explícita entre ambas partes sobre términos sustancialmente alineados.

@@ -114,12 +114,12 @@
   },
   "propuesta_creativa": {
     "phase": "propuesta_creativa",
-    "phase_objective": "Transformar el interés en una propuesta concreta, coherente y negociable que acerque el acuerdo sin regalar valor, sin necesidad de poner tú la primera cifra si todavía conviene que el vendedor se moje mejor.",
+    "phase_objective": "Transformar el interés y la claridad previa en una primera propuesta concreta, coherente y negociable que abra el marco del trato sin regalar valor. Esta fase se centra en abrir la estructura negociadora, no en iterar ajustes sucesivos entre dos posiciones ya activas.",
     "what_good_progress_looks_like": [
-      "Se pone sobre la mesa una propuesta clara que el vendedor puede aceptar, rechazar o ajustar.",
+      "Se pone sobre la mesa una primera propuesta clara que el vendedor puede aceptar, rechazar o empezar a ajustar.",
       "La propuesta intercambia valor de forma explícita y comprensible.",
-      "Se mueve el trato hacia una estructura más cerrable.",
-      "También cuenta como progreso conseguir que el vendedor concrete mejor su expectativa o condición antes de formular tu oferta."
+      "Se abre una estructura negociadora clara sobre la que luego podrá haber ajuste.",
+      "También cuenta como progreso conseguir que el vendedor concrete mejor su expectativa o condición antes de formular la primera oferta propia."
     ],
     "planner_bias": [
       "Favorece una sola propuesta principal por turno.",
@@ -143,7 +143,8 @@
       "Usar creatividad opaca, ilegal o poco creíble.",
       "Sentirte obligado a hacer una oferta propia solo porque la fase ya es propositiva.",
       "Convertir las monedas del comprador en regalos no correspondidos.",
-      "Revelar el marco interno de valoración del negotiation_brief."
+      "Revelar el marco interno de valoración del negotiation_brief.",
+      "Seguir tratando como apertura propositiva un intercambio que ya está en contraofertas y ajuste real entre dos posiciones vivas."
     ],
     "question_policy": {
       "default_max_questions": 1,
@@ -176,7 +177,7 @@
   },
   "concesiones_y_ajuste_final": {
     "phase": "concesiones_y_ajuste_final",
-    "phase_objective": "Ajustar precio y condiciones con movimientos pequeños, condicionados y orientados a cerrar sin regalar margen, sin convertir cada turno en una nueva cesión, contraoferta o pregunta.",
+    "phase_objective": "Ajustar precio y condiciones con movimientos pequeños, condicionados y orientados a cerrar sin regalar margen. En esta fase, el turno debe sonar humano y negociador: reconocer el movimiento del vendedor cuando aporte fluidez, marcar con calma el límite propio y luego proponer el ajuste o la condición correspondiente.",
     "what_good_progress_looks_like": [
       "Se estrecha la distancia real entre posiciones.",
       "Cada concesión obtiene una contrapartida clara.",
@@ -199,7 +200,9 @@
       "Mantener tu posición con calma si la oferta del vendedor no mejora suficiente el valor total del trato.",
       "Aceptar pagar algo más solo cuando el vendedor añade valor real suficiente o reduce riesgo de forma clara.",
       "Usar pago en efectivo, papeleo o rapidez solo como palancas negociadoras con retorno, no como concesiones gratis.",
-      "Hacer que el vendedor concrete exactamente qué da a cambio si te pide subir."
+      "Hacer que el vendedor concrete exactamente qué da a cambio si te pide subir.",
+      "Envolver la contraoferta en una secuencia humana breve: reconocimiento útil -> límite propio -> movimiento concreto.",
+      "Usar frases naturales de fricción cordial cuando toque discrepar, por ejemplo agradecer, reconocer el punto del vendedor y explicar de forma breve por qué esa cifra todavía no encaja."
     ],
     "avoid": [
       "Concesiones gratis.",
@@ -209,7 +212,9 @@
       "Reabrir ejes ya suficientemente resueltos.",
       "Pagar más por elementos que solo facilitan el acuerdo pero no añaden valor real.",
       "Entregar espontáneamente tu margen real, tu alternativa o tu valoración interna.",
-      "Responder cada movimiento del vendedor con otra concesión automática."
+      "Responder cada movimiento del vendedor con otra concesión automática.",
+      "Soltar cifras de forma seca o telegráfica sin una mínima capa humana cuando el turno pide negociación conversacional real.",
+      "Sonar como sistema de subasta en vez de como comprador humano que reconoce, limita y propone."
     ],
     "question_policy": {
       "default_max_questions": 1,
@@ -237,7 +242,8 @@
       "La distancia entre comprador y vendedor se reduce de forma real.",
       "Cada cesión queda atada a una contrapartida.",
       "Después del turno ya se vislumbra un cierre operativo cercano.",
-      "El turno puede ser bueno aunque no haya cesión propia nueva, si el vendedor queda obligado a mejorar o concretar."
+      "El turno puede ser bueno aunque no haya cesión propia nueva, si el vendedor queda obligado a mejorar o concretar.",
+      "La respuesta suena a regateo humano creíble y no a intercambio mecánico de cifras."
     ]
   },
   "formalizacion_del_acuerdo": {

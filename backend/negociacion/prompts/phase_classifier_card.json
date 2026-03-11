@@ -24,10 +24,12 @@
         "No adelantes de fase por una referencia superficial al coche, al precio o al cierre si el turno aún cumple principalmente otra función.",
         "No retrocedas solo porque aparezca cortesía o cordialidad si la negociación activa sigue en curso."
       ],
-      "dominance_rule": "Si un turno mezcla varias funciones, elige la fase que mejor describe qué intenta avanzar realmente la conversación en ese momento.",
-      "inertia_rule": "En casos ambiguos, favorece continuidad de fase antes que un salto precipitado.",
+      "dominance_rule": "Si un turno mezcla varias funciones, elige la fase que mejor describe qué intenta avanzar realmente la conversación en ese momento. Da prioridad a la función negociadora dominante observable sobre matices de tono o formulación.",
+      "inertia_rule": "En casos ambiguos, favorece continuidad de fase antes que un salto precipitado, salvo que existan señales estructurales claras de una fase posterior ya activa.",
       "multi_step_rule": "Si un solo turno mueve de forma clara la conversación varios pasos hacia adelante, clasifica la fase más avanzada que realmente haya quedado abierta y dominante.",
-      "backward_rule": "Si una conversación avanzada reabre dudas materiales, reabre condiciones o vuelve a pedir claridad básica, puedes retroceder de fase si esa nueva necesidad pasa a dominar el intercambio."
+      "backward_rule": "Si una conversación avanzada reabre dudas materiales, reabre condiciones o vuelve a pedir claridad básica, puedes retroceder de fase si esa nueva necesidad pasa a dominar el intercambio.",
+      "offer_exchange_rule": "Si ya existe al menos una oferta o posición negociadora viva de cada parte y el turno actual o la trayectoria reciente muestran contraofertas, mínimos, subidas, bajadas, cesiones cruzadas, condiciones de cierre o fórmulas de aproximación como 'ni para ti ni para mí', la fase dominante pasa a 'concesiones_y_ajuste_final' aunque siga habiendo creatividad en cómo se empaqueta el trato.",
+      "packaging_rule": "No clasifiques como 'propuesta_creativa' un turno solo porque la contraoferta esté presentada de forma elegante, condicional o creativa. Si la función dominante ya es estrechar distancia entre posiciones existentes, clasifica como 'concesiones_y_ajuste_final'."
     },
     "phase_interpretation": {
       "clima_humano": {
@@ -77,39 +79,56 @@
         ]
       },
       "propuesta_creativa": {
-        "dominant_function": "Transformar el interés y la claridad previa en una propuesta concreta, una opción negociable o un tradeoff claro.",
+        "dominant_function": "Abrir la negociación sustantiva con una primera propuesta concreta, una primera estructura de intercambio o un primer marco negociable antes de que exista un regateo claro entre dos posiciones ya vivas.",
         "positive_signals": [
           "oferta inicial",
-          "propuesta de estructura",
-          "si hacemos X entonces Y",
-          "condición concreta para avanzar",
-          "opción de intercambio",
-          "tradeoff explícito"
+          "primera cifra o primer rango planteado como propuesta",
+          "primera propuesta de estructura",
+          "si hacemos X entonces Y como apertura negociadora",
+          "condición concreta para empezar a avanzar",
+          "opción inicial de intercambio"
         ],
         "stay_when": [
-          "todavía se está formulando o explorando la propuesta",
-          "hay una propuesta concreta pero aún no domina el ajuste fino entre posiciones"
+          "todavía se está formulando la primera propuesta o el primer marco negociable",
+          "solo una de las partes ha revelado posición negociadora y la otra aún no está realmente ajustando"
+        ],
+        "do_not_use_when": [
+          "ya existe al menos una posición negociadora viva de cada parte y el foco pasa a estrechar distancia",
+          "ya hay contraofertas, mínimos, subidas o bajadas sucesivas",
+          "el turno busca ajustar una propuesta previa más que abrir una nueva estructura"
         ],
         "upgrade_to_concesiones_when": [
-          "empiezan ofertas, contraofertas, cifras, ajustes, condiciones cruzadas o movimientos de aproximación real"
+          "aparecen contraofertas o ajustes entre dos posiciones ya visibles",
+          "el foco dominante pasa de abrir propuesta a mover diferencias de precio o condiciones",
+          "surgen mínimos, últimas cifras, cesiones cruzadas o fórmulas de aproximación real"
         ],
         "downgrade_to_descubrimiento_when": [
           "la propuesta se frena porque falta claridad material y la conversación vuelve a explorar información relevante antes de seguir"
         ]
       },
       "concesiones_y_ajuste_final": {
-        "dominant_function": "Ajustar posiciones mediante concesiones, contraofertas, condiciones de cierre o movimientos pequeños para acercar acuerdo.",
+        "dominant_function": "Ajustar dos posiciones negociadoras ya vivas mediante concesiones, contraofertas, mínimos, cesiones cruzadas o condiciones de cierre para estrechar distancia real hacia el acuerdo.",
         "positive_signals": [
-          "cifra",
           "contraoferta",
+          "mínimo aceptable",
           "último ajuste",
+          "ni para ti ni para mí",
           "subo si tú haces X",
-          "cierro si se cumple Y",
+          "mantengo esta cifra si incluyes Y",
           "reparto de costes",
-          "ajuste de condiciones"
+          "ajuste de condiciones",
+          "movimiento pequeño para acercar posiciones",
+          "intercambio explícito entre precio y condiciones"
+        ],
+        "entry_signals": [
+          "ya existe una oferta o posición viva de cada parte",
+          "el foco dominante ya no es abrir una propuesta sino reducir distancia",
+          "las cifras o condiciones se mueven sobre una propuesta previa ya establecida"
         ],
         "stay_when": [
-          "la conversación gira principalmente sobre cerrar diferencias y afinar condiciones"
+          "la conversación gira principalmente sobre cerrar diferencias y afinar condiciones",
+          "cada nuevo turno ajusta una posición previa en vez de abrir un marco nuevo",
+          "sigue habiendo negociación sustancial abierta aunque aparezcan frases cordiales o envoltorio creativo"
         ],
         "upgrade_to_formalizacion_when": [
           "las posiciones ya están suficientemente alineadas y el turno pasa a resumir, confirmar o operacionalizar lo acordado"
@@ -119,7 +138,7 @@
           "se reabre información básica que condiciona el valor real del trato"
         ],
         "downgrade_to_propuesta_when": [
-          "deja de haber ajuste fino y la conversación vuelve a una formulación más abierta de propuesta"
+          "desaparece el ajuste entre posiciones vivas y la conversación vuelve claramente a explorar una estructura más abierta sin regateo activo"
         ]
       },
       "formalizacion_del_acuerdo": {
@@ -158,7 +177,7 @@
       {
         "from": "propuesta_creativa",
         "to": "concesiones_y_ajuste_final",
-        "rule": "No cambies solo porque existe una propuesta. Cambia cuando la conversación entre realmente en ajustes, concesiones, cifras, contrapartidas o aproximación entre posiciones."
+        "rule": "No cambies solo porque existe una propuesta. Cambia en cuanto ya haya una posición negociadora viva de cada parte y el foco dominante pase a ajustar diferencias mediante contraofertas, mínimos, subidas, bajadas, cesiones cruzadas o fórmulas de aproximación como 'ni para ti ni para mí'. En ese punto, aunque el lenguaje siga siendo creativo o cordial, la fase dominante ya es 'concesiones_y_ajuste_final'."
       },
       {
         "from": "concesiones_y_ajuste_final",
@@ -170,6 +189,7 @@
       "No subir de clima_humano a descubrimiento_y_comprension por una simple confirmación de identidad.",
       "No subir de descubrimiento_y_comprension a propuesta_creativa por una valoración genérica sin propuesta concreta.",
       "No subir de propuesta_creativa a concesiones_y_ajuste_final si todavía no hay regateo, ajuste o intercambio real.",
+      "No mantener propuesta_creativa cuando ya existen posiciones vivas de ambas partes y el foco dominante es estrechar distancia con contraofertas, mínimos o concesiones cruzadas.",
       "No subir a formalizacion_del_acuerdo mientras siga habiendo negociación sustancial abierta.",
       "No bajar de una fase activa solo porque aparezca una frase cordial o una cortesía superficial."
     ],
@@ -196,7 +216,12 @@
       "move_to_concesiones_y_ajuste_final": [
         "Por ese precio no llego, pero si lo dejas en X cerramos",
         "Si incluyes la transferencia puedo acercarme",
-        "Yo subo un poco si tú haces esto"
+        "Yo subo un poco si tú haces esto",
+        "7500 es lo mínimo que puedo aceptar",
+        "Ni para ti ni para mí: 7250",
+        "Te mantengo ese precio si incluyo un año de garantía",
+        "Yo podría llegar a X si tú te haces cargo de Y",
+        "No bajo más de esta cifra, pero te doy esta condición"
       ],
       "move_to_formalizacion_del_acuerdo": [
         "Entonces quedamos en X con transferencia incluida",
@@ -213,7 +238,10 @@
       "¿La función dominante del turno es relacional, informativa, propositiva, de ajuste o de cierre?",
       "¿La trayectoria reciente sostiene continuidad o hay evidencia suficiente de cambio?",
       "¿La señal nueva es superficial o realmente cambia el objetivo conversacional?",
-      "¿La fase elegida describe mejor lo que toca hacer a continuación?"
+      "¿La fase elegida describe mejor lo que toca hacer a continuación?",
+      "¿Ya hay una posición negociadora viva de cada parte?",
+      "¿El turno intenta abrir una propuesta o ajustar distancia entre propuestas ya abiertas?",
+      "¿Si quitara el tono cordial o creativo, seguiría siendo claramente regateo? Si sí, favorece concesiones_y_ajuste_final."
     ],
     "output_expectation": "Devuelve la fase que mejor represente la necesidad conversacional dominante del momento actual, con criterio estable y sin saltos precipitados."
   }
