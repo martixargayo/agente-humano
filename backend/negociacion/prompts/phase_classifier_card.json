@@ -29,7 +29,9 @@
       "multi_step_rule": "Si un solo turno mueve de forma clara la conversación varios pasos hacia adelante, clasifica la fase más avanzada que realmente haya quedado abierta y dominante.",
       "backward_rule": "Si una conversación avanzada reabre dudas materiales, reabre condiciones o vuelve a pedir claridad básica, puedes retroceder de fase si esa nueva necesidad pasa a dominar el intercambio.",
       "offer_exchange_rule": "Si ya existe al menos una oferta o posición negociadora viva de cada parte y el turno actual o la trayectoria reciente muestran contraofertas, mínimos, subidas, bajadas, cesiones cruzadas, condiciones de cierre o fórmulas de aproximación como 'ni para ti ni para mí', la fase dominante pasa a 'concesiones_y_ajuste_final' aunque siga habiendo creatividad en cómo se empaqueta el trato.",
-      "packaging_rule": "No clasifiques como 'propuesta_creativa' un turno solo porque la contraoferta esté presentada de forma elegante, condicional o creativa. Si la función dominante ya es estrechar distancia entre posiciones existentes, clasifica como 'concesiones_y_ajuste_final'."
+      "packaging_rule": "No clasifiques como 'propuesta_creativa' un turno solo porque la contraoferta esté presentada de forma elegante, condicional o creativa. Si la función dominante ya es estrechar distancia entre posiciones existentes, clasifica como 'concesiones_y_ajuste_final'.",
+      "agreement_activation_rule": "No clasifiques como 'formalizacion_del_acuerdo' por mera cercanía al cierre, buena disposición, propuesta pendiente de aceptación o invitación a cerrar. Usa 'formalizacion_del_acuerdo' solo cuando ya exista evidencia suficientemente clara de acuerdo explícito o aceptación explícita de una propuesta concreta, y el turno actual o la trayectoria inmediata estén confirmando, resumiendo u operacionalizando ese acuerdo ya alcanzado.",
+      "post_agreement_rule": "Una vez existe acuerdo explícito, la conversación puede entrar en 'formalizacion_del_acuerdo' aunque después aparezcan frases sociales, agradecimientos o confirmaciones operativas. Si más tarde se reabren precio o condiciones sustanciales, puede volver a 'concesiones_y_ajuste_final'."
     },
     "phase_interpretation": {
       "clima_humano": {
@@ -142,21 +144,37 @@
         ]
       },
       "formalizacion_del_acuerdo": {
-        "dominant_function": "Confirmar, resumir y dejar operativos los términos ya suficientemente acordados para facilitar el cierre.",
+        "dominant_function": "Confirmar, resumir y dejar operativos unos términos que ya han sido aceptados de forma suficientemente explícita por una o ambas partes. Es una fase post-acuerdo: no sirve para acercarse al acuerdo, sino para verbalizarlo, consolidarlo y cerrar social u operativamente sobre una aceptación ya producida.",
+        "entry_signals": [
+          "una parte acepta explícitamente una propuesta concreta",
+          "una parte confirma de forma clara que acepta el trato",
+          "tras una aceptación explícita previa, el turno actual resume o confirma los términos ya aceptados",
+          "el turno actual ya no intenta mover precio ni condiciones, sino confirmar un acuerdo ya alcanzado"
+        ],
         "positive_signals": [
-          "resumen de acuerdo",
-          "confirmación final",
-          "siguiente paso operativo",
-          "qué incluye",
-          "cómo cerramos",
-          "cuándo hacemos el siguiente paso"
+          "de acuerdo, acepto X",
+          "acepto el trato",
+          "perfecto, entonces lo dejamos en X",
+          "queda cerrado en X con Y",
+          "confirmo el acuerdo en X con Y",
+          "resumen de términos ya aceptados",
+          "confirmación final sobre acuerdo ya alcanzado",
+          "siguiente paso operativo después del acuerdo"
+        ],
+        "do_not_use_when": [
+          "todavía falta que una de las partes acepte explícitamente la última propuesta",
+          "hay una propuesta pendiente de respuesta o aceptación",
+          "solo hay aproximación, buena disposición o sensación de cierre cercano",
+          "se sigue intentando mover precio, garantía, extras o cualquier condición sustancial"
         ],
         "stay_when": [
-          "el foco principal es confirmar y operacionalizar lo ya acordado"
+          "el foco principal es confirmar, resumir, agradecer o operacionalizar lo ya acordado",
+          "el acuerdo explícito ya existe y el intercambio solo lo consolida o lo cierra socialmente"
         ],
         "downgrade_to_concesiones_when": [
           "durante la formalización se reabren precio o condiciones",
-          "aparece una renegociación de último momento"
+          "aparece una renegociación de último momento",
+          "una de las partes deja de tratar los términos como aceptados y vuelve a ajustarlos"
         ],
         "downgrade_to_descubrimiento_when": [
           "se descubre una duda relevante que impide formalizar con seguridad"
@@ -182,7 +200,7 @@
       {
         "from": "concesiones_y_ajuste_final",
         "to": "formalizacion_del_acuerdo",
-        "rule": "No cambies solo porque hay buena disposición. Cambia cuando el foco ya no sea ajustar, sino confirmar lo acordado y preparar el cierre operativo."
+        "rule": "No cambies solo porque hay buena disposición, cercanía al cierre o una propuesta que parece razonable. Cambia solo cuando ya exista aceptación explícita o acuerdo explícito suficientemente claro sobre una propuesta concreta, y el foco pase de ajustar términos a confirmar, resumir o preparar el cierre operativo de ese acuerdo ya alcanzado."
       }
     ],
     "anti_patterns": [
@@ -191,6 +209,7 @@
       "No subir de propuesta_creativa a concesiones_y_ajuste_final si todavía no hay regateo, ajuste o intercambio real.",
       "No mantener propuesta_creativa cuando ya existen posiciones vivas de ambas partes y el foco dominante es estrechar distancia con contraofertas, mínimos o concesiones cruzadas.",
       "No subir a formalizacion_del_acuerdo mientras siga habiendo negociación sustancial abierta.",
+      "No subir a formalizacion_del_acuerdo por una propuesta pendiente de aceptación, una invitación a cerrar o una mera aproximación entre posiciones.",
       "No bajar de una fase activa solo porque aparezca una frase cordial o una cortesía superficial."
     ],
     "borderline_examples": {
@@ -224,9 +243,11 @@
         "No bajo más de esta cifra, pero te doy esta condición"
       ],
       "move_to_formalizacion_del_acuerdo": [
-        "Entonces quedamos en X con transferencia incluida",
-        "Perfecto, resumimos: precio, entrega y papeles",
-        "Si te parece, cerramos así y vemos el siguiente paso"
+        "De acuerdo, acepto 7250 con garantía de 1 año",
+        "Perfecto, entonces lo dejamos en 7250 con garantía de 1 año",
+        "De acuerdo, acepto el trato",
+        "Perfecto, queda cerrado en X con Y",
+        "Confirmo el acuerdo en X con Y"
       ],
       "backward_examples": [
         "Estábamos cerrando, pero antes necesito confirmar si tiene los papeles al día",
@@ -241,7 +262,10 @@
       "¿La fase elegida describe mejor lo que toca hacer a continuación?",
       "¿Ya hay una posición negociadora viva de cada parte?",
       "¿El turno intenta abrir una propuesta o ajustar distancia entre propuestas ya abiertas?",
-      "¿Si quitara el tono cordial o creativo, seguiría siendo claramente regateo? Si sí, favorece concesiones_y_ajuste_final."
+      "¿Si quitara el tono cordial o creativo, seguiría siendo claramente regateo? Si sí, favorece concesiones_y_ajuste_final.",
+      "¿Ya hubo aceptación explícita o acuerdo explícito sobre una propuesta concreta?",
+      "¿El turno actual está confirmando un acuerdo ya alcanzado o todavía intenta conseguirlo?",
+      "Si aún falta un sí claro de alguna parte, no uses formalizacion_del_acuerdo."
     ],
     "output_expectation": "Devuelve la fase que mejor represente la necesidad conversacional dominante del momento actual, con criterio estable y sin saltos precipitados."
   }

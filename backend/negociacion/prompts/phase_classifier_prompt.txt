@@ -38,6 +38,9 @@ No reescribes el estado canónico.
 - No adelantes fase por una mención superficial del asunto principal si el turno sigue siendo principalmente relacional o de encuadre.
 - No retrocedas de fase solo porque aparezca cortesía o una frase social si la función dominante sigue siendo negociadora o sustantiva.
 - Si un turno mezcla varias funciones, elige la fase que mejor describa qué intenta avanzar realmente la conversación ahora mismo.
+- No clasifiques como `formalizacion_del_acuerdo` por mera cercanía al cierre, buena disposición, propuesta pendiente de aceptación o invitación a cerrar.
+- Usa `formalizacion_del_acuerdo` solo cuando ya exista evidencia suficientemente clara de aceptación explícita o acuerdo explícito sobre una propuesta concreta, y el turno actual o la trayectoria inmediata estén confirmando, resumiendo u operacionalizando ese acuerdo ya alcanzado.
+- Si todavía falta un sí claro de alguna de las partes sobre la última propuesta sustancial, favorece `concesiones_y_ajuste_final` antes que `formalizacion_del_acuerdo`.
 
 # Canonical phase guide
 
@@ -67,25 +70,48 @@ Se activa cuando:
 
 ## propuesta_creativa
 Función dominante:
-- poner sobre la mesa una propuesta concreta, una estructura de avance o una condición negociable.
+- abrir la negociación sustantiva con una primera propuesta concreta, una primera estructura de avance o una primera condición negociable antes de que exista un regateo claro entre dos posiciones ya vivas.
 
 Se activa cuando:
 - ya no solo se explora;
-- aparece una opción concreta, una condición o un planteamiento operativo negociable.
+- aparece una primera opción concreta, una primera condición o un primer planteamiento operativo negociable;
+- todavía no domina el ajuste fino entre dos posiciones ya activas.
+
+No usar cuando:
+- ya existe al menos una posición negociadora viva de cada parte;
+- el foco dominante ya no es abrir propuesta, sino estrechar distancia entre propuestas o condiciones ya puestas sobre la mesa.
 
 ## concesiones_y_ajuste_final
 Función dominante:
-- acercar posiciones mediante ajustes, intercambios, cesiones o condiciones cruzadas.
+- acercar dos posiciones negociadoras ya vivas mediante ajustes, intercambios, cesiones, mínimos o condiciones cruzadas para estrechar distancia real hacia el acuerdo.
 
 Se activa cuando:
-- el foco principal está en afinar diferencias, mover posiciones o ajustar condiciones.
+- el foco principal está en afinar diferencias, mover posiciones o ajustar condiciones;
+- ya existe al menos una oferta o posición negociadora viva de cada parte;
+- el turno actual o la trayectoria reciente muestran contraofertas, mínimos, subidas, bajadas, cesiones cruzadas o fórmulas de aproximación como "ni para ti ni para mí".
+
+No dejar de usar esta fase solo porque:
+- el lenguaje sea cordial;
+- la contraoferta esté formulada de manera elegante, condicional o creativa;
+- parezca que el acuerdo está cerca si todavía no existe aceptación explícita.
 
 ## formalizacion_del_acuerdo
 Función dominante:
-- confirmar, resumir y dejar operativos términos ya suficientemente alineados.
+- confirmar, resumir y dejar operativos unos términos que ya han sido aceptados de forma suficientemente explícita por una o ambas partes.
 
 Se activa cuando:
-- la conversación ya no gira sobre explorar o ajustar, sino sobre confirmar y cerrar operativamente.
+- ya existe aceptación explícita o acuerdo explícito sobre una propuesta concreta;
+- la conversación ya no gira sobre explorar o ajustar, sino sobre confirmar, resumir o cerrar operativamente un acuerdo ya alcanzado.
+
+No se activa cuando:
+- todavía falta que una de las partes acepte la última propuesta;
+- solo hay cercanía al cierre, buena disposición o sensación de acuerdo inminente;
+- el turno actual sigue intentando mover precio, garantía, extras o cualquier condición sustancial.
+
+Lectura correcta:
+- esta es una fase post-acuerdo, no pre-acuerdo.
+- sirve para verbalizar, consolidar y operar un acuerdo ya producido.
+- si durante esta fase se reabren precio o condiciones, puedes volver a `concesiones_y_ajuste_final`.
 
 # Copresent boundary examples
 Si `scene_state.copresent = true` y `scene_state.encounter_in_progress = true`, estos ejemplos tienden a seguir en `clima_humano` si su función dominante es solo encuadre, identidad o motivo del encuentro actual:
@@ -115,6 +141,7 @@ Tu trabajo está completo solo cuando:
 - la fase elegida refleja la función conversacional dominante real del momento;
 - la decisión usa el turno actual y la trayectoria reciente;
 - no hay salto de fase precipitado por señales superficiales;
+- `formalizacion_del_acuerdo` solo se usa cuando existe evidencia suficientemente clara de acuerdo explícito o aceptación explícita ya producida;
 - la salida cumple exactamente el schema `PhaseClassifierOutput`.
 
 # Output contract
