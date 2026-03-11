@@ -5,11 +5,13 @@ from datetime import datetime, timezone
 
 from sessions.state import get_session_state, SessionState
 
-from ..orchestration.flow_config import build_negotiation_pipeline_config, run_negotiation_cognitive_turn
+from ..orchestration.flow_config import build_negotiation_pipeline_config
 from ..state.canonical_state import build_default_canonical_state
-from ..state.shared_types import ThreadMode
+from ..orchestration.turn_service import run_negotiation_turn_canonical
+from ..state.shared_types import NegotiationChannel, NegotiationExecutionProfile, ThreadMode
 from . import datasets_bridge, evals_bridge, experiments_bridge, guardrails_bridge, session_bridge, storage, trace_reader
 from .prompts_bridge import list_prompts as _list_prompts
+
 
 def _apply_contextual_state_overrides(state: Any, config: Any, entries: list[dict[str, Any]]) -> None:
     persona_entry = next((entry for entry in entries if entry.get("category") == "contextual" and entry.get("key") == "persona"), None)
@@ -131,8 +133,20 @@ def run_sandbox_turn(
     )
     config, tempdir = experiments_bridge.apply_overrides(base_config, resolved_entries)
     _apply_contextual_state_overrides(state, config, resolved_entries)
+    execution_profile = (
+        NegotiationExecutionProfile.experimental_negotiation
+        if resolved_entries
+        else NegotiationExecutionProfile.canonical_negotiation
+    )
     try:
-        reply, _ = run_negotiation_cognitive_turn(state, message, config)
+        canonical_result = run_negotiation_turn_canonical(
+            state=state,
+            user_message=message,
+            config=config,
+            channel=NegotiationChannel.optimizer,
+            execution_profile=execution_profile,
+        )
+        reply = canonical_result.reply
     finally:
         if tempdir is not None:
             tempdir.cleanup()
@@ -151,6 +165,10 @@ def run_sandbox_turn(
             "session_key": storage.session_key(user_id, session_id),
             "conversation_id": conversation_id,
             "versioning": versioning,
+            "effective_config_hash": canonical_result.effective_config_hash,
+            "execution_profile": canonical_result.execution_profile.value,
+            "channel": canonical_result.channel.value,
+            "prompts_dir_effective": canonical_result.prompts_dir_effective,
         }
 
     turns = list_turns(user_id, session_id, conversation_id=conversation_id)
@@ -160,6 +178,10 @@ def run_sandbox_turn(
         "turn": selected_turn,
         "turn_title": derive_turn_title(latest, turns) if latest else None,
         "effective_overrides": experiments_bridge.describe_effective_overrides(resolved_entries),
+        "effective_config_hash": canonical_result.effective_config_hash,
+        "execution_profile": canonical_result.execution_profile.value,
+        "channel": canonical_result.channel.value,
+        "prompts_dir_effective": canonical_result.prompts_dir_effective,
     }
 
 

@@ -408,6 +408,24 @@
       color: #93c5fd;
     }
 
+
+    #newNegotiationConversationBtn {
+      border: 1px solid rgba(148, 163, 184, 0.45);
+      background: rgba(255, 255, 255, 0.75);
+      color: #0f172a;
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      display: none;
+    }
+
+    #newNegotiationConversationBtn.visible {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
     .mode-tabs {
       display: inline-flex;
       gap: 6px;
@@ -803,6 +821,7 @@
             <button type="button" class="conversation-mode-option" role="menuitemradio" aria-checked="false" data-agent-mode="negotiation">Negociación</button>
           </div>
         </div>
+        <button id="newNegotiationConversationBtn" type="button" aria-label="Nueva conversación de negociación">Nueva negociación</button>
       </div>
 
       <div id="talkMode" class="bar-content">

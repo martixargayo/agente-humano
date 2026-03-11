@@ -205,7 +205,19 @@ def test_overrides_scope_and_validation_and_application(monkeypatch):
         )
         return "ok", state
 
-    monkeypatch.setattr(services, "run_negotiation_cognitive_turn", fake_run)
+    
+    def _fake_canonical(*, state, user_message, config, channel, execution_profile):
+        reply, updated = fake_run(state, user_message, config)
+        return type("Canonical", (), {
+            "reply": reply,
+            "updated_state": updated,
+            "effective_config_hash": "hash-test",
+            "execution_profile": execution_profile,
+            "channel": channel,
+            "prompts_dir_effective": str(config.prompts_dir),
+        })()
+
+    monkeypatch.setattr(services, "run_negotiation_turn_canonical", _fake_canonical)
     run = client.post(
         "/api/optimizador/sandbox/turn",
         json={"optimizer_session_id": "default", "user_id": "u1", "session_id": "s1", "message": "hola", "conversation_id": "conv-1"},
@@ -293,7 +305,19 @@ def test_contextual_phase_cards_and_persona_used_and_tracked(monkeypatch):
         )
         return "ok", state
 
-    monkeypatch.setattr(services, "run_negotiation_cognitive_turn", fake_run)
+    
+    def _fake_canonical(*, state, user_message, config, channel, execution_profile):
+        reply, updated = fake_run(state, user_message, config)
+        return type("Canonical", (), {
+            "reply": reply,
+            "updated_state": updated,
+            "effective_config_hash": "hash-test",
+            "execution_profile": execution_profile,
+            "channel": channel,
+            "prompts_dir_effective": str(config.prompts_dir),
+        })()
+
+    monkeypatch.setattr(services, "run_negotiation_turn_canonical", _fake_canonical)
     r = client.post(
         "/api/optimizador/sandbox/turn",
         json={"optimizer_session_id": "default", "user_id": "u1", "session_id": "s1", "message": "hola", "conversation_id": "conv-1"},
@@ -438,7 +462,19 @@ def test_repeat_turn_generates_next_version(monkeypatch):
         )
         return "ok", state
 
-    monkeypatch.setattr(services, "run_negotiation_cognitive_turn", fake_run)
+    
+    def _fake_canonical(*, state, user_message, config, channel, execution_profile):
+        reply, updated = fake_run(state, user_message, config)
+        return type("Canonical", (), {
+            "reply": reply,
+            "updated_state": updated,
+            "effective_config_hash": "hash-test",
+            "execution_profile": execution_profile,
+            "channel": channel,
+            "prompts_dir_effective": str(config.prompts_dir),
+        })()
+
+    monkeypatch.setattr(services, "run_negotiation_turn_canonical", _fake_canonical)
     run = client.post("/api/optimizador/sandbox/turn", json={"optimizer_session_id": "default", "user_id": "u1", "session_id": "s1", "message": "hola", "conversation_id": "conv-1", "repeat_from_turn_id": first_id})
     assert run.status_code == 200
     turn = services.get_turn("turn_repeat")

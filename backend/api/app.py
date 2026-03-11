@@ -35,9 +35,11 @@ BACKEND_DIR = BASE_DIR.parent
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from sessions.state import get_session_state
+from sessions.state import get_session_state, reset_session_state
 from agent import run_agent
-from negociacion import run_negotiation_agent
+from negociacion.orchestration.flow_config import build_negotiation_pipeline_config
+from negociacion.orchestration.turn_service import run_negotiation_turn_canonical
+from negociacion.state.shared_types import NegotiationChannel, NegotiationExecutionProfile
 from negociacion.orchestration.flow_config import set_tts_prefetch_hook
 from negociacion.optimizador import router as optimizador_router
 
@@ -286,6 +288,41 @@ class ChatResponse(BaseModel):
     reply: str
     finish_button_armed: bool = False
 
+
+class NegotiationTurnRequest(BaseModel):
+    user_id: str
+    session_id: str
+    message: str
+    channel: Literal["avatar", "optimizer"] = "avatar"
+    execution_profile: Literal["canonical_negotiation", "experimental_negotiation"] = "canonical_negotiation"
+
+
+class NegotiationTurnResponse(BaseModel):
+    reply: str
+    finish_button_armed: bool = False
+    effective_config_hash: str
+    execution_profile: str
+    channel: str
+    prompts_dir_effective: str
+
+
+class NegotiationResetRequest(BaseModel):
+    user_id: str
+    session_id: str
+
+
+
+class NegotiationNewConversationRequest(BaseModel):
+    user_id: str
+    session_id: str
+
+
+class NegotiationNewConversationResponse(BaseModel):
+    user_id: str
+    previous_session_id: str
+    session_id: str
+
+
 class TTSRequest(BaseModel):
     text: str
     user_id: str | None = None
@@ -303,12 +340,82 @@ def health_check():
     return {"status": "ok"}
 
 
+
+
+
+def _ensure_namespaced_session_id(session_id: str, namespace: str) -> str:
+    prefix = f"{namespace}::"
+    return session_id if session_id.startswith(prefix) else f"{prefix}{session_id}"
+
+
+def _resolve_negotiation_session_id(*, channel: str, session_id: str) -> str:
+    if channel == "avatar":
+        return _ensure_namespaced_session_id(session_id, "neg")
+    return session_id
+
+
+def _resolve_chat_session_id(session_id: str) -> str:
+    return _ensure_namespaced_session_id(session_id, "chat")
+
+def _run_canonical_negotiation(payload: NegotiationTurnRequest) -> NegotiationTurnResponse:
+    resolved_session_id = _resolve_negotiation_session_id(channel=payload.channel, session_id=payload.session_id)
+    state = get_session_state(user_id=payload.user_id, session_id=resolved_session_id)
+    config = build_negotiation_pipeline_config()
+    result = run_negotiation_turn_canonical(
+        state=state,
+        user_message=payload.message,
+        config=config,
+        channel=NegotiationChannel(payload.channel),
+        execution_profile=NegotiationExecutionProfile(payload.execution_profile),
+    )
+
+    return NegotiationTurnResponse(
+        reply=result.reply,
+        finish_button_armed=result.finish_button_armed,
+        effective_config_hash=result.effective_config_hash,
+        execution_profile=result.execution_profile.value,
+        channel=result.channel.value,
+        prompts_dir_effective=result.prompts_dir_effective,
+    )
+
+
+@app.post("/api/negotiation/turn", response_model=NegotiationTurnResponse)
+def negotiation_turn_endpoint(payload: NegotiationTurnRequest):
+    try:
+        return _run_canonical_negotiation(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error interno en negociación canónica: {e}")
+
+
+@app.post("/api/negotiation/session/reset")
+def negotiation_reset_endpoint(payload: NegotiationResetRequest):
+    session_id = _resolve_negotiation_session_id(channel="avatar", session_id=payload.session_id)
+    reset_session_state(payload.user_id, session_id)
+    return {"status": "ok", "reset": True, "user_id": payload.user_id, "session_id": session_id}
+
+
+
+@app.post("/api/negotiation/session/new_conversation", response_model=NegotiationNewConversationResponse)
+def negotiation_new_conversation_endpoint(payload: NegotiationNewConversationRequest):
+    previous_session_id = _resolve_negotiation_session_id(channel="avatar", session_id=payload.session_id)
+    reset_session_state(payload.user_id, previous_session_id)
+    timestamp = int(time.time() * 1000)
+    new_session_id = f"{previous_session_id}__newconv__{timestamp}"
+    _ = get_session_state(payload.user_id, new_session_id)
+    return NegotiationNewConversationResponse(
+        user_id=payload.user_id,
+        previous_session_id=previous_session_id,
+        session_id=new_session_id,
+    )
+
 @app.post("/chat", response_model=ChatResponse)
 def chat_endpoint(payload: ChatRequest):
     try:
         state = get_session_state(
             user_id=payload.user_id,
-            session_id=payload.session_id,
+            session_id=_resolve_chat_session_id(payload.session_id),
         )
 
         reply, _ = run_agent(state, payload.message)
@@ -323,20 +430,16 @@ def chat_endpoint(payload: ChatRequest):
 @app.post("/negociar", response_model=ChatResponse)
 def negociar_endpoint(payload: ChatRequest):
     try:
-        state = get_session_state(
-            user_id=payload.user_id,
-            session_id=payload.session_id,
+        response = _run_canonical_negotiation(
+            NegotiationTurnRequest(
+                user_id=payload.user_id,
+                session_id=payload.session_id,
+                message=payload.message,
+                channel="avatar",
+                execution_profile="canonical_negotiation",
+            )
         )
-
-        reply, updated_state = run_negotiation_agent(state, payload.message)
-        finish_button_armed = False
-        negotiation_canonical = updated_state.world_state.get("negotiation_canonical", {}) if isinstance(updated_state.world_state, dict) else {}
-        if isinstance(negotiation_canonical, dict):
-            ui_state = negotiation_canonical.get("ui_state", {})
-            if isinstance(ui_state, dict):
-                finish_button_armed = bool(ui_state.get("finish_button_armed", False))
-        return ChatResponse(reply=reply, finish_button_armed=finish_button_armed)
-
+        return ChatResponse(reply=response.reply, finish_button_armed=response.finish_button_armed)
     except Exception as e:
         raise HTTPException(
             status_code=500,

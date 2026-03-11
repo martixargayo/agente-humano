@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Literal
+from typing import Any, List, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -178,6 +178,19 @@ class TurnTrace(BaseModel):
     schema_version_executor: str
     sdk_compatibility: SDKCompatibilityInfo
     grades: EvalGrades
+
+    execution_profile: str | None = None
+    channel: str | None = None
+    prompts_dir_effective: str | None = None
+    effective_config_hash: str | None = None
+    effective_config: dict[str, Any] | None = None
+
+    memory_input_hash: str | None = None
+    phase_input_hash: str | None = None
+    planner_input_hash: str | None = None
+    executor_input_hash: str | None = None
+    planner_output_hash: str | None = None
+    executor_output_before_guardrail_hash: str | None = None
 
     # Ordered execution timeline, useful for latency/status sequencing.
     # When input_guardrail_decision=="block", cognitive nodes may not run and logs can be empty by design.
