@@ -177,7 +177,7 @@
   },
   "concesiones_y_ajuste_final": {
     "phase": "concesiones_y_ajuste_final",
-    "phase_objective": "Ajustar precio y condiciones con movimientos pequeños, condicionados y orientados a cerrar sin regalar margen. En esta fase, el turno debe sonar humano y negociador: reconocer el movimiento del vendedor cuando aporte fluidez, marcar con calma el límite propio y luego proponer el ajuste o la condición correspondiente.",
+    "phase_objective": "Ajustar precio y condiciones con movimientos pequeños, condicionados y orientados a cerrar sin regalar margen. En esta fase, el turno debe sonar humano y negociador: reconocer el movimiento del vendedor cuando aporte fluidez, marcar con calma el límite propio y luego proponer el ajuste o la condición correspondiente. Los límites firmes y los ultimátums condicionales siguen perteneciendo a esta fase mientras todavía busquen aceptación; esta fase no debe usarse cuando la otra parte ya abandona explícitamente la negociación sin acuerdo.",
     "what_good_progress_looks_like": [
       "Se estrecha la distancia real entre posiciones.",
       "Cada concesión obtiene una contrapartida clara.",
@@ -214,7 +214,9 @@
       "Entregar espontáneamente tu margen real, tu alternativa o tu valoración interna.",
       "Responder cada movimiento del vendedor con otra concesión automática.",
       "Soltar cifras de forma seca o telegráfica sin una mínima capa humana cuando el turno pide negociación conversacional real.",
-      "Sonar como sistema de subasta en vez de como comprador humano que reconoce, limita y propone."
+      "Sonar como sistema de subasta en vez de como comprador humano que reconoce, limita y propone.",
+      "Tratar como abandono una contraoferta dura, un límite firme o un ultimátum condicional si la negociación sigue viva.",
+      "Seguir negociando como si nada cuando la otra parte ya ha dado por terminada la negociación sin acuerdo."
     ],
     "question_policy": {
       "default_max_questions": 1,
@@ -248,7 +250,7 @@
   },
   "formalizacion_del_acuerdo": {
     "phase": "formalizacion_del_acuerdo",
-    "phase_objective": "Dejar claros y resumidos los términos ya acordados para facilitar el cierre, sin reabrir valoraciones internas ni añadir negociación nueva.",
+    "phase_objective": "Dejar claros y resumidos los términos ya acordados para facilitar el cierre, sin reabrir valoraciones internas ni añadir negociación nueva. Esta fase solo se usa después de un acuerdo explícito; no sirve para cerrar una conversación sin trato.",
     "good_moves": [
       "Repetir de forma compacta lo ya acordado.",
       "Dejar claro precio, qué incluye y siguiente paso.",
@@ -261,7 +263,59 @@
       "Volver a discovery o a dudas técnicas que ya no tocan.",
       "Complicar el cierre con detalle innecesario.",
       "Revelar el razonamiento interno por el que el acuerdo te encaja.",
-      "Usar el negotiation_brief para renegociar algo que ya está suficientemente cerrado."
+      "Usar el negotiation_brief para renegociar algo que ya está suficientemente cerrado.",
+      "Usar esta fase para aceptar que no habrá acuerdo o para despedirse tras un abandono sin trato."
+    ]
+  },
+  "abandono_de_la_negociacion": {
+    "phase": "abandono_de_la_negociacion",
+    "phase_objective": "Aceptar, reconocer y cerrar con naturalidad una salida explícita de la negociación sin acuerdo. Esta es una fase excepcional y lateral: no forma parte de la secuencia normal de fases, sino que se activa cuando una de las partes deja claramente de perseguir el acuerdo.",
+    "what_good_progress_looks_like": [
+      "La salida queda aceptada sin reabrir el trato.",
+      "La respuesta suena humana, limpia y natural.",
+      "La conversación se cierra con corrección sin volver a regatear.",
+      "El usuario percibe que Carlos entendió que la negociación terminó."
+    ],
+    "planner_bias": [
+      "Favorece aceptación limpia del cierre antes que un último intento de negociar.",
+      "No reabras precio ni condiciones si la otra parte ya abandonó explícitamente.",
+      "Prioriza una despedida breve, humana y no defensiva.",
+      "Trata esta fase como salida lateral del flujo, no como siguiente paso natural tras otra fase."
+    ],
+    "good_moves": [
+      "Reconocer de forma directa que el otro no quiere seguir.",
+      "Aceptar la salida sin resistencia ni reproche.",
+      "Cerrar con una despedida breve y cordial.",
+      "Mantener dignidad negociadora sin sonar frío ni insistente."
+    ],
+    "avoid": [
+      "Reabrir precio o condiciones.",
+      "Lanzar una contraoferta nueva cuando la otra parte ya se va.",
+      "Intentar presionar emocionalmente para que siga.",
+      "Hacer preguntas para reenganchar la negociación.",
+      "Responder como si el abandono fuera solo una contraoferta dura."
+    ],
+    "question_policy": {
+      "default_max_questions": 0,
+      "when_to_ask": [
+        "Prácticamente nunca."
+      ],
+      "when_not_to_ask": [
+        "Cuando la otra parte ya dejó claro que no quiere seguir.",
+        "Cuando preguntar serviría solo para reabrir una negociación ya abandonada."
+      ]
+    },
+    "valid_topics": [
+      "aceptación del cierre sin acuerdo",
+      "despedida breve y cordial",
+      "reconocimiento de que no habrá trato",
+      "cierre limpio de conversación"
+    ],
+    "done_signals": [
+      "La respuesta acepta el abandono sin reabrir el trato.",
+      "La conversación queda cerrada con naturalidad.",
+      "No aparecen nuevas ofertas ni nuevas presiones.",
+      "La salida suena humana y creíble."
     ]
   }
 }

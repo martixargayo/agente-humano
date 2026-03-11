@@ -14,7 +14,8 @@
       "allowed_transitions": [
         "Puede haber saltos hacia adelante si en un solo turno aparecen señales suficientemente claras de una fase más avanzada.",
         "Puede haber retrocesos si la conversación reabre incertidumbres, vuelve a clima relacional o deshace un cierre que parecía cercano.",
-        "Puede haber turnos mixtos con señales de dos fases; en esos casos debes clasificar la función dominante del turno dentro de la trayectoria reciente."
+        "Puede haber turnos mixtos con señales de dos fases; en esos casos debes clasificar la función dominante del turno dentro de la trayectoria reciente.",
+        "Existe además una fase excepcional y lateral llamada 'abandono_de_la_negociacion' que no forma parte de la secuencia normal del canonical_order y puede activarse desde cualquier fase si una de las partes deja explícitamente de perseguir el acuerdo y el foco pasa a aceptar o cerrar esa salida sin acuerdo."
       ],
       "core_principles": [
         "Clasifica por la función conversacional dominante, no por palabras sueltas.",
@@ -31,7 +32,10 @@
       "offer_exchange_rule": "Si ya existe al menos una oferta o posición negociadora viva de cada parte y el turno actual o la trayectoria reciente muestran contraofertas, mínimos, subidas, bajadas, cesiones cruzadas, condiciones de cierre o fórmulas de aproximación como 'ni para ti ni para mí', la fase dominante pasa a 'concesiones_y_ajuste_final' aunque siga habiendo creatividad en cómo se empaqueta el trato.",
       "packaging_rule": "No clasifiques como 'propuesta_creativa' un turno solo porque la contraoferta esté presentada de forma elegante, condicional o creativa. Si la función dominante ya es estrechar distancia entre posiciones existentes, clasifica como 'concesiones_y_ajuste_final'.",
       "agreement_activation_rule": "No clasifiques como 'formalizacion_del_acuerdo' por mera cercanía al cierre, buena disposición, propuesta pendiente de aceptación o invitación a cerrar. Usa 'formalizacion_del_acuerdo' solo cuando ya exista evidencia suficientemente clara de acuerdo explícito o aceptación explícita de una propuesta concreta, y el turno actual o la trayectoria inmediata estén confirmando, resumiendo u operacionalizando ese acuerdo ya alcanzado.",
-      "post_agreement_rule": "Una vez existe acuerdo explícito, la conversación puede entrar en 'formalizacion_del_acuerdo' aunque después aparezcan frases sociales, agradecimientos o confirmaciones operativas. Si más tarde se reabren precio o condiciones sustanciales, puede volver a 'concesiones_y_ajuste_final'."
+      "post_agreement_rule": "Una vez existe acuerdo explícito, la conversación puede entrar en 'formalizacion_del_acuerdo' aunque después aparezcan frases sociales, agradecimientos o confirmaciones operativas. Si más tarde se reabren precio o condiciones sustanciales, puede volver a 'concesiones_y_ajuste_final'.",
+      "abandonment_activation_rule": "Usa 'abandono_de_la_negociacion' solo cuando exista evidencia suficientemente clara de que una de las partes deja explícitamente de perseguir el acuerdo y el foco dominante del turno pase a aceptar, reconocer o cerrar esa salida sin acuerdo.",
+      "abandonment_boundary_rule": "No uses 'abandono_de_la_negociacion' por una contraoferta dura, un límite firme, un ultimátum condicional, una amenaza táctica de irse o una frase ambigua de frustración si la negociación sigue viva.",
+      "lateral_phase_rule": "'abandono_de_la_negociacion' es una fase excepcional y lateral: no representa un paso normal después de formalización ni una etapa del recorrido principal, sino una salida explícita de la negociación sin acuerdo."
     },
     "phase_interpretation": {
       "clima_humano": {
@@ -165,7 +169,8 @@
           "todavía falta que una de las partes acepte explícitamente la última propuesta",
           "hay una propuesta pendiente de respuesta o aceptación",
           "solo hay aproximación, buena disposición o sensación de cierre cercano",
-          "se sigue intentando mover precio, garantía, extras o cualquier condición sustancial"
+          "se sigue intentando mover precio, garantía, extras o cualquier condición sustancial",
+          "el turno cierra la conversación porque una de las partes decide irse sin acuerdo"
         ],
         "stay_when": [
           "el foco principal es confirmar, resumir, agradecer o operacionalizar lo ya acordado",
@@ -178,6 +183,41 @@
         ],
         "downgrade_to_descubrimiento_when": [
           "se descubre una duda relevante que impide formalizar con seguridad"
+        ]
+      },
+      "abandono_de_la_negociacion": {
+        "dominant_function": "Aceptar, reconocer y cerrar conversacionalmente una salida explícita de la negociación sin acuerdo. Es una fase excepcional y lateral: no forma parte de la secuencia normal del canonical_order, sino que se activa cuando una de las partes deja claramente de perseguir el acuerdo.",
+        "entry_signals": [
+          "una parte dice de forma clara que no quiere seguir negociando",
+          "una parte da por terminada la negociación sin acuerdo",
+          "el turno actual ya no intenta ajustar precio ni condiciones, sino aceptar o cerrar la salida del otro",
+          "la trayectoria inmediata muestra que el foco pasó de negociar a despedirse o cerrar sin trato"
+        ],
+        "positive_signals": [
+          "lo dejamos aquí",
+          "gracias por tu tiempo, pero no seguimos",
+          "prefiero no continuar con la negociación",
+          "no vamos a llegar a un acuerdo",
+          "lo siento, me retiro",
+          "entendido, gracias igualmente",
+          "de acuerdo, lo dejamos entonces"
+        ],
+        "do_not_use_when": [
+          "todavía hay una contraoferta viva o una propuesta pendiente de respuesta",
+          "el mensaje es un ultimátum condicional y aún intenta obtener aceptación",
+          "solo hay frustración, dureza o una amenaza táctica de irse",
+          "todavía se busca mover precio, garantía, extras o cualquier condición sustancial",
+          "el cierre real es con acuerdo y no sin acuerdo"
+        ],
+        "stay_when": [
+          "el foco principal es aceptar la salida, despedirse o cerrar la conversación sin reabrir el trato",
+          "la negociación ya fue abandonada explícitamente y el intercambio solo lo reconoce o lo cierra socialmente"
+        ],
+        "downgrade_to_concesiones_when": [
+          "después del abandono una de las partes reabre explícitamente precio o condiciones y la otra vuelve a entrar en negociación real"
+        ],
+        "downgrade_to_descubrimiento_when": [
+          "el abandono aparente se revierte y el foco vuelve de forma clara a aclarar condiciones materiales antes de negociar"
         ]
       }
     },
@@ -201,6 +241,16 @@
         "from": "concesiones_y_ajuste_final",
         "to": "formalizacion_del_acuerdo",
         "rule": "No cambies solo porque hay buena disposición, cercanía al cierre o una propuesta que parece razonable. Cambia solo cuando ya exista aceptación explícita o acuerdo explícito suficientemente claro sobre una propuesta concreta, y el foco pase de ajustar términos a confirmar, resumir o preparar el cierre operativo de ese acuerdo ya alcanzado."
+      },
+      {
+        "from": "concesiones_y_ajuste_final",
+        "to": "abandono_de_la_negociacion",
+        "rule": "Cambia solo cuando una de las partes deje explícitamente de perseguir el acuerdo y el foco dominante pase a aceptar, reconocer o cerrar esa salida sin acuerdo. No cambies por una contraoferta dura, un mínimo, una última oferta o un ultimátum condicional mientras la negociación siga viva."
+      },
+      {
+        "from": "formalizacion_del_acuerdo",
+        "to": "abandono_de_la_negociacion",
+        "rule": "Solo cambia si el acuerdo deja de tratarse como vigente y una de las partes da explícitamente por terminada la conversación sin trato efectivo. No uses esta transición por simples agradecimientos o cierre cordial de un acuerdo ya aceptado."
       }
     ],
     "anti_patterns": [
@@ -210,6 +260,9 @@
       "No mantener propuesta_creativa cuando ya existen posiciones vivas de ambas partes y el foco dominante es estrechar distancia con contraofertas, mínimos o concesiones cruzadas.",
       "No subir a formalizacion_del_acuerdo mientras siga habiendo negociación sustancial abierta.",
       "No subir a formalizacion_del_acuerdo por una propuesta pendiente de aceptación, una invitación a cerrar o una mera aproximación entre posiciones.",
+      "No subir a abandono_de_la_negociacion por una contraoferta dura, un límite firme o una última oferta si la otra parte todavía está intentando llegar a un acuerdo.",
+      "No subir a abandono_de_la_negociacion por un ultimátum condicional del tipo 'si no te encaja, lo dejamos' mientras el foco dominante siga siendo presionar para aceptación.",
+      "No usar formalizacion_del_acuerdo cuando el turno cierra sin acuerdo.",
       "No bajar de una fase activa solo porque aparezca una frase cordial o una cortesía superficial."
     ],
     "borderline_examples": {
@@ -240,7 +293,9 @@
         "Ni para ti ni para mí: 7250",
         "Te mantengo ese precio si incluyo un año de garantía",
         "Yo podría llegar a X si tú te haces cargo de Y",
-        "No bajo más de esta cifra, pero te doy esta condición"
+        "No bajo más de esta cifra, pero te doy esta condición",
+        "Esto es lo máximo que puedo hacer",
+        "Si no puedes llegar ahí, lo dejamos"
       ],
       "move_to_formalizacion_del_acuerdo": [
         "De acuerdo, acepto 7250 con garantía de 1 año",
@@ -249,6 +304,14 @@
         "Perfecto, queda cerrado en X con Y",
         "Confirmo el acuerdo en X con Y"
       ],
+      "move_to_abandono_de_la_negociacion": [
+        "Nada, lo dejamos aquí",
+        "Gracias por tu tiempo, pero no vamos a seguir",
+        "Prefiero no continuar con la negociación",
+        "Lo siento, me retiro",
+        "No me interesa seguir hablando del trato",
+        "Entendido, lo dejamos entonces"
+      ],
       "backward_examples": [
         "Estábamos cerrando, pero antes necesito confirmar si tiene los papeles al día",
         "Parecía acordado, pero ese detalle cambia bastante el trato",
@@ -256,7 +319,7 @@
       ]
     },
     "decision_test": [
-      "¿La función dominante del turno es relacional, informativa, propositiva, de ajuste o de cierre?",
+      "¿La función dominante del turno es relacional, informativa, propositiva, de ajuste, de cierre con acuerdo o de salida sin acuerdo?",
       "¿La trayectoria reciente sostiene continuidad o hay evidencia suficiente de cambio?",
       "¿La señal nueva es superficial o realmente cambia el objetivo conversacional?",
       "¿La fase elegida describe mejor lo que toca hacer a continuación?",
@@ -265,7 +328,10 @@
       "¿Si quitara el tono cordial o creativo, seguiría siendo claramente regateo? Si sí, favorece concesiones_y_ajuste_final.",
       "¿Ya hubo aceptación explícita o acuerdo explícito sobre una propuesta concreta?",
       "¿El turno actual está confirmando un acuerdo ya alcanzado o todavía intenta conseguirlo?",
-      "Si aún falta un sí claro de alguna parte, no uses formalizacion_del_acuerdo."
+      "Si aún falta un sí claro de alguna parte, no uses formalizacion_del_acuerdo.",
+      "¿La parte todavía intenta conseguir acuerdo o ya está saliendo explícitamente de la negociación?",
+      "¿Es un ultimátum condicional o una retirada real sin acuerdo?",
+      "Si la respuesta correcta debería aceptar el cierre y despedirse, usa abandono_de_la_negociacion."
     ],
     "output_expectation": "Devuelve la fase que mejor represente la necesidad conversacional dominante del momento actual, con criterio estable y sin saltos precipitados."
   }

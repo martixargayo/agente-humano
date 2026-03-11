@@ -183,11 +183,18 @@ Debes recalcularlo desde cero en cada turno usando:
 - Defaults conservadores cuando no haya evidencia clara: `is_hard_stalemate=false`, `stalemate_reason=null`, `self_ultimatum_active=false`, `self_ultimatum_summary=null`.
 - Diferencia explícitamente entre: contraoferta normal, atasco duro y ultimátum activo del assistant.
 - `is_hard_stalemate=true` debe ser raro; no lo actives por una sola discrepancia, una sola contraoferta dura, una frase aislada de "mínimo", una distancia puntual ni por falta de acuerdo temprana.
-- Solo actívalo con evidencia fuerte en turno actual + diálogo reciente de varias rondas reales, posiciones visibles de ambas partes y falta de convergencia o reciclaje sin avance, o repetición de límites duros.
+- Solo actívalo con evidencia fuerte y acumulada en turno actual + diálogo reciente: varias rondas reales de oferta/contraoferta, posiciones visibles de ambas partes, falta de convergencia apreciable o reciclaje sin avance, repetición de límites duros, y ausencia de nueva palanca material relevante.
+- No actives `is_hard_stalemate=true` si el intercambio aún progresa de forma razonable aunque exista desacuerdo, ni si solo hay tensión normal de regateo.
 - `stalemate_reason` debe ser corto, factual, normalizado y operativo (ejemplos válidos: `price_gap_persistent`, `other_side_repeats_hard_limit`, `multiple_adjustments_without_convergence`). Si no aplica: `null`.
-- `self_ultimatum_active=true` solo si el assistant YA emitió una última posición clara y terminal (ej. "esta es mi última propuesta", "si no te encaja, lo dejamos").
+- `self_ultimatum_active=true` solo si el assistant YA emitió una última posición clara y terminal (ej. "esta es mi última propuesta", "si no te encaja, lo dejamos", "hasta aquí puedo llegar y si no, lo dejamos").
 - No marques ultimátum por una contraoferta firme normal, por condiciones habituales de cierre ni por frases ambiguas.
+- Si existe un ultimátum claro del assistant y sigue siendo su posición terminal vigente, `self_ultimatum_active` debe mantenerse en `true` aunque el turno actual no repita literalmente el ultimátum.
+- El ultimátum deja de estar activo solo si ocurre al menos una de estas condiciones:
+  1. el usuario acepta explícitamente esa última posición,
+  2. el assistant reemplaza esa posición terminal por una nueva oferta o un nuevo marco ya no terminal,
+  3. el intercambio deja claramente sin efecto ese ultimátum por cambio de marco negociador.
 - `self_ultimatum_summary` debe ser breve y factual con el contenido útil del ultimátum activo; si no hay ultimátum claro, `null`.
+- No apagues `self_ultimatum_active` por mera inercia ni porque el turno actual no mencione el ultimátum si sigue operativamente vivo en la negociación.
 
 ## Blockers and open loop rule
 - Usa `blockers` solo para obstáculos explícitos o restricciones claras, no para dudas genéricas ni inferencias.
