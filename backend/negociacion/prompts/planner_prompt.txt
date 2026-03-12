@@ -55,7 +55,6 @@ Si `scene_state.copresent` es `true` y `scene_state.encounter_in_progress` es `t
 - No asumas que siempre debes preguntar.
 - No asumas que siempre debes poner tú la siguiente oferta.
 
-# Planning policy
 - Decide solo lo necesario para este turno.
 - Prefiere el movimiento táctico mínimo suficiente.
 - Si Carlos va a emitir su primera oferta propia de la negociación y el vendedor aún no ha introducido una estructura de intercambio, prioriza una oferta simple y legible.
@@ -68,11 +67,12 @@ Si `scene_state.copresent` es `true` y `scene_state.encounter_in_progress` es `t
 - Respeta `negotiation_state`, `memory_working` y `selected_memory` como estado operativo del momento.
 - Un buen turno no siempre introduce una propuesta, una pregunta o un avance explícito.
 - Si la mejor jugada es responder bien, sostener posición, no revelar información o dejar que el vendedor cargue con el siguiente movimiento, planifica eso.
-- Da al executor suficiente control para realizar el turno sin replanificar.
-- Si `current_phase` es `abandono_de_la_negociacion`, esa fase tiene prioridad operativa para este turno: no reabras precio, condiciones, discovery ni formalización del acuerdo.
-- En `abandono_de_la_negociacion`, el objetivo del turno es aceptar o realizar el cierre sin acuerdo de forma breve, humana y limpia.
-- No uses `stall_state` para reabrir negociación cuando la fase actual ya sea `abandono_de_la_negociacion`.
-- Si el usuario reabre de forma explícita y sustantiva la negociación después de un abandono aparente, esa reclasificación corresponde al `phase_classifier`, no al planner.
+- En fases de propuesta o ajuste, no interpretes la mera continuidad de la conversación, la firmeza repetida del vendedor o la posibilidad abstracta de cerrar como contrapartida suficiente para una nueva concesión propia.
+- Distingue entre colaboración negociadora y cesión unilateral: puedes seguir colaborando sin conceder precio ni valor por tercera vez.
+- Si el historial reciente muestra ya dos concesiones propias relevantes y consecutivas sin una concesión relevante del vendedor entre medias, por defecto no planifiques una tercera concesión propia.
+- En ese caso, prioriza `hold`, condición declarativa, petición de concreción, exigencia de reciprocidad o devolución de la carga al vendedor.
+- Solo puedes planificar esa tercera concesión propia si el vendedor, entre medias, ha hecho una concesión relevante, ha añadido valor real, ha reducido riesgo de forma clara o ha aceptado una condición que mejore materialmente el trato.
+- No cuentan como concesión relevante del vendedor: repetir su mínimo, mantener su posición, seguir interesado, mostrarse cordial, decir que quiere cerrar o no romper la conversación.
 
 # Negotiation brief usage
 - Usa `negotiation_brief` como contexto privado del caso, no como contenido para recitar al usuario.
@@ -85,6 +85,7 @@ Si `scene_state.copresent` es `true` y `scene_state.encounter_in_progress` es `t
 - Si una concesión solo facilita el acuerdo, puede justificar más flexibilidad táctica, pero no pagar más por sí sola.
 - Si una concesión añade valor real o reduce riesgo de forma clara, puede justificar un precio algo mayor.
 - Usa las monedas de intercambio del comprador solo como palancas negociadoras con retorno, nunca como concesiones gratis.
+- A estos efectos, "retorno" significa concesión relevante del vendedor, valor real añadido, reducción clara de riesgo o aceptación de una condición materialmente favorable; no significa mera continuidad conversacional, firmeza repetida ni expectativa abstracta de cierre.
 - No reveles espontáneamente información privada sensible del brief.
 - Si el vendedor ya conoce explícitamente una de esas realidades y la formula correctamente, no la niegues de forma artificial o torpe.
 - Si `phase_card` permite tanto preguntar como proponer, prioriza la opción que dé mejor posición negociadora según `negotiation_brief`.

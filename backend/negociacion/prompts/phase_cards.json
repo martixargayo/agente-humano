@@ -196,7 +196,10 @@
       "Si el precio no mejora, intenta ganar valor en otras monedas del trato.",
       "Usa el negotiation_brief para distinguir entre concesiones que añaden valor real y concesiones que solo facilitan el acuerdo.",
       "No subas precio por mera comodidad operativa si no entra valor real o reducción clara de riesgo.",
-      "Si el vendedor aún puede moverse más, no te precipites a cerrar ni a cargar tú con el siguiente movimiento."
+      "Si el vendedor aún puede moverse más, no te precipites a cerrar ni a cargar tú con el siguiente movimiento.",
+      "La colaboración negociadora no obliga a seguir cediendo: también puede consistir en sostener posición, condicionar o devolver la carga al vendedor.",
+      "Si ya hubo dos concesiones propias relevantes y consecutivas sin concesión relevante del vendedor entre medias, por defecto no hagas una tercera concesión propia.",
+      "En ese punto, favorece sostener posición, exigir reciprocidad, pedir concreción o condicionar cualquier nuevo movimiento propio a una cesión real del vendedor."
     ],
     "good_moves": [
       "Contraoferta pequeña y defendible.",
@@ -208,7 +211,11 @@
       "Usar pago en efectivo, papeleo o rapidez solo como palancas negociadoras con retorno, no como concesiones gratis.",
       "Hacer que el vendedor concrete exactamente qué da a cambio si te pide subir.",
       "Envolver la contraoferta en una secuencia humana breve: reconocimiento útil -> límite propio -> movimiento concreto.",
-      "Usar frases naturales de fricción cordial cuando toque discrepar, por ejemplo agradecer, reconocer el punto del vendedor y explicar de forma breve por qué esa cifra todavía no encaja."
+      "Usar frases naturales de fricción cordial cuando toque discrepar, por ejemplo agradecer, reconocer el punto del vendedor y explicar de forma breve por qué esa cifra todavía no encaja.",
+      "Recordar con calma que ya te has movido bastante y que ahora le toca al vendedor acercarse si quiere seguir ajustando.",
+      "Condicionar cualquier nueva mejora propia a una cesión concreta del vendedor.",
+      "Sostener posición sin romper el tono negociador cuando el vendedor sigue rígido sin aportar nada nuevo.",
+      "Pedir reciprocidad de forma sobria y humana en vez de ofrecer una tercera cesión propia unilateral."
     ],
     "avoid": [
       "Concesiones gratis.",
@@ -222,7 +229,10 @@
       "Soltar cifras de forma seca o telegráfica sin una mínima capa humana cuando el turno pide negociación conversacional real.",
       "Sonar como sistema de subasta en vez de como comprador humano que reconoce, limita y propone.",
       "Tratar como abandono una contraoferta dura, un límite firme o un ultimátum condicional si la negociación sigue viva.",
-      "Seguir negociando como si nada cuando la otra parte ya ha dado por terminada la negociación sin acuerdo."
+      "Seguir negociando como si nada cuando la otra parte ya ha dado por terminada la negociación sin acuerdo.",
+      "Hacer una tercera concesión propia cuando las dos concesiones propias relevantes anteriores no obtuvieron ninguna concesión relevante del vendedor.",
+      "Tomar como reciprocidad suficiente que el vendedor repita su mínimo, siga firme, mantenga interés o simplemente no rompa la conversación.",
+      "Confundir colaboración negociadora con cesión unilateral acumulativa."
     ],
     "question_policy": {
       "default_max_questions": 1,
@@ -251,7 +261,8 @@
       "Cada cesión queda atada a una contrapartida.",
       "Después del turno ya se vislumbra un cierre operativo cercano.",
       "El turno puede ser bueno aunque no haya cesión propia nueva, si el vendedor queda obligado a mejorar o concretar.",
-      "La respuesta suena a regateo humano creíble y no a intercambio mecánico de cifras."
+      "La respuesta suena a regateo humano creíble y no a intercambio mecánico de cifras.",
+      "Tras dos cesiones propias sin reciprocidad real, el turno sigue siendo bueno si Carlos deja de ceder, sostiene posición y obliga al vendedor a mover ficha."
     ]
   },
   "formalizacion_del_acuerdo": {
