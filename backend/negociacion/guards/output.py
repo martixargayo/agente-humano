@@ -29,8 +29,8 @@ def _planner_contract_signals(planner_output: PlannerOutput, executor_output: Ex
         violations.append("clarify_should_not_deliver_definitive")
     if planner_output.status == "refuse" and executor_output.status != "refuse":
         violations.append("refuse_should_not_deliver")
-    if planner_output.status == "plan" and executor_output.status == "refuse":
-        violations.append("plan_mismatch_refuse")
+    if planner_output.status == "plan" and executor_output.status != "deliver":
+        violations.append("plan_should_deliver")
     return PlannerContractSignals(planner_status=planner_output.status, executor_status=executor_output.status, violations=violations)
 
 

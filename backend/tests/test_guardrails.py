@@ -271,3 +271,150 @@ def test_hola_not_rewritten_by_internal_guardrail(monkeypatch):
     assert "seguridad y precisión" not in reply.lower()
     trace = updated.world_state[f"{config.memory_key}_traces"][0]
     assert trace["output_guardrail_enforcement_action"] == "observed_not_applied"
+
+
+def test_pipeline_retries_executor_once_on_plan_contract_violation(monkeypatch):
+    session = SessionState(user_id="u_retry", session_id="s_retry")
+    config = build_negotiation_pipeline_config().model_copy(update={"feature_traces": True})
+
+    def _fake_build_client():
+        class _Client:
+            pass
+        return _Client()
+
+    monkeypatch.setattr(fc, "_build_client", _fake_build_client)
+
+    def _fake_execute_memory_and_phase(**kwargs):
+        mem_call = fc.StructuredCallResult(parsed_json={
+            "schema_version": "memory.v1",
+            "episodic_append": [],
+            "working_memory_new": {"current_topic": "precio", "pending_question": None, "last_turn_summary": "ok"},
+            "negotiation_state": _negotiation_state(),
+        }, refusal=None, parse_error=None, exception_error=None, response=None, source=fc.StructuredCallSource.model)
+        phase_call = fc.StructuredCallResult(parsed_json={"schema_version": "phase_classifier.v1", "current_phase": "concesiones_y_ajuste_final"}, refusal=None, parse_error=None, exception_error=None, response=None, source=fc.StructuredCallSource.model)
+        return mem_call, 1, {"threading_policy":"stateless_parallel","threading_mode_effective":"stateless","request_context_has_conversation_id":False,"request_context_has_previous_response_id":False}, phase_call, 1, {"threading_policy":"stateless_parallel","threading_mode_effective":"stateless","request_context_has_conversation_id":False,"request_context_has_previous_response_id":False}, {}
+
+    planner = PlannerOutput(
+        schema_version="planner.v3",
+        status="plan",
+        turn_goal="Realizar una contraoferta pequeña y defendible",
+        decision="counter",
+        content_plan=PlannerContentPlan(
+            must_include=["Contraoferta de 6500 €"],
+            must_avoid=["Hacer preguntas"],
+        ),
+        limits=PlannerLimits(
+            max_sentences=1,
+            max_questions=0,
+            allow_topic_shift=False,
+            allow_personal_disclosure=False,
+        ),
+        memory_targets=[],
+        done_criteria=["contraoferta_emitida"],
+    )
+
+    executor_calls = {"count": 0}
+
+    def _fake_call_structured(client, model, messages, response_model, reasoning_effort, request_context, store):
+        _ = (client, model, messages, reasoning_effort, request_context, store)
+        if response_model.__name__ == "PlannerOutput":
+            return fc.StructuredCallResult(parsed_json=planner.model_dump(mode="json"), refusal=None, parse_error=None, exception_error=None, response=None, source=fc.StructuredCallSource.model)
+
+        executor_calls["count"] += 1
+        if executor_calls["count"] == 1:
+            first = ExecutorOutput(
+                schema_version="executor.v1",
+                status="clarify",
+                spoken_text="¿Quieres que mantenga la oferta de 6500€ como base?",
+                memory_used=[],
+                refusal_reason=None,
+            )
+            return fc.StructuredCallResult(parsed_json=first.model_dump(mode="json"), refusal=None, parse_error=None, exception_error=None, response=None, source=fc.StructuredCallSource.model)
+
+        second = ExecutorOutput(
+            schema_version="executor.v1",
+            status="deliver",
+            spoken_text="Te hago una contraoferta de 6500 €.",
+            memory_used=[],
+            refusal_reason=None,
+        )
+        return fc.StructuredCallResult(parsed_json=second.model_dump(mode="json"), refusal=None, parse_error=None, exception_error=None, response=None, source=fc.StructuredCallSource.model)
+
+    monkeypatch.setattr(fc, "_execute_memory_and_phase", _fake_execute_memory_and_phase)
+    monkeypatch.setattr(fc, "_call_structured", _fake_call_structured)
+
+    reply, updated = run_negotiation_cognitive_turn(
+        session,
+        "6000 es demasiado bajo para mi, pensaba en 7800",
+        config,
+    )
+
+    assert executor_calls["count"] == 2
+    assert "6500" in reply
+    assert "?" not in reply
+
+    trace = updated.world_state[f"{config.memory_key}_traces"][0]
+    assert "executor_retry_attempted" in trace["guardrail_reasons"]
+
+
+def test_pipeline_does_not_render_planner_artifacts_as_final_text(monkeypatch):
+    session = SessionState(user_id="u_norender", session_id="s_norender")
+    config = build_negotiation_pipeline_config().model_copy(update={"feature_traces": True})
+
+    def _fake_build_client():
+        class _Client:
+            pass
+        return _Client()
+
+    monkeypatch.setattr(fc, "_build_client", _fake_build_client)
+
+    def _fake_execute_memory_and_phase(**kwargs):
+        mem_call = fc.StructuredCallResult(parsed_json={
+            "schema_version": "memory.v1",
+            "episodic_append": [],
+            "working_memory_new": {"current_topic": "precio", "pending_question": None, "last_turn_summary": "ok"},
+            "negotiation_state": _negotiation_state(),
+        }, refusal=None, parse_error=None, exception_error=None, response=None, source=fc.StructuredCallSource.model)
+        phase_call = fc.StructuredCallResult(parsed_json={"schema_version": "phase_classifier.v1", "current_phase": "concesiones_y_ajuste_final"}, refusal=None, parse_error=None, exception_error=None, response=None, source=fc.StructuredCallSource.model)
+        return mem_call, 1, {"threading_policy":"stateless_parallel","threading_mode_effective":"stateless","request_context_has_conversation_id":False,"request_context_has_previous_response_id":False}, phase_call, 1, {"threading_policy":"stateless_parallel","threading_mode_effective":"stateless","request_context_has_conversation_id":False,"request_context_has_previous_response_id":False}, {}
+
+    planner = PlannerOutput(
+        schema_version="planner.v3",
+        status="plan",
+        turn_goal="Realizar contraoferta",
+        decision="counter",
+        content_plan=PlannerContentPlan(
+            must_include=["Contraoferta de 6500 €"],
+            must_avoid=["Hacer preguntas"],
+        ),
+        limits=PlannerLimits(
+            max_sentences=1,
+            max_questions=0,
+            allow_topic_shift=False,
+            allow_personal_disclosure=False,
+        ),
+        memory_targets=[],
+        done_criteria=["contraoferta_emitida"],
+    )
+
+    def _fake_call_structured(client, model, messages, response_model, reasoning_effort, request_context, store):
+        _ = (client, model, messages, reasoning_effort, request_context, store)
+        if response_model.__name__ == "PlannerOutput":
+            return fc.StructuredCallResult(parsed_json=planner.model_dump(mode="json"), refusal=None, parse_error=None, exception_error=None, response=None, source=fc.StructuredCallSource.model)
+
+        bad = ExecutorOutput(
+            schema_version="executor.v1",
+            status="deliver",
+            spoken_text="Entiendo tu postura.",
+            memory_used=[],
+            refusal_reason=None,
+        )
+        return fc.StructuredCallResult(parsed_json=bad.model_dump(mode="json"), refusal=None, parse_error=None, exception_error=None, response=None, source=fc.StructuredCallSource.model)
+
+    monkeypatch.setattr(fc, "_execute_memory_and_phase", _fake_execute_memory_and_phase)
+    monkeypatch.setattr(fc, "_call_structured", _fake_call_structured)
+
+    reply, _ = run_negotiation_cognitive_turn(session, "sube a 7800", config)
+
+    assert reply != "Contraoferta de 6500 €"
+    assert "Entiendo. Te respondo de forma clara y directa." in reply
