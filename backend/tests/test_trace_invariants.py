@@ -65,7 +65,7 @@ def test_trace_invariants_observed_not_applied_means_output_not_changed(monkeypa
         return _model({
             "schema_version": "executor.v1",
             "status": "deliver",
-            "spoken_text": "según el planner, 100% seguro",
+            "spoken_text": "según el planner, x 100% seguro",
             "memory_used": [],
             "refusal_reason": None,
         })
