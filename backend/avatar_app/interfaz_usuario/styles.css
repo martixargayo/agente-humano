@@ -1,0 +1,83 @@
+:root {
+  color-scheme: light;
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: #f5f7fb;
+  color: #111827;
+}
+
+.app {
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+h1 {
+  font-size: 22px;
+  margin: 0 0 16px;
+}
+
+.history {
+  min-height: 360px;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  background: #fff;
+  padding: 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.msg {
+  border-radius: 8px;
+  padding: 10px;
+  line-height: 1.35;
+  white-space: pre-wrap;
+}
+
+.msg.user {
+  background: #eff6ff;
+}
+
+.msg.assistant {
+  background: #f3f4f6;
+}
+
+.msg.pending {
+  font-style: italic;
+  opacity: 0.8;
+}
+
+.composer {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+#chatInput {
+  width: 100%;
+  resize: vertical;
+  border-radius: 8px;
+  border: 1px solid #d1d5db;
+  padding: 10px;
+  font: inherit;
+}
+
+#sendBtn {
+  width: 120px;
+  border: none;
+  border-radius: 8px;
+  padding: 10px;
+  background: #111827;
+  color: #fff;
+  cursor: pointer;
+}
+
+#sendBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}

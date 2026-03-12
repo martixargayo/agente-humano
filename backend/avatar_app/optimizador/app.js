@@ -29,15 +29,23 @@ const state = {
 const $ = (q) => document.querySelector(q);
 const byId = (id) => document.getElementById(id);
 
-async function api(path, opts = {}) {
-  const r = await fetch(`/api/optimizador${path}`, { headers: { "Content-Type": "application/json" }, ...opts });
-  if (!r.ok) throw new Error(await r.text());
-  return r.json();
-}
+const chatRuntime = window.createOptimizadorChatRuntime(state, {
+  onNewTurnAvailable: () => showToast("Nuevo turno disponible", "warn"),
+  onReplyReady: () => showToast("Respuesta lista"),
+  fetchExtraData: async ({ state: runtimeState, api, base }) => {
+    runtimeState.turn = runtimeState.selectedTurnId ? await api(`/turns/${runtimeState.selectedTurnId}`) : null;
+    runtimeState.cases = (await api("/cases")).items;
+    runtimeState.prompts = (await api("/prompts")).items;
+    runtimeState.overrides = await api(`/overrides/${runtimeState.optimizerSessionId}`);
+    if (!runtimeState.editing) runtimeState.draftEntries = structuredClone(runtimeState.overrides.entries || []);
+    runtimeState._chatBase = base;
+  },
+});
 
+const api = chatRuntime.api;
 const deepEqual = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-const escapeHtml = (s) => String(s ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
-const selectedSession = () => state.sessions.find((s) => s.session_key === state.selectedSessionKey) || null;
+const escapeHtml = chatRuntime.escapeHtml;
+const selectedSession = () => chatRuntime.selectedSession();
 
 function currentTurnOptionLabel() {
   const row = state.turns.find((x) => x.turn_id === state.selectedTurnId);
@@ -57,36 +65,7 @@ function showToast(text, type = "ok") {
 }
 
 async function refresh({ autoSelect = false } = {}) {
-  const prevSelected = state.selectedTurnId;
-  state.sessions = (await api("/sessions")).items;
-  if (!state.sessions.length) {
-    await api("/sessions/bootstrap", { method: "POST", body: JSON.stringify({ user_id: state.defaultUserId, session_id: state.defaultSessionId }) });
-    state.sessions = (await api("/sessions")).items;
-  }
-  if (!state.selectedSessionKey && state.sessions[0]) state.selectedSessionKey = state.sessions[0].session_key;
-  const s = selectedSession();
-  if (!s) return;
-  const base = `/sessions/${encodeURIComponent(s.user_id)}/${encodeURIComponent(s.session_id)}`;
-  state.turns = (await api(`${base}/turns${state.selectedConversation ? `?conversation_id=${encodeURIComponent(state.selectedConversation)}` : ""}`)).items;
-  const nextLast = state.turns[state.turns.length - 1]?.turn_id || "";
-  if (state.liveFollow || autoSelect || !state.selectedTurnId) state.selectedTurnId = nextLast;
-  else if (prevSelected && state.turns.some((x) => x.turn_id === prevSelected)) state.selectedTurnId = prevSelected;
-  else state.selectedTurnId = nextLast;
-
-  state.turn = state.selectedTurnId ? await api(`/turns/${state.selectedTurnId}`) : null;
-  state.dialogue = (await api(`${base}/dialogue`)).items;
-  state.cases = (await api("/cases")).items;
-  state.prompts = (await api("/prompts")).items;
-  state.overrides = await api(`/overrides/${state.optimizerSessionId}`);
-  if (!state.editing) state.draftEntries = structuredClone(state.overrides.entries || []);
-
-  const latest = state.turns[state.turns.length - 1]?.turn_id || "";
-  if (state.lastKnownTurnId && latest && latest !== state.lastKnownTurnId && !state.liveFollow) showToast("Nuevo turno disponible", "warn");
-  state.lastKnownTurnId = latest;
-  if (state.waitingReply && latest && latest !== prevSelected) {
-    state.waitingReply = false;
-    showToast("Respuesta lista");
-  }
+  await chatRuntime.refresh({ autoSelect, followLive: state.liveFollow });
 }
 
 
@@ -179,7 +158,7 @@ function renderTab() {
   const tab = state.activeTab;
   const t = state.turn || {};
   let html = toolbarHtml();
-  if (tab === "Chat") html += `<div class='panel'><div class='card' id='chatHistory'>${state.dialogue.map((d) => `<div class='msg ${d.role}'>${d.role === "user" ? "Usuario" : "IA"}: ${escapeHtml(d.text || "")}</div>`).join("")}${state.waitingReply ? "<div class='msg assistant pending'>IA: pensando...</div>" : ""}</div><div class='card'><textarea id='chatInput' placeholder='Escribe tu mensaje...'>${escapeHtml(state.chatDraft)}</textarea><div class='sendRow'><span class='hint'>El próximo mensaje se envía con versión v${state.overrides.workspace_version || 1}.</span><button id='sendBtn'>Enviar</button></div></div></div>`;
+  if (tab === "Chat") html += `<div class='panel'><div class='card' id='chatHistory'>${chatRuntime.renderChatHistoryHtml(state.dialogue, state.waitingReply)}</div><div class='card'><textarea id='chatInput' placeholder='Escribe tu mensaje...'>${escapeHtml(state.chatDraft)}</textarea><div class='sendRow'><span class='hint'>El próximo mensaje se envía con versión v${state.overrides.workspace_version || 1}.</span><button id='sendBtn'>Enviar</button></div></div></div>`;
   if (tab === "Timeline") html += `<div class='card'>${(t.logs || []).map((l) => `<div class='timeline-item ${statusClass(l.source, l.status)}'><b>${l.node_name}</b> · ${l.status} · ${l.latency_ms}ms · ${l.source}</div>`).join("") || "Sin datos"}</div>`;
   if (tab === "Nodos") html += `<div class='grid2'>${Object.entries(t.nodes || {}).map(([k, v]) => `<div class='card'><h3>${k}</h3><pre>${escapeHtml(JSON.stringify(v, null, 2))}</pre></div>`).join("")}</div>`;
   if (tab === "Guardrails") html += `<div class='grid2'><div class='card'><h3>Input</h3><pre>${escapeHtml(JSON.stringify({decision:t.input_guardrail_decision,reasons:t.input_guardrail_reasons,triggered:t.input_guardrail_triggered,moderation:t.input_moderation_used},null,2))}</pre></div><div class='card'><h3>Output</h3><pre>${escapeHtml(JSON.stringify({decision:t.output_guardrail_decision,reasons:t.output_guardrail_reasons,triggered:t.output_guardrail_triggered,rewrite:t.output_guardrail_rewrite_applied,enforcement_mode:t.output_guardrail_enforcement_mode,enforcement_action:t.output_guardrail_enforcement_action,observed_not_applied_rules:t.output_guardrail_observed_not_applied_rules,enforced_rules:t.output_guardrail_enforced_rules,output_changed:t.output_guardrail_output_changed,moderation:t.output_moderation_used},null,2))}</pre></div></div>`;
@@ -345,33 +324,34 @@ function bindEvents() {
 }
 
 async function sendChat(message, repeatFrom = null) {
-  const s = selectedSession();
-  if (!s) throw new Error("No hay sesión activa en optimizador");
-  state.waitingReply = true;
-  renderTab();
   try {
-    const result = await api("/sandbox/turn", { method: "POST", body: JSON.stringify({ optimizer_session_id: state.optimizerSessionId, user_id: s.user_id, session_id: s.session_id, message, conversation_id: state.selectedConversation || null, scope_turn_id: state.selectedTurnId || null, repeat_from_turn_id: repeatFrom }) });
-    await refresh({ autoSelect: true });
-    if (result?.reply && !state.dialogue.some((d) => d.role === "assistant" && d.text === result.reply)) {
-      state.dialogue.push({ role: "assistant", text: result.reply });
-    }
-  } catch (e) {
-    state.waitingReply = false;
-    showToast(`Chat falló: ${e.message || e}`, "err");
-    throw e;
+    await chatRuntime.sendChat(message, {
+      repeatFrom,
+      followLive: state.liveFollow,
+      onBeforeSend: () => {
+        renderTab();
+      },
+      onError: (error) => {
+        showToast(`Chat falló: ${error.message || error}`, "err");
+      },
+    });
+  } catch (error) {
+    throw error;
   }
   renderTopbar(); renderTab(); bindEvents();
 }
 
 function startPolling() {
-  if (state.pollTimer) clearInterval(state.pollTimer);
-  state.pollTimer = setInterval(async () => {
-    const typingChat = byId("chatInput") === document.activeElement;
-    const prevTurnId = state.lastKnownTurnId;
-    const beforeSnapshot = state.lastUiSnapshot || buildUiSnapshot();
-    const interaction = captureInteractionState();
-    try {
+  chatRuntime.startPolling({
+    intervalMs: POLL_IDLE_MS,
+    onTick: async () => {
+      const typingChat = byId("chatInput") === document.activeElement;
+      const prevTurnId = state.lastKnownTurnId;
+      const beforeSnapshot = state.lastUiSnapshot || buildUiSnapshot();
+      const interaction = captureInteractionState();
+
       await refresh();
+
       const afterSnapshot = buildUiSnapshot();
       const hasChanges = beforeSnapshot !== afterSnapshot;
       const hasNewTurn = prevTurnId !== state.lastKnownTurnId;
@@ -380,15 +360,15 @@ function startPolling() {
       if (!hasChanges && !hasNewTurn) return;
 
       if (state.activeTab === "Chat" && typingChat && !hasNewTurn) {
-        byId("chatHistory").innerHTML = state.dialogue.map((d) => `<div class='msg ${d.role}'>${d.role === "user" ? "Usuario" : "IA"}: ${escapeHtml(d.text || "")}</div>`).join("") + (state.waitingReply ? "<div class='msg assistant pending'>IA: pensando...</div>" : "");
+        byId("chatHistory").innerHTML = chatRuntime.renderChatHistoryHtml(state.dialogue, state.waitingReply);
       } else {
         renderTopbar();
         renderTab();
         bindEvents();
         restoreInteractionState(interaction);
       }
-    } catch (_) {}
-  }, POLL_IDLE_MS);
+    },
+  });
 }
 
 async function boot() {

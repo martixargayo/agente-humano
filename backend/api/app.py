@@ -77,6 +77,14 @@ if OPTIMIZADOR_DIR.exists():
         name="optimizador",
     )
 
+INTERFAZ_USUARIO_DIR = AVATAR_DIR / "interfaz_usuario"
+if INTERFAZ_USUARIO_DIR.exists():
+    app.mount(
+        "/interfaz_usuario",
+        StaticFiles(directory=str(INTERFAZ_USUARIO_DIR), html=True),
+        name="interfaz_usuario",
+    )
+
 app.include_router(optimizador_router)
 
 # --- Google Cloud Speech-to-Text (entrada de audio) ---
