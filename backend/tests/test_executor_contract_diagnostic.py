@@ -115,21 +115,20 @@ def test_plan_plus_clarify_is_rejected_and_node_fallback_is_used() -> None:
     assert accepted.refusal_reason is None
 
 
-def test_plan_with_question_when_max_questions_zero_is_rejected_without_artifact_render() -> None:
+def test_plan_with_light_question_is_accepted_when_status_and_tactical_content_are_valid() -> None:
     planner = _planner_plan_counter()
     executor = ExecutorOutput(
         schema_version="executor.v1",
         status="deliver",
-        spoken_text="¿Te parece bien si lo dejamos en 6500?",
+        spoken_text="Hola. ¿Cómo estás? Contraoferta de 6500 €.",
         memory_used=[],
         refusal_reason=None,
     )
 
     accepted, violation = _accept_or_fallback_executor_output(planner, executor)
 
-    assert violation == "plan_question_limit_exceeded"
-    assert accepted.status == "deliver"
-    assert accepted.spoken_text == "Entiendo. Te respondo de forma clara y directa."
+    assert violation is None
+    assert accepted == executor
 
 
 def test_plan_deliver_without_required_counteroffer_is_rejected() -> None:

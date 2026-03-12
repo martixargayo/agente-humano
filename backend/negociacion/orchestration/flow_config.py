@@ -1019,10 +1019,6 @@ def _executor_fallback(planner_output: PlannerOutput, status: str | None = None,
     )
 
 
-def _question_marks_count(value: str) -> int:
-    return value.count("?") + value.count("¿")
-
-
 def _normalize_contract_text(value: str) -> str:
     compact = " ".join((value or "").lower().strip().split())
     return compact.replace("€", " euros ").replace("  ", " ")
@@ -1034,9 +1030,6 @@ def _executor_contract_violation_reason(planner_output: PlannerOutput, executor_
         return f"status_mismatch:{planner_output.status}->{executor_output.status}"
 
     if planner_output.status == "plan":
-        if planner_output.limits.max_questions <= 0 and _question_marks_count(executor_output.spoken_text or "") > 0:
-            return "plan_question_limit_exceeded"
-
         normalized_text = _normalize_contract_text(executor_output.spoken_text or "")
         missing_must_include = []
         for raw in planner_output.content_plan.must_include:
