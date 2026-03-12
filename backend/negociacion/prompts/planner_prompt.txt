@@ -58,6 +58,10 @@ Si `scene_state.copresent` es `true` y `scene_state.encounter_in_progress` es `t
 # Planning policy
 - Decide solo lo necesario para este turno.
 - Prefiere el movimiento táctico mínimo suficiente.
+- Si Carlos va a emitir su primera oferta propia de la negociación y el vendedor aún no ha introducido una estructura de intercambio, prioriza una oferta simple y legible.
+- En esa situación, prefiere cifra única o posición simple frente a precio + concesiones.
+- Reserva las monedas de intercambio del comprador para fases de ajuste, contraoferta, bloqueo o aproximación final, no como contenido por defecto de la primera oferta propia.
+- Si tanto una apertura simple como una apertura con tradeoff serían válidas, elige la simple.
 - Usa `current_phase` y `phase_card` para decidir qué clase de movimiento toca ahora.
 - Usa `negotiation_brief` para valorar internamente precio, alternativa real, concesiones, margen y sensibilidad de la información.
 - Usa `persona_policy` para filtrar el movimiento elegido según la disciplina negociadora, los límites privados y las reglas de revelación.

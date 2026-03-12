@@ -114,34 +114,37 @@
   },
   "propuesta_creativa": {
     "phase": "propuesta_creativa",
-    "phase_objective": "Transformar el interés y la claridad previa en una primera propuesta concreta, coherente y negociable que abra el marco del trato sin regalar valor. Esta fase se centra en abrir la estructura negociadora, no en iterar ajustes sucesivos entre dos posiciones ya activas.",
+    "phase_objective": "Transformar el interés y la claridad previa en un posicionamiento negociador inicial creíble. Si Carlos debe formular su primera oferta propia, por defecto lo hace de manera simple, normalmente con una cifra o posición única, sin combinar de entrada precio y concesiones operativas. La creatividad y los tradeoffs quedan reservados para cuando el vendedor ya haya introducido condiciones, cuando exista bloqueo real o cuando una contrapartida cambie materialmente el valor o el riesgo del trato.",
     "what_good_progress_looks_like": [
       "Se pone sobre la mesa una primera propuesta clara que el vendedor puede aceptar, rechazar o empezar a ajustar.",
-      "La propuesta intercambia valor de forma explícita y comprensible.",
-      "Se abre una estructura negociadora clara sobre la que luego podrá haber ajuste.",
+      "Si es la primera oferta propia de Carlos, la propuesta sirve para posicionar una referencia inicial simple y negociable.",
+      "Cuando ya existe una negociación entre posiciones o el vendedor ha abierto condiciones, la propuesta puede intercambiar valor de forma explícita y comprensible.",
       "También cuenta como progreso conseguir que el vendedor concrete mejor su expectativa o condición antes de formular la primera oferta propia."
     ],
     "planner_bias": [
       "Favorece una sola propuesta principal por turno.",
-      "Prefiere tradeoff claro frente a petición unilateral.",
-      "Usa creatividad solo dentro del trato del coche: precio, papeles, entrega, garantías razonables, extras y comodidad operativa.",
+      "Si es la primera oferta propia de Carlos y el vendedor aún no ha introducido tradeoffs o condiciones, prioriza una oferta simple y legible.",
+      "Prefiere cifra única o posición simple frente a bundle de precio + concesiones en la primera oferta propia.",
+      "Reserva creatividad, tradeoffs y monedas del comprador para ajuste posterior, bloqueo o respuesta a una propuesta ya estructurada del vendedor.",
       "No te precipites a anclar con oferta propia si todavía puedes conseguir mejor información o mejor posicionamiento del vendedor.",
       "Usa el negotiation_brief para valorar internamente si una concesión suma valor real o solo facilita el acuerdo."
     ],
     "good_moves": [
-      "Hacer una oferta única con reciprocidad visible.",
-      "Vincular mejora de precio a rapidez, certeza, flexibilidad o reparto de cargas.",
-      "Construir una opción concreta que reduzca fricción para ambas partes.",
-      "Usar dos opciones solo si hay bloqueo real y ambas son equivalentes para el comprador.",
+      "Hacer una primera oferta simple y defendible.",
+      "Marcar una posición inicial de precio clara sin empaquetar todavía facilidades operativas.",
       "Hacer que el vendedor concrete qué espera o qué necesitaría para avanzar, si todavía no se ha retratado lo suficiente.",
-      "Usar una formulación condicional o exploratoria antes que una cifra cerrada cuando eso te dé mejor posición."
+      "Usar una formulación condicional o exploratoria antes que una cifra cerrada cuando eso te dé mejor posición.",
+      "Pasar a tradeoff claro solo cuando el vendedor ya haya abierto ese marco o cuando exista bloqueo real y ambas opciones sean equivalentes para el comprador.",
+      "Construir una opción concreta que reduzca fricción para ambas partes solo cuando la negociación ya esté en ajuste entre posiciones."
     ],
     "avoid": [
       "Lanzar varias ofertas a la vez sin necesidad.",
+      "Abrir con precio + papeleo + rapidez + facilidad operativa sin activación previa.",
+      "Convertir la primera oferta propia en una ingeniería de trato cuando todavía basta con posicionarse.",
       "Pedir rebaja y además pedir más concesiones sin ofrecer nada a cambio.",
       "Inventar extras, condiciones o bienes fuera del trato principal.",
       "Usar creatividad opaca, ilegal o poco creíble.",
-      "Sentirte obligado a hacer una oferta propia solo porque la fase ya es propositiva.",
+      "Sentirte obligado a hacer una oferta propia creativa solo porque la fase ya es propositiva.",
       "Convertir las monedas del comprador en regalos no correspondidos.",
       "Revelar el marco interno de valoración del negotiation_brief.",
       "Seguir tratando como apertura propositiva un intercambio que ya está en contraofertas y ajuste real entre dos posiciones vivas."
@@ -160,17 +163,20 @@
       ]
     },
     "valid_topics": [
-      "oferta única con tradeoff claro",
-      "precio a cambio de contrapartida operativa",
-      "papeleo y reparto de trámites",
+      "primera oferta simple",
+      "posicionamiento inicial de precio",
+      "hacer que el vendedor concrete su expectativa o condición antes de dar cifra propia",
+      "oferta única con tradeoff claro solo tras activación",
+      "precio a cambio de contrapartida operativa solo cuando el vendedor ya abrió ese marco",
+      "papeleo y reparto de trámites en ajuste posterior",
       "garantía razonable o reparto de riesgos",
       "extras relevantes del coche",
-      "cierre rápido condicionado",
-      "hacer que el vendedor concrete su expectativa o condición antes de dar cifra propia"
+      "cierre rápido condicionado cuando ya existe negociación entre posiciones"
     ],
     "done_signals": [
       "El vendedor tiene una propuesta concreta sobre la mesa.",
-      "La propuesta mejora precio, riesgo o compromiso sin ser one-sided.",
+      "Si era la primera oferta propia, la propuesta deja una referencia inicial clara y natural para negociar.",
+      "Si ya había posiciones activas, la propuesta puede mejorar precio, riesgo o compromiso sin ser one-sided.",
       "El trato queda más cerca de una negociación fina o del cierre.",
       "No siempre hace falta haber lanzado oferta propia; también vale dejar mejor colocado el siguiente movimiento."
     ]
