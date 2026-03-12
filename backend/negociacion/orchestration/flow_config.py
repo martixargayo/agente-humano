@@ -856,7 +856,7 @@ def _evaluate_stub(planner: PlannerOutput, executor: ExecutorOutput) -> EvalGrad
     aligned = (
         (planner.status == "refuse" and executor.status == "refuse")
         or (planner.status == "clarify" and executor.status == "clarify")
-        or (planner.status == "plan" and executor.status in {"deliver", "clarify"})
+        or (planner.status == "plan" and executor.status == "deliver")
     )
     return EvalGrades(
         planner_coherence="pending",
@@ -1019,6 +1019,55 @@ def _executor_fallback(planner_output: PlannerOutput, status: str | None = None,
     )
 
 
+def _normalize_contract_text(value: str) -> str:
+    compact = " ".join((value or "").lower().strip().split())
+    return compact.replace("€", " euros ").replace("  ", " ")
+
+
+def _executor_contract_violation_reason(planner_output: PlannerOutput, executor_output: ExecutorOutput) -> str | None:
+    expected_status = "deliver" if planner_output.status == "plan" else "clarify" if planner_output.status == "clarify" else "refuse"
+    if executor_output.status != expected_status:
+        return f"status_mismatch:{planner_output.status}->{executor_output.status}"
+
+    if planner_output.status == "plan":
+        normalized_text = _normalize_contract_text(executor_output.spoken_text or "")
+        missing_must_include = []
+        for raw in planner_output.content_plan.must_include:
+            normalized_required = _normalize_contract_text(raw)
+            if normalized_required and normalized_required not in normalized_text:
+                missing_must_include.append(raw)
+        if missing_must_include:
+            return "plan_missing_must_include"
+
+    return None
+
+
+def _accept_or_fallback_executor_output(planner_output: PlannerOutput, executor_output: ExecutorOutput) -> tuple[ExecutorOutput, str | None]:
+    """Accept executor output only when semantically compatible with planner contract.
+
+    If incompatible, use node fallback (same executor boundary) instead of post-hoc
+    text fabrication from planner artifacts.
+    """
+    violation = _executor_contract_violation_reason(planner_output, executor_output)
+    if violation is None:
+        return executor_output, None
+
+    expected_status = "deliver" if planner_output.status == "plan" else "clarify" if planner_output.status == "clarify" else "refuse"
+    fallback_reason = "executor_contract_mismatch" if expected_status == "refuse" else None
+    fallback = _executor_fallback(planner_output, status=expected_status, refusal_reason=fallback_reason)
+    return fallback, violation
+
+
+def _build_executor_retry_messages(base_messages: list[dict[str, str]], violation_reason: str) -> list[dict[str, str]]:
+    guidance = (
+        "Tu output anterior fue inválido para el contrato planner->executor. "
+        f"Motivo: {violation_reason}. "
+        "Vuelve a emitir SOLO JSON ExecutorOutput válido, realizando fielmente planner_output."
+    )
+    return [*base_messages, {"role": "user", "content": guidance}]
+
+
+
 def _read_text(path: Path, fallback: str) -> str:
     if not path.exists():
         return fallback
@@ -1063,6 +1112,8 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
 
     input_result = run_input_guardrails(user_text=user_turn.normalized_text, policy=policy, client=client)
     output_result = _default_output_guardrail_result("not_executed")
+    executor_contract_violation: str | None = None
+    executor_retry_attempted = False
 
     logs: list = []
     nodes: dict = {}
@@ -1183,6 +1234,21 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
             executor_output = ExecutorOutput.model_validate(executor_call.parsed_json)
         elif executor_call.source == StructuredCallSource.refusal:
             executor_output = _executor_fallback(planner_output, status="refuse", refusal_reason=executor_call.refusal)
+        executor_output, executor_contract_violation = _accept_or_fallback_executor_output(planner_output, executor_output)
+        if executor_contract_violation and planner_output.status == "plan" and client is not None:
+            executor_retry_attempted = True
+            retry_messages = _build_executor_retry_messages(executor_frozen.messages, executor_contract_violation)
+            retry_call = _call_structured(client, config.model_executor, retry_messages, ExecutorOutput, "low", executor_request_context, config.executor_store)
+            if retry_call.source == StructuredCallSource.model and retry_call.parsed_json is not None:
+                retry_output = ExecutorOutput.model_validate(retry_call.parsed_json)
+            elif retry_call.source == StructuredCallSource.refusal:
+                retry_output = _executor_fallback(planner_output, status="refuse", refusal_reason=retry_call.refusal)
+            else:
+                retry_output = _executor_fallback(planner_output)
+            retried_accepted, retried_violation = _accept_or_fallback_executor_output(planner_output, retry_output)
+            executor_output = retried_accepted
+            executor_contract_violation = retried_violation
+            executor_call = retry_call
         exe_latency = int((time.perf_counter() - exe_start) * 1000)
 
         if executor_call.response is not None:
@@ -1214,9 +1280,9 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
     total_latency_ms = int((time.perf_counter() - turn_started_perf) * 1000)
     grades = _evaluate_stub(planner_output, executor_output) if config.feature_eval_hooks else EvalGrades(planner_coherence="disabled", executor_naturalness="disabled", planner_executor_agreement=True, safety_compliance=True)
 
-    combined_guardrail_reasons = sorted(set(input_result.reasons + output_result.reasons))
+    combined_guardrail_reasons = sorted(set(input_result.reasons + output_result.reasons + ([f"executor_contract_violation:{executor_contract_violation}"] if executor_contract_violation else []) + (["executor_retry_attempted"] if executor_retry_attempted else [])))
     output_triggered = bool(output_result.reasons)
-    guardrails_triggered = input_result.decision != InputGuardrailDecision.allow or output_triggered
+    guardrails_triggered = input_result.decision != InputGuardrailDecision.allow or output_triggered or bool(executor_contract_violation)
 
     turn_trace = TurnTrace(
         trace_version=TRACE_VERSION,
