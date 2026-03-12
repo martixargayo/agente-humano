@@ -12,6 +12,12 @@ from sessions.state import SESSIONS, get_session_state
 client = TestClient(app)
 
 
+def _clear_active_binding_store() -> None:
+    path = Path(services._BINDING_STORE_PATH)
+    if path.exists():
+        path.unlink()
+
+
 def _seed_turn(*, user_id: str, session_id: str, turn_suffix: str = "1", conversation_id: str = "conv-1", text: str = "hola") -> str:
     state = get_session_state(user_id, session_id)
     turn_id = f"turn_{turn_suffix}_{user_id}_{session_id}"
@@ -76,6 +82,7 @@ def _seed_turn(*, user_id: str, session_id: str, turn_suffix: str = "1", convers
 
 def test_identity_by_user_and_session_and_no_collision():
     SESSIONS.clear()
+    _clear_active_binding_store()
     _seed_turn(user_id="u1", session_id="same", turn_suffix="1")
     _seed_turn(user_id="u2", session_id="same", turn_suffix="1")
 
@@ -483,3 +490,256 @@ def test_compare_detects_prompt_artifact_changes():
     assert "planner" in body["diff"]["prompt_artifact_changes"]
     assert body["diff"]["prompt_artifact_changes"]["planner"]["changed"] is True
     assert body["diff"]["prompt_artifact_changes"]["planner"]["fields"]["developer_prompt_text"] is True
+
+
+
+
+def test_avatar_bridge_requires_real_active_binding():
+    SESSIONS.clear()
+    _clear_active_binding_store()
+    resp = client.post("/api/avatar/interfaz-usuario/send", json={"message": "hola"})
+    assert resp.status_code == 409
+
+
+def test_active_binding_persists_without_module_global(monkeypatch):
+    SESSIONS.clear()
+    _clear_active_binding_store()
+    _seed_turn(user_id="u1", session_id="s1", turn_suffix="1", conversation_id="conv-real")
+
+    put_resp = client.put(
+        "/api/optimizador/chat/active-binding",
+        json={
+            "optimizer_session_id": "default",
+            "user_id": "u1",
+            "session_id": "s1",
+            "conversation_id": "conv-real",
+        },
+    )
+    assert put_resp.status_code == 200
+
+    calls: list[dict] = []
+
+    def fake_run_sandbox_turn(**kwargs):
+        calls.append(kwargs)
+        return {"reply": "ok", "turn": None, "turn_title": None, "effective_overrides": {}}
+
+    monkeypatch.setattr(services, "run_sandbox_turn", fake_run_sandbox_turn)
+
+    resp = client.post("/api/optimizador/chat/turn", json={"message": "hola"})
+    assert resp.status_code == 200
+    assert calls[0]["user_id"] == "u1"
+    assert calls[0]["session_id"] == "s1"
+
+
+def test_optimizer_and_interfaz_usuario_use_same_runtime_and_chat(monkeypatch):
+    SESSIONS.clear()
+    _clear_active_binding_store()
+    _seed_turn(user_id="u1", session_id="s1", turn_suffix="1", conversation_id="conv-real")
+
+    client.put(
+        "/api/optimizador/chat/active-binding",
+        json={
+            "optimizer_session_id": "default",
+            "user_id": "u1",
+            "session_id": "s1",
+            "conversation_id": "conv-real",
+        },
+    )
+
+    calls: list[tuple[str, str, str]] = []
+
+    def fake_run(state, user_message, config):
+        calls.append((state.user_id, state.session_id, user_message))
+        state.world_state.setdefault("negotiation_canonical_traces", []).append(
+            {
+                "turn_id": f"turn_fake_{len(calls)}",
+                "turn_started_at": "2026-01-01T00:00:04Z",
+                "timestamp_utc": "2026-01-01T00:00:04Z",
+                "total_latency_ms": 1,
+                "final_status": "deliver",
+                "final_reply_text": "ok",
+                "assistant_turn_emitted": True,
+                "guardrails_triggered": False,
+                "input_guardrail_decision": "allow",
+                "output_guardrail_decision": "allow",
+                "output_guardrail_status_before": "deliver",
+                "output_guardrail_status_after": "deliver",
+                "user_turn": {"raw_text": user_message},
+                "logs": [],
+                "nodes": {},
+                "conversation_id_after": "conv-real",
+            }
+        )
+        return "ok", state
+
+    monkeypatch.setattr(services, "run_negotiation_cognitive_turn", fake_run)
+
+    resp_opt = client.post("/api/optimizador/chat/turn", json={"message": "hola desde optimizador"})
+    assert resp_opt.status_code == 200
+
+    resp_ui = client.post("/api/avatar/interfaz-usuario/send", json={"message": "hola desde interfaz"})
+    assert resp_ui.status_code == 200
+
+    assert len(calls) == 2
+    assert calls[0][0] == calls[1][0] == "u1"
+    assert calls[0][1] == calls[1][1] == "s1"
+
+
+def test_selected_turn_scope_does_not_pollute_active_binding_or_runtime(monkeypatch):
+    SESSIONS.clear()
+    _clear_active_binding_store()
+    _seed_turn(user_id="ux", session_id="sx", turn_suffix="1", conversation_id="conv-x")
+
+    client.put(
+        "/api/optimizador/chat/active-binding",
+        json={
+            "optimizer_session_id": "default",
+            "user_id": "ux",
+            "session_id": "sx",
+            "conversation_id": "conv-x",
+            "scope_turn_id": "turn_1_ux_sx",
+        },
+    )
+
+    seen = {}
+
+    def fake_run_sandbox_turn(**kwargs):
+        seen.update(kwargs)
+        return {"reply": "ok", "turn": None, "turn_title": None, "effective_overrides": {}}
+
+    monkeypatch.setattr(services, "run_sandbox_turn", fake_run_sandbox_turn)
+
+    binding = client.get("/api/optimizador/chat/active-binding")
+    assert binding.status_code == 200
+    payload = binding.json()
+    assert "scope_turn_id" not in payload
+
+    resp = client.post("/api/optimizador/chat/turn", json={"message": "hola"})
+    assert resp.status_code == 200
+    assert seen["scope_turn_id"] is None
+
+
+def test_interfaz_usuario_only_needs_message_payload(monkeypatch):
+    SESSIONS.clear()
+    _clear_active_binding_store()
+    _seed_turn(user_id="u3", session_id="s3", turn_suffix="1", conversation_id="conv-3")
+
+    client.put(
+        "/api/optimizador/chat/active-binding",
+        json={
+            "optimizer_session_id": "default",
+            "user_id": "u3",
+            "session_id": "s3",
+            "conversation_id": "conv-3",
+        },
+    )
+
+    monkeypatch.setattr(services, "run_negotiation_cognitive_turn", lambda state, user_message, config: ("ok", state))
+
+    resp = client.post("/api/avatar/interfaz-usuario/send", json={"message": "solo texto"})
+    assert resp.status_code == 200
+    assert resp.json()["reply"] == "ok"
+
+
+def test_active_chat_history_endpoint_matches_session_dialogue():
+    SESSIONS.clear()
+    _clear_active_binding_store()
+    _seed_turn(user_id="uh", session_id="sh", turn_suffix="1", conversation_id="conv-h", text="hola uno")
+    _seed_turn(user_id="uh", session_id="sh", turn_suffix="2", conversation_id="conv-h", text="hola dos")
+
+    client.put(
+        "/api/optimizador/chat/active-binding",
+        json={
+            "optimizer_session_id": "default",
+            "user_id": "uh",
+            "session_id": "sh",
+            "conversation_id": "conv-h",
+        },
+    )
+
+    optimizer_history = client.get("/api/optimizador/chat/history")
+    avatar_history = client.get("/api/avatar/interfaz-usuario/history")
+    assert optimizer_history.status_code == 200
+    assert avatar_history.status_code == 200
+
+    payload_optimizer = optimizer_history.json()
+    items_optimizer = payload_optimizer["items"]
+    items_avatar = avatar_history.json()["items"]
+    assert payload_optimizer["binding"]["user_id"] == "uh"
+    assert payload_optimizer["binding"]["session_id"] == "sh"
+    assert payload_optimizer["binding"]["conversation_id"] == "conv-h"
+    assert items_optimizer == items_avatar
+    assert len(items_optimizer) == 4
+
+
+def test_active_conversation_id_is_preserved(monkeypatch):
+    SESSIONS.clear()
+    _clear_active_binding_store()
+    _seed_turn(user_id="uc", session_id="sc", turn_suffix="1", conversation_id="conv-kept")
+
+    client.put(
+        "/api/optimizador/chat/active-binding",
+        json={
+            "optimizer_session_id": "default",
+            "user_id": "uc",
+            "session_id": "sc",
+            "conversation_id": "conv-kept",
+        },
+    )
+
+    seen = {}
+
+    def fake_run_sandbox_turn(**kwargs):
+        seen.update(kwargs)
+        return {"reply": "ok", "turn": None, "turn_title": None, "effective_overrides": {}}
+
+    monkeypatch.setattr(services, "run_sandbox_turn", fake_run_sandbox_turn)
+
+    resp = client.post("/api/optimizador/chat/turn", json={"message": "hola"})
+    assert resp.status_code == 200
+    assert seen["conversation_id"] == "conv-kept"
+
+
+def test_no_forbidden_architecture_residues():
+    roots = [
+        Path("backend/negociacion/optimizador/services.py"),
+        Path("backend/api/app.py"),
+        Path("backend/avatar_app/optimizador/app.js"),
+    ]
+    text = "\n".join(path.read_text(encoding="utf-8") for path in roots)
+    forbidden = ["_active" + "_chat_binding:" , "resolve_primary" + "_chat_binding", "run_primary" + "_chat_turn", "INTERFAZ_" + "USUARIO_", "sessions" + "[0]"]
+    for token in forbidden:
+        assert token not in text
+
+
+def test_set_active_binding_rejects_nonexistent_session():
+    SESSIONS.clear()
+    _clear_active_binding_store()
+
+    resp = client.put(
+        "/api/optimizador/chat/active-binding",
+        json={
+            "optimizer_session_id": "default",
+            "user_id": "no-user",
+            "session_id": "no-session",
+            "conversation_id": None,
+        },
+    )
+    assert resp.status_code == 400
+
+
+def test_set_active_binding_rejects_nonexistent_conversation_id():
+    SESSIONS.clear()
+    _clear_active_binding_store()
+    _seed_turn(user_id="u9", session_id="s9", turn_suffix="1", conversation_id="conv-ok")
+
+    resp = client.put(
+        "/api/optimizador/chat/active-binding",
+        json={
+            "optimizer_session_id": "default",
+            "user_id": "u9",
+            "session_id": "s9",
+            "conversation_id": "conv-missing",
+        },
+    )
+    assert resp.status_code == 400

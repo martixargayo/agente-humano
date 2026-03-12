@@ -14,7 +14,7 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 
 from google.cloud import speech
@@ -40,6 +40,7 @@ from agent import run_agent
 from negociacion import run_negotiation_agent
 from negociacion.orchestration.flow_config import set_tts_prefetch_hook
 from negociacion.optimizador import router as optimizador_router
+from negociacion.optimizador import services as optimizador_services
 
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -298,9 +299,53 @@ class TTSAudioResponse(BaseModel):
     audio_mime_type: str
 
 
+class InterfazUsuarioSendRequest(BaseModel):
+    message: str
+
+
+class InterfazUsuarioSendResponse(BaseModel):
+    reply: str
+
+
+class InterfazUsuarioHistoryResponse(BaseModel):
+    items: list[dict[str, Any]]
+
+
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
+
+
+@app.get("/interfaz-usuario", include_in_schema=False)
+def interfaz_usuario_page() -> RedirectResponse:
+    return RedirectResponse(url="/avatar/interfaz_usuario/index.html")
+
+
+@app.post("/api/avatar/interfaz-usuario/send", response_model=InterfazUsuarioSendResponse)
+def interfaz_usuario_send(payload: InterfazUsuarioSendRequest):
+    message = payload.message.strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="message no puede estar vacío")
+
+    try:
+        result = optimizador_services.run_active_chat_turn(
+            message=message,
+            repeat_from_turn_id=None,
+        )
+        return InterfazUsuarioSendResponse(reply=str(result.get("reply", "")))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Error en optimizador: {exc}") from exc
+
+
+@app.get("/api/avatar/interfaz-usuario/history", response_model=InterfazUsuarioHistoryResponse)
+def interfaz_usuario_history():
+    try:
+        payload = optimizador_services.get_active_chat_history()
+        return InterfazUsuarioHistoryResponse(items=payload.get("items", []))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.post("/chat", response_model=ChatResponse)

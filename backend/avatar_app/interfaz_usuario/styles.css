@@ -1,0 +1,76 @@
+:root {
+  color-scheme: dark;
+  font-family: Inter, system-ui, -apple-system, Segoe UI, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: #0b1020;
+  color: #e5e7eb;
+}
+
+.chat-shell {
+  max-width: 720px;
+  margin: 24px auto;
+  padding: 16px;
+}
+
+h1 {
+  margin: 0 0 12px;
+  font-size: 1.1rem;
+}
+
+.messages {
+  min-height: 360px;
+  max-height: 60vh;
+  overflow-y: auto;
+  border: 1px solid #24324b;
+  border-radius: 10px;
+  padding: 12px;
+  background: #111827;
+}
+
+.message {
+  margin-bottom: 8px;
+  white-space: pre-wrap;
+}
+
+.message.user {
+  text-align: right;
+  color: #93c5fd;
+}
+
+.message.assistant {
+  text-align: left;
+  color: #e5e7eb;
+}
+
+.composer {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+}
+
+#message-input {
+  flex: 1;
+  border: 1px solid #24324b;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #e5e7eb;
+  padding: 10px;
+}
+
+#send-btn {
+  border: 0;
+  border-radius: 8px;
+  padding: 0 14px;
+  background: #22c55e;
+  color: #04120a;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+#send-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from . import experiments_bridge, services
-from .models import BootstrapSessionRequest, CompareTurnsRequest, ConfirmOverridesRequest, NewConversationRequest, OverrideUpdateRequest, SandboxCloneRequest, SandboxTurnRequest, SaveCaseRequest
+from .models import ActiveOptimizerChatBinding, ActiveOptimizerChatHistoryResponse, BootstrapSessionRequest, CompareTurnsRequest, ConfirmOverridesRequest, NewConversationRequest, OptimizerChatTurnRequest, OverrideUpdateRequest, SandboxCloneRequest, SandboxTurnRequest, SaveCaseRequest
 
 router = APIRouter(prefix="/api/optimizador", tags=["optimizador"])
 
@@ -143,3 +143,49 @@ def compare(payload: CompareTurnsRequest) -> dict:
         return services.compare_turns(payload.turn_a, payload.turn_b)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/chat/active-binding", response_model=ActiveOptimizerChatBinding)
+def get_chat_active_binding() -> ActiveOptimizerChatBinding:
+    try:
+        binding = services.get_active_chat_binding()
+        return ActiveOptimizerChatBinding(**binding)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/chat/history", response_model=ActiveOptimizerChatHistoryResponse)
+def get_chat_history() -> ActiveOptimizerChatHistoryResponse:
+    try:
+        payload = services.get_active_chat_history()
+        return ActiveOptimizerChatHistoryResponse(
+            binding=ActiveOptimizerChatBinding(**payload["binding"]),
+            items=payload.get("items", []),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.put("/chat/active-binding", response_model=ActiveOptimizerChatBinding)
+def set_chat_active_binding(payload: ActiveOptimizerChatBinding) -> ActiveOptimizerChatBinding:
+    try:
+        binding = services.set_active_chat_binding(
+            optimizer_session_id=payload.optimizer_session_id,
+            user_id=payload.user_id,
+            session_id=payload.session_id,
+            conversation_id=payload.conversation_id,
+        )
+        return ActiveOptimizerChatBinding(**binding)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/chat/turn")
+def chat_turn(payload: OptimizerChatTurnRequest) -> dict:
+    try:
+        return services.run_active_chat_turn(
+            message=payload.message,
+            repeat_from_turn_id=payload.repeat_from_turn_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc

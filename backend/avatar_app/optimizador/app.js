@@ -14,7 +14,7 @@ const EVAL_TOOLTIPS = {
 
 const state = {
   optimizerSessionId: "default",
-  sessions: [], selectedSessionKey: "", selectedConversation: "",
+  sessions: [], selectedSessionKey: "", conversations: [], selectedConversation: "",
   turns: [], selectedTurnId: "", turn: null,
   dialogue: [], prompts: [], cases: [], overrides: { mode: "mirror", entries: [], workspace_version: 1 },
   copyTabs: new Set(["Chat", "Timeline", "Cambios"]),
@@ -24,6 +24,7 @@ const state = {
   defaultUserId: "u_optimizador",
   defaultSessionId: "optimizador-main",
   lastUiSnapshot: "",
+  lastSyncedChatBindingKey: "",
 };
 
 const $ = (q) => document.querySelector(q);
@@ -38,6 +39,24 @@ async function api(path, opts = {}) {
 const deepEqual = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const escapeHtml = (s) => String(s ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 const selectedSession = () => state.sessions.find((s) => s.session_key === state.selectedSessionKey) || null;
+
+async function syncActiveChatBinding(force = false) {
+  const s = selectedSession();
+  if (!s) return;
+  const payload = {
+    optimizer_session_id: state.optimizerSessionId,
+    user_id: s.user_id,
+    session_id: s.session_id,
+    conversation_id: state.selectedConversation || null,
+  };
+  const bindingKey = JSON.stringify(payload);
+  if (!force && bindingKey === state.lastSyncedChatBindingKey) return;
+  await api("/chat/active-binding", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+  state.lastSyncedChatBindingKey = bindingKey;
+}
 
 function currentTurnOptionLabel() {
   const row = state.turns.find((x) => x.turn_id === state.selectedTurnId);
@@ -56,25 +75,35 @@ function showToast(text, type = "ok") {
   setTimeout(() => el.remove(), 1800);
 }
 
-async function refresh({ autoSelect = false } = {}) {
+async function refresh({ autoSelect = false, syncBinding = false } = {}) {
   const prevSelected = state.selectedTurnId;
   state.sessions = (await api("/sessions")).items;
   if (!state.sessions.length) {
     await api("/sessions/bootstrap", { method: "POST", body: JSON.stringify({ user_id: state.defaultUserId, session_id: state.defaultSessionId }) });
     state.sessions = (await api("/sessions")).items;
   }
-  if (!state.selectedSessionKey && state.sessions[0]) state.selectedSessionKey = state.sessions[0].session_key;
+  if (!state.selectedSessionKey) {
+    const firstSession = state.sessions.find(() => true);
+    if (firstSession) state.selectedSessionKey = firstSession.session_key;
+  }
   const s = selectedSession();
   if (!s) return;
   const base = `/sessions/${encodeURIComponent(s.user_id)}/${encodeURIComponent(s.session_id)}`;
+  state.conversations = (await api(`${base}/conversations`)).items;
+  const availableConversationIds = new Set(state.conversations.map((c) => String(c.conversation_id)));
+  if (state.selectedConversation && !availableConversationIds.has(state.selectedConversation)) {
+    state.selectedConversation = "";
+  }
   state.turns = (await api(`${base}/turns${state.selectedConversation ? `?conversation_id=${encodeURIComponent(state.selectedConversation)}` : ""}`)).items;
   const nextLast = state.turns[state.turns.length - 1]?.turn_id || "";
   if (state.liveFollow || autoSelect || !state.selectedTurnId) state.selectedTurnId = nextLast;
   else if (prevSelected && state.turns.some((x) => x.turn_id === prevSelected)) state.selectedTurnId = prevSelected;
   else state.selectedTurnId = nextLast;
 
+  if (syncBinding) await syncActiveChatBinding(true);
   state.turn = state.selectedTurnId ? await api(`/turns/${state.selectedTurnId}`) : null;
-  state.dialogue = (await api(`${base}/dialogue`)).items;
+  const activeHistory = await api("/chat/history");
+  state.dialogue = Array.isArray(activeHistory?.items) ? activeHistory.items : [];
   state.cases = (await api("/cases")).items;
   state.prompts = (await api("/prompts")).items;
   state.overrides = await api(`/overrides/${state.optimizerSessionId}`);
@@ -95,6 +124,7 @@ function buildUiSnapshot() {
   return JSON.stringify({
     selectedSessionKey: state.selectedSessionKey,
     selectedTurnId: state.selectedTurnId,
+    selectedConversation: state.selectedConversation,
     liveFollow: state.liveFollow,
     waitingReply: state.waitingReply,
     editing: state.editing,
@@ -148,6 +178,13 @@ function renderTopbar() {
   const ws = state.overrides.workspace_version || 1;
   byId("topbar").innerHTML = `
   <div class='top-left'>
+    <select id='sessionSelector' title='Chat real activo: sesión'>
+      ${state.sessions.map((sess) => `<option value='${sess.session_key}' ${sess.session_key === state.selectedSessionKey ? "selected" : ""}>${sess.user_id} / ${sess.session_id}</option>`).join("")}
+    </select>
+    <select id='conversationSelector' title='Chat real activo: conversación'>
+      <option value='' ${!state.selectedConversation ? "selected" : ""}>Todas</option>
+      ${state.conversations.map((c) => `<option value='${escapeHtml(String(c.conversation_id))}' ${String(c.conversation_id) === state.selectedConversation ? "selected" : ""}>${escapeHtml(String(c.conversation_id))}</option>`).join("")}
+    </select>
     <select id='turnSelector' title='Elige el turno y versión para revisar las pestañas.'>
       ${state.turns.map((t) => `<option value='${t.turn_id}' ${t.turn_id === state.selectedTurnId ? "selected" : ""}>Turno ${t.index} · v${t.version || 1}</option>`).join("")}
     </select>
@@ -283,6 +320,22 @@ function bindEvents() {
     renderTopbar(); renderTab(); bindEvents();
   });
 
+  byId("sessionSelector")?.addEventListener("change", async (e) => {
+    state.selectedSessionKey = e.target.value;
+    state.selectedConversation = "";
+    state.selectedTurnId = "";
+    await refresh({ autoSelect: true, syncBinding: true });
+    renderTopbar(); renderTab(); bindEvents();
+  });
+
+  byId("conversationSelector")?.addEventListener("change", async (e) => {
+    state.selectedConversation = e.target.value || "";
+    state.selectedTurnId = "";
+    await refresh({ autoSelect: true, syncBinding: true });
+    renderTopbar(); renderTab(); bindEvents();
+  });
+
+
   document.querySelectorAll("input[data-copy]").forEach((cb) => cb.onchange = () => {
     if (cb.checked) state.copyTabs.add(cb.dataset.copy); else state.copyTabs.delete(cb.dataset.copy);
     renderTopbar(); bindEvents();
@@ -297,7 +350,8 @@ function bindEvents() {
       await api(`/overrides/${state.optimizerSessionId}`, { method: "PUT", body: JSON.stringify({ mode: "sandbox", entries: state.overrides.entries || [] }) });
       state.editing = true;
     } else state.editing = !state.editing;
-    await refresh({ autoSelect: true }); renderTopbar(); renderTab(); bindEvents();
+    await syncActiveChatBinding(true);
+    await refresh({ autoSelect: true, syncBinding: true }); renderTopbar(); renderTab(); bindEvents();
   });
 
   byId("toggleFollow")?.addEventListener("click", async () => { state.liveFollow = !state.liveFollow; await refresh({ autoSelect: state.liveFollow }); renderTopbar(); renderTab(); bindEvents(); });
@@ -308,7 +362,8 @@ function bindEvents() {
   byId("newConvBtn")?.addEventListener("click", async () => {
     const s = selectedSession(); if (!s) return;
     await api("/sandbox/new_conversation", { method: "POST", body: JSON.stringify({ optimizer_session_id: state.optimizerSessionId, user_id: s.user_id, session_id: s.session_id }) });
-    await refresh({ autoSelect: true }); renderTopbar(); renderTab(); bindEvents();
+    await syncActiveChatBinding(true);
+    await refresh({ autoSelect: true, syncBinding: true }); renderTopbar(); renderTab(); bindEvents();
   });
   byId("saveCaseBtn")?.addEventListener("click", async () => {
     if (!state.selectedTurnId) return; await api("/cases", { method: "POST", body: JSON.stringify({ turn_id: state.selectedTurnId, family: "end_to_end", tags: ["manual"], notes: "guardado desde optimizador" }) }); showToast("Caso guardado");
@@ -345,13 +400,12 @@ function bindEvents() {
 }
 
 async function sendChat(message, repeatFrom = null) {
-  const s = selectedSession();
-  if (!s) throw new Error("No hay sesión activa en optimizador");
   state.waitingReply = true;
   renderTab();
   try {
-    const result = await api("/sandbox/turn", { method: "POST", body: JSON.stringify({ optimizer_session_id: state.optimizerSessionId, user_id: s.user_id, session_id: s.session_id, message, conversation_id: state.selectedConversation || null, scope_turn_id: state.selectedTurnId || null, repeat_from_turn_id: repeatFrom }) });
-    await refresh({ autoSelect: true });
+    await syncActiveChatBinding(true);
+    const result = await api("/chat/turn", { method: "POST", body: JSON.stringify({ message, repeat_from_turn_id: repeatFrom }) });
+    await refresh({ autoSelect: true, syncBinding: true });
     if (result?.reply && !state.dialogue.some((d) => d.role === "assistant" && d.text === result.reply)) {
       state.dialogue.push({ role: "assistant", text: result.reply });
     }
@@ -393,7 +447,7 @@ function startPolling() {
 
 async function boot() {
   renderTabs();
-  await refresh({ autoSelect: true });
+  await refresh({ autoSelect: true, syncBinding: true });
   renderTopbar();
   renderTab();
   bindEvents();

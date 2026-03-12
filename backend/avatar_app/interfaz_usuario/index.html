@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Interfaz Usuario</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="chat-shell">
+      <h1>Interfaz de Usuario</h1>
+      <section id="messages" class="messages" aria-live="polite"></section>
+      <form id="chat-form" class="composer">
+        <input
+          id="message-input"
+          type="text"
+          placeholder="Escribe un mensaje..."
+          autocomplete="off"
+          required
+        />
+        <button type="submit" id="send-btn">Enviar</button>
+      </form>
+    </main>
+
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

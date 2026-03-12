@@ -70,3 +70,20 @@ class SaveCaseRequest(BaseModel):
 class CompareTurnsRequest(BaseModel):
     turn_a: str
     turn_b: str
+
+
+class OptimizerChatTurnRequest(BaseModel):
+    message: str
+    repeat_from_turn_id: str | None = None
+
+
+class ActiveOptimizerChatBinding(BaseModel):
+    optimizer_session_id: str
+    user_id: str
+    session_id: str
+    conversation_id: str | None = None
+
+
+class ActiveOptimizerChatHistoryResponse(BaseModel):
+    binding: ActiveOptimizerChatBinding
+    items: list[dict[str, Any]] = Field(default_factory=list)

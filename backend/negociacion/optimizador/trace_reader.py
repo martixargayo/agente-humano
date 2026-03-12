@@ -38,9 +38,11 @@ def get_turn(turn_id: str) -> dict[str, Any] | None:
     return None
 
 
-def get_dialogue(user_id: str, session_id: str) -> list[dict[str, Any]]:
+def get_dialogue(user_id: str, session_id: str, conversation_id: str | None = None) -> list[dict[str, Any]]:
     utterances: list[dict[str, Any]] = []
     for turn in _all_turns_for_session(user_id, session_id):
+        if not _match_conversation(turn, conversation_id):
+            continue
         utterances.append({"role": "user", "text": turn.get("user_turn", {}).get("raw_text", ""), "turn_id": turn.get("turn_id")})
         utterances.append({"role": "assistant", "text": turn.get("final_reply_text", ""), "turn_id": turn.get("turn_id")})
     return utterances
