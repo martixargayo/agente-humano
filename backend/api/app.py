@@ -40,6 +40,7 @@ from agent import run_agent
 from negociacion import run_negotiation_agent
 from negociacion.orchestration.flow_config import set_tts_prefetch_hook
 from negociacion.optimizador import router as optimizador_router
+from interfaz_usuario import router as interfaz_usuario_router
 
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -78,6 +79,17 @@ if OPTIMIZADOR_DIR.exists():
     )
 
 app.include_router(optimizador_router)
+app.include_router(interfaz_usuario_router)
+
+
+INTERFAZ_USUARIO_DIR = BACKEND_DIR / "interfaz_usuario_app"
+if INTERFAZ_USUARIO_DIR.exists():
+    app.mount(
+        "/interfaz_usuario",
+        StaticFiles(directory=str(INTERFAZ_USUARIO_DIR), html=True),
+        name="interfaz_usuario",
+    )
+
 
 # --- Google Cloud Speech-to-Text (entrada de audio) ---
 

@@ -5,7 +5,8 @@ from datetime import datetime, timezone
 
 from sessions.state import get_session_state, SessionState
 
-from ..orchestration.flow_config import build_negotiation_pipeline_config, run_negotiation_cognitive_turn
+from ..orchestration.flow_config import build_negotiation_pipeline_config
+from ..orchestration.turn_contract import TurnEntryContract, execute_turn_with_contract
 from ..state.canonical_state import build_default_canonical_state
 from ..state.shared_types import ThreadMode
 from . import datasets_bridge, evals_bridge, experiments_bridge, guardrails_bridge, session_bridge, storage, trace_reader
@@ -31,6 +32,18 @@ def _apply_contextual_state_overrides(state: Any, config: Any, entries: list[dic
     updated = copy.deepcopy(raw)
     updated["persona"] = {"policy": policy, "expressive": expressive}
     state.world_state[memory_key] = updated
+
+
+def _resolve_optimizer_contract_flags(state: SessionState) -> tuple[bool, bool]:
+    if not isinstance(state.world_state, dict):
+        return False, False
+    meta = state.world_state.get("optimizador_sandbox_meta", {})
+    if not isinstance(meta, dict):
+        return False, False
+    strategy = str(meta.get("clone_strategy") or "")
+    clone_used = strategy == "full_session_with_preferred_conversation"
+    new_conversation = strategy == "new_conversation_clean_start"
+    return clone_used, new_conversation
 
 
 def list_sessions() -> list[dict[str, Any]]:
@@ -131,8 +144,21 @@ def run_sandbox_turn(
     )
     config, tempdir = experiments_bridge.apply_overrides(base_config, resolved_entries)
     _apply_contextual_state_overrides(state, config, resolved_entries)
+    clone_used, new_conversation = _resolve_optimizer_contract_flags(state)
     try:
-        reply, _ = run_negotiation_cognitive_turn(state, message, config)
+        reply, _, meta = execute_turn_with_contract(
+            state=state,
+            user_message=message,
+            config=config,
+            contract=TurnEntryContract(
+                entry_surface="optimizador",
+                entrypoint="/api/optimizador/sandbox/turn",
+                overrides_applied=bool(resolved_entries),
+                optimizer_wrapper_used=True,
+                new_conversation=new_conversation,
+                clone_used=clone_used,
+            ),
+        )
     finally:
         if tempdir is not None:
             tempdir.cleanup()
@@ -160,6 +186,7 @@ def run_sandbox_turn(
         "turn": selected_turn,
         "turn_title": derive_turn_title(latest, turns) if latest else None,
         "effective_overrides": experiments_bridge.describe_effective_overrides(resolved_entries),
+        "entry_contract": meta.get("entry_contract") if isinstance(meta, dict) else None,
     }
 
 
