@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from uuid import uuid4
 from typing import Any
 
 from sessions.state import SESSIONS, SessionState, get_session_state
@@ -26,7 +27,7 @@ def ensure_session(*, user_id: str, session_id: str) -> dict[str, Any]:
 
 
 def create_new_conversation(*, user_id: str, base_session_id: str) -> dict[str, Any]:
-    new_session_id = f"{base_session_id}__newconv__{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+    new_session_id = f"{base_session_id}__newconv__{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}_{uuid4().hex[:6]}"
     SESSIONS[(user_id, new_session_id)] = SessionState(user_id=user_id, session_id=new_session_id)
     return ensure_session(user_id=user_id, session_id=new_session_id)
 
