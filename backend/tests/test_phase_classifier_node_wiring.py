@@ -103,6 +103,22 @@ def test_apply_phase_output_updates_only_current_previous_phase():
     assert state.planner_state.topics_touched_previous_phases == ["saludo"]
 
 
+
+
+def test_phase_change_resets_stale_current_turn_goal():
+    state = _build_state()
+    state.planner_state.current_turn_goal = "Proponer un ajuste de oferta condicionado a la inclusión de garantía"
+
+    apply_phase_classifier_output_to_state(
+        state,
+        PhaseClassifierOutput(
+            schema_version="phase_classifier.v1",
+            current_phase=NegotiationPhase.formalizacion_del_acuerdo,
+        ),
+    )
+
+    assert state.planner_state.current_turn_goal is None
+
 def test_phase_fallback_returns_valid_output_and_safe_default():
     out = _phase_classifier_fallback(None)
     assert out.schema_version == "phase_classifier.v1"
