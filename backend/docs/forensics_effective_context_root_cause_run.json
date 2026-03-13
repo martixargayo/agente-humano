@@ -1,0 +1,353 @@
+{
+  "report_version": "root_cause.v1",
+  "source_artifact_summary": {
+    "central_report_version": "effective_context.v2",
+    "turn_count": 4,
+    "global_checks": {
+      "all_node_payloads_equal": true,
+      "all_memory_working_equal": true,
+      "all_planner_state_equal": true,
+      "all_negotiation_state_equal": true,
+      "all_recent_dialogue_equal": true
+    },
+    "hidden_continuity_first_divergence": {
+      "node": "memory",
+      "path": "recent_dialogue_short.length"
+    }
+  },
+  "scenarios": {
+    "clean": {
+      "status_optimizer": 200,
+      "status_interfaz": 200,
+      "node_first_diffs": {
+        "memory": "trace_meta.turn_id",
+        "phase_classifier": "current_user_turn.timestamp_iso",
+        "planner": "trace_meta.turn_id",
+        "executor": "trace_meta.turn_id"
+      },
+      "first_node_divergence": {
+        "node": "memory",
+        "path": "trace_meta.turn_id"
+      },
+      "memory_input_build_first_diff": null,
+      "optimizer_build": [
+        {
+          "recent_dialogue_len": 1,
+          "memory_working_current": {
+            "current_topic": null,
+            "pending_question": null,
+            "last_turn_summary": null
+          },
+          "planner_state_current": {
+            "current_phase": null,
+            "previous_phase": null,
+            "current_turn_goal": null,
+            "topics_touched_current_phase": [],
+            "topics_touched_previous_phases": [],
+            "recent_phase_history": []
+          },
+          "negotiation_state_current": {
+            "status": "inactive",
+            "active_axes": [],
+            "last_offer_self": null,
+            "last_offer_other": null,
+            "tentative_agreement": null,
+            "stall_state": {
+              "is_hard_stalemate": false,
+              "stalemate_reason": null,
+              "self_ultimatum_active": false,
+              "self_ultimatum_summary": null
+            },
+            "blockers": [],
+            "next_open_loop": null
+          }
+        }
+      ],
+      "interfaz_build": [
+        {
+          "recent_dialogue_len": 1,
+          "memory_working_current": {
+            "current_topic": null,
+            "pending_question": null,
+            "last_turn_summary": null
+          },
+          "planner_state_current": {
+            "current_phase": null,
+            "previous_phase": null,
+            "current_turn_goal": null,
+            "topics_touched_current_phase": [],
+            "topics_touched_previous_phases": [],
+            "recent_phase_history": []
+          },
+          "negotiation_state_current": {
+            "status": "inactive",
+            "active_axes": [],
+            "last_offer_self": null,
+            "last_offer_other": null,
+            "tentative_agreement": null,
+            "stall_state": {
+              "is_hard_stalemate": false,
+              "stalemate_reason": null,
+              "self_ultimatum_active": false,
+              "self_ultimatum_summary": null
+            },
+            "blockers": [],
+            "next_open_loop": null
+          }
+        }
+      ]
+    },
+    "residual_interfaz": {
+      "status_optimizer": 200,
+      "status_interfaz": 200,
+      "node_first_diffs": {
+        "memory": "recent_dialogue_short.length",
+        "phase_classifier": "current_user_turn.timestamp_iso",
+        "planner": "memory_working.last_turn_summary",
+        "executor": "recent_dialogue_short.length"
+      },
+      "first_node_divergence": {
+        "node": "memory",
+        "path": "recent_dialogue_short.length"
+      },
+      "memory_input_build_first_diff": "recent_dialogue_len",
+      "optimizer_build": [
+        {
+          "recent_dialogue_len": 1,
+          "memory_working_current": {
+            "current_topic": null,
+            "pending_question": null,
+            "last_turn_summary": null
+          },
+          "planner_state_current": {
+            "current_phase": null,
+            "previous_phase": null,
+            "current_turn_goal": null,
+            "topics_touched_current_phase": [],
+            "topics_touched_previous_phases": [],
+            "recent_phase_history": []
+          },
+          "negotiation_state_current": {
+            "status": "inactive",
+            "active_axes": [],
+            "last_offer_self": null,
+            "last_offer_other": null,
+            "tentative_agreement": null,
+            "stall_state": {
+              "is_hard_stalemate": false,
+              "stalemate_reason": null,
+              "self_ultimatum_active": false,
+              "self_ultimatum_summary": null
+            },
+            "blockers": [],
+            "next_open_loop": null
+          }
+        }
+      ],
+      "interfaz_build": [
+        {
+          "recent_dialogue_len": 3,
+          "memory_working_current": {
+            "current_topic": null,
+            "pending_question": null,
+            "last_turn_summary": null
+          },
+          "planner_state_current": {
+            "current_phase": null,
+            "previous_phase": null,
+            "current_turn_goal": null,
+            "topics_touched_current_phase": [],
+            "topics_touched_previous_phases": [],
+            "recent_phase_history": []
+          },
+          "negotiation_state_current": {
+            "status": "inactive",
+            "active_axes": [],
+            "last_offer_self": null,
+            "last_offer_other": null,
+            "tentative_agreement": null,
+            "stall_state": {
+              "is_hard_stalemate": false,
+              "stalemate_reason": null,
+              "self_ultimatum_active": false,
+              "self_ultimatum_summary": null
+            },
+            "blockers": [],
+            "next_open_loop": null
+          }
+        }
+      ]
+    },
+    "residual_optimizer": {
+      "status_optimizer": 200,
+      "status_interfaz": 200,
+      "node_first_diffs": {
+        "memory": "recent_dialogue_short.length",
+        "phase_classifier": "current_user_turn.timestamp_iso",
+        "planner": "memory_working.last_turn_summary",
+        "executor": "recent_dialogue_short.length"
+      },
+      "first_node_divergence": {
+        "node": "memory",
+        "path": "recent_dialogue_short.length"
+      },
+      "memory_input_build_first_diff": "recent_dialogue_len",
+      "optimizer_build": [
+        {
+          "recent_dialogue_len": 3,
+          "memory_working_current": {
+            "current_topic": null,
+            "pending_question": null,
+            "last_turn_summary": null
+          },
+          "planner_state_current": {
+            "current_phase": null,
+            "previous_phase": null,
+            "current_turn_goal": null,
+            "topics_touched_current_phase": [],
+            "topics_touched_previous_phases": [],
+            "recent_phase_history": []
+          },
+          "negotiation_state_current": {
+            "status": "inactive",
+            "active_axes": [],
+            "last_offer_self": null,
+            "last_offer_other": null,
+            "tentative_agreement": null,
+            "stall_state": {
+              "is_hard_stalemate": false,
+              "stalemate_reason": null,
+              "self_ultimatum_active": false,
+              "self_ultimatum_summary": null
+            },
+            "blockers": [],
+            "next_open_loop": null
+          }
+        }
+      ],
+      "interfaz_build": [
+        {
+          "recent_dialogue_len": 1,
+          "memory_working_current": {
+            "current_topic": null,
+            "pending_question": null,
+            "last_turn_summary": null
+          },
+          "planner_state_current": {
+            "current_phase": null,
+            "previous_phase": null,
+            "current_turn_goal": null,
+            "topics_touched_current_phase": [],
+            "topics_touched_previous_phases": [],
+            "recent_phase_history": []
+          },
+          "negotiation_state_current": {
+            "status": "inactive",
+            "active_axes": [],
+            "last_offer_self": null,
+            "last_offer_other": null,
+            "tentative_agreement": null,
+            "stall_state": {
+              "is_hard_stalemate": false,
+              "stalemate_reason": null,
+              "self_ultimatum_active": false,
+              "self_ultimatum_summary": null
+            },
+            "blockers": [],
+            "next_open_loop": null
+          }
+        }
+      ]
+    },
+    "stale_canonical_interfaz": {
+      "status_optimizer": 200,
+      "status_interfaz": 200,
+      "node_first_diffs": {
+        "memory": "memory_working_current.current_topic",
+        "phase_classifier": "current_user_turn.timestamp_iso",
+        "planner": "memory_working.current_topic",
+        "executor": "trace_meta.turn_id"
+      },
+      "first_node_divergence": {
+        "node": "memory",
+        "path": "memory_working_current.current_topic"
+      },
+      "memory_input_build_first_diff": "memory_working_current.current_topic",
+      "optimizer_build": [
+        {
+          "recent_dialogue_len": 1,
+          "memory_working_current": {
+            "current_topic": null,
+            "pending_question": null,
+            "last_turn_summary": null
+          },
+          "planner_state_current": {
+            "current_phase": null,
+            "previous_phase": null,
+            "current_turn_goal": null,
+            "topics_touched_current_phase": [],
+            "topics_touched_previous_phases": [],
+            "recent_phase_history": []
+          },
+          "negotiation_state_current": {
+            "status": "inactive",
+            "active_axes": [],
+            "last_offer_self": null,
+            "last_offer_other": null,
+            "tentative_agreement": null,
+            "stall_state": {
+              "is_hard_stalemate": false,
+              "stalemate_reason": null,
+              "self_ultimatum_active": false,
+              "self_ultimatum_summary": null
+            },
+            "blockers": [],
+            "next_open_loop": null
+          }
+        }
+      ],
+      "interfaz_build": [
+        {
+          "recent_dialogue_len": 1,
+          "memory_working_current": {
+            "current_topic": "precio_residual",
+            "pending_question": null,
+            "last_turn_summary": "residual summary"
+          },
+          "planner_state_current": {
+            "current_phase": "concesiones_y_ajuste_final",
+            "previous_phase": null,
+            "current_turn_goal": null,
+            "topics_touched_current_phase": [],
+            "topics_touched_previous_phases": [],
+            "recent_phase_history": []
+          },
+          "negotiation_state_current": {
+            "status": "inactive",
+            "active_axes": [],
+            "last_offer_self": null,
+            "last_offer_other": null,
+            "tentative_agreement": null,
+            "stall_state": {
+              "is_hard_stalemate": false,
+              "stalemate_reason": null,
+              "self_ultimatum_active": false,
+              "self_ultimatum_summary": null
+            },
+            "blockers": [],
+            "next_open_loop": null
+          }
+        }
+      ]
+    },
+    "reset_strength": {
+      "interfaz_new_turn_status": 200,
+      "optimizer_new_conversation_status": 200,
+      "optimizer_new_turn_status": 200,
+      "interfaz_new_session": "s_reset__newconv__20260313154105570183_59de08",
+      "optimizer_new_session": "s_reset__newconv__20260313154105592592_0842a9",
+      "interfaz_recent_dialogue_len": 2,
+      "optimizer_recent_dialogue_len": 2
+    }
+  }
+}

@@ -48,3 +48,20 @@ $('send').onclick = async () => {
     `conversation=${out.conversation_id_after || '-'} traces=${out.trace_count}`;
   $('msg').value = '';
 };
+
+
+function _seedDefaultIds() {
+  const suffix = `${Date.now()}_${Math.random().toString(16).slice(2,8)}`;
+  $('userId').value = `u_interfaz_${suffix}`;
+  $('sessionId').value = `interfaz-main__${suffix}`;
+}
+
+(async function initInterfazUsuarioSession() {
+  _seedDefaultIds();
+  try {
+    const out = await api('/sessions/bootstrap', { method:'POST', body: JSON.stringify(ids()) });
+    $('meta').textContent = `session=${out.session_id} traces=${out.trace_count} conversation_id=${out.conversation_id || '-'}`;
+  } catch (err) {
+    $('meta').textContent = `bootstrap_error=${String(err)}`;
+  }
+})();

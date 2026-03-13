@@ -237,6 +237,21 @@ def test_planner_structured_call_is_strict_json_schema():
     assert client.responses.kwargs["text"]["format"]["strict"] is True
 
 
+
+
+def test_build_planner_input_does_not_forward_previous_current_turn_goal_anchor():
+    state = build_default_canonical_state(session_id="s1", thread_mode=ThreadMode.conversation)
+    state.planner_state.current_phase = NegotiationPhase.formalizacion_del_acuerdo
+    state.planner_state.current_turn_goal = "Proponer un ajuste de oferta condicionado a la inclusión de garantía"
+
+    user_turn = _build_user_turn("Cerramos acuerdo y firma", "2026-01-01T00:00:00Z")
+    trace_meta = {"turn_id": "t1", "prompt_version": "planner_v3", "schema_version": "planner_input.v1", "model_target": "o4-mini"}
+
+    payload = build_planner_input(state, [], user_turn, trace_meta, "backend/negociacion/prompts")  # type: ignore[arg-type]
+
+    assert payload.current_phase == NegotiationPhase.formalizacion_del_acuerdo
+    assert payload.planner_state.current_turn_goal is None
+
 def test_apply_planner_output_to_state_only_updates_current_turn_goal():
     state = _build_state()
     before = state.planner_state.model_dump(mode="json")
