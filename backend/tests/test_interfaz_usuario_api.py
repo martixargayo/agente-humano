@@ -262,3 +262,27 @@ def test_optimizer_contract_flags_for_clone_and_new_conversation_paths() -> None
     assert new_conv_turn.status_code == 200
     assert new_conv_turn.json()["entry_contract"]["clone_used"] is False
     assert new_conv_turn.json()["entry_contract"]["new_conversation"] is True
+
+
+def test_interfaz_auto_resets_on_fresh_opener_after_terminal_phase():
+    state = get_session_state(user_id="u_auto", session_id="s_auto")
+    state.world_state["negotiation_canonical"] = {
+        "planner_state": {"current_phase": "formalizacion_del_acuerdo"},
+        "openai_thread": {},
+    }
+    state.world_state["negotiation_canonical_recent_dialogue"] = [
+        {"role": "user", "text": "acepto"},
+        {"role": "assistant", "text": "cerramos"},
+        {"role": "user", "text": "ok"},
+        {"role": "assistant", "text": "firma"},
+    ]
+
+    turn = client.post(
+        "/api/interfaz_usuario/negociacion/turn",
+        json={"user_id": "u_auto", "session_id": "s_auto", "message": "hola, vengo por el coche", "new_conversation": False},
+    )
+
+    assert turn.status_code == 200
+    body = turn.json()
+    assert body["auto_reset_applied"] is True
+    assert body["session_id"] != "s_auto"

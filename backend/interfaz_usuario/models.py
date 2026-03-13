@@ -49,3 +49,4 @@ class NegotiationTurnResponse(BaseModel):
     previous_response_id_after: str | None = None
     latest_turn_id: str | None = None
     entry_contract: EntryContractPayload
+    auto_reset_applied: bool = False

@@ -1,0 +1,88 @@
+{
+  "report_version": "planner_executor_context_skew.v1",
+  "scenarios": {
+    "baseline_clean": {
+      "status_optimizer": 200,
+      "status_interfaz": 200,
+      "reply_optimizer": "Propuesta: ajuste condicionado.",
+      "reply_interfaz": "Propuesta: ajuste condicionado.",
+      "phase_planner_executor_first_diffs": {
+        "phase_classifier": null,
+        "planner": null,
+        "executor": null
+      },
+      "first_divergence": null,
+      "optimizer_planner_phase": "concesiones_y_ajuste_final",
+      "interfaz_planner_phase": "concesiones_y_ajuste_final",
+      "optimizer_planner_goal_in": null,
+      "interfaz_planner_goal_in": null
+    },
+    "phase_transition_shared_sessions": {
+      "status_optimizer": 200,
+      "status_interfaz": 200,
+      "reply_optimizer": "Resumen del acuerdo: 7000 EUR con garantía de 1 año. ¿Cómo prefieres organizar el pago y el papeleo?",
+      "reply_interfaz": "Resumen del acuerdo: 7000 EUR con garantía de 1 año. ¿Cómo prefieres organizar el pago y el papeleo?",
+      "phase_planner_executor_first_diffs": {
+        "phase_classifier": null,
+        "planner": null,
+        "executor": null
+      },
+      "first_divergence": null,
+      "optimizer_planner_phase": "formalizacion_del_acuerdo",
+      "interfaz_planner_phase": "formalizacion_del_acuerdo",
+      "optimizer_planner_goal_in": null,
+      "interfaz_planner_goal_in": null
+    },
+    "first_turn_fresh": {
+      "status_optimizer": 200,
+      "status_interfaz": 200,
+      "reply_optimizer": "Propuesta: ajuste condicionado.",
+      "reply_interfaz": "Propuesta: ajuste condicionado.",
+      "phase_planner_executor_first_diffs": {
+        "phase_classifier": null,
+        "planner": null,
+        "executor": null
+      },
+      "first_divergence": null,
+      "optimizer_planner_phase": "concesiones_y_ajuste_final",
+      "interfaz_planner_phase": "concesiones_y_ajuste_final",
+      "optimizer_planner_goal_in": null,
+      "interfaz_planner_goal_in": null
+    },
+    "injected_planner_state_skew_interfaz_runtime": {
+      "status_optimizer": 200,
+      "status_interfaz": 200,
+      "reply_optimizer": "Resumen del acuerdo: 7000 EUR con garantía de 1 año. ¿Cómo prefieres organizar el pago y el papeleo?",
+      "reply_interfaz": "Resumen del acuerdo: 7000 EUR con garantía de 1 año. ¿Cómo prefieres organizar el pago y el papeleo?",
+      "phase_planner_executor_first_diffs": {
+        "phase_classifier": null,
+        "planner": null,
+        "executor": null
+      },
+      "first_divergence": null,
+      "optimizer_planner_phase": "formalizacion_del_acuerdo",
+      "interfaz_planner_phase": "formalizacion_del_acuerdo",
+      "optimizer_planner_goal_in": null,
+      "interfaz_planner_goal_in": null
+    },
+    "injected_planner_state_skew_interfaz_legacy_emulation": {
+      "status_optimizer": 200,
+      "status_interfaz": 200,
+      "reply_optimizer": "Resumen del acuerdo: 7000 EUR con garantía de 1 año. ¿Cómo prefieres organizar el pago y el papeleo?",
+      "reply_interfaz": "Propuesta: ajuste condicionado.",
+      "phase_planner_executor_first_diffs": {
+        "phase_classifier": null,
+        "planner": "planner_state.current_turn_goal",
+        "executor": "planner_output.decision"
+      },
+      "first_divergence": {
+        "node": "planner",
+        "path": "planner_state.current_turn_goal"
+      },
+      "optimizer_planner_phase": "formalizacion_del_acuerdo",
+      "interfaz_planner_phase": "formalizacion_del_acuerdo",
+      "optimizer_planner_goal_in": null,
+      "interfaz_planner_goal_in": "Proponer un ajuste de oferta condicionado a la inclusión de garantía"
+    }
+  }
+}

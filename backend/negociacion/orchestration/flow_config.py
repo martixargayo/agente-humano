@@ -444,6 +444,10 @@ def build_memory_input(canonical_state: CanonicalState, recent_dialogue: Sequenc
 def build_planner_input(canonical_state: CanonicalState, recent_dialogue: Sequence[MemoryDialogueMessage], user_turn: UserTurn, trace_meta: TraceMeta, prompts_dir: str) -> PlannerInput:
     current_phase = canonical_state.planner_state.current_phase or NegotiationPhase.clima_humano
     phase_card = _select_phase_card(current_phase, _load_phase_cards(prompts_dir))
+    # current_turn_goal is tactical output of the previous planner step; keep it in state for traces,
+    # but do not feed it as an anchor for the next planning cycle.
+    planner_state_for_input = canonical_state.planner_state.model_copy(deep=True)
+    planner_state_for_input.current_turn_goal = None
     # /// La selección de phase_card la hace código (lookup por fase), no el modelo planner.
     return PlannerInput(
         schema_version="planner_input.v1",
@@ -466,7 +470,7 @@ def build_planner_input(canonical_state: CanonicalState, recent_dialogue: Sequen
         recent_dialogue_short=_compact_recent(recent_dialogue, 8),
         memory_working=canonical_state.memory_working,
         negotiation_state=canonical_state.negotiation_state,
-        planner_state=canonical_state.planner_state,
+        planner_state=planner_state_for_input,
         scene_state=canonical_state.scene_state,
         selected_memory=_select_memory(canonical_state),
         trace_meta=trace_meta,
@@ -813,8 +817,13 @@ def apply_planner_output_to_state(canonical_state: CanonicalState, planner_outpu
 
 
 def apply_phase_classifier_output_to_state(canonical_state: CanonicalState, phase_output: PhaseClassifierOutput) -> None:
-    canonical_state.planner_state.previous_phase = canonical_state.planner_state.current_phase
+    previous_phase = canonical_state.planner_state.current_phase
+    canonical_state.planner_state.previous_phase = previous_phase
     canonical_state.planner_state.current_phase = phase_output.current_phase
+    if previous_phase is not None and previous_phase != phase_output.current_phase:
+        # Reset turn goal when the dominant phase changes to avoid stale tactical anchors
+        # leaking into planner input on the next stage.
+        canonical_state.planner_state.current_turn_goal = None
     history = list(canonical_state.planner_state.recent_phase_history)
     history.append(phase_output.current_phase)
     canonical_state.planner_state.recent_phase_history = history[-MAX_RECENT_PHASE_HISTORY:]

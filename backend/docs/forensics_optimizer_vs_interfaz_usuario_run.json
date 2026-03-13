@@ -1,0 +1,571 @@
+{
+  "report_version": "forensics.v1",
+  "status_codes": {
+    "optimizer_turn_1": 200,
+    "interfaz_turn_1": 200,
+    "optimizer_turn_2": 200,
+    "interfaz_turn_2": 200,
+    "optimizer_override": 200,
+    "interfaz_isolated": 200,
+    "optimizer_clone": 200,
+    "optimizer_clone_turn": 200,
+    "optimizer_newconv": 200,
+    "optimizer_newconv_turn": 200,
+    "interfaz_newconv": 200,
+    "chat": 200
+  },
+  "scenario_1_same_seed_same_message": {
+    "optimizer": {
+      "turn_id": "turn::1",
+      "final_status": "ok",
+      "conversation_id_before": null,
+      "conversation_id_after": "conv::opt_u::opt_s",
+      "previous_response_id_before": null,
+      "previous_response_id_after": "resp::opt_s::1",
+      "entry_contract": {
+        "entry_surface": "optimizador",
+        "entrypoint": "/api/optimizador/sandbox/turn",
+        "overrides_applied": false,
+        "optimizer_wrapper_used": true,
+        "new_conversation": false,
+        "clone_used": false,
+        "config_snapshot": {
+          "memory_key": "negotiation_canonical",
+          "thread_mode_default": "conversation",
+          "model_memory": "gpt-5-nano",
+          "model_phase_classifier": "gpt-5-nano",
+          "model_planner": "o4-mini",
+          "model_executor": "gpt-5-nano",
+          "max_recent_messages": 12,
+          "max_executor_recent_turns": 4
+        }
+      },
+      "optimizador": {
+        "optimizer_session_id": "forensics",
+        "used_overrides": false,
+        "applied_overrides": {
+          "prompt": {},
+          "config": {},
+          "contextual": {}
+        },
+        "mode": "mirror",
+        "workspace_version": 1,
+        "session_key": "opt_u::opt_s",
+        "conversation_id": null,
+        "versioning": {
+          "base_turn_id": "turn::1",
+          "version": 1
+        }
+      },
+      "forensics_payload": {
+        "memory_key": "negotiation_canonical",
+        "thread_mode_default": "conversation",
+        "max_recent_messages": 12,
+        "max_executor_recent_turns": 4,
+        "model_memory": "gpt-5-nano",
+        "model_phase_classifier": "gpt-5-nano",
+        "model_planner": "o4-mini",
+        "model_executor": "gpt-5-nano",
+        "world_state_keys": [
+          "negotiation_canonical",
+          "negotiation_canonical_traces"
+        ],
+        "has_optimizer_meta": false,
+        "recent_dialogue_count": 0
+      }
+    },
+    "interfaz": {
+      "turn_id": "turn::1",
+      "final_status": "ok",
+      "conversation_id_before": null,
+      "conversation_id_after": "conv::iu_u::iu_s",
+      "previous_response_id_before": null,
+      "previous_response_id_after": "resp::iu_s::1",
+      "entry_contract": {
+        "entry_surface": "interfaz_usuario",
+        "entrypoint": "/api/interfaz_usuario/negociacion/turn",
+        "overrides_applied": false,
+        "optimizer_wrapper_used": false,
+        "new_conversation": false,
+        "clone_used": false,
+        "config_snapshot": {
+          "memory_key": "negotiation_canonical",
+          "thread_mode_default": "conversation",
+          "model_memory": "gpt-5-nano",
+          "model_phase_classifier": "gpt-5-nano",
+          "model_planner": "o4-mini",
+          "model_executor": "gpt-5-nano",
+          "max_recent_messages": 12,
+          "max_executor_recent_turns": 4
+        }
+      },
+      "optimizador": null,
+      "forensics_payload": {
+        "memory_key": "negotiation_canonical",
+        "thread_mode_default": "conversation",
+        "max_recent_messages": 12,
+        "max_executor_recent_turns": 4,
+        "model_memory": "gpt-5-nano",
+        "model_phase_classifier": "gpt-5-nano",
+        "model_planner": "o4-mini",
+        "model_executor": "gpt-5-nano",
+        "world_state_keys": [
+          "negotiation_canonical",
+          "negotiation_canonical_traces"
+        ],
+        "has_optimizer_meta": false,
+        "recent_dialogue_count": 0
+      }
+    },
+    "same_config_snapshot": true,
+    "overrides_applied_optimizer": false,
+    "overrides_applied_interfaz": false
+  },
+  "scenario_2_continuity_second_turn": {
+    "optimizer_second_turn": {
+      "turn_id": "turn::2",
+      "final_status": "ok",
+      "final_reply_text": "stub::segundo turno",
+      "conversation_id_before": "conv::opt_u::opt_s",
+      "conversation_id_after": "conv::opt_u::opt_s",
+      "previous_response_id_before": "resp::opt_s::1",
+      "previous_response_id_after": "resp::opt_s::2",
+      "forensics_payload": {
+        "memory_key": "negotiation_canonical",
+        "thread_mode_default": "conversation",
+        "max_recent_messages": 12,
+        "max_executor_recent_turns": 4,
+        "model_memory": "gpt-5-nano",
+        "model_phase_classifier": "gpt-5-nano",
+        "model_planner": "o4-mini",
+        "model_executor": "gpt-5-nano",
+        "world_state_keys": [
+          "negotiation_canonical",
+          "negotiation_canonical_traces"
+        ],
+        "has_optimizer_meta": false,
+        "recent_dialogue_count": 0
+      },
+      "_entry_contract": {
+        "entry_surface": "optimizador",
+        "entrypoint": "/api/optimizador/sandbox/turn",
+        "overrides_applied": false,
+        "optimizer_wrapper_used": true,
+        "new_conversation": false,
+        "clone_used": false,
+        "config_snapshot": {
+          "memory_key": "negotiation_canonical",
+          "thread_mode_default": "conversation",
+          "model_memory": "gpt-5-nano",
+          "model_phase_classifier": "gpt-5-nano",
+          "model_planner": "o4-mini",
+          "model_executor": "gpt-5-nano",
+          "max_recent_messages": 12,
+          "max_executor_recent_turns": 4
+        }
+      },
+      "_optimizador": {
+        "optimizer_session_id": "forensics",
+        "used_overrides": false,
+        "applied_overrides": {
+          "prompt": {},
+          "config": {},
+          "contextual": {}
+        },
+        "mode": "mirror",
+        "workspace_version": 1,
+        "session_key": "opt_u::opt_s",
+        "conversation_id": null,
+        "versioning": {
+          "base_turn_id": "turn::2",
+          "version": 1
+        }
+      }
+    },
+    "interfaz_second_turn": {
+      "turn_id": "turn::2",
+      "final_status": "ok",
+      "final_reply_text": "stub::segundo turno",
+      "conversation_id_before": "conv::iu_u::iu_s",
+      "conversation_id_after": "conv::iu_u::iu_s",
+      "previous_response_id_before": "resp::iu_s::1",
+      "previous_response_id_after": "resp::iu_s::2",
+      "forensics_payload": {
+        "memory_key": "negotiation_canonical",
+        "thread_mode_default": "conversation",
+        "max_recent_messages": 12,
+        "max_executor_recent_turns": 4,
+        "model_memory": "gpt-5-nano",
+        "model_phase_classifier": "gpt-5-nano",
+        "model_planner": "o4-mini",
+        "model_executor": "gpt-5-nano",
+        "world_state_keys": [
+          "negotiation_canonical",
+          "negotiation_canonical_traces"
+        ],
+        "has_optimizer_meta": false,
+        "recent_dialogue_count": 0
+      },
+      "_entry_contract": {
+        "entry_surface": "interfaz_usuario",
+        "entrypoint": "/api/interfaz_usuario/negociacion/turn",
+        "overrides_applied": false,
+        "optimizer_wrapper_used": false,
+        "new_conversation": false,
+        "clone_used": false,
+        "config_snapshot": {
+          "memory_key": "negotiation_canonical",
+          "thread_mode_default": "conversation",
+          "model_memory": "gpt-5-nano",
+          "model_phase_classifier": "gpt-5-nano",
+          "model_planner": "o4-mini",
+          "model_executor": "gpt-5-nano",
+          "max_recent_messages": 12,
+          "max_executor_recent_turns": 4
+        }
+      }
+    }
+  },
+  "scenario_3_override_vs_isolation": {
+    "optimizer_after_override": {
+      "turn_id": "turn::3",
+      "final_status": "ok",
+      "conversation_id_before": "conv::opt_u::opt_s",
+      "conversation_id_after": "conv::opt_u::opt_s",
+      "previous_response_id_before": "resp::opt_s::2",
+      "previous_response_id_after": "resp::opt_s::3",
+      "entry_contract": {
+        "entry_surface": "optimizador",
+        "entrypoint": "/api/optimizador/sandbox/turn",
+        "overrides_applied": true,
+        "optimizer_wrapper_used": true,
+        "new_conversation": false,
+        "clone_used": false,
+        "config_snapshot": {
+          "memory_key": "negotiation_canonical",
+          "thread_mode_default": "conversation",
+          "model_memory": "gpt-5-nano",
+          "model_phase_classifier": "gpt-5-nano",
+          "model_planner": "o4-mini",
+          "model_executor": "gpt-5-nano",
+          "max_recent_messages": 7,
+          "max_executor_recent_turns": 2
+        }
+      },
+      "optimizador": {
+        "optimizer_session_id": "forensics",
+        "used_overrides": true,
+        "applied_overrides": {
+          "prompt": {},
+          "config": {
+            "max_recent_messages": {
+              "scope": "this_optimizer_session",
+              "value": 7,
+              "conversation_id": null,
+              "turn_id": null
+            },
+            "max_executor_recent_turns": {
+              "scope": "this_optimizer_session",
+              "value": 2,
+              "conversation_id": null,
+              "turn_id": null
+            }
+          },
+          "contextual": {}
+        },
+        "mode": "sandbox",
+        "workspace_version": 1,
+        "session_key": "opt_u::opt_s",
+        "conversation_id": null,
+        "versioning": {
+          "base_turn_id": "turn::3",
+          "version": 1
+        }
+      },
+      "forensics_payload": {
+        "memory_key": "negotiation_canonical",
+        "thread_mode_default": "conversation",
+        "max_recent_messages": 7,
+        "max_executor_recent_turns": 2,
+        "model_memory": "gpt-5-nano",
+        "model_phase_classifier": "gpt-5-nano",
+        "model_planner": "o4-mini",
+        "model_executor": "gpt-5-nano",
+        "world_state_keys": [
+          "negotiation_canonical",
+          "negotiation_canonical_traces"
+        ],
+        "has_optimizer_meta": false,
+        "recent_dialogue_count": 0
+      }
+    },
+    "interfaz_after_override": {
+      "turn_id": "turn::3",
+      "final_status": "ok",
+      "conversation_id_before": "conv::iu_u::iu_s",
+      "conversation_id_after": "conv::iu_u::iu_s",
+      "previous_response_id_before": "resp::iu_s::2",
+      "previous_response_id_after": "resp::iu_s::3",
+      "entry_contract": {
+        "entry_surface": "interfaz_usuario",
+        "entrypoint": "/api/interfaz_usuario/negociacion/turn",
+        "overrides_applied": false,
+        "optimizer_wrapper_used": false,
+        "new_conversation": false,
+        "clone_used": false,
+        "config_snapshot": {
+          "memory_key": "negotiation_canonical",
+          "thread_mode_default": "conversation",
+          "model_memory": "gpt-5-nano",
+          "model_phase_classifier": "gpt-5-nano",
+          "model_planner": "o4-mini",
+          "model_executor": "gpt-5-nano",
+          "max_recent_messages": 12,
+          "max_executor_recent_turns": 4
+        }
+      },
+      "optimizador": null,
+      "forensics_payload": {
+        "memory_key": "negotiation_canonical",
+        "thread_mode_default": "conversation",
+        "max_recent_messages": 12,
+        "max_executor_recent_turns": 4,
+        "model_memory": "gpt-5-nano",
+        "model_phase_classifier": "gpt-5-nano",
+        "model_planner": "o4-mini",
+        "model_executor": "gpt-5-nano",
+        "world_state_keys": [
+          "negotiation_canonical",
+          "negotiation_canonical_traces"
+        ],
+        "has_optimizer_meta": false,
+        "recent_dialogue_count": 0
+      }
+    },
+    "optimizer_effective_overrides": {
+      "prompt": {},
+      "config": {
+        "max_recent_messages": {
+          "scope": "this_optimizer_session",
+          "value": 7,
+          "conversation_id": null,
+          "turn_id": null
+        },
+        "max_executor_recent_turns": {
+          "scope": "this_optimizer_session",
+          "value": 2,
+          "conversation_id": null,
+          "turn_id": null
+        }
+      },
+      "contextual": {}
+    },
+    "override_store": {
+      "mode": "sandbox",
+      "entries": [
+        {
+          "category": "config",
+          "key": "max_recent_messages",
+          "value": 7,
+          "scope": "this_optimizer_session",
+          "conversation_id": null,
+          "turn_id": null
+        },
+        {
+          "category": "config",
+          "key": "max_executor_recent_turns",
+          "value": 2,
+          "scope": "this_optimizer_session",
+          "conversation_id": null,
+          "turn_id": null
+        }
+      ],
+      "workspace_version": 1,
+      "committed_entries": []
+    }
+  },
+  "scenario_4_optimizer_clone_vs_newconv": {
+    "clone_session_id": "clone_base__sandbox__20260313143456",
+    "clone_trace": {
+      "turn_id": "turn::1",
+      "final_status": "ok",
+      "conversation_id_before": null,
+      "conversation_id_after": "conv::clone_u::clone_base__sandbox__20260313143456",
+      "previous_response_id_before": null,
+      "previous_response_id_after": "resp::clone_base__sandbox__20260313143456::1",
+      "entry_contract": {
+        "entry_surface": "optimizador",
+        "entrypoint": "/api/optimizador/sandbox/turn",
+        "overrides_applied": true,
+        "optimizer_wrapper_used": true,
+        "new_conversation": false,
+        "clone_used": true,
+        "config_snapshot": {
+          "memory_key": "negotiation_canonical",
+          "thread_mode_default": "conversation",
+          "model_memory": "gpt-5-nano",
+          "model_phase_classifier": "gpt-5-nano",
+          "model_planner": "o4-mini",
+          "model_executor": "gpt-5-nano",
+          "max_recent_messages": 7,
+          "max_executor_recent_turns": 2
+        }
+      },
+      "optimizador": {
+        "optimizer_session_id": "forensics",
+        "used_overrides": true,
+        "applied_overrides": {
+          "prompt": {},
+          "config": {
+            "max_recent_messages": {
+              "scope": "this_optimizer_session",
+              "value": 7,
+              "conversation_id": null,
+              "turn_id": null
+            },
+            "max_executor_recent_turns": {
+              "scope": "this_optimizer_session",
+              "value": 2,
+              "conversation_id": null,
+              "turn_id": null
+            }
+          },
+          "contextual": {}
+        },
+        "mode": "sandbox",
+        "workspace_version": 1,
+        "session_key": "clone_u::clone_base__sandbox__20260313143456",
+        "conversation_id": null,
+        "versioning": {
+          "base_turn_id": "turn::1",
+          "version": 1
+        }
+      },
+      "forensics_payload": {
+        "memory_key": "negotiation_canonical",
+        "thread_mode_default": "conversation",
+        "max_recent_messages": 7,
+        "max_executor_recent_turns": 2,
+        "model_memory": "gpt-5-nano",
+        "model_phase_classifier": "gpt-5-nano",
+        "model_planner": "o4-mini",
+        "model_executor": "gpt-5-nano",
+        "world_state_keys": [
+          "negotiation_canonical",
+          "negotiation_canonical_traces",
+          "optimizador_sandbox_meta"
+        ],
+        "has_optimizer_meta": true,
+        "recent_dialogue_count": 0
+      }
+    },
+    "newconv_session_id": "clone_base__newconv__20260313143456",
+    "newconv_trace": {
+      "turn_id": "turn::1",
+      "final_status": "ok",
+      "conversation_id_before": null,
+      "conversation_id_after": "conv::clone_u::clone_base__newconv__20260313143456",
+      "previous_response_id_before": null,
+      "previous_response_id_after": "resp::clone_base__newconv__20260313143456::1",
+      "entry_contract": {
+        "entry_surface": "optimizador",
+        "entrypoint": "/api/optimizador/sandbox/turn",
+        "overrides_applied": true,
+        "optimizer_wrapper_used": true,
+        "new_conversation": true,
+        "clone_used": false,
+        "config_snapshot": {
+          "memory_key": "negotiation_canonical",
+          "thread_mode_default": "conversation",
+          "model_memory": "gpt-5-nano",
+          "model_phase_classifier": "gpt-5-nano",
+          "model_planner": "o4-mini",
+          "model_executor": "gpt-5-nano",
+          "max_recent_messages": 7,
+          "max_executor_recent_turns": 2
+        }
+      },
+      "optimizador": {
+        "optimizer_session_id": "forensics",
+        "used_overrides": true,
+        "applied_overrides": {
+          "prompt": {},
+          "config": {
+            "max_recent_messages": {
+              "scope": "this_optimizer_session",
+              "value": 7,
+              "conversation_id": null,
+              "turn_id": null
+            },
+            "max_executor_recent_turns": {
+              "scope": "this_optimizer_session",
+              "value": 2,
+              "conversation_id": null,
+              "turn_id": null
+            }
+          },
+          "contextual": {}
+        },
+        "mode": "sandbox",
+        "workspace_version": 1,
+        "session_key": "clone_u::clone_base__newconv__20260313143456",
+        "conversation_id": null,
+        "versioning": {
+          "base_turn_id": "turn::1",
+          "version": 1
+        }
+      },
+      "forensics_payload": {
+        "memory_key": "negotiation_canonical",
+        "thread_mode_default": "conversation",
+        "max_recent_messages": 7,
+        "max_executor_recent_turns": 2,
+        "model_memory": "gpt-5-nano",
+        "model_phase_classifier": "gpt-5-nano",
+        "model_planner": "o4-mini",
+        "model_executor": "gpt-5-nano",
+        "world_state_keys": [
+          "negotiation_canonical",
+          "negotiation_canonical_traces",
+          "optimizador_sandbox_meta"
+        ],
+        "has_optimizer_meta": true,
+        "recent_dialogue_count": 0
+      }
+    }
+  },
+  "scenario_5_interfaz_new_conversation": {
+    "reply": "stub::inicio",
+    "user_id": "iu_new",
+    "session_id": "iu_main__newconv__20260313143456",
+    "trace_count": 1,
+    "conversation_id_before": null,
+    "conversation_id_after": "conv::iu_new::iu_main__newconv__20260313143456",
+    "previous_response_id_before": null,
+    "previous_response_id_after": "resp::iu_main__newconv__20260313143456::1",
+    "latest_turn_id": "turn::1",
+    "entry_contract": {
+      "entry_surface": "interfaz_usuario",
+      "entrypoint": "/api/interfaz_usuario/negociacion/turn",
+      "overrides_applied": false,
+      "optimizer_wrapper_used": false,
+      "new_conversation": true,
+      "clone_used": false,
+      "config_snapshot": {
+        "memory_key": "negotiation_canonical",
+        "thread_mode_default": "conversation",
+        "model_memory": "gpt-5-nano",
+        "model_phase_classifier": "gpt-5-nano",
+        "model_planner": "o4-mini",
+        "model_executor": "gpt-5-nano",
+        "max_recent_messages": 12,
+        "max_executor_recent_turns": 4
+      }
+    }
+  },
+  "scenario_6_no_chat_trace_leak": {
+    "before_chat": 1,
+    "after_chat": 1,
+    "chat_added_negotiation_trace": false
+  }
+}

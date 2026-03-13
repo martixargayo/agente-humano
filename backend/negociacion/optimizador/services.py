@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from sessions.state import get_session_state, SessionState
 
@@ -103,7 +104,7 @@ def duplicate_sandbox_session(
 
 def new_conversation_session(*, optimizer_session_id: str, user_id: str, session_id: str) -> dict[str, Any]:
     state = get_session_state(user_id=user_id, session_id=session_id)
-    new_session_id = f"{session_id}__newconv__{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+    new_session_id = f"{session_id}__newconv__{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}_{uuid4().hex[:6]}"
     new_state = SessionState(user_id=user_id, session_id=new_session_id)
     new_state.world_state["optimizador_sandbox_meta"] = {
         "optimizer_session_id": optimizer_session_id,
