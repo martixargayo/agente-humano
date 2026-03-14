@@ -5,32 +5,321 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Interfaz Usuario</title>
     <style>
-      body{font-family:system-ui;margin:20px;max-width:900px}
-      textarea{width:100%;height:90px}
-      .row{display:flex;gap:8px;margin-bottom:8px}
-      .chat{border:1px solid #ddd;padding:12px;border-radius:8px;min-height:180px;white-space:pre-wrap}
-      .meta{font-size:12px;color:#555;margin-top:8px}
-      .finish-negotiation-button{margin-left:auto;border:1px solid rgba(148,163,184,.45);background:rgba(71,85,105,.85);color:#e2e8f0;border-radius:10px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;opacity:.82;transition:background .2s ease,border-color .2s ease,box-shadow .2s ease,opacity .2s ease}
-      .finish-negotiation-button.is-armed{background:rgba(37,99,235,.95);border-color:rgba(147,197,253,.95);color:#fff;opacity:1;box-shadow:0 0 0 1px rgba(147,197,253,.35),0 8px 20px rgba(37,99,235,.25)}
+      :root {
+        color-scheme: dark;
+        --glass: #ffffff;
+        --border: #e2e8f0;
+        --text-muted: #475569;
+        --text-primary: #0f172a;
+        --surface-radius: 24px;
+        --surface-shadow: 0 28px 56px rgba(15, 23, 42, 0.22);
+        --accent-pastel: #bfdbfe;
+      }
+
+      * { box-sizing: border-box; }
+
+      html, body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #020617;
+        color: #fff;
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background:
+          radial-gradient(circle at 50% 45%, rgba(30, 41, 59, 0.36) 0%, rgba(2, 6, 23, 0.94) 65%),
+          linear-gradient(180deg, rgba(15, 23, 42, 0.35), rgba(2, 6, 23, 0.85));
+        z-index: 0;
+      }
+
+      .legacy-controls {
+        position: fixed;
+        top: 14px;
+        left: 14px;
+        z-index: 6;
+        width: min(420px, calc(100vw - 28px));
+        border: 1px solid rgba(148, 163, 184, 0.28);
+        border-radius: 14px;
+        background: rgba(15, 23, 42, 0.74);
+        backdrop-filter: blur(6px);
+        padding: 10px;
+      }
+
+      .legacy-title { font-size: 11px; opacity: .72; margin-bottom: 8px; }
+      .row { display: flex; gap: 8px; margin-bottom: 8px; }
+      .row:last-child { margin-bottom: 0; }
+      .legacy-controls input, .legacy-controls button {
+        border-radius: 8px;
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        background: rgba(15, 23, 42, 0.52);
+        color: #e2e8f0;
+        padding: 6px 8px;
+        font-size: 12px;
+      }
+      .legacy-controls input { min-width: 0; flex: 1; }
+      .legacy-controls button { cursor: pointer; }
+      .meta { font-size: 11px; color: #94a3b8; white-space: pre-wrap; }
+
+      .reply-container {
+        position: fixed;
+        left: 50%;
+        transform: translateX(-50%);
+        bottom: 140px;
+        width: min(820px, 94vw);
+        min-height: 230px;
+        padding: 16px 18px;
+        border-radius: 24px;
+        background: rgba(191, 219, 254, 0.95);
+        border: 1px solid rgba(96, 165, 250, 0.62);
+        color: #1e3a8a;
+        z-index: 4;
+        box-shadow: 0 24px 42px rgba(15, 23, 42, 0.26);
+      }
+
+      .chat {
+        max-height: 40vh;
+        overflow: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        white-space: pre-wrap;
+      }
+
+      .chat-line {
+        border-radius: 12px;
+        padding: 8px 10px;
+        background: rgba(255, 255, 255, 0.62);
+        font-size: 14px;
+      }
+
+      .chat-line strong { text-transform: uppercase; font-size: 11px; letter-spacing: .03em; }
+
+      .listening-glow {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.8s ease, visibility 0.8s ease;
+        z-index: 3;
+      }
+      .listening-glow.active { opacity: 1; visibility: visible; }
+      .glow-side {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: min(25vw, 240px);
+        opacity: 0;
+        transform: translateX(-6%) scale(0.96);
+        transition: opacity 0.8s ease, transform 0.8s ease;
+      }
+      .listening-glow.active .glow-side { opacity: 1; transform: translateX(0%) scale(1); }
+      .glow-side.left { left: 0; }
+      .glow-side.right { right: 0; transform: translateX(6%) scale(0.96) scaleX(-1); }
+      .listening-glow.active .glow-side.right { transform: translateX(0%) scale(1) scaleX(-1); }
+      .beam-layer { position: absolute; inset: 0; animation: atlasBreathe 4s ease-in-out infinite; transform-origin: left center; }
+      .glow-side.right .beam-layer { animation-delay: -0.5s; }
+      .beam-layer.core {
+        background: radial-gradient(120% 60% at 0% 50%, rgba(103, 232, 249, 0.55) 0%, rgba(29, 78, 216, 0.35) 35%, rgba(0, 0, 0, 0) 70%);
+        filter: blur(18px);
+        opacity: 0.7;
+      }
+      .beam-layer.soft {
+        background: radial-gradient(120% 80% at 0% 50%, rgba(103, 232, 249, 0.22) 0%, rgba(29, 78, 216, 0.18) 45%, rgba(0, 0, 0, 0) 78%);
+        filter: blur(32px);
+        opacity: 0.6;
+      }
+      .beam-layer.halftone {
+        background-image: radial-gradient(circle, rgba(103, 232, 249, 0.35) 0 1px, transparent 2px);
+        background-size: 10px 10px;
+        opacity: 0.55;
+        -webkit-mask-image: linear-gradient(90deg, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0) 75%);
+        mask-image: linear-gradient(90deg, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0) 75%);
+      }
+      @keyframes atlasBreathe {
+        0%, 100% { opacity: 0.35; transform: translateX(-1.5%) scale(0.98); }
+        50% { opacity: 0.75; transform: translateX(0%) scale(1.02); }
+      }
+
+      .bottom-bar {
+        position: fixed;
+        left: 50%;
+        bottom: 28px;
+        transform: translateX(-50%);
+        width: min(820px, 94vw);
+        z-index: 4;
+      }
+      .bar-inner {
+        background: var(--glass);
+        border: 1px solid var(--border);
+        border-radius: var(--surface-radius);
+        padding: 14px 18px 16px;
+        box-shadow: var(--surface-shadow);
+      }
+      .bar-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+      .mode-tabs {
+        display: inline-flex;
+        gap: 6px;
+        background: rgba(15, 23, 42, 0.5);
+        border-radius: 999px;
+        padding: 4px;
+        border: 1px solid rgba(148, 163, 184, 0.15);
+      }
+      .mode-tab {
+        border: none;
+        background: transparent;
+        color: var(--text-muted);
+        font-size: 12px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        cursor: pointer;
+      }
+      .mode-tab.active { background: rgba(59, 130, 246, 0.2); color: white; }
+
+      .bar-content { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+      .bar-content.hidden { display: none; }
+      .listen-left { display: flex; align-items: center; gap: 12px; }
+      .input-orb {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(96, 165, 250, 0.8), rgba(59, 130, 246, 0.35));
+        box-shadow: 0 0 20px rgba(59, 130, 246, 0.35);
+        transform: scale(var(--orb-scale, 0.85));
+        transition: transform 0.12s ease, box-shadow 0.12s ease;
+      }
+      .input-orb.inactive { opacity: 0.4; box-shadow: none; }
+      .status-text { font-size: 13px; color: var(--text-muted); }
+      .finish-button {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border-radius: 16px;
+        border: 1px solid rgba(96, 165, 250, 0.7);
+        background: var(--accent-pastel);
+        color: #1e3a8a;
+        padding: 8px 14px;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .write-area { flex: 1; display: flex; align-items: center; gap: 12px; }
+      .write-area textarea {
+        flex: 1;
+        resize: none;
+        border-radius: 14px;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        background: rgba(15, 23, 42, 0.55);
+        color: white;
+        padding: 12px 14px;
+        font-size: 14px;
+        min-height: 42px;
+        max-height: 120px;
+      }
+      .send-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border-radius: 16px;
+        border: 1px solid rgba(96, 165, 250, 0.7);
+        background: var(--accent-pastel);
+        color: #1e3a8a;
+        padding: 8px 14px;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .finish-negotiation-button {
+        position: fixed;
+        right: 24px;
+        bottom: 24px;
+        z-index: 9;
+        border: 1px solid rgba(148, 163, 184, 0.45);
+        background: rgba(71, 85, 105, 0.85);
+        color: #e2e8f0;
+        border-radius: 14px;
+        padding: 10px 14px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        opacity: 0.82;
+      }
+      .finish-negotiation-button.is-armed {
+        background: rgba(37, 99, 235, 0.95);
+        border-color: rgba(147, 197, 253, 0.95);
+        color: #ffffff;
+        opacity: 1;
+        box-shadow: 0 0 0 1px rgba(147, 197, 253, 0.4), 0 12px 28px rgba(37, 99, 235, 0.35);
+      }
     </style>
   </head>
   <body>
-    <h1>interfaz_usuario (parity-safe)</h1>
-    <div class="row">
-      <input id="userId" value="u_interfaz" placeholder="user_id" />
-      <input id="sessionId" value="interfaz-main" placeholder="session_id" />
-      <button id="bootstrap">Bootstrap</button>
-      <button id="newConv">Nueva conversación</button>
+    <div class="legacy-controls">
+      <div class="legacy-title">interfaz_usuario (parity-safe)</div>
+      <div class="row">
+        <input id="userId" value="u_interfaz" placeholder="user_id" />
+        <input id="sessionId" value="interfaz-main" placeholder="session_id" />
+      </div>
+      <div class="row">
+        <button id="bootstrap">Bootstrap</button>
+        <button id="newConv">Nueva conversación</button>
+      </div>
+      <div class="meta" id="meta"></div>
     </div>
-    <div class="chat" id="chat"></div>
-    <div class="row">
-      <textarea id="msg" placeholder="Escribe un mensaje (negociación)"></textarea>
+
+    <div id="listeningGlow" class="listening-glow" aria-hidden="true">
+      <div class="glow-side left">
+        <span class="beam-layer core"></span>
+        <span class="beam-layer soft"></span>
+        <span class="beam-layer halftone"></span>
+      </div>
+      <div class="glow-side right">
+        <span class="beam-layer core"></span>
+        <span class="beam-layer soft"></span>
+        <span class="beam-layer halftone"></span>
+      </div>
     </div>
-    <div class="row">
-      <button id="send">Enviar a negociación</button>
-      <button id="finishNegotiationBtn" class="finish-negotiation-button" type="button" aria-label="Finalizar negociación">Finalizar negociación</button>
+
+    <div id="replyContainer" class="reply-container" aria-live="polite">
+      <div id="chat" class="chat"></div>
     </div>
-    <div class="meta" id="meta"></div>
+
+    <div class="bottom-bar" aria-live="polite">
+      <div class="bar-inner">
+        <div class="bar-top">
+          <div class="mode-tabs" role="tablist" aria-label="Modo de entrada">
+            <button id="modeTalk" class="mode-tab active" role="tab" aria-selected="true">Hablar</button>
+            <button id="modeWrite" class="mode-tab" role="tab" aria-selected="false">Escribir</button>
+          </div>
+        </div>
+
+        <div id="talkMode" class="bar-content">
+          <div class="listen-left">
+            <div id="inputOrb" class="input-orb inactive" aria-hidden="true"></div>
+            <div id="statusText" class="status-text">Listo (visual)</div>
+          </div>
+          <button id="finishTurnBtn" class="finish-button" aria-label="Finalizar turno visual">Finalizar</button>
+        </div>
+
+        <div id="writeMode" class="bar-content hidden">
+          <div class="write-area">
+            <textarea id="msg" rows="1" placeholder="Escribe un mensaje (negociación)"></textarea>
+            <button id="send" class="send-btn" aria-label="Enviar mensaje">Enviar a negociación</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <button id="finishNegotiationBtn" class="finish-negotiation-button" type="button" aria-label="Finalizar negociación">Finalizar negociación</button>
+
     <script src="./app.js"></script>
   </body>
 </html>
