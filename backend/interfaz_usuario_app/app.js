@@ -1,8 +1,6 @@
 const $ = (id) => document.getElementById(id);
 
-// Standalone parity-safe UI. It only talks to /api/interfaz_usuario.
-// It does not depend on avatar_app legacy mode selection (/chat vs /negociar).
-async function api(path, opts={}) {
+async function api(path, opts = {}) {
   const r = await fetch(`/api/interfaz_usuario${path}`, {
     headers: { 'Content-Type': 'application/json' },
     ...opts,
@@ -28,15 +26,26 @@ function ids() {
   return { user_id: $('userId').value.trim(), session_id: $('sessionId').value.trim() };
 }
 
-const InputMode = {
-  TALK: 'talk',
-  WRITE: 'write',
+const InputMode = { TALK: 'talk', WRITE: 'write' };
+
+const JobStageLabel = {
+  created: 'Creando evaluación...',
+  queued: 'Evaluación en cola...',
+  building_inputs: 'Analizando la conversación...',
+  running_core: 'Evaluando desempeño global...',
+  running_trajectory: 'Evaluando trayectoria turno a turno...',
+  assembling_report: 'Preparando el informe...',
+  completed: 'Informe listo.',
+  failed: 'No se pudo completar la evaluación.',
 };
 
 let currentInputMode = InputMode.TALK;
 let finishButtonArmed = false;
 let lastSessionKey = '';
 let orbTimer = null;
+let finalizePopoverOpen = false;
+let feedbackPollingTimer = null;
+let feedbackEvaluationId = null;
 
 function updateFinishNegotiationButton() {
   const btn = $('finishNegotiationBtn');
@@ -57,9 +66,7 @@ function resetFinishButtonArmed() {
 function syncSessionBoundaryReset() {
   const { user_id, session_id } = ids();
   const currentSessionKey = `${user_id}::${session_id}`;
-  if (lastSessionKey && lastSessionKey !== currentSessionKey) {
-    resetFinishButtonArmed();
-  }
+  if (lastSessionKey && lastSessionKey !== currentSessionKey) resetFinishButtonArmed();
   lastSessionKey = currentSessionKey;
 }
 
@@ -106,16 +113,96 @@ function setInputMode(mode) {
   }
 }
 
+function stopFeedbackPolling() {
+  if (feedbackPollingTimer) {
+    window.clearTimeout(feedbackPollingTimer);
+    feedbackPollingTimer = null;
+  }
+}
+
+function closeFinalizePopover() {
+  finalizePopoverOpen = false;
+  $('finishConfirmPopover')?.classList.remove('visible');
+}
+
+function openFinalizePopover() {
+  finalizePopoverOpen = true;
+  $('finishConfirmPopover')?.classList.add('visible');
+}
+
+function setFeedbackStageText(status) {
+  $('feedbackLoadingText').textContent = JobStageLabel[status] || 'Procesando evaluación...';
+}
+
+function showFeedbackView(mode) {
+  const app = $('mainApp');
+  const loading = $('feedbackLoadingScreen');
+  const report = $('feedbackReportScreen');
+  const error = $('feedbackErrorScreen');
+  if (!app || !loading || !report || !error) return;
+
+  app.classList.toggle('hidden', mode !== 'app');
+  loading.classList.toggle('hidden', mode !== 'loading');
+  report.classList.toggle('hidden', mode !== 'report');
+  error.classList.toggle('hidden', mode !== 'error');
+}
+
+function renderFinalReport(report) {
+  const root = $('feedbackReportRoot');
+  if (!root || !window.FeedbackReportView) return;
+  window.FeedbackReportView.renderReport(root, report);
+}
+
+async function fetchEvaluationReport(evaluationId) {
+  const out = await api(`/feedback/evaluations/${evaluationId}/report`, { method: 'GET' });
+  showFeedbackView('report');
+  renderFinalReport(out.report);
+}
+
+async function pollEvaluationStatus(evaluationId) {
+  try {
+    const status = await api(`/feedback/evaluations/${evaluationId}`, { method: 'GET' });
+    setFeedbackStageText(status.status);
+
+    if (status.status === 'completed') {
+      stopFeedbackPolling();
+      await fetchEvaluationReport(evaluationId);
+      return;
+    }
+
+    if (status.status === 'failed') {
+      stopFeedbackPolling();
+      $('feedbackErrorMessage').textContent = status.error || 'La evaluación no pudo completarse.';
+      showFeedbackView('error');
+      return;
+    }
+
+    feedbackPollingTimer = window.setTimeout(() => pollEvaluationStatus(evaluationId), 1700);
+  } catch (err) {
+    stopFeedbackPolling();
+    $('feedbackErrorMessage').textContent = `Error de red durante la evaluación: ${String(err)}`;
+    showFeedbackView('error');
+  }
+}
+
+async function startFeedbackEvaluation() {
+  const out = await api('/feedback/evaluations', { method: 'POST', body: JSON.stringify(ids()) });
+  feedbackEvaluationId = out.evaluation_id;
+  showFeedbackView('loading');
+  setFeedbackStageText(out.status);
+  stopFeedbackPolling();
+  feedbackPollingTimer = window.setTimeout(() => pollEvaluationStatus(feedbackEvaluationId), 200);
+}
+
 $('bootstrap').onclick = async () => {
   syncSessionBoundaryReset();
-  const payload = ids();
-  const out = await api('/sessions/bootstrap', { method:'POST', body: JSON.stringify(payload) });
+  const out = await api('/sessions/bootstrap', { method: 'POST', body: JSON.stringify(ids()) });
   $('meta').textContent = `session=${out.session_id} traces=${out.trace_count} conversation_id=${out.conversation_id || '-'}`;
 };
 
 $('newConv').onclick = async () => {
   const payload = ids();
-  const out = await api('/negociacion/new_conversation', { method:'POST', body: JSON.stringify(payload) });
+  const out = await api('/negociacion/new_conversation', { method: 'POST', body: JSON.stringify(payload) });
   $('sessionId').value = out.session_id;
   lastSessionKey = `${payload.user_id}::${out.session_id}`;
   resetFinishButtonArmed();
@@ -128,7 +215,7 @@ $('send').onclick = async () => {
   if (!message) return;
   const payload = { ...ids(), message, new_conversation: false };
   append('user', message);
-  const out = await api('/negociacion/turn', { method:'POST', body: JSON.stringify(payload) });
+  const out = await api('/negociacion/turn', { method: 'POST', body: JSON.stringify(payload) });
   append('assistant', out.reply);
   armFinishButton(out.finish_button_armed);
   const contract = out.entry_contract;
@@ -140,7 +227,7 @@ $('send').onclick = async () => {
 };
 
 function _seedDefaultIds() {
-  const suffix = `${Date.now()}_${Math.random().toString(16).slice(2,8)}`;
+  const suffix = `${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
   $('userId').value = `u_interfaz_${suffix}`;
   $('sessionId').value = `interfaz-main__${suffix}`;
 }
@@ -148,9 +235,7 @@ function _seedDefaultIds() {
 $('finishTurnBtn').onclick = () => {
   $('statusText').textContent = 'Modo hablar solo visual';
   window.setTimeout(() => {
-    if (currentInputMode === InputMode.TALK) {
-      $('statusText').textContent = 'Escuchando (visual)';
-    }
+    if (currentInputMode === InputMode.TALK) $('statusText').textContent = 'Escuchando (visual)';
   }, 1000);
 };
 
@@ -158,14 +243,51 @@ $('modeTalk').onclick = () => setInputMode(InputMode.TALK);
 $('modeWrite').onclick = () => setInputMode(InputMode.WRITE);
 
 $('finishNegotiationBtn').onclick = () => {
-  console.log('finish button clicked');
+  if (!finishButtonArmed) return;
+  if (finalizePopoverOpen) {
+    closeFinalizePopover();
+    return;
+  }
+  openFinalizePopover();
 };
+
+$('finishCancelBtn').onclick = closeFinalizePopover;
+
+$('finishConfirmBtn').onclick = async () => {
+  closeFinalizePopover();
+  try {
+    await startFeedbackEvaluation();
+  } catch (err) {
+    $('feedbackErrorMessage').textContent = `No se pudo iniciar la evaluación: ${String(err)}`;
+    showFeedbackView('error');
+  }
+};
+
+$('feedbackBackBtn').onclick = () => showFeedbackView('app');
+
+$('feedbackRetryBtn').onclick = async () => {
+  showFeedbackView('app');
+  try {
+    await startFeedbackEvaluation();
+  } catch (err) {
+    $('feedbackErrorMessage').textContent = `No se pudo reiniciar la evaluación: ${String(err)}`;
+    showFeedbackView('error');
+  }
+};
+
+window.addEventListener('click', (ev) => {
+  if (!finalizePopoverOpen) return;
+  const popover = $('finishConfirmPopover');
+  const btn = $('finishNegotiationBtn');
+  const target = ev.target;
+  if (popover && btn && target instanceof Node && !popover.contains(target) && !btn.contains(target)) closeFinalizePopover();
+});
 
 (async function initInterfazUsuarioSession() {
   _seedDefaultIds();
   syncSessionBoundaryReset();
   try {
-    const out = await api('/sessions/bootstrap', { method:'POST', body: JSON.stringify(ids()) });
+    const out = await api('/sessions/bootstrap', { method: 'POST', body: JSON.stringify(ids()) });
     lastSessionKey = `${out.user_id}::${out.session_id}`;
     resetFinishButtonArmed();
     $('meta').textContent = `session=${out.session_id} traces=${out.trace_count} conversation_id=${out.conversation_id || '-'}`;
