@@ -34,3 +34,28 @@ class EvaluationReportResponse(BaseModel):
     evaluation_id: str
     status: JobStatus
     report: UiFeedbackReportV1
+
+
+class DevFixtureSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    fixture_id: str
+    title: str
+    domain: str
+    turn_count: int
+
+
+class DevFixturesListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    fixtures: list[DevFixtureSummary]
+
+
+class DevCreateEvaluationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    fixture_id: str
+
+
+class DevCreateEvaluationResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    evaluation_id: str
+    status: JobStatus
+    fixture_id: str

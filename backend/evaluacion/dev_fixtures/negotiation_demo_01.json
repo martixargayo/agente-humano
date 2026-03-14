@@ -1,0 +1,55 @@
+{
+  "schema_version": "feedback_demo_fixture.v1",
+  "fixture_id": "negotiation_demo_01",
+  "title": "Negociación con avance parcial y cierre no consolidado",
+  "domain": "negociacion",
+  "conversation": {
+    "turns": [
+      {
+        "turn_index": 1,
+        "turn_id": "turn-1",
+        "user_text": "Hola, me interesa el coche, pero necesito entender bien el estado real antes de decidir.",
+        "assistant_text": "Perfecto, te cuento: mecánicamente está bien, tiene mantenimiento reciente y la ITV está al día."
+      },
+      {
+        "turn_index": 2,
+        "turn_id": "turn-2",
+        "user_text": "¿Qué margen real tienes en precio si cerramos esta semana?",
+        "assistant_text": "Podría ajustar algo, pero no una rebaja grande porque ya está por debajo de lo que pedía al inicio."
+      },
+      {
+        "turn_index": 3,
+        "turn_id": "turn-3",
+        "user_text": "Si incluyes una garantía mínima y me confirmas revisión previa, podría acercarme más.",
+        "assistant_text": "La garantía completa no, pero sí puedo entregar revisión reciente y asumir parte de una cobertura básica."
+      },
+      {
+        "turn_index": 4,
+        "turn_id": "turn-4",
+        "user_text": "Vale, entonces propongo 6.250€ con esa cobertura básica incluida.",
+        "assistant_text": "Por 6.250€ me cuesta; podría dejarlo en 6.450€ manteniendo lo que hemos hablado."
+      },
+      {
+        "turn_index": 5,
+        "turn_id": "turn-5",
+        "user_text": "Si cerramos en 6.350€ hoy y dejas todo por escrito, lo podemos cerrar.",
+        "assistant_text": "Déjame revisar ese punto; estamos cerca, pero necesito confirmar ese último ajuste."
+      }
+    ]
+  },
+  "conversation_stats": {
+    "duration_seconds": 520
+  },
+  "domain_context": {
+    "final_phase": "concesiones_y_ajuste_final",
+    "finish_button_was_armed": true
+  },
+  "derived_facts_overrides": {
+    "offer_signals_count": 3,
+    "close_signals_count": 2
+  },
+  "trace_digest": {
+    "trace_count": 5,
+    "guardrail_events_count": 0
+  }
+}

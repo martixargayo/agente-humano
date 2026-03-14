@@ -14,6 +14,7 @@ from evaluacion.contracts.models import (
     FeedbackInputBundleV1,
     FeedbackReportCoreV1,
     Provenance,
+    SessionRef,
     TrajectoryRunnerInputV1,
     TurnTrajectoryV1,
     UiFeedbackReportV1,
@@ -53,15 +54,13 @@ def _patch(evaluation_id: str, *, artifacts: dict[str, str] | None = None, stage
     )
 
 
-def _run_pipeline(*, evaluation_id: str, user_id: str, session_id: str) -> None:
+def _run_pipeline_from_bundle(*, evaluation_id: str, bundle: FeedbackInputBundleV1) -> None:
     try:
         if ASYNC_START_DELAY_MS > 0:
             time.sleep(ASYNC_START_DELAY_MS / 1000.0)
 
         t0 = time.perf_counter()
         _set_status(evaluation_id, "building_inputs")
-        state = get_session_state(user_id=user_id, session_id=session_id)
-        bundle: FeedbackInputBundleV1 = build_feedback_input_bundle_v1(state=state, evaluation_id=evaluation_id)
         core_input: CoreRunnerInputV1 = shape_core_input(bundle)
         trajectory_input: TrajectoryRunnerInputV1 = shape_trajectory_input(bundle)
         _patch(
@@ -143,19 +142,51 @@ def _run_pipeline(*, evaluation_id: str, user_id: str, session_id: str) -> None:
         _set_status(evaluation_id, "failed", error=f"pipeline_error:{type(exc).__name__}:{exc}")
 
 
+def _run_pipeline(*, evaluation_id: str, user_id: str, session_id: str) -> None:
+    state = get_session_state(user_id=user_id, session_id=session_id)
+    bundle: FeedbackInputBundleV1 = build_feedback_input_bundle_v1(state=state, evaluation_id=evaluation_id)
+    _run_pipeline_from_bundle(evaluation_id=evaluation_id, bundle=bundle)
+
+
+def _launch_pipeline_task(*, evaluation_id: str, job_fn, kwargs: dict[str, object]) -> FeedbackJobRecord:
+    _set_status(evaluation_id, "queued")
+    with _LAUNCH_LOCK:
+        _EXECUTOR.submit(job_fn, evaluation_id=evaluation_id, **kwargs)
+    job = REPOSITORY.get_job(evaluation_id=evaluation_id)
+    if job is None:
+        raise RuntimeError("feedback_job_not_found_after_submit")
+    return job
+
+
 def create_evaluation(*, user_id: str, session_id: str) -> FeedbackJobRecord:
     evaluation_id = str(uuid4())
-    created = REPOSITORY.create_job(
+    REPOSITORY.create_job(
         evaluation_id=evaluation_id,
         user_id=user_id,
         session_id=session_id,
         created_at=now_iso(),
     )
-    _set_status(evaluation_id, "queued")
+    return _launch_pipeline_task(
+        evaluation_id=evaluation_id,
+        job_fn=_run_pipeline,
+        kwargs={"user_id": user_id, "session_id": session_id},
+    )
 
-    with _LAUNCH_LOCK:
-        _EXECUTOR.submit(_run_pipeline, evaluation_id=evaluation_id, user_id=user_id, session_id=session_id)
-    return REPOSITORY.get_job(evaluation_id=evaluation_id) or created
+
+def create_evaluation_from_bundle(*, bundle: FeedbackInputBundleV1, owner_label: str) -> FeedbackJobRecord:
+    evaluation_id = str(uuid4())
+    bundle_for_job = bundle.model_copy(update={"evaluation_id": evaluation_id, "session_ref": SessionRef(user_id="dev_fixture", session_id=owner_label)})
+    REPOSITORY.create_job(
+        evaluation_id=evaluation_id,
+        user_id="dev_fixture",
+        session_id=owner_label,
+        created_at=now_iso(),
+    )
+    return _launch_pipeline_task(
+        evaluation_id=evaluation_id,
+        job_fn=_run_pipeline_from_bundle,
+        kwargs={"bundle": bundle_for_job},
+    )
 
 
 def get_evaluation_status(*, evaluation_id: str) -> FeedbackJobRecord:
