@@ -21,7 +21,7 @@
         margin: 0 auto;
         padding: 24px 26px 38px;
         display: grid;
-        gap: 16px;
+        gap: 18px;
       }
 
       .fb-card {
