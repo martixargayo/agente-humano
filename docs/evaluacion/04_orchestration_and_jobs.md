@@ -74,7 +74,7 @@ Payload: `user_id`, `session_id`, `domain="negociacion"`.
 
 ## Paso 3 — Runners
 
-- `running_core` y `running_trajectory` en paralelo,
+- `running_core` y luego `running_trajectory` de forma secuencial,
 - invocar Responses API con `gpt-5.4` para ambos,
 - guardar request/response + metadata (model, prompt_version, schema_version, latency).
 

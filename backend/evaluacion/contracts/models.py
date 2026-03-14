@@ -108,7 +108,7 @@ class EvaluationCheck(BaseModel):
     model_config = ConfigDict(extra="forbid")
     polarity: Literal["check", "cross"]
     micro_explanation: str
-    evidence_turn_indexes: list[int] = Field(default_factory=list)
+    evidence_turn_indexes: list[int]
 
 
 class EvaluationBlock(BaseModel):
