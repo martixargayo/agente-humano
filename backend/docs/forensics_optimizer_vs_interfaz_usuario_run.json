@@ -385,14 +385,14 @@
     }
   },
   "scenario_4_optimizer_clone_vs_newconv": {
-    "clone_session_id": "clone_base__sandbox__20260313143456",
+    "clone_session_id": "clone_base__sandbox__20260313185825",
     "clone_trace": {
       "turn_id": "turn::1",
       "final_status": "ok",
       "conversation_id_before": null,
-      "conversation_id_after": "conv::clone_u::clone_base__sandbox__20260313143456",
+      "conversation_id_after": "conv::clone_u::clone_base__sandbox__20260313185825",
       "previous_response_id_before": null,
-      "previous_response_id_after": "resp::clone_base__sandbox__20260313143456::1",
+      "previous_response_id_after": "resp::clone_base__sandbox__20260313185825::1",
       "entry_contract": {
         "entry_surface": "optimizador",
         "entrypoint": "/api/optimizador/sandbox/turn",
@@ -434,7 +434,7 @@
         },
         "mode": "sandbox",
         "workspace_version": 1,
-        "session_key": "clone_u::clone_base__sandbox__20260313143456",
+        "session_key": "clone_u::clone_base__sandbox__20260313185825",
         "conversation_id": null,
         "versioning": {
           "base_turn_id": "turn::1",
@@ -459,14 +459,14 @@
         "recent_dialogue_count": 0
       }
     },
-    "newconv_session_id": "clone_base__newconv__20260313143456",
+    "newconv_session_id": "clone_base__newconv__20260313185825677616_2552da",
     "newconv_trace": {
       "turn_id": "turn::1",
       "final_status": "ok",
       "conversation_id_before": null,
-      "conversation_id_after": "conv::clone_u::clone_base__newconv__20260313143456",
+      "conversation_id_after": "conv::clone_u::clone_base__newconv__20260313185825677616_2552da",
       "previous_response_id_before": null,
-      "previous_response_id_after": "resp::clone_base__newconv__20260313143456::1",
+      "previous_response_id_after": "resp::clone_base__newconv__20260313185825677616_2552da::1",
       "entry_contract": {
         "entry_surface": "optimizador",
         "entrypoint": "/api/optimizador/sandbox/turn",
@@ -508,7 +508,7 @@
         },
         "mode": "sandbox",
         "workspace_version": 1,
-        "session_key": "clone_u::clone_base__newconv__20260313143456",
+        "session_key": "clone_u::clone_base__newconv__20260313185825677616_2552da",
         "conversation_id": null,
         "versioning": {
           "base_turn_id": "turn::1",
@@ -537,12 +537,12 @@
   "scenario_5_interfaz_new_conversation": {
     "reply": "stub::inicio",
     "user_id": "iu_new",
-    "session_id": "iu_main__newconv__20260313143456",
+    "session_id": "iu_main__newconv__20260313185825688479_cc58b8",
     "trace_count": 1,
     "conversation_id_before": null,
-    "conversation_id_after": "conv::iu_new::iu_main__newconv__20260313143456",
+    "conversation_id_after": "conv::iu_new::iu_main__newconv__20260313185825688479_cc58b8",
     "previous_response_id_before": null,
-    "previous_response_id_after": "resp::iu_main__newconv__20260313143456::1",
+    "previous_response_id_after": "resp::iu_main__newconv__20260313185825688479_cc58b8::1",
     "latest_turn_id": "turn::1",
     "entry_contract": {
       "entry_surface": "interfaz_usuario",
@@ -561,11 +561,42 @@
         "max_recent_messages": 12,
         "max_executor_recent_turns": 4
       }
-    }
+    },
+    "auto_reset_applied": false
   },
   "scenario_6_no_chat_trace_leak": {
     "before_chat": 1,
     "after_chat": 1,
     "chat_added_negotiation_trace": false
+  },
+  "scenario_7_interfaz_boundary_auto_reset": {
+    "reply": "stub::empecemos de cero",
+    "user_id": "iu_sticky",
+    "session_id": "s_sticky__newconv__20260313185825706489_f0f123",
+    "trace_count": 1,
+    "conversation_id_before": null,
+    "conversation_id_after": "conv::iu_sticky::s_sticky__newconv__20260313185825706489_f0f123",
+    "previous_response_id_before": null,
+    "previous_response_id_after": "resp::s_sticky__newconv__20260313185825706489_f0f123::1",
+    "latest_turn_id": "turn::1",
+    "entry_contract": {
+      "entry_surface": "interfaz_usuario",
+      "entrypoint": "/api/interfaz_usuario/negociacion/turn",
+      "overrides_applied": false,
+      "optimizer_wrapper_used": false,
+      "new_conversation": true,
+      "clone_used": false,
+      "config_snapshot": {
+        "memory_key": "negotiation_canonical",
+        "thread_mode_default": "conversation",
+        "model_memory": "gpt-5-nano",
+        "model_phase_classifier": "gpt-5-nano",
+        "model_planner": "o4-mini",
+        "model_executor": "gpt-5-nano",
+        "max_recent_messages": 12,
+        "max_executor_recent_turns": 4
+      }
+    },
+    "auto_reset_applied": true
   }
 }

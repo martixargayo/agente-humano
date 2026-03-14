@@ -243,6 +243,20 @@ def build_report() -> dict[str, Any]:
         before_chat = len(resolve_traces(get_session_state(user_id="leak_u", session_id="leak_s")))
         chat_resp = client.post("/chat", json={"user_id": "leak_u", "session_id": "leak_s", "message": "legacy"})
         after_chat = len(resolve_traces(get_session_state(user_id="leak_u", session_id="leak_s")))
+        # Scenario 7: sticky-state boundary opener auto-reset in interfaz_usuario.
+        sticky = get_session_state(user_id="iu_sticky", session_id="s_sticky")
+        sticky.world_state["negotiation_canonical"] = {
+            "planner_state": {"current_phase": "presentacion", "current_turn_goal": "cerrar precio final"},
+            "openai_thread": {"previous_response_id": "resp_old"},
+        }
+        sticky.world_state["negotiation_canonical_recent_dialogue"] = [
+            {"role": "user", "text": "vamos"},
+            {"role": "assistant", "text": "seguimos"},
+        ]
+        iu_boundary = client.post(
+            "/api/interfaz_usuario/negociacion/turn",
+            json={"user_id": "iu_sticky", "session_id": "s_sticky", "message": "empecemos de cero", "new_conversation": False},
+        )
 
     report = {
         "report_version": "forensics.v1",
@@ -290,6 +304,7 @@ def build_report() -> dict[str, Any]:
             "after_chat": after_chat,
             "chat_added_negotiation_trace": after_chat > before_chat,
         },
+        "scenario_7_interfaz_boundary_auto_reset": iu_boundary.json(),
     }
     return report
 

@@ -286,3 +286,27 @@ def test_interfaz_auto_resets_on_fresh_opener_after_terminal_phase():
     body = turn.json()
     assert body["auto_reset_applied"] is True
     assert body["session_id"] != "s_auto"
+    assert body["entry_contract"]["new_conversation"] is True
+
+
+def test_interfaz_auto_resets_on_boundary_intent_when_state_is_sticky():
+    state = get_session_state(user_id="u_auto2", session_id="s_auto2")
+    state.world_state["negotiation_canonical"] = {
+        "planner_state": {"current_phase": "presentacion", "current_turn_goal": "cerrar precio final"},
+        "openai_thread": {"previous_response_id": "resp_prev"},
+    }
+    state.world_state["negotiation_canonical_recent_dialogue"] = [
+        {"role": "user", "text": "hola"},
+        {"role": "assistant", "text": "precio"},
+    ]
+
+    turn = client.post(
+        "/api/interfaz_usuario/negociacion/turn",
+        json={"user_id": "u_auto2", "session_id": "s_auto2", "message": "empecemos de cero", "new_conversation": False},
+    )
+
+    assert turn.status_code == 200
+    body = turn.json()
+    assert body["auto_reset_applied"] is True
+    assert body["session_id"] != "s_auto2"
+    assert body["entry_contract"]["new_conversation"] is True

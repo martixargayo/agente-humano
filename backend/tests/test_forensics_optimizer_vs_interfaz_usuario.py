@@ -25,3 +25,11 @@ def test_forensics_report_detects_optimizer_specific_features() -> None:
 
     scenario_6 = report["scenario_6_no_chat_trace_leak"]
     assert scenario_6["chat_added_negotiation_trace"] is False
+
+
+def test_forensics_report_confirms_interfaz_boundary_auto_reset_contract():
+    report = build_report()
+    scenario_7 = report["scenario_7_interfaz_boundary_auto_reset"]
+
+    assert scenario_7["auto_reset_applied"] is True
+    assert scenario_7["entry_contract"]["new_conversation"] is True

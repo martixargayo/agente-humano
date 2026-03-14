@@ -42,22 +42,35 @@ def _should_auto_reset_for_fresh_opener(*, state: SessionState, message: str) ->
     if not isinstance(planner_state, dict):
         return False
 
-    phase = str(planner_state.get("current_phase") or "")
-    if phase not in {"formalizacion_del_acuerdo", "abandono_de_la_negociacion"}:
-        return False
-
     raw_recent = state.world_state.get("negotiation_canonical_recent_dialogue", []) if isinstance(state.world_state, dict) else []
     recent_len = len(raw_recent) if isinstance(raw_recent, list) else 0
-    if recent_len < 4:
+    goal = str(planner_state.get("current_turn_goal") or "").strip()
+
+    thread = canonical.get("openai_thread", {}) if isinstance(canonical, dict) else {}
+    previous_response_id = thread.get("previous_response_id") if isinstance(thread, dict) else None
+
+    phase = str(planner_state.get("current_phase") or "")
+    terminal_phase = phase in {"formalizacion_del_acuerdo", "abandono_de_la_negociacion"}
+    has_contextual_drag_risk = terminal_phase or recent_len >= 6 or bool(goal) or bool(previous_response_id)
+    if not has_contextual_drag_risk:
         return False
 
     normalized = " ".join(message.strip().lower().split())
     fresh_openers = ("hola", "buenas", "encantado", "buenos días", "buenas tardes")
-    return normalized.startswith(fresh_openers)
+    boundary_intents = (
+        "empecemos de cero",
+        "arranquemos de cero",
+        "nuevo caso",
+        "nueva negociación",
+        "cambiemos de tema",
+        "cambiar de tema",
+    )
+    return normalized.startswith(fresh_openers) or any(intent in normalized for intent in boundary_intents)
 
 def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: bool = False) -> dict[str, Any]:
     resolved_session_id = session_id
     auto_reset_applied = False
+    effective_new_conversation = new_conversation
     if new_conversation:
         payload = create_new_conversation(user_id=user_id, base_session_id=session_id)
         resolved_session_id = payload["session_id"]
@@ -67,6 +80,7 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
             payload = create_new_conversation(user_id=user_id, base_session_id=session_id)
             resolved_session_id = payload["session_id"]
             auto_reset_applied = True
+            effective_new_conversation = True
 
     state = get_session_state(user_id=user_id, session_id=resolved_session_id)
     config = build_negotiation_pipeline_config()
@@ -79,7 +93,7 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
             entrypoint="/api/interfaz_usuario/negociacion/turn",
             overrides_applied=False,
             optimizer_wrapper_used=False,
-            new_conversation=new_conversation,
+            new_conversation=effective_new_conversation,
             clone_used=False,
         ),
     )
