@@ -321,8 +321,15 @@
       }
 
       #feedbackReportScreen {
-        background: #fafafa;
+        background: #fff;
         padding: 0;
+      }
+
+      .report-toolbar {
+        position: fixed;
+        right: 24px;
+        top: 20px;
+        z-index: 20;
       }
 
       #feedbackReportRoot {
@@ -409,10 +416,8 @@
 
     <section id="feedbackReportScreen" class="feedback-screen hidden" aria-live="polite">
       <div id="feedbackReportRoot"></div>
-      <div class="feedback-card" style="margin-top:0;background:transparent;border:none;box-shadow:none;padding:0 28px 18px;">
-        <div class="report-actions">
-          <button id="feedbackBackBtn" class="feedback-btn" type="button">Volver</button>
-        </div>
+      <div class="report-toolbar">
+        <button id="feedbackBackBtn" class="feedback-btn" type="button">Volver</button>
       </div>
     </section>
 
