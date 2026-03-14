@@ -6,104 +6,115 @@
     const style = document.createElement('style');
     style.id = 'feedback-report-view-styles';
     style.textContent = `
-      :root {
-        --bg: #FFFFFF;
-        --card: #FFFFFF;
-        --border: #E4E7EC;
-        --text: #101828;
-        --muted: #475467;
-        --muted2: #98A2B3;
-        --shadow: 0 8px 24px rgba(16,24,40,0.06);
-        --radius-lg: 18px;
-        --radius-md: 14px;
-        --ok: #16A34A;
-        --warn: #D97706;
-        --bad: #DC2626;
-        --focus: #2E90FA;
-      }
-
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@500;600&display=swap');
       .feedback-report-root * { box-sizing: border-box; }
       .feedback-report-root {
         min-height: 100vh;
-        background: var(--bg);
-        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-        color: var(--text);
+        background: #FFFFFF;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+        color: #101828;
+        font-weight: 500;
       }
 
       .feedback-dashboard {
-        width: min(1200px, 100%);
+        width: min(1180px, 100%);
         margin: 0 auto;
-        padding: 28px 28px 42px;
+        padding: 24px 26px 38px;
         display: grid;
         gap: 18px;
       }
 
       .fb-card {
-        background: var(--card);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-lg);
-        box-shadow: var(--shadow);
+        background: #FFFFFF;
+        border: 1px solid #E4E7EC;
+        border-radius: 16px;
+        box-shadow: 0 5px 18px rgba(16,24,40,0.05);
       }
 
-      .fb-header { padding: 24px 24px 20px; display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
-      .fb-header h1 { margin: 0; font-size: 34px; font-weight: 700; line-height: 1.15; }
-      .fb-subtitle { margin: 8px 0 0; color: var(--muted); font-size: 19px; }
-      .fb-header-right { display: inline-flex; align-items: center; gap: 12px; }
+      .fb-header {
+        padding: 22px;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 14px;
+      }
+      .fb-title { margin: 0; font-size: 30px; line-height: 1.15; font-weight: 600; }
+      .fb-case-row { margin-top: 10px; display: flex; align-items: center; gap: 10px; color: #344054; }
+      .fb-case-name { font-size: 18px; font-weight: 600; }
+      .fb-duration { font-size: 14px; color: #667085; }
+      .fb-header-right { display: inline-flex; align-items: center; gap: 10px; }
       .fb-stars { display: inline-flex; gap: 4px; }
-      .fb-score-pill { border: 1px solid var(--border); border-radius: 999px; padding: 8px 12px; font-size: 22px; font-weight: 700; }
+      .fb-score-pill { border: 1px solid #E4E7EC; border-radius: 999px; padding: 8px 12px; font-size: 20px; font-weight: 600; }
 
-      .fb-result { padding: 22px 24px; }
-      .fb-result h2, .fb-chart-top h2, .fb-recommendations h2 { margin: 0; font-size: 24px; line-height: 1.2; }
-      .fb-result p { margin: 12px 0 0; font-size: 17px; line-height: 1.6; color: var(--muted); }
+      .fb-result { padding: 20px 22px; }
+      .fb-result-head { display: inline-flex; align-items: center; gap: 10px; }
+      .fb-result-head h2 { margin: 0; font-size: 23px; font-weight: 600; }
+      .fb-result-dot { width: 12px; height: 12px; border-radius: 999px; display: inline-block; }
+      .fb-result-dot.ok { background: #16A34A; }
+      .fb-result-dot.bad { background: #DC2626; }
+      .fb-result p { margin: 10px 0 0; font-size: 17px; line-height: 1.55; color: #475467; }
 
-      .fb-grid-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-      .fb-skill-card { padding: 20px; border-width: 2.5px; }
-      .fb-skill-card.ok { border-color: var(--ok); }
-      .fb-skill-card.bad { border-color: var(--bad); }
-      .fb-skill-card.warn { border-color: var(--warn); }
-      .fb-skill-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-      .fb-skill-top h3 { margin: 0; font-size: 19px; line-height: 1.3; }
+      .fb-grid-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+      .fb-skill-card { padding: 18px; border-width: 2px; }
+      .fb-skill-card.ok { border-color: #16A34A; }
+      .fb-skill-card.warn { border-color: #D97706; }
+      .fb-skill-card.bad { border-color: #DC2626; }
+      .fb-skill-top { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+      .fb-skill-top h3 { margin: 0; font-size: 18px; font-weight: 600; }
+      .fb-badge { display: inline-flex; align-items: center; border-radius: 999px; color: #fff; height: 27px; padding: 4px 10px; font-size: 12px; font-weight: 600; text-transform: capitalize; }
+      .fb-badge.ok { background: #16A34A; }
+      .fb-badge.warn { background: #D97706; }
+      .fb-badge.bad { background: #DC2626; }
+      .fb-skill-card ul { margin: 12px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+      .fb-skill-card li { display: grid; grid-template-columns: 18px 1fr; gap: 10px; align-items: flex-start; color: #475467; font-size: 15px; line-height: 1.45; }
+      .fb-item-icon { width: 18px; height: 18px; border-radius: 999px; display: inline-flex; justify-content: center; align-items: center; }
+      .fb-item-icon.ok { color: #16A34A; background: rgba(22,163,74,0.10); }
+      .fb-item-icon.bad { color: #DC2626; background: rgba(220,38,38,0.10); }
 
-      .fb-badge { display: inline-flex; align-items: center; height: 28px; padding: 4px 11px; border-radius: 999px; font-size: 13px; font-weight: 700; color: #fff; text-transform: capitalize; border: none; }
-      .fb-badge.ok { background: var(--ok); }
-      .fb-badge.warn { background: var(--warn); }
-      .fb-badge.bad { background: var(--bad); }
-
-      .fb-skill-card ul { margin: 14px 0 0; padding: 0; list-style: none; display: grid; gap: 10px; }
-      .fb-skill-card li { display: grid; grid-template-columns: 20px 1fr; gap: 10px; align-items: flex-start; font-size: 15px; line-height: 1.45; color: var(--muted); }
-      .fb-item-icon { width: 20px; height: 20px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; }
-      .fb-item-icon.ok { color: var(--ok); background: rgba(22,163,74,0.12); }
-      .fb-item-icon.bad { color: var(--bad); background: rgba(220,38,38,0.12); }
-
-      .fb-chart-card { padding: 20px; }
-      .fb-chart-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-      .fb-chart-subtitle { margin: 8px 0 0; color: var(--muted); font-size: 15px; }
-      .fb-chart-layout { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(320px, 1fr); gap: 16px; align-items: start; }
-      .fb-chart-shell { width: 100%; aspect-ratio: 900 / 330; border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; background: #fff; }
-      .fb-chart { width: 100%; height: auto; display: block; }
-
-      .fb-detail-panel { border: 1px solid #D0D5DD; border-radius: var(--radius-md); background: #fff; padding: 16px; min-height: 280px; }
-      .fb-detail-panel h4 { margin: 0 0 10px; font-size: 17px; }
-      .fb-detail-line { margin: 0; font-size: 15px; line-height: 1.5; color: var(--muted); }
-      .fb-detail-line + .fb-detail-line { margin-top: 8px; }
-
-      .fb-recommendations { padding: 20px; }
-      .fb-recommendations-intro { margin: 8px 0 0; color: var(--muted); font-size: 15px; }
-      .fb-recommendations-grid { margin-top: 14px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-      .fb-rec-item { border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
-      .fb-rec-item h3 { margin: 0; font-size: 16px; }
-      .fb-rec-item p { margin: 8px 0 0; font-size: 15px; color: var(--muted); }
-      .fb-rec-example { margin-top: 10px; border: 1px solid #D0D5DD; border-radius: 10px; background: #FCFCFD; padding: 10px; }
-      .fb-rec-example p { margin: 6px 0 0; font-size: 14px; }
-      .fb-empty { margin-top: 14px; border: 1px dashed #D0D5DD; border-radius: 12px; padding: 14px; color: var(--muted); font-size: 15px; }
-
+      .fb-chart-card { padding: 18px 20px 22px; }
+      .fb-chart-top h2 { margin: 0; font-size: 23px; font-weight: 600; }
+      .fb-chart-shell {
+        width: 100%;
+        margin-top: 14px;
+        position: relative;
+      }
+      .fb-chart {
+        width: 100%;
+        height: clamp(280px, 38vw, 390px);
+        display: block;
+      }
       .fb-axis-label { font-size: 12px; fill: #98A2B3; }
 
-      @media (max-width: 1024px) {
-        .fb-chart-layout { grid-template-columns: 1fr; }
+      .fb-turn-tooltip {
+        position: absolute;
+        z-index: 12;
+        width: min(380px, calc(100% - 12px));
+        border: 1px solid #D0D5DD;
+        border-radius: 12px;
+        background: #fff;
+        box-shadow: 0 16px 28px rgba(16,24,40,0.14);
+        padding: 12px;
+        pointer-events: none;
       }
-      @media (max-width: 880px) {
-        .feedback-dashboard { padding: 16px; }
+      .fb-turn-tooltip.hidden { display: none; }
+      .fb-turn-tooltip h4 { margin: 0 0 8px; font-size: 15px; font-weight: 600; }
+      .fb-turn-tooltip p { margin: 6px 0 0; font-size: 14px; line-height: 1.45; color: #475467; }
+      .fb-turn-tooltip p strong { color: #101828; font-weight: 600; }
+
+      .fb-recommendations { padding: 18px 20px 20px; }
+      .fb-recommendations h2 { margin: 0; font-size: 23px; font-weight: 600; }
+      .fb-recommendations-grid { margin-top: 14px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 22px; }
+      .fb-rec-item h3 { margin: 0; font-size: 17px; font-weight: 600; line-height: 1.35; }
+      .fb-rec-item p { margin: 7px 0 0; font-size: 15px; color: #475467; line-height: 1.45; }
+      .fb-rec-example { margin-top: 10px; border: 1px solid #D0D5DD; border-radius: 10px; padding: 10px; background: #fff; }
+      .fb-rec-example p { margin-top: 6px; font-size: 14px; }
+      .fb-rec-user { color: #B42318; }
+      .fb-rec-better { color: #027A48; }
+      .fb-empty { margin-top: 12px; color: #475467; font-size: 15px; }
+      .hidden { display: none; }
+
+      @media (max-width: 940px) {
+        .feedback-dashboard { padding: 14px; }
         .fb-grid-cards, .fb-recommendations-grid { grid-template-columns: 1fr; }
         .fb-header { flex-direction: column; }
       }
@@ -137,7 +148,7 @@
         return `<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" style="${
           filled
             ? 'opacity:0.92;color:#F59E0B;fill:currentColor;stroke:none;'
-            : 'color:var(--muted2);fill:none;stroke:currentColor;stroke-width:1.6;'
+            : 'color:#98A2B3;fill:none;stroke:currentColor;stroke-width:1.6;'
         }"><path d="M12 3.5l2.87 5.82 6.43.93-4.65 4.53 1.1 6.4L12 18.13l-5.75 3.05 1.1-6.4L2.7 10.25l6.43-.93L12 3.5z"/></svg>`;
       })
       .join('');
@@ -149,116 +160,132 @@
     return '#DC2626';
   }
 
-  function resultSummary(outcome, summary) {
-    const objectiveByOutcome = {
-      agreement_reached: 'Lograste cerrar el objetivo principal: sí hubo acuerdo.',
-      partial_progress: 'Avanzaste hacia el objetivo, pero el acuerdo quedó parcial.',
-      no_agreement: 'No llegaste al acuerdo final en este intento.',
-      blocked: 'La conversación se bloqueó antes de cerrar el objetivo.',
-    };
-    const objective = objectiveByOutcome[outcome] || 'Este fue el resultado frente al objetivo de la negociación.';
-    return `${objective} ${summary || ''}`.trim();
+  function durationFromReport(report, trajectoryLength) {
+    const direct = report?.header?.duration_label || report?.header?.conversation_duration || report?.duration_label;
+    if (direct) return String(direct);
+    const estMinutes = Math.max(1, Math.round((trajectoryLength || 1) * 1.05));
+    return `${estMinutes}:00 min`;
   }
 
-  function renderChart(svg, series, onSelect, getSelected) {
-    const width = 900;
-    const height = 330;
-    const pad = { top: 18, right: 18, bottom: 40, left: 20 };
+  function resultFirstLine(outcome) {
+    if (outcome === 'agreement_reached') return 'Lograste un acuerdo: cerraste la negociación en términos aceptables para ambas partes.';
+    return 'No cerraste un acuerdo final en esta conversación.';
+  }
+
+  function buildResultSummary(outcome, summary) {
+    return `${resultFirstLine(outcome)} ${summary || ''}`.trim();
+  }
+
+  function helpReason(turn) {
+    if (!turn) return '';
+    if (turn.direction === 'up') return 'Este turno te acercó al entendimiento.';
+    if (turn.direction === 'down') return 'Este turno te alejó del entendimiento.';
+    return 'Este turno dejó la negociación casi en el mismo punto.';
+  }
+
+  function tooltipMarkup(turn) {
+    return `
+      <h4>Turno ${Number(turn?.turn_index || 0)}</h4>
+      <p><strong>Tú:</strong> ${escapeHtml(turn?.user_excerpt || '')}</p>
+      <p><strong>Él:</strong> ${escapeHtml(turn?.counterpart_excerpt || '')}</p>
+      <p>${escapeHtml(helpReason(turn))} ${escapeHtml(turn?.impact_reason || '')}</p>
+      <p><strong>Pensamiento del otro:</strong> ${escapeHtml(turn?.counterpart_thought_effect || '')}</p>
+    `;
+  }
+
+  function getCardChecks(checks = []) {
+    const trimmed = checks.slice(0, 4);
+    if (trimmed.length > 0) return trimmed;
+    return [{ polarity: 'check', micro_explanation: 'Cuidaste bien este bloque durante la conversación.' }];
+  }
+
+  function recommendationTitle(text) {
+    const clean = String(text || '').trim();
+    if (!clean) return 'Ajuste clave para el siguiente intento';
+    const firstSentence = clean.split('.').map((s) => s.trim()).find(Boolean) || clean;
+    const head = firstSentence.split(':')[0].trim();
+    if (head.length >= 16 && head.length <= 90) return head;
+    return clean.slice(0, 90).trim();
+  }
+
+  function renderChart(svg, trajectory, handlers) {
+    const width = 980;
+    const height = 360;
+    const pad = { top: 18, right: 18, bottom: 38, left: 20 };
     const innerW = width - pad.left - pad.right;
     const innerH = height - pad.top - pad.bottom;
-    const xFor = (idx) => pad.left + (idx / Math.max(1, series.length - 1)) * innerW;
+    const values = trajectory.map((t) => Number(t.agreement_closeness_score_0_100 || 0));
+    const xFor = (idx) => pad.left + (idx / Math.max(1, values.length - 1)) * innerW;
     const yFor = (value) => pad.top + ((100 - value) / 100) * innerH;
 
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
     svg.innerHTML = '';
 
-    const zones = [
-      { from: 0, to: 33, color: 'rgba(220,38,38,0.12)' },
-      { from: 33, to: 66, color: 'rgba(217,119,6,0.11)' },
-      { from: 66, to: 100, color: 'rgba(22,163,74,0.12)' },
-    ];
-    zones.forEach((zone) => {
-      const rect = document.createElementNS(NS, 'rect');
-      rect.setAttribute('x', String(pad.left));
-      rect.setAttribute('y', String(yFor(zone.to)));
-      rect.setAttribute('width', String(innerW));
-      rect.setAttribute('height', String(Math.abs(yFor(zone.from) - yFor(zone.to))));
-      rect.setAttribute('fill', zone.color);
-      svg.appendChild(rect);
-    });
-
-    [20, 40, 60, 80].forEach((n) => {
+    [25, 50, 75].forEach((n) => {
       const line = document.createElementNS(NS, 'line');
-      line.setAttribute('x1', String(pad.left)); line.setAttribute('x2', String(width - pad.right));
-      line.setAttribute('y1', String(yFor(n))); line.setAttribute('y2', String(yFor(n)));
-      line.setAttribute('stroke', '#E4E7EC'); line.setAttribute('stroke-width', '1');
+      line.setAttribute('x1', String(pad.left));
+      line.setAttribute('x2', String(width - pad.right));
+      line.setAttribute('y1', String(yFor(n)));
+      line.setAttribute('y2', String(yFor(n)));
+      line.setAttribute('stroke', '#EAECF0');
+      line.setAttribute('stroke-width', '1');
       svg.appendChild(line);
     });
 
-    for (let i = 0; i < series.length - 1; i += 1) {
-      const seg = document.createElementNS(NS, 'line');
-      seg.setAttribute('x1', String(xFor(i)));
-      seg.setAttribute('y1', String(yFor(series[i])));
-      seg.setAttribute('x2', String(xFor(i + 1)));
-      seg.setAttribute('y2', String(yFor(series[i + 1])));
-      seg.setAttribute('stroke', colorForScore((series[i] + series[i + 1]) / 2));
-      seg.setAttribute('stroke-width', '3.4');
-      seg.setAttribute('stroke-linecap', 'round');
-      svg.appendChild(seg);
+    for (let i = 0; i < values.length - 1; i += 1) {
+      const line = document.createElementNS(NS, 'line');
+      line.setAttribute('x1', String(xFor(i)));
+      line.setAttribute('y1', String(yFor(values[i])));
+      line.setAttribute('x2', String(xFor(i + 1)));
+      line.setAttribute('y2', String(yFor(values[i + 1])));
+      line.setAttribute('stroke', colorForScore((values[i] + values[i + 1]) / 2));
+      line.setAttribute('stroke-width', '3');
+      line.setAttribute('stroke-linecap', 'round');
+      svg.appendChild(line);
     }
 
-    series.forEach((v, i) => {
-      const p = document.createElementNS(NS, 'circle');
-      p.setAttribute('cx', String(xFor(i)));
-      p.setAttribute('cy', String(yFor(v)));
-      p.setAttribute('r', '5.6');
-      p.setAttribute('fill', '#fff');
-      p.setAttribute('stroke', colorForScore(v));
-      p.setAttribute('stroke-width', '3');
-      p.style.cursor = 'pointer';
-      p.dataset.turnIndex = String(i);
-      p.addEventListener('mouseenter', () => onSelect(i));
-      p.addEventListener('click', () => onSelect(i));
-      svg.appendChild(p);
+    values.forEach((value, idx) => {
+      const circle = document.createElementNS(NS, 'circle');
+      circle.setAttribute('cx', String(xFor(idx)));
+      circle.setAttribute('cy', String(yFor(value)));
+      circle.setAttribute('r', '5.5');
+      circle.setAttribute('fill', '#fff');
+      circle.setAttribute('stroke', colorForScore(value));
+      circle.setAttribute('stroke-width', '3');
+      circle.style.cursor = 'pointer';
+      circle.dataset.turnIndex = String(idx);
+      circle.addEventListener('mouseenter', (ev) => handlers.onHover(idx, ev));
+      circle.addEventListener('mouseleave', () => handlers.onLeave());
+      circle.addEventListener('click', (ev) => handlers.onClick(idx, ev));
+      svg.appendChild(circle);
     });
 
-    const xLabelA = document.createElementNS(NS, 'text');
-    xLabelA.setAttribute('x', String(pad.left)); xLabelA.setAttribute('y', String(height - 12)); xLabelA.setAttribute('class', 'fb-axis-label');
-    xLabelA.textContent = 'Inicio'; svg.appendChild(xLabelA);
-    const xLabelB = document.createElementNS(NS, 'text');
-    xLabelB.setAttribute('x', String(width - 50)); xLabelB.setAttribute('y', String(height - 12)); xLabelB.setAttribute('class', 'fb-axis-label');
-    xLabelB.textContent = 'Final'; svg.appendChild(xLabelB);
+    const xStart = document.createElementNS(NS, 'text');
+    xStart.setAttribute('x', String(pad.left));
+    xStart.setAttribute('y', String(height - 12));
+    xStart.setAttribute('class', 'fb-axis-label');
+    xStart.textContent = 'Inicio';
+    svg.appendChild(xStart);
 
-    updateChartSelection(svg, getSelected());
+    const xEnd = document.createElementNS(NS, 'text');
+    xEnd.setAttribute('x', String(width - 50));
+    xEnd.setAttribute('y', String(height - 12));
+    xEnd.setAttribute('class', 'fb-axis-label');
+    xEnd.textContent = 'Final';
+    svg.appendChild(xEnd);
   }
 
-  function updateChartSelection(svg, selectedIdx) {
-    svg.querySelectorAll('circle[data-turn-index]').forEach((circle) => {
-      const idx = Number(circle.dataset.turnIndex);
-      if (idx === selectedIdx) {
-        circle.setAttribute('r', '8');
-        circle.setAttribute('fill', circle.getAttribute('stroke') || '#2E90FA');
-      } else {
-        circle.setAttribute('r', '5.6');
-        circle.setAttribute('fill', '#fff');
-      }
-    });
-  }
+  function placeTooltip(tooltip, shell, event) {
+    const shellRect = shell.getBoundingClientRect();
+    const pointX = event.clientX - shellRect.left;
+    const pointY = event.clientY - shellRect.top;
 
-  function impactLabel(turn) {
-    if (turn?.direction === 'up') return 'Este turno sí te acercó al entendimiento.';
-    if (turn?.direction === 'down') return 'Este turno te alejó del entendimiento.';
-    return 'Este turno casi no movió la negociación.';
-  }
+    const maxLeft = shell.clientWidth - tooltip.offsetWidth - 6;
+    const left = Math.max(6, Math.min(pointX + 12, maxLeft));
+    const top = Math.max(8, pointY - tooltip.offsetHeight - 12);
 
-  function buildDetailPanel(turn) {
-    return `
-      <h4>Turno ${Number(turn?.turn_index || 0)}</h4>
-      <p class="fb-detail-line"><strong>Tú dijiste:</strong> ${escapeHtml(turn?.user_excerpt || '')}</p>
-      <p class="fb-detail-line"><strong>La otra parte respondió:</strong> ${escapeHtml(turn?.counterpart_excerpt || '')}</p>
-      <p class="fb-detail-line"><strong>Impacto:</strong> ${escapeHtml(impactLabel(turn))}</p>
-      <p class="fb-detail-line"><strong>Por qué:</strong> ${escapeHtml(turn?.impact_reason || '')}</p>
-      <p class="fb-detail-line"><strong>Qué recalculó la otra parte:</strong> ${escapeHtml(turn?.counterpart_thought_effect || '')}</p>
-    `;
+    tooltip.style.left = `${left}px`;
+    tooltip.style.top = `${top}px`;
   }
 
   function getCardChecks(checks = []) {
@@ -283,43 +310,47 @@
     const trajectory = report.trajectory_chart || [];
     const recs = report.recommendations || { general: [], correction_cases: [] };
     const activityName = header.activity_name || 'Compra de un Mustang clásico';
-    const score = Number(header.score_global_100 || 0);
+    const durationLabel = durationFromReport(report, trajectory.length);
+    const outcome = header.interaction_outcome;
+    const agreementReached = outcome === 'agreement_reached';
 
     container.classList.add('feedback-report-root');
     container.innerHTML = `
       <div class="feedback-dashboard">
         <header class="fb-card fb-header">
           <div>
-            <h1>Evaluación de tu desempeño</h1>
-            <p class="fb-subtitle">${escapeHtml(activityName)}</p>
+            <h1 class="fb-title">Evaluación de tu desempeño</h1>
+            <div class="fb-case-row">
+              <span class="fb-case-name">${escapeHtml(activityName)}</span>
+              <span class="fb-duration">${escapeHtml(durationLabel)}</span>
+            </div>
           </div>
           <div class="fb-header-right">
             <div class="fb-stars" role="img" aria-label="${Number(header.stars_0_5 || 0)} de 5 estrellas">${createStarsMarkup(header.stars_0_5)}</div>
-            <div class="fb-score-pill">${score} / 100</div>
+            <div class="fb-score-pill">${Number(header.score_global_100 || 0)} / 100</div>
           </div>
         </header>
 
         <section class="fb-card fb-result">
-          <h2>Resultado</h2>
-          <p>${escapeHtml(resultSummary(header.interaction_outcome, header.summary_2_3_lines))}</p>
+          <div class="fb-result-head">
+            <h2>Resultado</h2>
+            <span class="fb-result-dot ${agreementReached ? 'ok' : 'bad'}" aria-hidden="true"></span>
+          </div>
+          <p>${escapeHtml(buildResultSummary(outcome, header.summary_2_3_lines))}</p>
         </section>
 
         <section class="fb-grid-cards" aria-label="Resumen por dimensión"></section>
 
         <section class="fb-card fb-chart-card">
           <div class="fb-chart-top"><h2>Cercanía al entendimiento</h2></div>
-          <p class="fb-chart-subtitle">Cuando la línea sube te acercas; cuando baja te alejas.</p>
-          <div class="fb-chart-layout">
-            <div class="fb-chart-shell">
-              <svg class="fb-chart" viewBox="0 0 900 330" preserveAspectRatio="none" role="img" aria-label="Serie de cercanía al entendimiento por turno"></svg>
-            </div>
-            <aside class="fb-detail-panel" aria-live="polite"></aside>
+          <div class="fb-chart-shell">
+            <svg class="fb-chart" role="img" aria-label="Serie de cercanía al entendimiento por turno"></svg>
+            <aside class="fb-turn-tooltip hidden" aria-live="polite"></aside>
           </div>
         </section>
 
         <section class="fb-card fb-recommendations">
           <h2>Recomendaciones generales</h2>
-          <p class="fb-recommendations-intro">Solo verás los ajustes que realmente te pueden aportar valor.</p>
           <div class="fb-recommendations-grid"></div>
           <div class="fb-empty hidden">No hay recomendaciones relevantes que añadir en este caso.</div>
         </section>
@@ -327,9 +358,11 @@
     `;
 
     const blockRoot = container.querySelector('.fb-grid-cards');
-    for (const section of blocks) {
+    blocks.forEach((section) => {
       const status = normalizeStatus(section.status_visual);
-      const checks = getCardChecks(section.checks).map((row) => `<li><span class="fb-item-icon ${row.polarity === 'check' ? 'ok' : 'bad'}">${row.polarity === 'check' ? checkSvg() : crossSvg()}</span><span>${escapeHtml(row.micro_explanation || '')}</span></li>`).join('');
+      const checks = getCardChecks(section.checks)
+        .map((row) => `<li><span class="fb-item-icon ${row.polarity === 'check' ? 'ok' : 'bad'}">${row.polarity === 'check' ? checkSvg() : crossSvg()}</span><span>${escapeHtml(row.micro_explanation || '')}</span></li>`)
+        .join('');
       const card = document.createElement('article');
       card.className = `fb-card fb-skill-card ${status}`;
       card.innerHTML = `
@@ -337,18 +370,22 @@
         <ul>${checks}</ul>
       `;
       blockRoot.appendChild(card);
-    }
+    });
 
     const combinedRecommendations = [];
     (recs.general || []).forEach((text, idx) => {
-      combinedRecommendations.push({ title: recommendationTitle(text, idx), explanation: text, case: recs.correction_cases?.[idx] || null });
+      combinedRecommendations.push({
+        title: recommendationTitle(text),
+        explanation: text,
+        case: recs.correction_cases?.[idx] || null,
+      });
     });
 
     const remainingCases = (recs.correction_cases || []).slice((recs.general || []).length);
-    remainingCases.forEach((item, idx) => {
+    remainingCases.forEach((item) => {
       combinedRecommendations.push({
-        title: `Ajuste en turno ${Number(item.turn_index || 0)}`,
-        explanation: item.expected_effect || 'Este ajuste puede mejorar tu avance en la negociación.',
+        title: `En el turno ${Number(item.turn_index || 0)} te faltó concretar mejor`,
+        explanation: item.expected_effect || 'Con este ajuste puedes mejorar el avance en el siguiente intento.',
         case: item,
       });
     });
@@ -361,33 +398,68 @@
       emptyRec.classList.remove('hidden');
     } else {
       finalRecommendations.forEach((item) => {
-        const el = document.createElement('article');
-        el.className = 'fb-rec-item';
-        el.innerHTML = `
+        const article = document.createElement('article');
+        article.className = 'fb-rec-item';
+        article.innerHTML = `
           <h3>${escapeHtml(item.title)}</h3>
           <p>${escapeHtml(item.explanation)}</p>
-          ${item.case ? `<div class="fb-rec-example"><p><strong>Turno ${Number(item.case.turn_index || 0)}</strong></p><p><strong>Tu mensaje:</strong> ${escapeHtml(item.case.original_excerpt || '')}</p><p><strong>Mejora propuesta:</strong> ${escapeHtml(item.case.better_rephrase || '')}</p></div>` : ''}
+          ${item.case ? `<div class="fb-rec-example"><p><strong>Turno ${Number(item.case.turn_index || 0)}</strong></p><p class="fb-rec-user"><strong>Tú:</strong> ${escapeHtml(item.case.original_excerpt || '')}</p><p class="fb-rec-better"><strong>Mejora:</strong> ${escapeHtml(item.case.better_rephrase || '')}</p></div>` : ''}
         `;
-        recGrid.appendChild(el);
+        recGrid.appendChild(article);
       });
     }
 
-    const chartSeries = trajectory.map((t) => Number(t.agreement_closeness_score_0_100 || 0));
-    const svg = container.querySelector('.fb-chart');
-    const detailPanel = container.querySelector('.fb-detail-panel');
-    let selectedIndex = 0;
-    const setSelected = (index) => {
-      selectedIndex = Math.max(0, Math.min(index, Math.max(0, trajectory.length - 1)));
-      detailPanel.innerHTML = buildDetailPanel(trajectory[selectedIndex]);
-      updateChartSelection(svg, selectedIndex);
+    const chart = container.querySelector('.fb-chart');
+    const chartShell = container.querySelector('.fb-chart-shell');
+    const tooltip = container.querySelector('.fb-turn-tooltip');
+    let stickyIndex = null;
+
+    const hideTooltip = () => {
+      if (stickyIndex !== null) return;
+      tooltip.classList.add('hidden');
     };
 
-    if (chartSeries.length > 0) {
-      renderChart(svg, chartSeries, setSelected, () => selectedIndex);
-      setSelected(0);
+    const showTooltip = (index, event) => {
+      const turn = trajectory[index];
+      if (!turn) return;
+      tooltip.innerHTML = tooltipMarkup(turn);
+      tooltip.classList.remove('hidden');
+      placeTooltip(tooltip, chartShell, event);
+    };
+
+    if (trajectory.length > 0) {
+      renderChart(chart, trajectory, {
+        onHover: (idx, ev) => showTooltip(idx, ev),
+        onLeave: () => hideTooltip(),
+        onClick: (idx, ev) => {
+          stickyIndex = stickyIndex === idx ? null : idx;
+          if (stickyIndex === null) {
+            tooltip.classList.add('hidden');
+            return;
+          }
+          showTooltip(idx, ev);
+        },
+      });
+
+      chartShell.addEventListener('mouseleave', () => {
+        if (stickyIndex === null) tooltip.classList.add('hidden');
+      });
+
+      document.addEventListener('click', (ev) => {
+        if (!(ev.target instanceof Node) || !chartShell.contains(ev.target)) {
+          stickyIndex = null;
+          tooltip.classList.add('hidden');
+        }
+      });
     } else {
-      svg.remove();
-      detailPanel.innerHTML = '<p class="fb-detail-line">No hay trayectoria disponible.</p>';
+      chart.remove();
+      tooltip.classList.remove('hidden');
+      tooltip.innerHTML = '<p>No hay trayectoria disponible.</p>';
+      tooltip.style.position = 'static';
+      tooltip.style.width = '100%';
+      tooltip.style.pointerEvents = 'auto';
+      tooltip.style.boxShadow = 'none';
+      tooltip.style.border = '1px solid #E4E7EC';
     }
 
     if (typeof options.onRendered === 'function') options.onRendered();
