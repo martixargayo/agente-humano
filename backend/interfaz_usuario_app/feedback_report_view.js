@@ -39,9 +39,7 @@
         gap: 14px;
       }
       .fb-title { margin: 0; font-size: 30px; line-height: 1.15; font-weight: 600; }
-      .fb-case-row { margin-top: 10px; display: flex; align-items: center; gap: 10px; color: #344054; }
-      .fb-case-name { font-size: 18px; font-weight: 600; }
-      .fb-duration { font-size: 14px; color: #667085; }
+      .fb-case-row { margin-top: 10px; color: #344054; font-size: 18px; font-weight: 600; }
       .fb-header-right { display: inline-flex; align-items: center; gap: 10px; }
       .fb-stars { display: inline-flex; gap: 4px; }
       .fb-score-pill { border: 1px solid #E4E7EC; border-radius: 999px; padding: 8px 12px; font-size: 20px; font-weight: 600; }
@@ -73,6 +71,7 @@
 
       .fb-chart-card { padding: 18px 20px 22px; }
       .fb-chart-top h2 { margin: 0; font-size: 23px; font-weight: 600; }
+      .fb-chart-hint { margin: 6px 0 0; font-size: 14px; color: #667085; }
       .fb-chart-shell {
         width: 100%;
         margin-top: 14px;
@@ -108,7 +107,7 @@
       .fb-rec-item p { margin: 7px 0 0; font-size: 15px; color: #475467; line-height: 1.45; }
       .fb-rec-example { margin-top: 10px; border: 1px solid #D0D5DD; border-radius: 10px; padding: 10px; background: #fff; }
       .fb-rec-example p { margin-top: 6px; font-size: 14px; }
-      .fb-rec-user { color: #B42318; }
+      .fb-rec-user { color: #475467; }
       .fb-rec-better { color: #027A48; }
       .fb-empty { margin-top: 12px; color: #475467; font-size: 15px; }
       .hidden { display: none; }
@@ -288,19 +287,6 @@
     tooltip.style.top = `${top}px`;
   }
 
-  function getCardChecks(checks = []) {
-    const trimmed = checks.slice(0, 4);
-    if (trimmed.length > 0) return trimmed;
-    return [{ polarity: 'check', micro_explanation: 'No hay observaciones críticas en este bloque.' }];
-  }
-
-  function recommendationTitle(text, index) {
-    const pieces = String(text || '').split(':');
-    const first = (pieces[0] || '').trim();
-    if (first && first.length <= 48) return first;
-    return `Punto de mejora ${index + 1}`;
-  }
-
   function renderReport(container, report, options = {}) {
     if (!container || !report) return;
     ensureStyles();
@@ -320,10 +306,7 @@
         <header class="fb-card fb-header">
           <div>
             <h1 class="fb-title">Evaluación de tu desempeño</h1>
-            <div class="fb-case-row">
-              <span class="fb-case-name">${escapeHtml(activityName)}</span>
-              <span class="fb-duration">${escapeHtml(durationLabel)}</span>
-            </div>
+            <div class="fb-case-row">${escapeHtml(activityName)} · ${escapeHtml(durationLabel)}</div>
           </div>
           <div class="fb-header-right">
             <div class="fb-stars" role="img" aria-label="${Number(header.stars_0_5 || 0)} de 5 estrellas">${createStarsMarkup(header.stars_0_5)}</div>
@@ -343,6 +326,7 @@
 
         <section class="fb-card fb-chart-card">
           <div class="fb-chart-top"><h2>Cercanía al entendimiento</h2></div>
+          <p class="fb-chart-hint">Pasa el ratón por encima de cada momento de la conversación para conocer más.</p>
           <div class="fb-chart-shell">
             <svg class="fb-chart" role="img" aria-label="Serie de cercanía al entendimiento por turno"></svg>
             <aside class="fb-turn-tooltip hidden" aria-live="polite"></aside>
@@ -384,7 +368,7 @@
     const remainingCases = (recs.correction_cases || []).slice((recs.general || []).length);
     remainingCases.forEach((item) => {
       combinedRecommendations.push({
-        title: `En el turno ${Number(item.turn_index || 0)} te faltó concretar mejor`,
+        title: recommendationTitle(item.expected_effect || 'Te faltó concretar mejor este momento'),
         explanation: item.expected_effect || 'Con este ajuste puedes mejorar el avance en el siguiente intento.',
         case: item,
       });
@@ -403,7 +387,7 @@
         article.innerHTML = `
           <h3>${escapeHtml(item.title)}</h3>
           <p>${escapeHtml(item.explanation)}</p>
-          ${item.case ? `<div class="fb-rec-example"><p><strong>Turno ${Number(item.case.turn_index || 0)}</strong></p><p class="fb-rec-user"><strong>Tú:</strong> ${escapeHtml(item.case.original_excerpt || '')}</p><p class="fb-rec-better"><strong>Mejora:</strong> ${escapeHtml(item.case.better_rephrase || '')}</p></div>` : ''}
+          ${item.case ? `<div class="fb-rec-example"><p class="fb-rec-user"><strong>Tú</strong> ${escapeHtml(item.case.original_excerpt || '')}</p><p class="fb-rec-better"><strong>Mejora:</strong> ${escapeHtml(item.case.better_rephrase || '')}</p></div>` : ''}
         `;
         recGrid.appendChild(article);
       });
