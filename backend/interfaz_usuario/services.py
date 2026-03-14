@@ -84,6 +84,10 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
         ),
     )
 
+    canonical = state.world_state.get("negotiation_canonical", {}) if isinstance(state.world_state, dict) else {}
+    ui_state = canonical.get("ui_state", {}) if isinstance(canonical, dict) else {}
+    finish_button_armed = bool(ui_state.get("finish_button_armed", False)) if isinstance(ui_state, dict) else False
+
     return {
         "reply": reply,
         "user_id": user_id,
@@ -96,4 +100,5 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
         "latest_turn_id": meta.get("latest_turn_id"),
         "entry_contract": meta.get("entry_contract") or {},
         "auto_reset_applied": auto_reset_applied,
+        "finish_button_armed": finish_button_armed,
     }
