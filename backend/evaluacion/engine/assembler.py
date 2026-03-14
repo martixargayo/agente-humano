@@ -16,8 +16,8 @@ def assemble_ui_report(*, core: FeedbackReportCoreV1, trajectory: TurnTrajectory
         schema_version="ui_feedback_report.v1",
         evaluation_id=provenance.evaluation_id,
         header=UiHeader(
-            report_title="Informe de desempeño",
-            activity_name="Negociación",
+            report_title="Evaluación de tu desempeño",
+            activity_name="Compra de un Mustang clásico",
             score_global_100=core.score_global_100,
             stars_0_5=core.stars_0_5,
             interaction_outcome=core.interaction_outcome,
