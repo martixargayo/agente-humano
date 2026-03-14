@@ -21,7 +21,7 @@
         margin: 0 auto;
         padding: 24px 26px 38px;
         display: grid;
-        gap: 16px;
+        gap: 18px;
       }
 
       .fb-card {
@@ -286,6 +286,19 @@
 
     tooltip.style.left = `${left}px`;
     tooltip.style.top = `${top}px`;
+  }
+
+  function getCardChecks(checks = []) {
+    const trimmed = checks.slice(0, 4);
+    if (trimmed.length > 0) return trimmed;
+    return [{ polarity: 'check', micro_explanation: 'No hay observaciones críticas en este bloque.' }];
+  }
+
+  function recommendationTitle(text, index) {
+    const pieces = String(text || '').split(':');
+    const first = (pieces[0] || '').trim();
+    if (first && first.length <= 48) return first;
+    return `Punto de mejora ${index + 1}`;
   }
 
   function renderReport(container, report, options = {}) {
