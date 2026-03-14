@@ -3,12 +3,14 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from . import services
+from evaluacion.api import router as feedback_router
 from .models import NegotiationTurnRequest, NegotiationTurnResponse, SessionBootstrapRequest
 
 # Parity-safe surface for negotiation turns.
 # This router is intentionally independent from avatar_app legacy mode switching
 # and does not route through /chat or /negociar legacy endpoints.
 router = APIRouter(prefix="/api/interfaz_usuario", tags=["interfaz_usuario"])
+router.include_router(feedback_router)
 
 
 @router.post("/sessions/bootstrap")
