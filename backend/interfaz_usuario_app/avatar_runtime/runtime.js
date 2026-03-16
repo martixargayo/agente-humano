@@ -303,7 +303,9 @@ export function createAvatarRuntime({ stageEl, config }) {
   };
   const MouthRenderTuning = {
     rimA: 0.26, rimB: 0.46, rimC: 0.68, rimD: 0.84, innerA: 0.70, innerB: 0.82, innerGain: 0.22,
-    innerCoreA: 0.82, innerCoreB: 0.96, innerCoreGain: 0.70, maskMin: 0.08, pointsAlpha: 0.50,
+    innerCoreA: 0.82, innerCoreB: 0.96, innerCoreGain: 0.70, maskMin: 0.08,
+    upsampleMinPoints: 260, upsampleAmpMin: 0.0007, upsampleAmpMax: 0.0015, rimResampleFactor: 50,
+    pointsAlpha: 0.50,
     pointsAlphaClip: 0.012, pointsSizeNear: 3.0 * window.devicePixelRatio, pointsSizeFar: 2.3 * window.devicePixelRatio,
     pointsColorMul: 0.95, pointsLumaFloor: 0.12, pointsLumaStrength: 1.0, pointsLumaPreserveHue: 1.0, pointsLumaDebug: false,
     pointsCullBack: true, pointsDebugBackOnly: false,
@@ -349,23 +351,132 @@ export function createAvatarRuntime({ stageEl, config }) {
     return THREE.MathUtils.clamp(rimMask + innerTiny + innerCore, 0, 1);
   }
 
+  function stableHash3(x, y, z, salt = 0.0) {
+    const seed = x * 127.1 + y * 311.7 + z * 74.7 + salt * 19.19;
+    const v = Math.sin(seed) * 43758.5453123;
+    return v - Math.floor(v);
+  }
+
   function buildMouthPointsGeometryFromAnimatedSurface(srcGeometry) {
-    const basePosAttr = srcGeometry.getAttribute('aBasePosition');
-    const uvAttr = srcGeometry.getAttribute('aUv');
+    const basePosAttr = srcGeometry.getAttribute('aBasePosition') || srcGeometry.getAttribute('position');
+    const posAttr = srcGeometry.getAttribute('position') || basePosAttr;
+    const uvAttr = srcGeometry.getAttribute('aUv') || srcGeometry.getAttribute('uv');
     const mouthWeightAttr = srcGeometry.getAttribute('aMouthWeight');
     const mouthSideAttr = srcGeometry.getAttribute('aMouthSide');
     const headWeightAttr = srcGeometry.getAttribute('aHeadWeight');
-    if (!basePosAttr || !uvAttr || !mouthWeightAttr || !mouthSideAttr || !headWeightAttr) return null;
+    if (!basePosAttr || !posAttr || !uvAttr || !mouthWeightAttr || !mouthSideAttr || !headWeightAttr) return null;
 
+    const tuning = MouthRenderTuning;
     const p = []; const b = []; const uv = []; const mw = []; const ms = []; const hw = []; const ov = [];
+    const addPoint = (x, y, z, bx, by, bz, u, v, mouthWeight, mouthSide, headWeight, overlay) => {
+      p.push(x, y, z);
+      b.push(bx, by, bz);
+      uv.push(u, v);
+      mw.push(mouthWeight);
+      ms.push(mouthSide);
+      hw.push(headWeight);
+      ov.push(overlay);
+    };
+
+    const overlayByVertex = new Float32Array(basePosAttr.count);
     for (let i = 0; i < basePosAttr.count; i++) {
       const w = mouthWeightAttr.getX(i);
       const overlay = mouthRimMaskFromWeight(w);
-      if (overlay <= MouthRenderTuning.maskMin) continue;
-      const x = basePosAttr.getX(i); const y = basePosAttr.getY(i); const z = basePosAttr.getZ(i);
-      p.push(x, y, z); b.push(x, y, z); uv.push(uvAttr.getX(i), uvAttr.getY(i));
-      mw.push(w); ms.push(mouthSideAttr.getX(i)); hw.push(headWeightAttr.getX(i)); ov.push(overlay);
+      overlayByVertex[i] = overlay;
+      if (overlay <= tuning.maskMin) continue;
+      const x = posAttr.getX(i); const y = posAttr.getY(i); const z = posAttr.getZ(i);
+      const bx = basePosAttr.getX(i); const by = basePosAttr.getY(i); const bz = basePosAttr.getZ(i);
+      addPoint(x, y, z, bx, by, bz, uvAttr.getX(i), uvAttr.getY(i), w, mouthSideAttr.getX(i), headWeightAttr.getX(i), overlay);
     }
+
+    const indexAttr = srcGeometry.getIndex();
+    const triWeights = [];
+    const triIndices = [];
+    const getIndex = (i) => (indexAttr ? indexAttr.getX(i) : i);
+    const triCount = indexAttr ? Math.floor(indexAttr.count / 3) : Math.floor(posAttr.count / 3);
+
+    for (let tIdx = 0; tIdx < triCount; tIdx++) {
+      const ia = getIndex(tIdx * 3 + 0);
+      const ib = getIndex(tIdx * 3 + 1);
+      const ic = getIndex(tIdx * 3 + 2);
+      const wa = overlayByVertex[ia];
+      const wb = overlayByVertex[ib];
+      const wc = overlayByVertex[ic];
+      const avgMask = (wa + wb + wc) / 3.0;
+      if (avgMask <= tuning.maskMin) continue;
+
+      const ax = basePosAttr.getX(ia), ay = basePosAttr.getY(ia), az = basePosAttr.getZ(ia);
+      const bx = basePosAttr.getX(ib), by = basePosAttr.getY(ib), bz = basePosAttr.getZ(ib);
+      const cx = basePosAttr.getX(ic), cy = basePosAttr.getY(ic), cz = basePosAttr.getZ(ic);
+      const abx = bx - ax, aby = by - ay, abz = bz - az;
+      const acx = cx - ax, acy = cy - ay, acz = cz - az;
+      const crx = aby * acz - abz * acy;
+      const cry = abz * acx - abx * acz;
+      const crz = abx * acy - aby * acx;
+      const area = 0.5 * Math.sqrt(crx * crx + cry * cry + crz * crz);
+      const weight = area * avgMask;
+      if (weight <= 0.0) continue;
+      triWeights.push(weight);
+      triIndices.push([ia, ib, ic, avgMask]);
+    }
+
+    if (triIndices.length && tuning.rimResampleFactor > 0) {
+      const sourceCount = p.length / 3;
+      const targetResampled = Math.max(0, Math.round(sourceCount * tuning.rimResampleFactor));
+      const totalWeight = triWeights.reduce((a, bb) => a + bb, 0.0) || 1.0;
+
+      for (let ti = 0; ti < triIndices.length; ti++) {
+        const [ia, ib, ic, triMask] = triIndices[ti];
+        const weightNorm = triWeights[ti] / totalWeight;
+        const n = Math.max(0, Math.round(targetResampled * weightNorm));
+        if (n <= 0) continue;
+
+        const ax = basePosAttr.getX(ia), ay = basePosAttr.getY(ia), az = basePosAttr.getZ(ia);
+        const bx = basePosAttr.getX(ib), by = basePosAttr.getY(ib), bz = basePosAttr.getZ(ib);
+        const cx = basePosAttr.getX(ic), cy = basePosAttr.getY(ic), cz = basePosAttr.getZ(ic);
+
+        const apx = posAttr.getX(ia), apy = posAttr.getY(ia), apz = posAttr.getZ(ia);
+        const bpx = posAttr.getX(ib), bpy = posAttr.getY(ib), bpz = posAttr.getZ(ib);
+        const cpx = posAttr.getX(ic), cpy = posAttr.getY(ic), cpz = posAttr.getZ(ic);
+
+        const au = uvAttr.getX(ia), av = uvAttr.getY(ia);
+        const bu = uvAttr.getX(ib), bv = uvAttr.getY(ib);
+        const cu = uvAttr.getX(ic), cv = uvAttr.getY(ic);
+
+        const aw = mouthWeightAttr.getX(ia), bw = mouthWeightAttr.getX(ib), cw = mouthWeightAttr.getX(ic);
+        const asd = mouthSideAttr.getX(ia), bsd = mouthSideAttr.getX(ib), csd = mouthSideAttr.getX(ic);
+        const ah = headWeightAttr.getX(ia), bh = headWeightAttr.getX(ib), ch = headWeightAttr.getX(ic);
+        const ao = overlayByVertex[ia], bo = overlayByVertex[ib], co = overlayByVertex[ic];
+
+        for (let k = 0; k < n; k++) {
+          const h1 = stableHash3(ax, by, cz, 1000.0 + ti * 0.73 + k * 0.17);
+          const h2 = stableHash3(bx, cy, az, 2000.0 + ti * 0.31 + k * 0.29);
+          const su = Math.sqrt(h1);
+          const b0 = 1.0 - su;
+          const b1 = h2 * su;
+          const b2 = 1.0 - b0 - b1;
+
+          const pbx = ax * b0 + bx * b1 + cx * b2;
+          const pby = ay * b0 + by * b1 + cy * b2;
+          const pbz = az * b0 + bz * b1 + cz * b2;
+
+          const ppx = apx * b0 + bpx * b1 + cpx * b2;
+          const ppy = apy * b0 + bpy * b1 + cpy * b2;
+          const ppz = apz * b0 + bpz * b1 + cpz * b2;
+
+          const pu = au * b0 + bu * b1 + cu * b2;
+          const pv = av * b0 + bv * b1 + cv * b2;
+
+          const pW = aw * b0 + bw * b1 + cw * b2;
+          const pS = asd * b0 + bsd * b1 + csd * b2;
+          const pH = ah * b0 + bh * b1 + ch * b2;
+          const pO = THREE.MathUtils.clamp((ao * b0 + bo * b1 + co * b2) * (0.75 + triMask * 0.25), 0.0, 1.0);
+
+          addPoint(ppx, ppy, ppz, pbx, pby, pbz, pu, pv, pW, pS, pH, pO);
+        }
+      }
+    }
+
     if (!p.length) return null;
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(p), 3));
@@ -583,7 +694,7 @@ export function createAvatarRuntime({ stageEl, config }) {
         },
       });
       mouthPoints = new THREE.Points(mouthGeo, mouthPointsMaterial);
-      mouthPoints.visible = false;
+      mouthPoints.visible = MouthRenderTuning.alwaysPointsMode === true;
       mouthPoints.frustumCulled = false;
       mouthPoints.scale.copy(surfaceMesh.scale);
       mouthPoints.position.copy(surfaceMesh.position);

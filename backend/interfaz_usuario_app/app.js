@@ -566,14 +566,8 @@ ui.modeWrite.addEventListener('click', () => {
 });
 
 ui.sendTextBtn.addEventListener('click', handleSend);
-ui.textInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    handleSend();
-  }
-});
 
-ui.finishTurnBtn.addEventListener('click', async () => {
+async function handleFinishTurn() {
   setStatusText('Procesando…');
   ui.finishTurnBtn.classList.remove('highlight');
   void ui.finishTurnBtn.offsetWidth;
@@ -598,6 +592,10 @@ ui.finishTurnBtn.addEventListener('click', async () => {
     setInputMode(InputMode.WRITE);
     syncAvatarMode();
   }
+}
+
+ui.finishTurnBtn.addEventListener('click', () => {
+  void handleFinishTurn();
 });
 
 async function requestMicPermissions() {
@@ -686,7 +684,25 @@ document.addEventListener('click', (e) => {
 });
 
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') closeConversationModeMenu();
+  if (e.key === 'Escape') {
+    closeConversationModeMenu();
+    return;
+  }
+
+  if (e.key !== 'Enter' || e.repeat || e.shiftKey) return;
+  const target = e.target;
+  if (target instanceof HTMLTextAreaElement && currentInputMode !== InputMode.WRITE) return;
+
+  if (currentInputMode === InputMode.WRITE) {
+    e.preventDefault();
+    void handleSend();
+    return;
+  }
+
+  if (currentInputMode === InputMode.TALK && !ui.finishTurnBtn.disabled) {
+    e.preventDefault();
+    void handleFinishTurn();
+  }
 });
 
 window.addEventListener('click', (ev) => {
