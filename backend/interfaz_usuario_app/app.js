@@ -38,6 +38,14 @@ let fakeListening = false;
 let finalizePopoverOpen = false;
 let feedbackPollingTimer = null;
 let feedbackEvaluationId = null;
+let audioCtx = null;
+let ttsWarmedUp = false;
+let micStream = null;
+let mediaRecorder = null;
+let audioChunks = [];
+let isRecording = false;
+let recorderMimeType = 'audio/webm;codecs=opus';
+let discardRecording = false;
 
 const ui = {
   listeningGlow: $('listeningGlow'),
@@ -88,6 +96,170 @@ function syncAvatarMode() {
 function updateReplyText(text) {
   ui.lastReply.textContent = text;
   ui.replyContainer.classList.toggle('hidden', !text);
+}
+
+function getOrCreateAudioContext() {
+  if (!audioCtx || audioCtx.state === 'closed') {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  return audioCtx;
+}
+
+function base64ToAudioData(b64, mimeType = 'audio/wav') {
+  if (typeof b64 !== 'string' || !b64.trim()) throw new Error('Respuesta TTS sin audio_base64 válido');
+
+  const sanitized = b64
+    .replace(/^data:[^;]+;base64,/, '')
+    .replace(/\s+/g, '')
+    .replace(/-/g, '+')
+    .replace(/_/g, '/');
+
+  let byteChars;
+  try {
+    byteChars = atob(sanitized);
+  } catch (err) {
+    console.error('[audio] No se pudo decodificar base64', err);
+    throw new Error('Audio base64 corrupto');
+  }
+
+  const byteNumbers = new Array(byteChars.length);
+  for (let i = 0; i < byteChars.length; i += 1) byteNumbers[i] = byteChars.charCodeAt(i);
+  const byteArray = new Uint8Array(byteNumbers);
+  if (!byteArray.length) throw new Error('Audio vacío tras decodificar base64');
+
+  return {
+    mimeType: mimeType || 'audio/wav',
+    arrayBuffer: byteArray.buffer.slice(byteArray.byteOffset, byteArray.byteOffset + byteArray.byteLength),
+  };
+}
+
+async function requestTTS(text) {
+  const response = await fetch('/tts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  const data = await response.json();
+  return base64ToAudioData(data.audio_base64, data.audio_mime_type || 'audio/wav');
+}
+
+async function warmupFrontendTts() {
+  if (ttsWarmedUp) return;
+  try {
+    const audioData = await requestTTS('Calibración de audio.');
+    const ctx = getOrCreateAudioContext();
+    const audioBuffer = await ctx.decodeAudioData(audioData.arrayBuffer.slice(0));
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+    const source = ctx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(gain);
+    gain.connect(ctx.destination);
+    await ctx.resume();
+    source.start(ctx.currentTime + 0.05);
+    ttsWarmedUp = true;
+  } catch (err) {
+    console.warn('[warmup] Falló warmup frontend TTS', err);
+  }
+}
+
+function teardownMic() {
+  try { if (micStream) micStream.getTracks().forEach((t) => t.stop()); } catch (_) {}
+  micStream = null;
+}
+
+async function startVoiceCapture() {
+  discardRecording = false;
+  micStream = await navigator.mediaDevices.getUserMedia({
+    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+  });
+
+  recorderMimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+    ? 'audio/webm;codecs=opus'
+    : 'audio/webm';
+  mediaRecorder = new MediaRecorder(micStream, { mimeType: recorderMimeType });
+  audioChunks = [];
+
+  mediaRecorder.ondataavailable = (event) => {
+    if (event?.data && event.data.size > 0) audioChunks.push(event.data);
+  };
+
+  mediaRecorder.start(250);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  isRecording = mediaRecorder.state === 'recording';
+}
+
+function stopVoiceCapture() {
+  if (!mediaRecorder || !isRecording) return Promise.resolve(null);
+
+  return new Promise((resolve, reject) => {
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(audioChunks, { type: recorderMimeType });
+      audioChunks = [];
+      isRecording = false;
+      mediaRecorder = null;
+      if (discardRecording) {
+        discardRecording = false;
+        resolve(null);
+        return;
+      }
+      resolve(blob);
+    };
+
+    try {
+      if (mediaRecorder.state === 'recording') {
+        mediaRecorder.requestData();
+        setTimeout(() => {
+          try { mediaRecorder.stop(); } catch (err) { reject(err); }
+        }, 120);
+      } else {
+        mediaRecorder.stop();
+      }
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+async function transcribeAudio(blob) {
+  const audioFile = new File([blob], 'grabacion.webm', { type: recorderMimeType });
+  const formData = new FormData();
+  formData.append('file', audioFile);
+  const response = await fetch('/stt_google', { method: 'POST', body: formData });
+  if (!response.ok) throw new Error(await response.text());
+  const data = await response.json();
+  return (data?.text || '').trim();
+}
+
+async function playTtsWithAvatar(replyText) {
+  const audioData = await requestTTS(replyText);
+  const ctx = getOrCreateAudioContext();
+  const decoded = await ctx.decodeAudioData(audioData.arrayBuffer.slice(0));
+  const analyser = ctx.createAnalyser();
+  analyser.fftSize = 512;
+  analyser.smoothingTimeConstant = 0.4;
+  const source = ctx.createBufferSource();
+  source.buffer = decoded;
+  source.connect(analyser);
+  analyser.connect(ctx.destination);
+
+  withAvatarRuntime((runtime) => {
+    runtime.connectAnalyser(analyser);
+    runtime.setMode('SPEAKING');
+    runtime.setTalkLevel(0);
+  });
+
+  await ctx.resume();
+  await new Promise((resolve) => {
+    source.onended = () => {
+      withAvatarRuntime((runtime) => {
+        runtime.connectAnalyser(null);
+      });
+      resolve();
+    };
+    source.start(ctx.currentTime + 0.05);
+  });
 }
 
 function setStatusText(text) {
@@ -244,9 +416,8 @@ function _seedDefaultIds() {
   $('sessionId').value = `interfaz-main__${suffix}`;
 }
 
-async function handleSend() {
+async function runNegotiationTurnFromText(message) {
   syncSessionBoundaryReset();
-  const message = ui.textInput.value.trim();
   if (!message) return;
 
   const payload = { ...ids(), message, new_conversation: false };
@@ -263,19 +434,36 @@ async function handleSend() {
     `session=${out.session_id} endpoint=${contract.entrypoint} runtime=execute_turn_with_contract ` +
     `overrides=${contract.overrides_applied} turn=${out.latest_turn_id || '-'} ` +
     `conversation=${out.conversation_id_after || '-'} traces=${out.trace_count}`;
-  ui.textInput.value = '';
   setStatusText('Listo');
-  withAvatarRuntime((runtime) => {
-    runtime.setMode('SPEAKING');
-    runtime.setTalkLevel(0.38);
-    window.setTimeout(() => {
-      runtime.setTalkLevel(0.16);
-      window.setTimeout(() => {
-        runtime.setTalkLevel(0);
-        syncAvatarMode();
-      }, 240);
-    }, 260);
-  });
+
+  if (out.reply) {
+    try {
+      await playTtsWithAvatar(out.reply);
+    } catch (err) {
+      console.warn('[tts] Error reproduciendo TTS; fallback visual', err);
+      withAvatarRuntime((runtime) => {
+        runtime.setMode('SPEAKING');
+        runtime.setTalkLevel(0.38);
+        window.setTimeout(() => {
+          runtime.setTalkLevel(0.16);
+          window.setTimeout(() => {
+            runtime.setTalkLevel(0);
+            syncAvatarMode();
+          }, 240);
+        }, 260);
+      });
+      return;
+    }
+  }
+
+  syncAvatarMode();
+}
+
+async function handleSend() {
+  const message = ui.textInput.value.trim();
+  if (!message) return;
+  await runNegotiationTurnFromText(message);
+  ui.textInput.value = '';
 }
 
 $('bootstrap').onclick = async () => {
@@ -302,10 +490,26 @@ ui.startBtn.addEventListener('click', () => {
   updateReplyText('Te escucho. Empieza a hablar cuando quieras.');
   updateUi();
   syncAvatarMode();
+  void getOrCreateAudioContext().resume().then(() => warmupFrontendTts()).catch(() => {});
+  if (currentInputMode === InputMode.TALK) {
+    startVoiceCapture().catch((err) => {
+      console.error('[mic] No se pudo iniciar grabación', err);
+      fakeListening = false;
+      setListeningGlowEnabled(false);
+      setStatusText('Micrófono no disponible.');
+      setInputMode(InputMode.WRITE);
+    });
+  }
 });
 
 ui.modeTalk.addEventListener('click', () => setInputMode(InputMode.TALK));
-ui.modeWrite.addEventListener('click', () => setInputMode(InputMode.WRITE));
+ui.modeWrite.addEventListener('click', () => {
+  if (isRecording) {
+    discardRecording = true;
+    void stopVoiceCapture().finally(() => teardownMic());
+  }
+  setInputMode(InputMode.WRITE);
+});
 
 ui.sendTextBtn.addEventListener('click', handleSend);
 ui.textInput.addEventListener('keydown', (e) => {
@@ -315,18 +519,35 @@ ui.textInput.addEventListener('keydown', (e) => {
   }
 });
 
-ui.finishTurnBtn.addEventListener('click', () => {
+ui.finishTurnBtn.addEventListener('click', async () => {
   fakeListening = false;
   setListeningGlowEnabled(false);
   setStatusText('Procesando…');
   ui.finishTurnBtn.classList.remove('highlight');
   void ui.finishTurnBtn.offsetWidth;
   ui.finishTurnBtn.classList.add('highlight');
-  setTimeout(() => {
-    setStatusText('Listo');
+
+  try {
+    const blob = await stopVoiceCapture();
+    teardownMic();
+    if (!blob || !blob.size) throw new Error('No se capturó audio.');
+    const text = await transcribeAudio(blob);
+    if (!text) throw new Error('Transcripción vacía.');
+    await runNegotiationTurnFromText(text);
+    setInputMode(InputMode.TALK);
+    fakeListening = true;
+    setListeningGlowEnabled(true);
+    setStatusText('Escuchando…');
+    updateUi();
+    syncAvatarMode();
+    await startVoiceCapture();
+  } catch (err) {
+    console.error('[voice] Error procesando turno hablado', err);
+    setStatusText(err?.message || 'No se pudo procesar el audio.');
+    fakeListening = false;
     setInputMode(InputMode.TALK);
     syncAvatarMode();
-  }, 500);
+  }
 });
 
 ui.finishNegotiationBtn.onclick = () => {
