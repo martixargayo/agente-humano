@@ -480,7 +480,7 @@ function _seedDefaultIds() {
 
 async function runNegotiationTurnFromText(message) {
   syncSessionBoundaryReset();
-  if (!message || turnInFlight) return;
+  if (!message || turnInFlight || voiceTurnInFlight) return;
 
   turnInFlight = true;
   updateUi();
@@ -629,6 +629,11 @@ async function handleFinishTurn() {
 }
 
 ui.finishTurnBtn.addEventListener('click', () => {
+  void handleFinishTurn();
+});
+ui.finishTurnBtn.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' || e.repeat || e.shiftKey) return;
+  e.preventDefault();
   void handleFinishTurn();
 });
 
