@@ -9,113 +9,151 @@
     {
       "block_id": "valores",
       "title": "Valores",
-      "evaluates": "Qué tan bien la persona explicita intereses, límites y criterios de legitimidad para que la negociación no dependa solo de presión o regateo.",
+      "evaluates": "Si el usuario protege la calidad real del acuerdo: conoce sus límites, distingue acuerdo de buen acuerdo, resiste anclajes desfavorables, concede con criterio y evita aceptar algo peor que su alternativa razonable.",
       "positive_signals": [
-        "Declara principios y límites de forma clara y sin agresividad.",
-        "Conecta propuestas con criterios verificables (equidad, viabilidad, compromisos previos).",
-        "Reconoce necesidades de ambas partes sin diluir su posición."
+        "Muestra que no necesita cerrar a cualquier precio.",
+        "Marca límites o umbrales con claridad.",
+        "Resiste cifras extremas sin desregularse.",
+        "Usa criterios objetivos para sostener propuestas.",
+        "Hace concesiones recíprocas, graduales o condicionadas.",
+        "Introduce variables adicionales cuando una sola variable bloquea."
       ],
       "negative_signals": [
-        "Cambia de criterio según conviene en cada turno.",
-        "Presiona sin justificar por qué su propuesta es razonable.",
-        "Ignora por completo intereses de la contraparte."
+        "Habla como si necesitara cerrar sí o sí.",
+        "Acepta condiciones claramente peores que su posición razonable.",
+        "Cede rápido o varias veces sin recibir nada.",
+        "Se deja arrastrar por el primer anclaje.",
+        "No usa referencias objetivas.",
+        "Fuerza el cierre aunque no haya margen real."
       ],
       "common_mistakes": [
-        "Confundir firmeza con rigidez absoluta.",
-        "Usar etiquetas morales en lugar de criterios negociables.",
-        "Defender posiciones sin traducirlas a intereses concretos."
+        "Premiar cualquier acuerdo como si fuera bueno.",
+        "Confundir cooperación con rendición.",
+        "Tratar una oferta extrema como si ya marcara el marco válido.",
+        "Castigar retirarse cuando no hay base para un buen acuerdo."
       ],
-      "evaluator_focus": "Valorar coherencia entre lo que declara como importante y lo que pide/cede durante la conversación."
+      "evaluator_focus": "Valorar si el usuario protege valor, límites, alternativa y calidad del acuerdo, en vez de negociar desde necesidad o cierre forzado."
     },
     {
       "block_id": "vision",
       "title": "Visión",
-      "evaluates": "La capacidad para construir dirección compartida: objetivos, horizonte, escenarios de acuerdo y consecuencias de no acordar.",
+      "evaluates": "Si el usuario entiende la estructura profunda de la negociación: distingue posiciones de intereses, descubre motivaciones reales y elige una estrategia coherente con el contexto en vez de reaccionar solo a la superficie.",
       "positive_signals": [
-        "Formula una meta concreta y verificable para ambos.",
-        "Propone opciones o paquetes con lógica de beneficio mutuo.",
-        "Hace explícitos próximos pasos y criterios de avance."
+        "Hace preguntas para entender antes de contraargumentar.",
+        "Distingue lo que la otra parte pide de lo que realmente necesita.",
+        "Reformula posiciones en términos de necesidades o prioridades.",
+        "Explora restricciones, temores o intereses plausibles.",
+        "Propone opciones conectadas con esas necesidades.",
+        "Ajusta la estrategia al tipo de negociación y al contexto."
       ],
       "negative_signals": [
-        "Conversación reactiva sin rumbo ni objetivo claro.",
-        "Propone cierres vagos o imposibles de validar.",
-        "Se centra solo en el corto plazo aunque dañe el resultado final."
+        "Discute solo sobre demandas visibles.",
+        "No hace preguntas de descubrimiento.",
+        "Responde a cada petición con otra petición.",
+        "No reformula ni contrasta hipótesis.",
+        "Usa siempre la misma estrategia sin leer el contexto.",
+        "Confunde compromiso rápido con colaboración real."
       ],
       "common_mistakes": [
-        "Negociar punto por punto sin marco general.",
-        "No contrastar alternativas con el costo de no acuerdo.",
-        "Prometer avances sin aterrizarlos en compromisos concretos."
+        "Quedarse en la superficie de la petición.",
+        "Creer que cualquier propuesta creativa demuestra buena lectura.",
+        "Moralizar estrategias en vez de valorar su adecuación.",
+        "Confundir dividir la diferencia con ampliar valor."
       ],
-      "evaluator_focus": "Medir si hay conducción estratégica y no solo respuestas tácticas turno a turno."
+      "evaluator_focus": "Medir si el usuario está leyendo intereses, prioridades y contexto estratégico, o si solo reacciona turno a turno sin visión del problema."
     },
     {
       "block_id": "relacion",
       "title": "Relación",
-      "evaluates": "Cómo gestiona la interacción interpersonal: escucha, reconocimiento, tono y manejo de tensión para sostener cooperación.",
+      "evaluates": "Si el usuario construye una interacción que favorece escucha, confianza y cooperación sin perder firmeza ni caer en manipulación, agresividad o deterioro innecesario del vínculo.",
       "positive_signals": [
-        "Hace preguntas que demuestran escucha activa.",
-        "Valida puntos relevantes de la contraparte antes de contradecir.",
-        "Mantiene tono respetuoso incluso en desacuerdo."
+        "Valida preocupaciones relevantes antes de contradecir.",
+        "Hace sentir escuchada a la otra parte sin rendirse.",
+        "Mantiene tono respetuoso incluso en desacuerdo.",
+        "Usa lenguaje constructivo o colaborativo.",
+        "Reduce fricción innecesaria bajo tensión.",
+        "Persuade desde credibilidad, evidencia o beneficio mutuo."
       ],
       "negative_signals": [
-        "Interrumpe o descarta sistemáticamente lo dicho por la otra parte.",
-        "Escala el conflicto con ironía, amenaza o descalificación.",
-        "Responde en piloto automático sin conectar con el turno previo."
+        "Usa tono agresivo, despectivo o invalidante.",
+        "Responde a tensión con más tensión.",
+        "Ignora señales de preocupación o bloqueo.",
+        "Presiona con urgencia artificial o autoridad vacía.",
+        "Confunde influencia con manipulación.",
+        "Deteriora la confianza con el avance de la conversación."
       ],
       "common_mistakes": [
-        "Confundir cordialidad con falta de firmeza.",
-        "Evitar temas difíciles para sostener una falsa armonía.",
-        "No reparar rupturas de confianza cuando aparecen."
+        "Premiar amabilidad superficial aunque haya manipulación.",
+        "Castigar firmeza respetuosa como si fuera mala relación.",
+        "Ignorar diferencias de estilo o sensibilidad cultural.",
+        "Premiar persuasión efectiva pero poco ética."
       ],
-      "evaluator_focus": "Detectar si la dinámica relacional facilita o bloquea concesiones y acuerdos sostenibles."
+      "evaluator_focus": "Detectar si la dinámica relacional facilita apertura y acuerdos sostenibles, o si genera defensividad, desgaste o desconfianza."
     },
     {
       "block_id": "proceso",
       "title": "Proceso",
-      "evaluates": "La disciplina operativa de la negociación: estructura del intercambio, secuencia, gestión de ofertas y cierre con trazabilidad.",
+      "evaluates": "Si el usuario conduce la negociación con método: preparación, secuencia, generación de opciones, propuestas bien sostenidas, gestión del rechazo, concesiones con criterio y cierre claro.",
       "positive_signals": [
-        "Ordena la conversación en etapas (explorar, proponer, concretar).",
-        "Ancla ofertas con condiciones y contrapartidas explícitas.",
-        "Resume acuerdos parciales y define siguientes acciones."
+        "Se nota preparación previa o claridad de objetivos y límites.",
+        "La conversación avanza por etapas reconocibles.",
+        "Explora antes de cerrar o presionar.",
+        "Abre varias opciones cuando conviene.",
+        "Apoya propuestas con criterios claros.",
+        "Gestiona el rechazo sin descomponerse.",
+        "Recapitula, concreta o formaliza cuando toca."
       ],
       "negative_signals": [
-        "Saltos caóticos entre temas sin cerrar ninguno.",
-        "Concesiones unilaterales sin pedir nada a cambio.",
-        "Finaliza sin confirmar entendimiento operativo."
+        "Improvisa sin estructura visible.",
+        "Salta demasiado pronto a precio o cierre.",
+        "Mezcla exploración, presión y acuerdo sin orden.",
+        "Hace una sola propuesta rígida y la fuerza.",
+        "Se toma el rechazo como afrenta.",
+        "Acepta, cede o cierra sin verificar calidad ni claridad."
       ],
       "common_mistakes": [
-        "Cerrar por cansancio en lugar de por claridad.",
-        "No registrar qué quedó acordado y qué no.",
-        "Moverse demasiado rápido a precio sin preparar contexto."
+        "Confundir proceso sólido con rigidez burocrática.",
+        "Premiar velocidad de cierre como si siempre fuera eficiencia.",
+        "Ignorar la formalización como parte del buen negociar.",
+        "No distinguir rechazo bien gestionado de escalada emocional."
       ],
-      "evaluator_focus": "Evaluar control del método negociador y calidad del cierre ejecutable."
+      "evaluator_focus": "Evaluar si el usuario conduce la conversación con arquitectura, orden y control, o si improvisa y deja acuerdos ambiguos o mal trabajados."
     }
   ],
   "global_guide": {
     "principles": [
-      "Negociar es coordinar intereses con legitimidad, no solo maximizar una posición.",
-      "Cada avance debe mejorar claridad, confianza o viabilidad del acuerdo.",
-      "Un buen cierre combina contenido (qué) y proceso (cómo y cuándo se cumple)."
+      "Negociar bien no es solo cerrar: también puede ser buen desempeño no cerrar, pausar o retirarse si eso evita un acuerdo peor que la alternativa disponible.",
+      "Un acuerdo no debe premiarse automáticamente: debe parecer razonable, sostenible y mejor que la alternativa externa o el no acuerdo.",
+      "Cada bloque evalúa una dimensión distinta; una persona puede ser fuerte en una y débil en otra.",
+      "La evaluación debe producir un perfil por bloques, no un juicio binario simplista.",
+      "La firmeza respetuosa puede ser buena negociación; la cordialidad vacía no necesariamente lo es."
     ],
     "transversal_errors": [
-      "Confundir velocidad con progreso real.",
-      "Sobreprometer para destrabar y luego perder credibilidad.",
-      "Ignorar señales de bloqueo acumulado hasta llegar a ruptura."
+      "Confundir acuerdo con éxito.",
+      "Confundir concesión grande con buena cooperación.",
+      "Premiar cierre rápido aunque el proceso o el acuerdo sean pobres.",
+      "Ignorar señales de deterioro acumulado hasta que la conversación se rompe.",
+      "Valorar estilo por encima de sustancia o proceso."
     ],
     "progress_signals": [
-      "Aumenta la especificidad de propuestas y criterios.",
-      "Disminuye la defensividad y mejora la reciprocidad.",
-      "Aparecen acuerdos parciales conectados con un cierre final."
+      "Aumentan claridad, reciprocidad o entendimiento real.",
+      "Las propuestas se vuelven más concretas y mejor justificadas.",
+      "Aparecen acuerdos parciales conectados con un cierre viable.",
+      "La otra parte muestra menos defensividad o más disposición a avanzar.",
+      "El usuario mejora lectura, control o calidad del intercambio."
     ],
     "deterioration_signals": [
-      "Repetición de posturas sin nueva información.",
-      "Escalada emocional que reemplaza argumentos por fricción.",
-      "Concesiones ambiguas que crean falsa sensación de avance."
+      "Se repiten posturas sin información nueva.",
+      "Escala la fricción y cae la confianza.",
+      "Hay concesiones ambiguas o gratuitas que crean falsa sensación de avance.",
+      "El usuario se desordena, se precipita o pierde criterio.",
+      "El posible acuerdo empeora en calidad aunque parezca acercarse."
     ],
     "tone_and_rhythm_reminders": [
-      "Alternar preguntar, sintetizar y proponer para sostener ritmo productivo.",
-      "Mantener tono firme y respetuoso para no erosionar relación.",
-      "Antes de cerrar, verificar entendimiento mutuo de condiciones, plazos y responsabilidades."
+      "Alternar preguntar, sintetizar y proponer ayuda a sostener un ritmo productivo.",
+      "Mantener tono firme y respetuoso protege relación sin debilitar la posición.",
+      "Antes de cerrar, conviene verificar condiciones, plazos, responsabilidades y calidad real del acuerdo.",
+      "Si algo importante no es observable en el transcript, el evaluador debe ser prudente y no afirmar más de lo que la evidencia permite."
     ]
   }
 }
