@@ -555,6 +555,14 @@
         width: auto;
         height: auto;
         box-shadow: none;
+        transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+      }
+
+      html[data-newbox="1"] .send-btn:focus-visible,
+      html[data-newbox="1"] .send-btn:hover {
+        transform: scale(1.03);
+        border-color: rgba(96, 165, 250, 0.7);
+        box-shadow: 0 0 0 1px rgba(147, 197, 253, 0.35), 0 12px 28px rgba(59, 130, 246, 0.22);
       }
 
       .finish-negotiation-button {
@@ -562,9 +570,9 @@
         right: 24px;
         bottom: 24px;
         z-index: 9;
-        border: 1px solid rgba(96, 165, 250, 0.35);
-        background: rgba(191, 219, 254, 0.72);
-        color: #1e3a8a;
+        border: 1px solid rgba(15, 23, 42, 0.12);
+        background: #f9fafb;
+        color: #111827;
         border-radius: 16px;
         padding: 10px 16px;
         font-size: 12px;
@@ -572,13 +580,21 @@
         cursor: pointer;
         opacity: 1;
         box-shadow: 0 8px 20px rgba(15, 23, 42, 0.18);
-        transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+        transform: scale(1);
+        transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
       }
 
       .finish-negotiation-button.is-armed {
-        background: var(--accent-pastel);
+        background: #f9fafb;
         border-color: rgba(96, 165, 250, 0.7);
-        color: #1e3a8a;
+        color: #111827;
+        transform: scale(1.03);
+        box-shadow: 0 0 0 1px rgba(147, 197, 253, 0.35), 0 12px 28px rgba(59, 130, 246, 0.22);
+      }
+
+      .finish-negotiation-button:focus-visible {
+        transform: scale(1.03);
+        border-color: rgba(96, 165, 250, 0.7);
         box-shadow: 0 0 0 1px rgba(147, 197, 253, 0.35), 0 12px 28px rgba(59, 130, 246, 0.22);
       }
 
