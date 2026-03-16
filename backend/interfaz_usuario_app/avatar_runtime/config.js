@@ -8,9 +8,11 @@ export const AVATAR_RUNTIME_CONFIG = {
     fov: 40,
     near: 0.01,
     far: 100,
-    position: [0, 0.25, 1.9],
+    position: [0, 0.22, 2.25],
   },
-  controlsTarget: [0, 0.15, 0],
+  controlsTarget: [0, 0.14, 0],
+  // true = fija completamente cámara/encuadre (sin orbit/pan/zoom manual).
+  controlsLocked: true,
   transform: {
     offset: [0, 0, 0],
     scale: 1.0,
