@@ -4,6 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Interfaz Usuario</title>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.160/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/"
+        }
+      }
+    </script>
     <style>
       :root {
         color-scheme: dark;
@@ -800,6 +808,7 @@
     </section>
 
     <script src="./feedback_report_view.js"></script>
+    <script type="module" src="./avatar_runtime/bootstrap.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>

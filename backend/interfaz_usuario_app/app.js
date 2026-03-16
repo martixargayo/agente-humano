@@ -55,11 +55,35 @@ const ui = {
   textInput: $('textInput'),
   sendTextBtn: $('sendTextBtn'),
   finishNegotiationBtn: $('finishNegotiationBtn'),
+  conversationMode: $('conversationMode'),
 };
 
 // Hard guard: if any stale HTML/version still injects the old Chat/Negociación selector,
 // remove it at runtime so the negotiation flow remains fixed and selector-free.
 $('conversationMode')?.remove();
+
+function closeConversationModeMenu() {
+  if (!ui.conversationMode) return;
+  ui.conversationMode.classList.remove('open');
+}
+
+function withAvatarRuntime(fn) {
+  const runtime = window.__avatarRuntime;
+  if (!runtime) return;
+  fn(runtime);
+}
+
+function syncAvatarMode() {
+  withAvatarRuntime((runtime) => {
+    if (fakeListening && currentInputMode === InputMode.TALK) {
+      runtime.setMode('LISTENING');
+      runtime.setTalkLevel(0);
+      return;
+    }
+    runtime.setMode('IDLE');
+    runtime.setTalkLevel(0);
+  });
+}
 
 function updateReplyText(text) {
   ui.lastReply.textContent = text;
@@ -117,6 +141,7 @@ function setInputMode(mode) {
   setListeningGlowEnabled(fakeListening);
   setStatusText(mode === InputMode.TALK ? (fakeListening ? 'Escuchando…' : 'Listo') : 'Listo');
   updateUi();
+  syncAvatarMode();
 }
 
 function startOrbLoop() {
@@ -227,6 +252,7 @@ async function handleSend() {
   const payload = { ...ids(), message, new_conversation: false };
   updateReplyText('...');
   setStatusText('Procesando…');
+  withAvatarRuntime((runtime) => { runtime.setMode('THINKING'); runtime.setTalkLevel(0); });
 
   const out = await api('/negociacion/turn', { method: 'POST', body: JSON.stringify(payload) });
   updateReplyText(out.reply || '');
@@ -239,6 +265,17 @@ async function handleSend() {
     `conversation=${out.conversation_id_after || '-'} traces=${out.trace_count}`;
   ui.textInput.value = '';
   setStatusText('Listo');
+  withAvatarRuntime((runtime) => {
+    runtime.setMode('SPEAKING');
+    runtime.setTalkLevel(0.38);
+    window.setTimeout(() => {
+      runtime.setTalkLevel(0.16);
+      window.setTimeout(() => {
+        runtime.setTalkLevel(0);
+        syncAvatarMode();
+      }, 240);
+    }, 260);
+  });
 }
 
 $('bootstrap').onclick = async () => {
@@ -264,6 +301,7 @@ ui.startBtn.addEventListener('click', () => {
   setStatusText('Escuchando…');
   updateReplyText('Te escucho. Empieza a hablar cuando quieras.');
   updateUi();
+  syncAvatarMode();
 });
 
 ui.modeTalk.addEventListener('click', () => setInputMode(InputMode.TALK));
@@ -287,6 +325,7 @@ ui.finishTurnBtn.addEventListener('click', () => {
   setTimeout(() => {
     setStatusText('Listo');
     setInputMode(InputMode.TALK);
+    syncAvatarMode();
   }, 500);
 });
 
@@ -323,6 +362,7 @@ $('feedbackRetryBtn').onclick = async () => {
 };
 
 document.addEventListener('click', (e) => {
+  if (!ui.conversationMode) return;
   if (!ui.conversationMode.contains(e.target)) closeConversationModeMenu();
 });
 
@@ -351,4 +391,5 @@ window.addEventListener('click', (ev) => {
   }
   setInputMode(InputMode.WRITE);
   startOrbLoop();
+  syncAvatarMode();
 })();
