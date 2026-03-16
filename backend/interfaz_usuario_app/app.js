@@ -57,6 +57,10 @@ const ui = {
   finishNegotiationBtn: $('finishNegotiationBtn'),
 };
 
+// Hard guard: if any stale HTML/version still injects the old Chat/Negociación selector,
+// remove it at runtime so the negotiation flow remains fixed and selector-free.
+$('conversationMode')?.remove();
+
 function updateReplyText(text) {
   ui.lastReply.textContent = text;
   ui.replyContainer.classList.toggle('hidden', !text);
