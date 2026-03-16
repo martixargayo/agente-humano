@@ -575,6 +575,13 @@ ui.modeWrite.addEventListener('click', () => {
   }
   setInputMode(InputMode.WRITE);
 });
+ui.modeWrite.addEventListener('click', () => {
+  if (isRecording) {
+    discardRecording = true;
+    void stopVoiceCapture().finally(() => teardownMic());
+  }
+  setInputMode(InputMode.WRITE);
+});
 
 ui.sendTextBtn.addEventListener('click', handleSend);
 
