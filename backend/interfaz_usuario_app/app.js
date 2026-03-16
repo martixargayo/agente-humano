@@ -34,7 +34,6 @@ let finishButtonArmed = false;
 let lastSessionKey = '';
 let orbRaf = null;
 let orbLevel = 0;
-let fakeListening = false;
 let finalizePopoverOpen = false;
 let feedbackPollingTimer = null;
 let feedbackEvaluationId = null;
@@ -46,10 +45,15 @@ let audioChunks = [];
 let isRecording = false;
 let recorderMimeType = 'audio/webm;codecs=opus';
 let discardRecording = false;
+let hasMicPermission = false;
+let waveAudioCtx = null;
+let waveAnalyser = null;
+let waveDataArray = null;
 
 const ui = {
   listeningGlow: $('listeningGlow'),
   permissionOverlay: $('permissionOverlay'),
+  permissionError: $('permissionError'),
   startBtn: $('startBtn'),
   replyContainer: $('replyContainer'),
   lastReply: $('lastReply'),
@@ -83,7 +87,7 @@ function withAvatarRuntime(fn) {
 
 function syncAvatarMode() {
   withAvatarRuntime((runtime) => {
-    if (fakeListening && currentInputMode === InputMode.TALK) {
+    if (isMicActuallyRecording() && currentInputMode === InputMode.TALK) {
       runtime.setMode('LISTENING');
       runtime.setTalkLevel(0);
       return;
@@ -91,6 +95,10 @@ function syncAvatarMode() {
     runtime.setMode('IDLE');
     runtime.setTalkLevel(0);
   });
+}
+
+function isMicActuallyRecording() {
+  return Boolean(isRecording && mediaRecorder && mediaRecorder.state === 'recording');
 }
 
 function updateReplyText(text) {
@@ -165,11 +173,55 @@ async function warmupFrontendTts() {
 }
 
 function teardownMic() {
+  stopInputOrb();
+  waveAudioCtx = null;
+  waveAnalyser = null;
+  waveDataArray = null;
   try { if (micStream) micStream.getTracks().forEach((t) => t.stop()); } catch (_) {}
   micStream = null;
 }
 
+function computeIdlePulse(timeMs) {
+  return 0.08 * (0.5 + 0.5 * Math.sin((timeMs * 2 * Math.PI) / 3800));
+}
+
+function updateInputOrb() {
+  if (!ui.inputOrb) return;
+  const now = performance.now();
+  const idle = computeIdlePulse(now);
+  let level = idle;
+
+  if (waveAnalyser && waveDataArray && isMicActuallyRecording()) {
+    waveAnalyser.getByteTimeDomainData(waveDataArray);
+    let sum = 0;
+    for (let i = 0; i < waveDataArray.length; i += 1) {
+      const v = waveDataArray[i] / 128 - 1;
+      sum += v * v;
+    }
+    const rms = Math.sqrt(sum / waveDataArray.length);
+    const rmsNorm = Math.min(1, rms * 6);
+    level = Math.max(rmsNorm, idle);
+  }
+
+  orbLevel += (level - orbLevel) * 0.18;
+  const scale = 0.85 + orbLevel * 0.55;
+  ui.inputOrb.style.setProperty('--orb-scale', scale.toFixed(2));
+  orbRaf = requestAnimationFrame(updateInputOrb);
+}
+
+function ensureOrbLoop() {
+  if (!orbRaf) orbRaf = requestAnimationFrame(updateInputOrb);
+}
+
+function stopInputOrb() {
+  if (orbRaf) cancelAnimationFrame(orbRaf);
+  orbRaf = null;
+  orbLevel = 0;
+  if (ui.inputOrb) ui.inputOrb.style.setProperty('--orb-scale', '0.85');
+}
+
 async function startVoiceCapture() {
+  if (!navigator.mediaDevices?.getUserMedia) throw new Error('getUserMedia no soportado');
   discardRecording = false;
   micStream = await navigator.mediaDevices.getUserMedia({
     audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
@@ -188,6 +240,22 @@ async function startVoiceCapture() {
   mediaRecorder.start(250);
   await new Promise((resolve) => setTimeout(resolve, 0));
   isRecording = mediaRecorder.state === 'recording';
+
+  if (!micStream.getTracks().some((track) => track.readyState === 'live')) {
+    throw new Error('El micrófono no está activo.');
+  }
+  if (!isRecording) {
+    throw new Error('No se pudo iniciar la grabación.');
+  }
+
+  waveAudioCtx = getOrCreateAudioContext();
+  await waveAudioCtx.resume();
+  waveAnalyser = waveAudioCtx.createAnalyser();
+  waveAnalyser.fftSize = 1024;
+  const source = waveAudioCtx.createMediaStreamSource(micStream);
+  source.connect(waveAnalyser);
+  waveDataArray = new Uint8Array(waveAnalyser.frequencyBinCount);
+  ensureOrbLoop();
 }
 
 function stopVoiceCapture() {
@@ -302,31 +370,22 @@ function updateUi() {
   const canSendText = currentInputMode === InputMode.WRITE;
   ui.textInput.disabled = !canSendText;
   ui.sendTextBtn.disabled = !canSendText;
-  ui.finishTurnBtn.disabled = !(currentInputMode === InputMode.TALK && fakeListening);
-  ui.inputOrb.classList.toggle('inactive', !fakeListening);
+  const micOn = isMicActuallyRecording();
+  ui.finishTurnBtn.disabled = !(currentInputMode === InputMode.TALK && micOn);
+  ui.inputOrb.classList.toggle('inactive', !micOn);
+  setListeningGlowEnabled(micOn);
   updateFinishNegotiationButton();
 }
 
 function setInputMode(mode) {
   currentInputMode = mode;
-  if (mode === InputMode.WRITE) fakeListening = false;
-  setListeningGlowEnabled(fakeListening);
-  setStatusText(mode === InputMode.TALK ? (fakeListening ? 'Escuchando…' : 'Listo') : 'Listo');
+  if (mode === InputMode.WRITE && isMicActuallyRecording()) {
+    discardRecording = true;
+    void stopVoiceCapture().finally(() => teardownMic());
+  }
+  setStatusText(mode === InputMode.TALK ? (isMicActuallyRecording() ? 'Escuchando…' : 'Listo') : 'Listo');
   updateUi();
   syncAvatarMode();
-}
-
-function startOrbLoop() {
-  cancelAnimationFrame(orbRaf);
-  const tick = () => {
-    const t = performance.now();
-    const idle = 0.08 * (0.5 + 0.5 * Math.sin((t * 2 * Math.PI) / 3800));
-    const target = fakeListening ? Math.max(idle, 0.25 + 0.2 * Math.abs(Math.sin(t / 250))) : idle;
-    orbLevel += (target - orbLevel) * 0.18;
-    ui.inputOrb.style.setProperty('--orb-scale', (0.85 + orbLevel * 0.55).toFixed(2));
-    orbRaf = requestAnimationFrame(tick);
-  };
-  orbRaf = requestAnimationFrame(tick);
 }
 
 function stopFeedbackPolling() {
@@ -483,26 +542,21 @@ $('newConv').onclick = async () => {
 };
 
 ui.startBtn.addEventListener('click', () => {
-  ui.permissionOverlay.style.display = 'none';
-  fakeListening = true;
-  setListeningGlowEnabled(true);
-  setStatusText('Escuchando…');
-  updateReplyText('Te escucho. Empieza a hablar cuando quieras.');
-  updateUi();
-  syncAvatarMode();
-  void getOrCreateAudioContext().resume().then(() => warmupFrontendTts()).catch(() => {});
-  if (currentInputMode === InputMode.TALK) {
-    startVoiceCapture().catch((err) => {
-      console.error('[mic] No se pudo iniciar grabación', err);
-      fakeListening = false;
-      setListeningGlowEnabled(false);
-      setStatusText('Micrófono no disponible.');
-      setInputMode(InputMode.WRITE);
-    });
-  }
+  void startConversation();
 });
 
-ui.modeTalk.addEventListener('click', () => setInputMode(InputMode.TALK));
+ui.modeTalk.addEventListener('click', async () => {
+  setInputMode(InputMode.TALK);
+  if (!hasMicPermission) return;
+  try {
+    await startVoiceCapture();
+    updateUi();
+    syncAvatarMode();
+  } catch (err) {
+    console.error('[mic] No se pudo iniciar grabación', err);
+    setInputMode(InputMode.WRITE);
+  }
+});
 ui.modeWrite.addEventListener('click', () => {
   if (isRecording) {
     discardRecording = true;
@@ -520,8 +574,6 @@ ui.textInput.addEventListener('keydown', (e) => {
 });
 
 ui.finishTurnBtn.addEventListener('click', async () => {
-  fakeListening = false;
-  setListeningGlowEnabled(false);
   setStatusText('Procesando…');
   ui.finishTurnBtn.classList.remove('highlight');
   void ui.finishTurnBtn.offsetWidth;
@@ -534,21 +586,67 @@ ui.finishTurnBtn.addEventListener('click', async () => {
     const text = await transcribeAudio(blob);
     if (!text) throw new Error('Transcripción vacía.');
     await runNegotiationTurnFromText(text);
-    setInputMode(InputMode.TALK);
-    fakeListening = true;
-    setListeningGlowEnabled(true);
-    setStatusText('Escuchando…');
-    updateUi();
-    syncAvatarMode();
-    await startVoiceCapture();
+    if (currentInputMode === InputMode.TALK) {
+      setStatusText('Escuchando…');
+      await startVoiceCapture();
+      updateUi();
+      syncAvatarMode();
+    }
   } catch (err) {
     console.error('[voice] Error procesando turno hablado', err);
     setStatusText(err?.message || 'No se pudo procesar el audio.');
-    fakeListening = false;
-    setInputMode(InputMode.TALK);
+    setInputMode(InputMode.WRITE);
     syncAvatarMode();
   }
 });
+
+async function requestMicPermissions() {
+  if (!navigator.mediaDevices?.getUserMedia) return false;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach((track) => track.stop());
+    hasMicPermission = true;
+    return true;
+  } catch (err) {
+    console.error('[mic] Permiso denegado', err);
+    hasMicPermission = false;
+    return false;
+  }
+}
+
+async function startConversation() {
+  if (ui.permissionError) ui.permissionError.textContent = '';
+  const ok = await requestMicPermissions();
+  if (!ok) {
+    if (ui.permissionError) {
+      ui.permissionError.textContent = 'No pudimos acceder al micrófono. Continuamos en modo escritura.';
+    }
+    if (ui.permissionOverlay) ui.permissionOverlay.style.display = 'none';
+    setInputMode(InputMode.WRITE);
+    updateReplyText('No detectamos micrófono. Puedes escribir tu mensaje y continuar.');
+    setStatusText('Micrófono no disponible. Modo escritura activado.');
+    return;
+  }
+
+  try {
+    await getOrCreateAudioContext().resume();
+    await warmupFrontendTts();
+  } catch (_) {}
+
+  if (ui.permissionOverlay) ui.permissionOverlay.style.display = 'none';
+  setInputMode(InputMode.TALK);
+  updateReplyText('Te escucho. Empieza a hablar cuando quieras.');
+  setStatusText('Activando mic…');
+  try {
+    await startVoiceCapture();
+    updateUi();
+    syncAvatarMode();
+  } catch (err) {
+    console.error('[mic] Error al iniciar grabación', err);
+    setInputMode(InputMode.WRITE);
+    setStatusText('No se pudo iniciar el micrófono.');
+  }
+}
 
 ui.finishNegotiationBtn.onclick = () => {
   if (finalizePopoverOpen) {
@@ -611,6 +709,6 @@ window.addEventListener('click', (ev) => {
     $('meta').textContent = `bootstrap_error=${String(err)}`;
   }
   setInputMode(InputMode.WRITE);
-  startOrbLoop();
+  stopInputOrb();
   syncAvatarMode();
 })();
