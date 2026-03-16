@@ -29,6 +29,7 @@ Campos vigentes:
 - `conversation.turns[]`
 - `conversation_stats`
 - `domain_context`
+- `domain_rubric` (cargada desde JSON por dominio; para negociación: `negotiation_domain_rubric.v1`)
 
 > No incluye `derived_facts` ni `trace_digest`.
 
@@ -50,7 +51,7 @@ Campos vigentes:
 - `score_global_100`
 - `interaction_outcome`
 - `summary_2_3_lines`
-- `evaluation_blocks[4]` (con checks y block_verdict)
+- `evaluation_blocks[4]` (con checks y block_verdict), con block_id fijo: `valores`, `vision`, `relacion`, `proceso`
 - `best_moment`, `most_delicate_moment`, `turning_point`
 - `recommendations[]`
   - `title`

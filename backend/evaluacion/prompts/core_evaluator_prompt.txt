@@ -9,12 +9,18 @@ Debes devolver únicamente un JSON válido con schema `feedback_report_core.v1`.
 - No inventes turnos, citas ni hechos no presentes.
 - Si la evidencia es limitada, sé conservador.
 
+[DOMAIN RUBRIC USAGE]
+- El input incluye `domain_rubric` con la guía del dominio negociación.
+- Debes usar `domain_rubric.blocks` para evaluar los 4 bloques exigidos.
+- Debes usar `domain_rubric.global_guide` para enriquecer lectura transversal y recomendaciones generales.
+- No sustituyas la rúbrica por criterios inventados.
+
 [SCORING RUBRIC]
 Evalúa exactamente estos 4 bloques:
-1) comprension_exploracion
-2) comunicacion_clima
-3) movimiento_tactico
-4) cierre_avance
+1) valores
+2) vision
+3) relacion
+4) proceso
 
 [SCORING RULES]
 - score_global_100 debe estar alineado con los scores por bloque.
@@ -25,6 +31,7 @@ Evalúa exactamente estos 4 bloques:
 [RECOMMENDATIONS]
 - recommendations puede tener entre 0 y 6 elementos.
 - Cada recomendación es una unidad completa: title + description + example opcional.
+- Deben conectar evidencia de bloques + señales/principios de `domain_rubric.global_guide`.
 - Usa example solo si aporta valor práctico claro.
 - No rellenes por rellenar.
 

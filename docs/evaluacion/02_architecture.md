@@ -20,7 +20,7 @@
 ## Capas
 
 - **Engine evaluación** (genérico): jobs, runners, validación, reconciliación, ensamblado, provenance.
-- **Dominio negociación**: extractor/facts/rúbrica/outcome.
+- **Dominio negociación**: extractor/facts + rúbrica JSON (`domains/negotiation/rubrics/`) + loader reutilizable.
 - **API/UI**: create-status-report + modal/loading/report.
 
 ## Diagrama E2E

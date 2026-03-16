@@ -1,6 +1,18 @@
 (function attachFeedbackReportView(global) {
   const NS = 'http://www.w3.org/2000/svg';
 
+
+  const BLOCK_LABELS = {
+    valores: 'Valores',
+    vision: 'Visión',
+    relacion: 'Relación',
+    proceso: 'Proceso',
+  };
+
+  function orderBlocks(blocks = []) {
+    const rank = { valores: 0, vision: 1, relacion: 2, proceso: 3 };
+    return [...blocks].sort((a, b) => (rank[a?.block_id] ?? 99) - (rank[b?.block_id] ?? 99));
+  }
   function ensureStyles() {
     if (document.getElementById('feedback-report-view-styles')) return;
     const style = document.createElement('style');
@@ -295,7 +307,7 @@
     ensureStyles();
 
     const header = report.header || {};
-    const blocks = report.block_cards || [];
+    const blocks = orderBlocks(report.block_cards || []);
     const trajectory = report.trajectory_chart || [];
     const recs = report.recommendations || { items: [] };
     const activityName = header.activity_name || 'Compra de un Mustang clásico';
@@ -353,7 +365,7 @@
       const card = document.createElement('article');
       card.className = `fb-card fb-skill-card ${status}`;
       card.innerHTML = `
-        <div class="fb-skill-top"><h3>${escapeHtml(section.title || '')}</h3><span class="fb-badge ${status}">${escapeHtml(section.status_visual || '')}</span></div>
+        <div class="fb-skill-top"><h3>${escapeHtml(BLOCK_LABELS[section.block_id] || section.title || '')}</h3><span class="fb-badge ${status}">${escapeHtml(section.status_visual || '')}</span></div>
         <ul>${checks}</ul>
       `;
       blockRoot.appendChild(card);
