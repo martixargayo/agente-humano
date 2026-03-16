@@ -282,7 +282,7 @@ function stopVoiceCapture() {
         mediaRecorder.requestData();
         setTimeout(() => {
           try { mediaRecorder.stop(); } catch (err) { reject(err); }
-        }, 120);
+        }, 150);
       } else {
         mediaRecorder.stop();
       }
@@ -478,9 +478,9 @@ function _seedDefaultIds() {
   $('sessionId').value = `interfaz-main__${suffix}`;
 }
 
-async function runNegotiationTurnFromText(message) {
+async function runNegotiationTurnFromText(message, { allowWhileVoiceTurn = false } = {}) {
   syncSessionBoundaryReset();
-  if (!message || turnInFlight || voiceTurnInFlight) return;
+  if (!message || turnInFlight || (voiceTurnInFlight && !allowWhileVoiceTurn)) return;
 
   turnInFlight = true;
   updateUi();
@@ -601,7 +601,7 @@ async function handleFinishTurn() {
     if (!blob || !blob.size) throw new Error('No se capturó audio.');
     const text = await transcribeAudio(blob);
     if (!text) throw new Error('Transcripción vacía.');
-    await runNegotiationTurnFromText(text);
+    await runNegotiationTurnFromText(text, { allowWhileVoiceTurn: true });
     if (currentInputMode === InputMode.TALK) {
       setStatusText('Escuchando…');
       await startVoiceCapture();
@@ -629,11 +629,6 @@ async function handleFinishTurn() {
 }
 
 ui.finishTurnBtn.addEventListener('click', () => {
-  void handleFinishTurn();
-});
-ui.finishTurnBtn.addEventListener('keydown', (e) => {
-  if (e.key !== 'Enter' || e.repeat || e.shiftKey) return;
-  e.preventDefault();
   void handleFinishTurn();
 });
 
