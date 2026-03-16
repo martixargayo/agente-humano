@@ -36,5 +36,7 @@ def test_shape_inputs_preserve_dialogue_priority_and_basic_constraints() -> None
     assert trajectory.schema_version == "trajectory_runner_input.v1"
     assert len(core.conversation.turns) == 5
     assert len(trajectory.turns_for_trajectory) == 5
-    assert core.derived_facts.offer_signals_count == 2
-    assert trajectory.trace_digest is not None
+    assert "derived_facts" not in core.model_dump()
+    assert "trace_digest" not in core.model_dump()
+    assert "derived_facts" not in trajectory.model_dump()
+    assert "trace_digest" not in trajectory.model_dump()

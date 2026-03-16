@@ -18,7 +18,6 @@ JobStatus = Literal[
 
 InteractionOutcome = Literal["agreement_reached", "partial_progress", "no_agreement", "blocked"]
 BlockStatus = Literal["correcto", "mejorable", "mal"]
-Direction = Literal["up", "flat", "down"]
 
 
 class SessionRef(BaseModel):
@@ -90,8 +89,6 @@ class CoreRunnerInputV1(BaseModel):
     conversation: ConversationBlock
     conversation_stats: ConversationStats
     domain_context: DomainContext
-    derived_facts: DerivedFacts
-    trace_digest: TraceDigest | None = None
 
 
 class TrajectoryRunnerInputV1(BaseModel):
@@ -100,8 +97,6 @@ class TrajectoryRunnerInputV1(BaseModel):
     schema_version: Literal["trajectory_runner_input.v1"]
     evaluation_id: str
     turns_for_trajectory: list[BundleTurn]
-    derived_facts: DerivedFacts
-    trace_digest: TraceDigest | None = None
 
 
 class EvaluationCheck(BaseModel):
@@ -133,12 +128,17 @@ class KeyMoment(BaseModel):
     impact: str
 
 
-class CorrectionCase(BaseModel):
+class RecommendationExample(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    turn_index: int
     original_excerpt: str
     better_rephrase: str
-    expected_effect: str
+
+
+class RecommendationItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str
+    description: str
+    example: RecommendationExample | None
 
 
 class FeedbackReportCoreV1(BaseModel):
@@ -146,31 +146,24 @@ class FeedbackReportCoreV1(BaseModel):
 
     schema_version: Literal["feedback_report_core.v1"]
     score_global_100: int
-    stars_0_5: float
     interaction_outcome: InteractionOutcome
     summary_2_3_lines: str
     evaluation_blocks: list[EvaluationBlock]
     best_moment: KeyMoment
     most_delicate_moment: KeyMoment
     turning_point: KeyMoment
-    recommendations_general: list[str]
-    correction_cases: list[CorrectionCase]
-    strengths_to_repeat: list[str]
-    next_focus: str
-    recommended_closing_phrase: str
+    recommendations: list[RecommendationItem]
 
 
 class TrajectoryTurn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     turn_index: int
     agreement_closeness_score_0_100: int
-    delta_vs_previous: int
-    direction: Direction
     user_excerpt: str
     counterpart_excerpt: str
     impact_reason: str
     counterpart_thought_effect: str
-    better_rephrase: str
+    better_rephrase: str | None
 
 
 class TurnTrajectoryV1(BaseModel):
@@ -178,9 +171,6 @@ class TurnTrajectoryV1(BaseModel):
 
     schema_version: Literal["turn_trajectory.v1"]
     trajectory: list[TrajectoryTurn]
-    trend_label: str
-    largest_drop_turn_index: int
-    largest_gain_turn_index: int
 
 
 class UiHeader(BaseModel):
@@ -202,8 +192,7 @@ class KeyMomentsPanel(BaseModel):
 
 class RecommendationsPanel(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    general: list[str]
-    correction_cases: list[CorrectionCase]
+    items: list[RecommendationItem]
 
 
 class Provenance(BaseModel):
@@ -230,7 +219,4 @@ class UiFeedbackReportV1(BaseModel):
     trajectory_chart: list[TrajectoryTurn]
     key_moments: KeyMomentsPanel
     recommendations: RecommendationsPanel
-    strengths: list[str]
-    next_focus: str
-    recommended_closing_phrase: str
     provenance: Provenance

@@ -6,8 +6,8 @@ Debes devolver únicamente un JSON válido con schema `feedback_report_core.v1`.
 
 [EVIDENCE POLICY]
 - Basa el análisis principalmente en el diálogo observable por turnos.
-- El contexto de trazas es opcional y defensivo, nunca la base principal.
 - No inventes turnos, citas ni hechos no presentes.
+- Si la evidencia es limitada, sé conservador.
 
 [SCORING RUBRIC]
 Evalúa exactamente estos 4 bloques:
@@ -20,11 +20,15 @@ Evalúa exactamente estos 4 bloques:
 - score_global_100 debe estar alineado con los scores por bloque.
 - status_visual ∈ {correcto, mejorable, mal}.
 - Usa evidence_turn_indexes reales cuando haya evidencia.
+- No sobre-evalúes ni exageres conclusiones.
 
-[ABSENCE OF EVIDENCE]
-Si no hay evidencia suficiente, responde de manera conservadora y explícita.
+[RECOMMENDATIONS]
+- recommendations puede tener entre 0 y 6 elementos.
+- Cada recomendación es una unidad completa: title + description + example opcional.
+- Usa example solo si aporta valor práctico claro.
+- No rellenes por rellenar.
 
 [OUTPUT CONSTRAINTS]
 - JSON estricto sin texto fuera del JSON.
-- Todos los campos requeridos.
+- Todos los campos requeridos por schema.
 - additionalProperties debe quedar implícitamente prohibido por schema.

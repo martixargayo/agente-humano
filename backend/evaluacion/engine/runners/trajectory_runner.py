@@ -14,14 +14,10 @@ def _fallback_output(trajectory_input: TrajectoryRunnerInputV1) -> TurnTrajector
     prev = 45
     for turn in trajectory_input.turns_for_trajectory:
         score = min(prev + 3, 88)
-        delta = score - prev
-        direction = "up" if delta > 0 else "flat" if delta == 0 else "down"
         rows.append(
             TrajectoryTurn(
                 turn_index=turn.turn_index,
                 agreement_closeness_score_0_100=score,
-                delta_vs_previous=delta,
-                direction=direction,
                 user_excerpt=turn.user_text[:140],
                 counterpart_excerpt=turn.assistant_text[:140],
                 impact_reason="Turno con avance moderado en entendimiento.",
@@ -36,8 +32,6 @@ def _fallback_output(trajectory_input: TrajectoryRunnerInputV1) -> TurnTrajector
             TrajectoryTurn(
                 turn_index=1,
                 agreement_closeness_score_0_100=40,
-                delta_vs_previous=0,
-                direction="flat",
                 user_excerpt="Sin turnos suficientes.",
                 counterpart_excerpt="Sin turnos suficientes.",
                 impact_reason="Evidencia insuficiente.",
@@ -46,15 +40,7 @@ def _fallback_output(trajectory_input: TrajectoryRunnerInputV1) -> TurnTrajector
             )
         ]
 
-    largest_gain = max(rows, key=lambda r: r.delta_vs_previous).turn_index
-    largest_drop = min(rows, key=lambda r: r.delta_vs_previous).turn_index
-    return TurnTrajectoryV1(
-        schema_version="turn_trajectory.v1",
-        trajectory=rows,
-        trend_label="upward_moderate",
-        largest_drop_turn_index=largest_drop,
-        largest_gain_turn_index=largest_gain,
-    )
+    return TurnTrajectoryV1(schema_version="turn_trajectory.v1", trajectory=rows)
 
 
 def run_trajectory_evaluator(trajectory_input: TrajectoryRunnerInputV1) -> tuple[TurnTrajectoryV1, str]:
