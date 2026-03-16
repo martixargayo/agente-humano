@@ -586,12 +586,6 @@ ui.modeWrite.addEventListener('click', () => {
 });
 
 ui.sendTextBtn.addEventListener('click', handleSend);
-ui.sendTextBtn.addEventListener('keydown', (e) => {
-  if (e.key !== 'Enter' || e.repeat || e.shiftKey) return;
-  e.preventDefault();
-  void handleSend();
-});
-
 async function handleFinishTurn() {
   if (turnInFlight || voiceTurnInFlight || ui.finishTurnBtn.disabled) return;
   voiceTurnInFlight = true;
