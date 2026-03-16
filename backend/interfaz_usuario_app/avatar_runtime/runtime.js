@@ -210,7 +210,12 @@ uniform float uUseMap;
 uniform float uMouthPointsAlpha;
 uniform float uMouthPointsAlphaClip;
 uniform float uMouthPointsColorMul;
+uniform float uPointsLumaFloor;
+uniform float uPointsLumaStrength;
+uniform float uPointsLumaPreserveHue;
+uniform float uPointsLumaDebug;
 uniform float uMouthPointsCullBack;
+uniform float uMouthPointsDebugBackOnly;
 varying float vMouthOverlayMix;
 varying vec2 vUv;
 varying float vBaseZ;
@@ -222,7 +227,20 @@ void main() {
   float alpha = circle * uMouthPointsAlpha * clamp(vMouthOverlayMix, 0.0, 1.0);
   if (alpha < uMouthPointsAlphaClip) discard;
   if (uMouthPointsCullBack > 0.5 && vBaseZ < 0.0) discard;
+  if (uMouthPointsDebugBackOnly > 0.5 && vBaseZ >= 0.0) discard;
   vec3 texColor = texture2D(uColorMap, vUv).rgb;
+  float l = dot(texColor, vec3(0.2126, 0.7152, 0.0722));
+  float floorL = max(uPointsLumaFloor, 1e-4);
+  float targetL = max(l, floorL);
+  float lift = clamp((targetL - l) / floorL, 0.0, 1.0);
+  lift *= clamp(uPointsLumaStrength, 0.0, 1.0);
+  vec3 scaled = texColor * (targetL / max(l, 1e-4));
+  texColor = mix(texColor, scaled, clamp(uPointsLumaPreserveHue, 0.0, 1.0) * lift);
+  if (uPointsLumaDebug > 0.5) {
+    vec3 debugLift = mix(vec3(0.0, 0.2, 0.8), vec3(1.0, 0.1, 0.1), lift);
+    gl_FragColor = vec4(debugLift, alpha);
+    return;
+  }
   vec3 baseColor = mix(vec3(0.8), texColor, uUseMap);
   gl_FragColor = vec4(baseColor * uMouthPointsColorMul, alpha);
 }
@@ -249,6 +267,14 @@ export function createAvatarRuntime({ stageEl, config }) {
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
   controls.target.fromArray(config.controlsTarget);
+
+  const controlsLocked = config.controlsLocked !== false;
+  if (controlsLocked) {
+    controls.enabled = false;
+    controls.enableRotate = false;
+    controls.enablePan = false;
+    controls.enableZoom = false;
+  }
 
   const key = new THREE.DirectionalLight(0xffffff, 0.9);
   key.position.set(2, 4, 3);
@@ -277,11 +303,15 @@ export function createAvatarRuntime({ stageEl, config }) {
   };
   const MouthRenderTuning = {
     rimA: 0.26, rimB: 0.46, rimC: 0.68, rimD: 0.84, innerA: 0.70, innerB: 0.82, innerGain: 0.22,
-    innerCoreA: 0.82, innerCoreB: 0.96, innerCoreGain: 0.70, maskMin: 0.08, pointsAlpha: 0.50,
+    innerCoreA: 0.52, innerCoreB: 0.56, innerCoreGain: 0.90, maskMin: 0.08,
+    upsampleMinPoints: 260, upsampleAmpMin: 0.0007, upsampleAmpMax: 0.0015, rimResampleFactor: 50,
+    pointsAlpha: 0.50,
     pointsAlphaClip: 0.012, pointsSizeNear: 3.0 * window.devicePixelRatio, pointsSizeFar: 2.3 * window.devicePixelRatio,
-    pointsColorMul: 0.95, meshFade: 0.42, meshFeather: 0.12, meshAlphaMin: 0.01, meshFadeGamma: 3.0, meshFadeGain: 2.2,
+    pointsColorMul: 0.95, pointsLumaFloor: 0.12, pointsLumaStrength: 1.0, pointsLumaPreserveHue: 1.0, pointsLumaDebug: false,
+    pointsCullBack: true, pointsDebugBackOnly: false,
+    meshFade: 0.42, meshFeather: 0.12, meshAlphaMin: 0.01, meshFadeGamma: 3.0, meshFadeGain: 2.2,
     useDiamondFade: true, fadeDiamondCX: -0.045, fadeDiamondCY: 0.16, fadeDiamondRX: 0.11, fadeDiamondRY: 0.07, fadeDiamondRot: 0.0,
-    pointsOn: 0.050, pointsOff: 0.032, mouthAttack: 26.0, mouthRelease: 12.0,
+    alwaysPointsMode: true, pointsOn: 0.050, pointsOff: 0.032, mouthAttack: 26.0, mouthRelease: 12.0,
   };
 
   const EyelidMotionState = { value: 0, phase: 'idle', timer: 0, duration: 0.12, nextBlinkAt: 2.2, pendingDouble: false, initialized: false };
@@ -302,7 +332,7 @@ export function createAvatarRuntime({ stageEl, config }) {
   let mouthPointsMaterial = null;
   let mouthPoints = null;
   let mouthOpenVisual = 0;
-  let mouthPointsVisibleLatched = false;
+  let mouthPointsVisibleLatched = MouthRenderTuning.alwaysPointsMode === true;
 
   function createStableRandom(x, y, z, salt = 0.0) {
     const qx = Math.round(x * 10000.0) / 10000.0;
@@ -321,23 +351,132 @@ export function createAvatarRuntime({ stageEl, config }) {
     return THREE.MathUtils.clamp(rimMask + innerTiny + innerCore, 0, 1);
   }
 
+  function stableHash3(x, y, z, salt = 0.0) {
+    const seed = x * 127.1 + y * 311.7 + z * 74.7 + salt * 19.19;
+    const v = Math.sin(seed) * 43758.5453123;
+    return v - Math.floor(v);
+  }
+
   function buildMouthPointsGeometryFromAnimatedSurface(srcGeometry) {
-    const basePosAttr = srcGeometry.getAttribute('aBasePosition');
-    const uvAttr = srcGeometry.getAttribute('aUv');
+    const basePosAttr = srcGeometry.getAttribute('aBasePosition') || srcGeometry.getAttribute('position');
+    const posAttr = srcGeometry.getAttribute('position') || basePosAttr;
+    const uvAttr = srcGeometry.getAttribute('aUv') || srcGeometry.getAttribute('uv');
     const mouthWeightAttr = srcGeometry.getAttribute('aMouthWeight');
     const mouthSideAttr = srcGeometry.getAttribute('aMouthSide');
     const headWeightAttr = srcGeometry.getAttribute('aHeadWeight');
-    if (!basePosAttr || !uvAttr || !mouthWeightAttr || !mouthSideAttr || !headWeightAttr) return null;
+    if (!basePosAttr || !posAttr || !uvAttr || !mouthWeightAttr || !mouthSideAttr || !headWeightAttr) return null;
 
+    const tuning = MouthRenderTuning;
     const p = []; const b = []; const uv = []; const mw = []; const ms = []; const hw = []; const ov = [];
+    const addPoint = (x, y, z, bx, by, bz, u, v, mouthWeight, mouthSide, headWeight, overlay) => {
+      p.push(x, y, z);
+      b.push(bx, by, bz);
+      uv.push(u, v);
+      mw.push(mouthWeight);
+      ms.push(mouthSide);
+      hw.push(headWeight);
+      ov.push(overlay);
+    };
+
+    const overlayByVertex = new Float32Array(basePosAttr.count);
     for (let i = 0; i < basePosAttr.count; i++) {
       const w = mouthWeightAttr.getX(i);
       const overlay = mouthRimMaskFromWeight(w);
-      if (overlay <= MouthRenderTuning.maskMin) continue;
-      const x = basePosAttr.getX(i); const y = basePosAttr.getY(i); const z = basePosAttr.getZ(i);
-      p.push(x, y, z); b.push(x, y, z); uv.push(uvAttr.getX(i), uvAttr.getY(i));
-      mw.push(w); ms.push(mouthSideAttr.getX(i)); hw.push(headWeightAttr.getX(i)); ov.push(overlay);
+      overlayByVertex[i] = overlay;
+      if (overlay <= tuning.maskMin) continue;
+      const x = posAttr.getX(i); const y = posAttr.getY(i); const z = posAttr.getZ(i);
+      const bx = basePosAttr.getX(i); const by = basePosAttr.getY(i); const bz = basePosAttr.getZ(i);
+      addPoint(x, y, z, bx, by, bz, uvAttr.getX(i), uvAttr.getY(i), w, mouthSideAttr.getX(i), headWeightAttr.getX(i), overlay);
     }
+
+    const indexAttr = srcGeometry.getIndex();
+    const triWeights = [];
+    const triIndices = [];
+    const getIndex = (i) => (indexAttr ? indexAttr.getX(i) : i);
+    const triCount = indexAttr ? Math.floor(indexAttr.count / 3) : Math.floor(posAttr.count / 3);
+
+    for (let tIdx = 0; tIdx < triCount; tIdx++) {
+      const ia = getIndex(tIdx * 3 + 0);
+      const ib = getIndex(tIdx * 3 + 1);
+      const ic = getIndex(tIdx * 3 + 2);
+      const wa = overlayByVertex[ia];
+      const wb = overlayByVertex[ib];
+      const wc = overlayByVertex[ic];
+      const avgMask = (wa + wb + wc) / 3.0;
+      if (avgMask <= tuning.maskMin) continue;
+
+      const ax = basePosAttr.getX(ia), ay = basePosAttr.getY(ia), az = basePosAttr.getZ(ia);
+      const bx = basePosAttr.getX(ib), by = basePosAttr.getY(ib), bz = basePosAttr.getZ(ib);
+      const cx = basePosAttr.getX(ic), cy = basePosAttr.getY(ic), cz = basePosAttr.getZ(ic);
+      const abx = bx - ax, aby = by - ay, abz = bz - az;
+      const acx = cx - ax, acy = cy - ay, acz = cz - az;
+      const crx = aby * acz - abz * acy;
+      const cry = abz * acx - abx * acz;
+      const crz = abx * acy - aby * acx;
+      const area = 0.5 * Math.sqrt(crx * crx + cry * cry + crz * crz);
+      const weight = area * avgMask;
+      if (weight <= 0.0) continue;
+      triWeights.push(weight);
+      triIndices.push([ia, ib, ic, avgMask]);
+    }
+
+    if (triIndices.length && tuning.rimResampleFactor > 0) {
+      const sourceCount = p.length / 3;
+      const targetResampled = Math.max(0, Math.round(sourceCount * tuning.rimResampleFactor));
+      const totalWeight = triWeights.reduce((a, bb) => a + bb, 0.0) || 1.0;
+
+      for (let ti = 0; ti < triIndices.length; ti++) {
+        const [ia, ib, ic, triMask] = triIndices[ti];
+        const weightNorm = triWeights[ti] / totalWeight;
+        const n = Math.max(0, Math.round(targetResampled * weightNorm));
+        if (n <= 0) continue;
+
+        const ax = basePosAttr.getX(ia), ay = basePosAttr.getY(ia), az = basePosAttr.getZ(ia);
+        const bx = basePosAttr.getX(ib), by = basePosAttr.getY(ib), bz = basePosAttr.getZ(ib);
+        const cx = basePosAttr.getX(ic), cy = basePosAttr.getY(ic), cz = basePosAttr.getZ(ic);
+
+        const apx = posAttr.getX(ia), apy = posAttr.getY(ia), apz = posAttr.getZ(ia);
+        const bpx = posAttr.getX(ib), bpy = posAttr.getY(ib), bpz = posAttr.getZ(ib);
+        const cpx = posAttr.getX(ic), cpy = posAttr.getY(ic), cpz = posAttr.getZ(ic);
+
+        const au = uvAttr.getX(ia), av = uvAttr.getY(ia);
+        const bu = uvAttr.getX(ib), bv = uvAttr.getY(ib);
+        const cu = uvAttr.getX(ic), cv = uvAttr.getY(ic);
+
+        const aw = mouthWeightAttr.getX(ia), bw = mouthWeightAttr.getX(ib), cw = mouthWeightAttr.getX(ic);
+        const asd = mouthSideAttr.getX(ia), bsd = mouthSideAttr.getX(ib), csd = mouthSideAttr.getX(ic);
+        const ah = headWeightAttr.getX(ia), bh = headWeightAttr.getX(ib), ch = headWeightAttr.getX(ic);
+        const ao = overlayByVertex[ia], bo = overlayByVertex[ib], co = overlayByVertex[ic];
+
+        for (let k = 0; k < n; k++) {
+          const h1 = stableHash3(ax, by, cz, 1000.0 + ti * 0.73 + k * 0.17);
+          const h2 = stableHash3(bx, cy, az, 2000.0 + ti * 0.31 + k * 0.29);
+          const su = Math.sqrt(h1);
+          const b0 = 1.0 - su;
+          const b1 = h2 * su;
+          const b2 = 1.0 - b0 - b1;
+
+          const pbx = ax * b0 + bx * b1 + cx * b2;
+          const pby = ay * b0 + by * b1 + cy * b2;
+          const pbz = az * b0 + bz * b1 + cz * b2;
+
+          const ppx = apx * b0 + bpx * b1 + cpx * b2;
+          const ppy = apy * b0 + bpy * b1 + cpy * b2;
+          const ppz = apz * b0 + bpz * b1 + cpz * b2;
+
+          const pu = au * b0 + bu * b1 + cu * b2;
+          const pv = av * b0 + bv * b1 + cv * b2;
+
+          const pW = aw * b0 + bw * b1 + cw * b2;
+          const pS = asd * b0 + bsd * b1 + csd * b2;
+          const pH = ah * b0 + bh * b1 + ch * b2;
+          const pO = THREE.MathUtils.clamp((ao * b0 + bo * b1 + co * b2) * (0.75 + triMask * 0.25), 0.0, 1.0);
+
+          addPoint(ppx, ppy, ppz, pbx, pby, pbz, pu, pv, pW, pS, pH, pO);
+        }
+      }
+    }
+
     if (!p.length) return null;
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(p), 3));
@@ -545,11 +684,17 @@ export function createAvatarRuntime({ stageEl, config }) {
           uBodyOffset: { value: new THREE.Vector3() }, uNeckPivot: { value: new THREE.Vector3(0, NeckTuning.neckPivotY, 0) },
           uBodyPivot: { value: new THREE.Vector3(0, NeckTuning.bodyPivotY, 0) }, uColorMap: { value: colorMap }, uUseMap: { value: colorMap ? 1.0 : 0.0 },
           uMouthPointsAlpha: { value: MouthRenderTuning.pointsAlpha }, uMouthPointsAlphaClip: { value: MouthRenderTuning.pointsAlphaClip },
-          uMouthPointsColorMul: { value: MouthRenderTuning.pointsColorMul }, uMouthPointsCullBack: { value: 1.0 },
+          uMouthPointsColorMul: { value: MouthRenderTuning.pointsColorMul },
+          uPointsLumaFloor: { value: MouthRenderTuning.pointsLumaFloor },
+          uPointsLumaStrength: { value: MouthRenderTuning.pointsLumaStrength },
+          uPointsLumaPreserveHue: { value: MouthRenderTuning.pointsLumaPreserveHue },
+          uPointsLumaDebug: { value: MouthRenderTuning.pointsLumaDebug ? 1.0 : 0.0 },
+          uMouthPointsCullBack: { value: MouthRenderTuning.pointsCullBack ? 1.0 : 0.0 },
+          uMouthPointsDebugBackOnly: { value: MouthRenderTuning.pointsDebugBackOnly ? 1.0 : 0.0 },
         },
       });
       mouthPoints = new THREE.Points(mouthGeo, mouthPointsMaterial);
-      mouthPoints.visible = false;
+      mouthPoints.visible = MouthRenderTuning.alwaysPointsMode === true;
       mouthPoints.frustumCulled = false;
       mouthPoints.scale.copy(surfaceMesh.scale);
       mouthPoints.position.copy(surfaceMesh.position);
@@ -603,7 +748,7 @@ export function createAvatarRuntime({ stageEl, config }) {
       surfaceMaterial.uniforms.uBodyRot.value.copy(bodyRot);
       surfaceMaterial.uniforms.uBodyOffset.value.set(0, offY, 0);
       surfaceMaterial.uniforms.uMouthOpenVisual.value = mouthOpenVisual;
-      surfaceMaterial.uniforms.uMouthHoleActive.value = mouthPointsVisibleLatched ? 1 : 0;
+      surfaceMaterial.uniforms.uMouthHoleActive.value = (MouthRenderTuning.alwaysPointsMode || mouthPointsVisibleLatched) ? 1 : 0;
       applyEyeUniforms(surfaceMaterial);
     }
     if (mouthPointsMaterial) {
@@ -613,7 +758,7 @@ export function createAvatarRuntime({ stageEl, config }) {
       mouthPointsMaterial.uniforms.uBodyRot.value.copy(bodyRot);
       mouthPointsMaterial.uniforms.uBodyOffset.value.set(0, offY, 0);
     }
-    if (mouthPoints) mouthPoints.visible = DEBUG_MOUTH_POINTS_ENABLED || mouthPointsVisibleLatched;
+    if (mouthPoints) mouthPoints.visible = DEBUG_MOUTH_POINTS_ENABLED || MouthRenderTuning.alwaysPointsMode || mouthPointsVisibleLatched;
 
     controls.update();
     renderer.render(scene, camera);
@@ -627,10 +772,42 @@ export function createAvatarRuntime({ stageEl, config }) {
   window.addEventListener('resize', onResize);
   tick();
 
+
+  function getCameraState() {
+    return {
+      position: [camera.position.x, camera.position.y, camera.position.z],
+      target: [controls.target.x, controls.target.y, controls.target.z],
+      fov: camera.fov,
+      controlsLocked,
+    };
+  }
+
+  function applyCameraState(next) {
+    if (Array.isArray(next?.position) && next.position.length === 3) {
+      camera.position.set(next.position[0], next.position[1], next.position[2]);
+    }
+    if (Array.isArray(next?.target) && next.target.length === 3) {
+      controls.target.set(next.target[0], next.target[1], next.target[2]);
+    }
+    if (Number.isFinite(next?.fov)) {
+      camera.fov = next.fov;
+      camera.updateProjectionMatrix();
+    }
+    controls.update();
+  }
+
+  window.__avatarRuntimeDebug = {
+    getCameraState,
+    logCameraState() { console.info('[avatar-camera]', getCameraState()); },
+    applyCameraState,
+  };
+
   return {
     setMode(mode) { state.mode = mode; if (mode !== 'SPEAKING') state.manualTalkLevel = 0; },
     setTalkLevel(level) { state.manualTalkLevel = clamp01(level); },
     connectAnalyser(analyserNode) { state.analyser = analyserNode || null; state.analyserData = analyserNode ? new Uint8Array(analyserNode.frequencyBinCount) : null; },
+    getCameraState,
+    applyCameraState,
     destroy() {
       if (rafId) cancelAnimationFrame(rafId);
       window.removeEventListener('resize', onResize);
