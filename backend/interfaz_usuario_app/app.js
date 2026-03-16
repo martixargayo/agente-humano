@@ -9,24 +9,13 @@ async function api(path, opts = {}) {
   return r.json();
 }
 
-function append(role, text) {
-  const chat = $('chat');
-  if (!chat) return;
-  const row = document.createElement('div');
-  row.className = 'chat-line';
-  const label = document.createElement('strong');
-  label.textContent = role;
-  row.appendChild(label);
-  row.appendChild(document.createTextNode(`: ${text}`));
-  chat.appendChild(row);
-  chat.scrollTop = chat.scrollHeight;
-}
-
 function ids() {
   return { user_id: $('userId').value.trim(), session_id: $('sessionId').value.trim() };
 }
 
 const InputMode = { TALK: 'talk', WRITE: 'write' };
+const AgentMode = { CHAT: 'chat', NEGOTIATION: 'negotiation' };
+const AgentModeLabels = { chat: 'Chat', negotiation: 'Negociación' };
 
 const JobStageLabel = {
   created: 'Creando evaluación...',
@@ -40,17 +29,53 @@ const JobStageLabel = {
 };
 
 let currentInputMode = InputMode.TALK;
+let currentAgentMode = AgentMode.CHAT;
 let finishButtonArmed = false;
 let lastSessionKey = '';
-let orbTimer = null;
+let orbRaf = null;
+let orbLevel = 0;
+let fakeListening = false;
 let finalizePopoverOpen = false;
 let feedbackPollingTimer = null;
 let feedbackEvaluationId = null;
 
+const ui = {
+  listeningGlow: $('listeningGlow'),
+  permissionOverlay: $('permissionOverlay'),
+  startBtn: $('startBtn'),
+  replyContainer: $('replyContainer'),
+  lastReply: $('lastReply'),
+  statusText: $('statusText'),
+  inputOrb: $('inputOrb'),
+  finishTurnBtn: $('finishTurnBtn'),
+  modeTalk: $('modeTalk'),
+  modeWrite: $('modeWrite'),
+  talkMode: $('talkMode'),
+  writeMode: $('writeMode'),
+  conversationMode: $('conversationMode'),
+  conversationModeTrigger: $('conversationModeTrigger'),
+  conversationModeCurrent: $('conversationModeCurrent'),
+  conversationModeOptions: [...document.querySelectorAll('[data-agent-mode]')],
+  textInput: $('textInput'),
+  sendTextBtn: $('sendTextBtn'),
+  finishNegotiationBtn: $('finishNegotiationBtn'),
+};
+
+function updateReplyText(text) {
+  ui.lastReply.textContent = text;
+  ui.replyContainer.classList.toggle('hidden', !text);
+}
+
+function setStatusText(text) {
+  ui.statusText.textContent = text;
+}
+
+function setListeningGlowEnabled(enabled) {
+  ui.listeningGlow.classList.toggle('active', Boolean(enabled));
+}
+
 function updateFinishNegotiationButton() {
-  const btn = $('finishNegotiationBtn');
-  if (!btn) return;
-  btn.classList.toggle('is-armed', finishButtonArmed);
+  ui.finishNegotiationBtn.classList.toggle('is-armed', finishButtonArmed);
 }
 
 function armFinishButton(nextArmed) {
@@ -70,47 +95,62 @@ function syncSessionBoundaryReset() {
   lastSessionKey = currentSessionKey;
 }
 
-function setListeningGlowEnabled(enabled) {
-  $('listeningGlow')?.classList.toggle('active', Boolean(enabled));
+function setAgentMode(mode) {
+  currentAgentMode = [AgentMode.CHAT, AgentMode.NEGOTIATION].includes(mode) ? mode : AgentMode.CHAT;
+  ui.conversationModeCurrent.textContent = AgentModeLabels[currentAgentMode];
+  ui.conversationModeOptions.forEach((opt) => {
+    const active = opt.dataset.agentMode === currentAgentMode;
+    opt.classList.toggle('active', active);
+    opt.setAttribute('aria-checked', String(active));
+  });
 }
 
-function stopInputOrb() {
-  if (orbTimer) {
-    window.clearInterval(orbTimer);
-    orbTimer = null;
-  }
-  $('inputOrb')?.style.setProperty('--orb-scale', '0.85');
+function closeConversationModeMenu() {
+  ui.conversationMode.classList.remove('open');
+  ui.conversationModeTrigger.setAttribute('aria-expanded', 'false');
 }
 
-function startInputOrb() {
-  stopInputOrb();
-  orbTimer = window.setInterval(() => {
-    const scale = 0.82 + Math.random() * 0.42;
-    $('inputOrb')?.style.setProperty('--orb-scale', scale.toFixed(2));
-  }, 110);
+function toggleConversationModeMenu() {
+  const open = !ui.conversationMode.classList.contains('open');
+  ui.conversationMode.classList.toggle('open', open);
+  ui.conversationModeTrigger.setAttribute('aria-expanded', String(open));
+}
+
+function updateUi() {
+  ui.modeTalk.classList.toggle('active', currentInputMode === InputMode.TALK);
+  ui.modeWrite.classList.toggle('active', currentInputMode === InputMode.WRITE);
+  ui.modeTalk.setAttribute('aria-selected', String(currentInputMode === InputMode.TALK));
+  ui.modeWrite.setAttribute('aria-selected', String(currentInputMode === InputMode.WRITE));
+  ui.talkMode.classList.toggle('hidden', currentInputMode !== InputMode.TALK);
+  ui.writeMode.classList.toggle('hidden', currentInputMode !== InputMode.WRITE);
+
+  const canSendText = currentInputMode === InputMode.WRITE;
+  ui.textInput.disabled = !canSendText;
+  ui.sendTextBtn.disabled = !canSendText;
+  ui.finishTurnBtn.disabled = !(currentInputMode === InputMode.TALK && fakeListening);
+  ui.inputOrb.classList.toggle('inactive', !fakeListening);
+  updateFinishNegotiationButton();
 }
 
 function setInputMode(mode) {
   currentInputMode = mode;
-  $('modeTalk')?.classList.toggle('active', mode === InputMode.TALK);
-  $('modeWrite')?.classList.toggle('active', mode === InputMode.WRITE);
-  $('modeTalk')?.setAttribute('aria-selected', String(mode === InputMode.TALK));
-  $('modeWrite')?.setAttribute('aria-selected', String(mode === InputMode.WRITE));
-  $('talkMode')?.classList.toggle('hidden', mode !== InputMode.TALK);
-  $('writeMode')?.classList.toggle('hidden', mode !== InputMode.WRITE);
+  if (mode === InputMode.WRITE) fakeListening = false;
+  setListeningGlowEnabled(fakeListening);
+  setStatusText(mode === InputMode.TALK ? (fakeListening ? 'Escuchando…' : 'Listo') : 'Listo');
+  updateUi();
+}
 
-  const orb = $('inputOrb');
-  if (mode === InputMode.TALK) {
-    orb?.classList.remove('inactive');
-    $('statusText').textContent = 'Escuchando (visual)';
-    setListeningGlowEnabled(true);
-    startInputOrb();
-  } else {
-    orb?.classList.add('inactive');
-    $('statusText').textContent = 'Listo (visual)';
-    setListeningGlowEnabled(false);
-    stopInputOrb();
-  }
+function startOrbLoop() {
+  cancelAnimationFrame(orbRaf);
+  const tick = () => {
+    const t = performance.now();
+    const idle = 0.08 * (0.5 + 0.5 * Math.sin((t * 2 * Math.PI) / 3800));
+    const target = fakeListening ? Math.max(idle, 0.25 + 0.2 * Math.abs(Math.sin(t / 250))) : idle;
+    orbLevel += (target - orbLevel) * 0.18;
+    ui.inputOrb.style.setProperty('--orb-scale', (0.85 + orbLevel * 0.55).toFixed(2));
+    orbRaf = requestAnimationFrame(tick);
+  };
+  orbRaf = requestAnimationFrame(tick);
 }
 
 function stopFeedbackPolling() {
@@ -194,6 +234,34 @@ async function startFeedbackEvaluation() {
   feedbackPollingTimer = window.setTimeout(() => pollEvaluationStatus(feedbackEvaluationId), 200);
 }
 
+function _seedDefaultIds() {
+  const suffix = `${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
+  $('userId').value = `u_interfaz_${suffix}`;
+  $('sessionId').value = `interfaz-main__${suffix}`;
+}
+
+async function handleSend() {
+  syncSessionBoundaryReset();
+  const message = ui.textInput.value.trim();
+  if (!message) return;
+
+  const payload = { ...ids(), message, new_conversation: false };
+  updateReplyText('...');
+  setStatusText('Procesando…');
+
+  const out = await api('/negociacion/turn', { method: 'POST', body: JSON.stringify(payload) });
+  updateReplyText(out.reply || '');
+  armFinishButton(out.finish_button_armed);
+
+  const contract = out.entry_contract;
+  $('meta').textContent =
+    `session=${out.session_id} endpoint=${contract.entrypoint} runtime=execute_turn_with_contract ` +
+    `overrides=${contract.overrides_applied} turn=${out.latest_turn_id || '-'} ` +
+    `conversation=${out.conversation_id_after || '-'} traces=${out.trace_count}`;
+  ui.textInput.value = '';
+  setStatusText('Listo');
+}
+
 $('bootstrap').onclick = async () => {
   syncSessionBoundaryReset();
   const out = await api('/sessions/bootstrap', { method: 'POST', body: JSON.stringify(ids()) });
@@ -207,42 +275,54 @@ $('newConv').onclick = async () => {
   lastSessionKey = `${payload.user_id}::${out.session_id}`;
   resetFinishButtonArmed();
   $('meta').textContent = `nueva session=${out.session_id}`;
+  updateReplyText('');
 };
 
-$('send').onclick = async () => {
-  syncSessionBoundaryReset();
-  const message = $('msg').value.trim();
-  if (!message) return;
-  const payload = { ...ids(), message, new_conversation: false };
-  append('user', message);
-  const out = await api('/negociacion/turn', { method: 'POST', body: JSON.stringify(payload) });
-  append('assistant', out.reply);
-  armFinishButton(out.finish_button_armed);
-  const contract = out.entry_contract;
-  $('meta').textContent =
-    `session=${out.session_id} endpoint=${contract.entrypoint} runtime=execute_turn_with_contract ` +
-    `overrides=${contract.overrides_applied} turn=${out.latest_turn_id || '-'} ` +
-    `conversation=${out.conversation_id_after || '-'} traces=${out.trace_count}`;
-  $('msg').value = '';
-};
+ui.startBtn.addEventListener('click', () => {
+  ui.permissionOverlay.style.display = 'none';
+  fakeListening = true;
+  setListeningGlowEnabled(true);
+  setStatusText('Escuchando…');
+  updateReplyText('Te escucho. Empieza a hablar cuando quieras.');
+  updateUi();
+});
 
-function _seedDefaultIds() {
-  const suffix = `${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
-  $('userId').value = `u_interfaz_${suffix}`;
-  $('sessionId').value = `interfaz-main__${suffix}`;
-}
+ui.modeTalk.addEventListener('click', () => setInputMode(InputMode.TALK));
+ui.modeWrite.addEventListener('click', () => setInputMode(InputMode.WRITE));
 
-$('finishTurnBtn').onclick = () => {
-  $('statusText').textContent = 'Modo hablar solo visual';
-  window.setTimeout(() => {
-    if (currentInputMode === InputMode.TALK) $('statusText').textContent = 'Escuchando (visual)';
-  }, 1000);
-};
+ui.conversationModeTrigger.addEventListener('click', (e) => {
+  e.stopPropagation();
+  toggleConversationModeMenu();
+});
 
-$('modeTalk').onclick = () => setInputMode(InputMode.TALK);
-$('modeWrite').onclick = () => setInputMode(InputMode.WRITE);
+ui.conversationModeOptions.forEach((opt) => opt.addEventListener('click', (e) => {
+  e.stopPropagation();
+  setAgentMode(opt.dataset.agentMode);
+  closeConversationModeMenu();
+}));
 
-$('finishNegotiationBtn').onclick = () => {
+ui.sendTextBtn.addEventListener('click', handleSend);
+ui.textInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    handleSend();
+  }
+});
+
+ui.finishTurnBtn.addEventListener('click', () => {
+  fakeListening = false;
+  setListeningGlowEnabled(false);
+  setStatusText('Procesando…');
+  ui.finishTurnBtn.classList.remove('highlight');
+  void ui.finishTurnBtn.offsetWidth;
+  ui.finishTurnBtn.classList.add('highlight');
+  setTimeout(() => {
+    setStatusText('Listo');
+    setInputMode(InputMode.TALK);
+  }, 500);
+});
+
+ui.finishNegotiationBtn.onclick = () => {
   if (!finishButtonArmed) return;
   if (finalizePopoverOpen) {
     closeFinalizePopover();
@@ -275,6 +355,14 @@ $('feedbackRetryBtn').onclick = async () => {
   }
 };
 
+document.addEventListener('click', (e) => {
+  if (!ui.conversationMode.contains(e.target)) closeConversationModeMenu();
+});
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeConversationModeMenu();
+});
+
 window.addEventListener('click', (ev) => {
   if (!finalizePopoverOpen) return;
   const popover = $('finishConfirmPopover');
@@ -295,4 +383,6 @@ window.addEventListener('click', (ev) => {
     $('meta').textContent = `bootstrap_error=${String(err)}`;
   }
   setInputMode(InputMode.WRITE);
+  setAgentMode(currentAgentMode);
+  startOrbLoop();
 })();
