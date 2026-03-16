@@ -2,12 +2,18 @@ from __future__ import annotations
 
 from evaluacion.contracts.models import FeedbackReportCoreV1, TurnTrajectoryV1
 
+REQUIRED_BLOCK_IDS = {"valores", "vision", "relacion", "proceso"}
+
 
 def validate_core_business(core: FeedbackReportCoreV1, *, turn_indexes: set[int]) -> None:
     if len(core.evaluation_blocks) != 4:
         raise ValueError("core_invalid_blocks_count")
     if not 0 <= core.score_global_100 <= 100:
         raise ValueError("core_invalid_score_global")
+
+    seen_block_ids = {block.block_id for block in core.evaluation_blocks}
+    if seen_block_ids != REQUIRED_BLOCK_IDS:
+        raise ValueError("core_invalid_block_ids")
 
     for block in core.evaluation_blocks:
         if not 0 <= block.score_0_100 <= 100:

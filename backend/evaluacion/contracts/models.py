@@ -81,6 +81,41 @@ class FeedbackInputBundleV1(BaseModel):
     trace_digest: TraceDigest | None = None
 
 
+class DomainRubricMetadata(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    domain: Literal["negociacion"]
+    rubric_version: str
+    case_title: str
+
+
+class DomainRubricBlock(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    block_id: Literal["valores", "vision", "relacion", "proceso"]
+    title: str
+    evaluates: str
+    positive_signals: list[str]
+    negative_signals: list[str]
+    common_mistakes: list[str]
+    evaluator_focus: str
+
+
+class DomainRubricGlobalGuide(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    principles: list[str]
+    transversal_errors: list[str]
+    progress_signals: list[str]
+    deterioration_signals: list[str]
+    tone_and_rhythm_reminders: list[str]
+
+
+class NegotiationDomainRubricV1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    schema_version: Literal["negotiation_domain_rubric.v1"]
+    metadata: DomainRubricMetadata
+    blocks: list[DomainRubricBlock]
+    global_guide: DomainRubricGlobalGuide
+
+
 class CoreRunnerInputV1(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -89,6 +124,7 @@ class CoreRunnerInputV1(BaseModel):
     conversation: ConversationBlock
     conversation_stats: ConversationStats
     domain_context: DomainContext
+    domain_rubric: NegotiationDomainRubricV1
 
 
 class TrajectoryRunnerInputV1(BaseModel):
@@ -108,12 +144,7 @@ class EvaluationCheck(BaseModel):
 
 class EvaluationBlock(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    block_id: Literal[
-        "comprension_exploracion",
-        "comunicacion_clima",
-        "movimiento_tactico",
-        "cierre_avance",
-    ]
+    block_id: Literal["valores", "vision", "relacion", "proceso"]
     title: str
     status_visual: BlockStatus
     score_0_100: int

@@ -38,5 +38,7 @@ def test_shape_inputs_preserve_dialogue_priority_and_basic_constraints() -> None
     assert len(trajectory.turns_for_trajectory) == 5
     assert "derived_facts" not in core.model_dump()
     assert "trace_digest" not in core.model_dump()
+    assert core.domain_rubric.metadata.domain == "negociacion"
+    assert [b.block_id for b in core.domain_rubric.blocks] == ["valores", "vision", "relacion", "proceso"]
     assert "derived_facts" not in trajectory.model_dump()
     assert "trace_digest" not in trajectory.model_dump()

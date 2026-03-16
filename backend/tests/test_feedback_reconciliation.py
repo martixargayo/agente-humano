@@ -16,7 +16,7 @@ from evaluacion.engine.reconciliation import reconcile_outputs
 
 def _core(score: int = 70) -> FeedbackReportCoreV1:
     block = EvaluationBlock(
-        block_id="comprension_exploracion",
+        block_id="valores",
         title="x",
         status_visual="mejorable",
         score_0_100=score,
@@ -25,9 +25,9 @@ def _core(score: int = 70) -> FeedbackReportCoreV1:
     )
     blocks = [
         block,
-        block.model_copy(update={"block_id": "comunicacion_clima"}),
-        block.model_copy(update={"block_id": "movimiento_tactico"}),
-        block.model_copy(update={"block_id": "cierre_avance"}),
+        block.model_copy(update={"block_id": "vision"}),
+        block.model_copy(update={"block_id": "relacion"}),
+        block.model_copy(update={"block_id": "proceso"}),
     ]
     km = KeyMoment(turn_index=1, why="w", impact="i")
     return FeedbackReportCoreV1(

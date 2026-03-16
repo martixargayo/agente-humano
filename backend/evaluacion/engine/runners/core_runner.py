@@ -16,36 +16,36 @@ def _fallback_output(core_input: CoreRunnerInputV1) -> FeedbackReportCoreV1:
 
     blocks = [
         {
-            "block_id": "comprension_exploracion",
-            "title": "Comprensión y exploración",
+            "block_id": "valores",
+            "title": "Valores",
             "status_visual": "mejorable",
             "score_0_100": 62,
             "checks": [{"polarity": "check", "micro_explanation": "Exploración inicial detectada.", "evidence_turn_indexes": [safe_idx]}],
-            "block_verdict": "Conviene profundizar más en preguntas clave.",
+            "block_verdict": "Hay base ética, pero falta explicitar criterios estables para sostener propuestas.",
         },
         {
-            "block_id": "comunicacion_clima",
-            "title": "Comunicación y clima",
+            "block_id": "vision",
+            "title": "Visión",
             "status_visual": "correcto",
             "score_0_100": 70,
             "checks": [{"polarity": "check", "micro_explanation": "Tono conversacional estable.", "evidence_turn_indexes": [safe_idx]}],
-            "block_verdict": "Buena base de comunicación.",
+            "block_verdict": "Se intuye rumbo, pero conviene concretar mejor objetivos y escenarios.",
         },
         {
-            "block_id": "movimiento_tactico",
-            "title": "Movimiento táctico",
+            "block_id": "relacion",
+            "title": "Relación",
             "status_visual": "mejorable",
             "score_0_100": 64,
             "checks": [{"polarity": "cross", "micro_explanation": "Faltan contrapartidas explícitas.", "evidence_turn_indexes": [safe_idx]}],
-            "block_verdict": "Necesita mayor claridad táctica.",
+            "block_verdict": "La interacción mantiene tracción, aunque debe reforzar escucha y validación mutua.",
         },
         {
-            "block_id": "cierre_avance",
-            "title": "Cierre y avance",
+            "block_id": "proceso",
+            "title": "Proceso",
             "status_visual": "mejorable",
             "score_0_100": 66,
             "checks": [{"polarity": "check", "micro_explanation": "Hay intención de avance.", "evidence_turn_indexes": [safe_idx]}],
-            "block_verdict": "Avance parcial sin cierre sólido.",
+            "block_verdict": "El método de avance existe, pero falta cerrar acuerdos con mayor precisión operativa.",
         },
     ]
 
@@ -60,11 +60,11 @@ def _fallback_output(core_input: CoreRunnerInputV1) -> FeedbackReportCoreV1:
         turning_point=KeyMoment(turn_index=safe_idx, why="Cambio de tono negociador.", impact="Reorientó la conversación."),
         recommendations=[
             {
-                "title": "Haz preguntas de cierre más concretas",
-                "description": "Antes de plantear cierre, valida una condición específica para reducir ambigüedad.",
+                "title": "Conecta propuesta y criterio de legitimidad",
+                "description": "Explicita qué principio respalda tu propuesta y qué contrapartida concreta esperas para avanzar de forma sostenible.",
                 "example": {
                     "original_excerpt": safe_excerpt,
-                    "better_rephrase": "¿Qué condición concreta te permitiría cerrar hoy?",
+                    "better_rephrase": "Para mantener un acuerdo justo, propongo X por Y. ¿Qué ajuste haría esto viable para ambos?",
                 },
             }
         ],
