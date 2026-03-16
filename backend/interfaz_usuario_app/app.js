@@ -50,6 +50,7 @@ let waveAudioCtx = null;
 let waveAnalyser = null;
 let waveDataArray = null;
 let turnInFlight = false;
+let voiceTurnInFlight = false;
 
 const ui = {
   listeningGlow: $('listeningGlow'),
@@ -368,11 +369,12 @@ function updateUi() {
   ui.talkMode.classList.toggle('hidden', currentInputMode !== InputMode.TALK);
   ui.writeMode.classList.toggle('hidden', currentInputMode !== InputMode.WRITE);
 
-  const canSendText = currentInputMode === InputMode.WRITE && !turnInFlight;
-  ui.textInput.disabled = currentInputMode !== InputMode.WRITE || turnInFlight;
+  const isBusy = turnInFlight || voiceTurnInFlight;
+  const canSendText = currentInputMode === InputMode.WRITE && !isBusy;
+  ui.textInput.disabled = currentInputMode !== InputMode.WRITE || isBusy;
   ui.sendTextBtn.disabled = !canSendText;
   const micOn = isMicActuallyRecording();
-  ui.finishTurnBtn.disabled = !(currentInputMode === InputMode.TALK && micOn && !turnInFlight);
+  ui.finishTurnBtn.disabled = !(currentInputMode === InputMode.TALK && micOn && !isBusy);
   ui.inputOrb.classList.toggle('inactive', !micOn);
   setListeningGlowEnabled(micOn);
   updateFinishNegotiationButton();
@@ -527,7 +529,7 @@ async function runNegotiationTurnFromText(message) {
 }
 
 async function handleSend() {
-  if (turnInFlight) return;
+  if (turnInFlight || voiceTurnInFlight) return;
   const message = ui.textInput.value.trim();
   if (!message) return;
   await runNegotiationTurnFromText(message);
@@ -584,9 +586,16 @@ ui.modeWrite.addEventListener('click', () => {
 });
 
 ui.sendTextBtn.addEventListener('click', handleSend);
+ui.sendTextBtn.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' || e.repeat || e.shiftKey) return;
+  e.preventDefault();
+  void handleSend();
+});
 
 async function handleFinishTurn() {
-  if (turnInFlight || ui.finishTurnBtn.disabled) return;
+  if (turnInFlight || voiceTurnInFlight || ui.finishTurnBtn.disabled) return;
+  voiceTurnInFlight = true;
+  updateUi();
   setStatusText('Procesando…');
   ui.finishTurnBtn.classList.remove('highlight');
   void ui.finishTurnBtn.offsetWidth;
@@ -619,10 +628,18 @@ async function handleFinishTurn() {
         syncAvatarMode();
       }
     }
+  } finally {
+    voiceTurnInFlight = false;
+    updateUi();
   }
 }
 
 ui.finishTurnBtn.addEventListener('click', () => {
+  void handleFinishTurn();
+});
+ui.finishTurnBtn.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' || e.repeat || e.shiftKey) return;
+  e.preventDefault();
   void handleFinishTurn();
 });
 
@@ -717,7 +734,7 @@ window.addEventListener('keydown', (e) => {
     return;
   }
 
-  if (e.key !== 'Enter' || e.repeat || e.shiftKey || turnInFlight) return;
+  if (e.key !== 'Enter' || e.repeat || e.shiftKey || turnInFlight || voiceTurnInFlight) return;
   const target = e.target;
   if (target instanceof HTMLTextAreaElement && currentInputMode !== InputMode.WRITE) return;
 
