@@ -11,6 +11,8 @@ export const AVATAR_RUNTIME_CONFIG = {
     position: [0, 0.25, 1.9],
   },
   controlsTarget: [0, 0.15, 0],
+  // true = fija completamente cámara/encuadre (sin orbit/pan/zoom manual).
+  controlsLocked: true,
   transform: {
     offset: [0, 0, 0],
     scale: 1.0,
