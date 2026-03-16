@@ -175,19 +175,22 @@
     return `${resultFirstLine(outcome)} ${summary || ''}`.trim();
   }
 
-  function helpReason(turn) {
+  function helpReason(turn, previousTurn) {
     if (!turn) return '';
-    if (turn.direction === 'up') return 'Este turno te acercó al entendimiento.';
-    if (turn.direction === 'down') return 'Este turno te alejó del entendimiento.';
+    const current = Number(turn.agreement_closeness_score_0_100 || 0);
+    const previous = Number(previousTurn?.agreement_closeness_score_0_100 || current);
+    const delta = current - previous;
+    if (delta > 0) return 'Este turno te acercó al entendimiento.';
+    if (delta < 0) return 'Este turno te alejó del entendimiento.';
     return 'Este turno dejó la negociación casi en el mismo punto.';
   }
 
-  function tooltipMarkup(turn) {
+  function tooltipMarkup(turn, previousTurn) {
     return `
       <h4>Turno ${Number(turn?.turn_index || 0)}</h4>
       <p><strong>Tú:</strong> ${escapeHtml(turn?.user_excerpt || '')}</p>
       <p><strong>Él:</strong> ${escapeHtml(turn?.counterpart_excerpt || '')}</p>
-      <p>${escapeHtml(helpReason(turn))} ${escapeHtml(turn?.impact_reason || '')}</p>
+      <p>${escapeHtml(helpReason(turn, previousTurn))} ${escapeHtml(turn?.impact_reason || '')}</p>
       <p><strong>Pensamiento del otro:</strong> ${escapeHtml(turn?.counterpart_thought_effect || '')}</p>
     `;
   }
@@ -294,7 +297,7 @@
     const header = report.header || {};
     const blocks = report.block_cards || [];
     const trajectory = report.trajectory_chart || [];
-    const recs = report.recommendations || { general: [], correction_cases: [] };
+    const recs = report.recommendations || { items: [] };
     const activityName = header.activity_name || 'Compra de un Mustang clásico';
     const durationLabel = durationFromReport(report, trajectory.length);
     const outcome = header.interaction_outcome;
@@ -356,25 +359,7 @@
       blockRoot.appendChild(card);
     });
 
-    const combinedRecommendations = [];
-    (recs.general || []).forEach((text, idx) => {
-      combinedRecommendations.push({
-        title: recommendationTitle(text),
-        explanation: text,
-        case: recs.correction_cases?.[idx] || null,
-      });
-    });
-
-    const remainingCases = (recs.correction_cases || []).slice((recs.general || []).length);
-    remainingCases.forEach((item) => {
-      combinedRecommendations.push({
-        title: recommendationTitle(item.expected_effect || 'Te faltó concretar mejor este momento'),
-        explanation: item.expected_effect || 'Con este ajuste puedes mejorar el avance en el siguiente intento.',
-        case: item,
-      });
-    });
-
-    const finalRecommendations = combinedRecommendations.slice(0, 6);
+    const finalRecommendations = (recs.items || []).slice(0, 6);
     const recGrid = container.querySelector('.fb-recommendations-grid');
     const emptyRec = container.querySelector('.fb-empty');
 
@@ -385,9 +370,9 @@
         const article = document.createElement('article');
         article.className = 'fb-rec-item';
         article.innerHTML = `
-          <h3>${escapeHtml(item.title)}</h3>
-          <p>${escapeHtml(item.explanation)}</p>
-          ${item.case ? `<div class="fb-rec-example"><p class="fb-rec-user"><strong>Tú</strong> ${escapeHtml(item.case.original_excerpt || '')}</p><p class="fb-rec-better"><strong>Mejora:</strong> ${escapeHtml(item.case.better_rephrase || '')}</p></div>` : ''}
+          <h3>${escapeHtml(item.title || recommendationTitle(item.description))}</h3>
+          <p>${escapeHtml(item.description || '')}</p>
+          ${item.example ? `<div class="fb-rec-example"><p class="fb-rec-user"><strong>Tú</strong> ${escapeHtml(item.example.original_excerpt || '')}</p><p class="fb-rec-better"><strong>Mejora:</strong> ${escapeHtml(item.example.better_rephrase || '')}</p></div>` : ''}
         `;
         recGrid.appendChild(article);
       });
@@ -406,7 +391,7 @@
     const showTooltip = (index, event) => {
       const turn = trajectory[index];
       if (!turn) return;
-      tooltip.innerHTML = tooltipMarkup(turn);
+      tooltip.innerHTML = tooltipMarkup(turn, trajectory[index - 1] || null);
       tooltip.classList.remove('hidden');
       placeTooltip(tooltip, chartShell, event);
     };

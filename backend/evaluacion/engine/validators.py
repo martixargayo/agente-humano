@@ -35,9 +35,3 @@ def validate_trajectory_business(trajectory: TurnTrajectoryV1, *, turn_indexes: 
         seen.add(item.turn_index)
         if not 0 <= item.agreement_closeness_score_0_100 <= 100:
             raise ValueError("trajectory_score_out_of_range")
-        if item.delta_vs_previous > 0 and item.direction != "up":
-            raise ValueError("trajectory_direction_mismatch")
-        if item.delta_vs_previous < 0 and item.direction != "down":
-            raise ValueError("trajectory_direction_mismatch")
-        if item.delta_vs_previous == 0 and item.direction != "flat":
-            raise ValueError("trajectory_direction_mismatch")

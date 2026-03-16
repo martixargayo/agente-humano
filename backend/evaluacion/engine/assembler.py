@@ -11,6 +11,11 @@ from evaluacion.contracts.models import (
 )
 
 
+def _stars_from_score(score_global_100: int) -> float:
+    clamped = max(0, min(100, score_global_100))
+    return round(clamped / 20.0, 1)
+
+
 def assemble_ui_report(*, core: FeedbackReportCoreV1, trajectory: TurnTrajectoryV1, provenance: Provenance) -> UiFeedbackReportV1:
     return UiFeedbackReportV1(
         schema_version="ui_feedback_report.v1",
@@ -19,7 +24,7 @@ def assemble_ui_report(*, core: FeedbackReportCoreV1, trajectory: TurnTrajectory
             report_title="Evaluación de tu desempeño",
             activity_name="Compra de un Mustang clásico",
             score_global_100=core.score_global_100,
-            stars_0_5=core.stars_0_5,
+            stars_0_5=_stars_from_score(core.score_global_100),
             interaction_outcome=core.interaction_outcome,
             summary_2_3_lines=core.summary_2_3_lines,
         ),
@@ -30,12 +35,6 @@ def assemble_ui_report(*, core: FeedbackReportCoreV1, trajectory: TurnTrajectory
             most_delicate_moment=core.most_delicate_moment,
             turning_point=core.turning_point,
         ),
-        recommendations=RecommendationsPanel(
-            general=core.recommendations_general,
-            correction_cases=core.correction_cases,
-        ),
-        strengths=core.strengths_to_repeat,
-        next_focus=core.next_focus,
-        recommended_closing_phrase=core.recommended_closing_phrase,
+        recommendations=RecommendationsPanel(items=core.recommendations),
         provenance=provenance,
     )

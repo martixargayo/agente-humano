@@ -38,8 +38,6 @@ def shape_core_input(bundle: FeedbackInputBundleV1) -> CoreRunnerInputV1:
         conversation=bundle.conversation.model_copy(update={"turns": selected}),
         conversation_stats=bundle.conversation_stats,
         domain_context=bundle.domain_context,
-        derived_facts=bundle.derived_facts,
-        trace_digest=bundle.trace_digest,
     )
 
 
@@ -49,6 +47,4 @@ def shape_trajectory_input(bundle: FeedbackInputBundleV1) -> TrajectoryRunnerInp
         schema_version="trajectory_runner_input.v1",
         evaluation_id=bundle.evaluation_id,
         turns_for_trajectory=selected,
-        derived_facts=bundle.derived_facts,
-        trace_digest=bundle.trace_digest,
     )

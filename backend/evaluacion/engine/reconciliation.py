@@ -16,8 +16,4 @@ def reconcile_outputs(*, core: FeedbackReportCoreV1, trajectory: TurnTrajectoryV
     if abs(core.score_global_100 - mean_block_score) > RECONCILE_SCORE_TOLERANCE:
         raise ValueError("reconciliation_global_vs_blocks_mismatch")
 
-    gains = max(trajectory.trajectory, key=lambda t: t.delta_vs_previous)
-    drops = min(trajectory.trajectory, key=lambda t: t.delta_vs_previous)
-    return trajectory.model_copy(
-        update={"largest_gain_turn_index": gains.turn_index, "largest_drop_turn_index": drops.turn_index}
-    )
+    return trajectory

@@ -2,11 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from evaluacion.contracts.models import (
-    CoreRunnerInputV1,
-    FeedbackReportCoreV1,
-    KeyMoment,
-)
+from evaluacion.contracts.models import CoreRunnerInputV1, FeedbackReportCoreV1, KeyMoment
 from evaluacion.engine.flow_config import CORE_MODEL
 from evaluacion.engine.runners.common import load_prompt_text, run_structured
 
@@ -56,25 +52,22 @@ def _fallback_output(core_input: CoreRunnerInputV1) -> FeedbackReportCoreV1:
     return FeedbackReportCoreV1(
         schema_version="feedback_report_core.v1",
         score_global_100=66,
-        stars_0_5=3.3,
         interaction_outcome="partial_progress" if core_input.conversation_stats.turn_count >= 6 else "no_agreement",
         summary_2_3_lines=f"Se observa progreso conversacional con margen de mejora táctica. Ejemplo: {safe_excerpt}",
         evaluation_blocks=blocks,
         best_moment=KeyMoment(turn_index=safe_idx, why="Hubo señal de avance.", impact="Mejoró la alineación."),
         most_delicate_moment=KeyMoment(turn_index=safe_idx, why="Faltó precisión.", impact="Generó ambigüedad."),
         turning_point=KeyMoment(turn_index=safe_idx, why="Cambio de tono negociador.", impact="Reorientó la conversación."),
-        recommendations_general=["Haz preguntas más específicas antes de proponer cierre."],
-        correction_cases=[
+        recommendations=[
             {
-                "turn_index": safe_idx,
-                "original_excerpt": safe_excerpt,
-                "better_rephrase": "¿Qué condición concreta te permitiría cerrar hoy?",
-                "expected_effect": "Incrementa claridad y foco en acuerdo.",
+                "title": "Haz preguntas de cierre más concretas",
+                "description": "Antes de plantear cierre, valida una condición específica para reducir ambigüedad.",
+                "example": {
+                    "original_excerpt": safe_excerpt,
+                    "better_rephrase": "¿Qué condición concreta te permitiría cerrar hoy?",
+                },
             }
         ],
-        strengths_to_repeat=["Mantener tono dialogante."],
-        next_focus="Conectar oferta y contrapartida de forma explícita.",
-        recommended_closing_phrase="Si te encaja, cerramos en estas condiciones y confirmamos ahora.",
     )
 
 
