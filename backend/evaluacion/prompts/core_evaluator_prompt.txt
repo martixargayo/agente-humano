@@ -27,12 +27,45 @@ En esta actividad, el objetivo principal es llegar a un acuerdo.
 - No inventes turnos, citas, hechos, acuerdos ni intenciones no presentes.
 - Si la evidencia es limitada, sé conservador.
 
+[SCORING PHILOSOPHY]
+La nota global debe ser exigente y creíble.
+
+Usa esta lógica:
+- 90 a 100: reservado solo para un desempeño excelente o casi perfecto. Solo si lograste el objetivo principal, seguiste muy bien la estructura recomendada, mantuviste un tono adecuado y apenas hay errores menores o inevitables.
+- 75 a 89: buen desempeño. Lograste o casi lograste el objetivo y ejecutaste bien el proceso, aunque con fallos relevantes o varias oportunidades claras de mejora.
+- 60 a 74: desempeño aceptable pero limitado. Hay avances, pero faltan fases, claridad, tono, estructura o consistencia.
+- 40 a 59: desempeño insuficiente. No lograste bien el objetivo o ejecutaste mal partes importantes del proceso.
+- 0 a 39: desempeño claramente fallido. No lograste el objetivo y además la ejecución fue deficiente en estructura, tono o proceso.
+
+Reglas importantes:
+- No regales notas altas.
+- Suspender está permitido.
+- Las notas muy altas deben ser escasas y estar justificadas por un gran resultado y una ejecución muy sólida.
+- No penalices de forma exagerada pequeños errores inevitables si el desempeño global fue excelente.
+- Sí penaliza con fuerza no lograr el objetivo, saltarse fases importantes, usar mal el tono o ejecutar mal el proceso.
+
+[SUMMARY RULES]
+`summary_2_3_lines` debe ser breve, claro y dirigido al usuario.
+
+Debe seguir este orden:
+1. Primera frase: explica si lograste o no lograste el objetivo y, si hubo acuerdo, qué acuerdo se alcanzó.
+2. Después resume la tendencia principal de lo que hiciste bien.
+3. Después resume la tendencia principal de lo que hiciste mal.
+
+Escribe con frases cortas y claras.
+Habla siempre en segunda persona:
+- "has logrado..."
+- "no has conseguido..."
+- "hiciste bien..."
+- "te faltó..."
+- "has tendido a..."
+
 [SCORING RUBRIC]
 Evalúa exactamente estos 4 bloques:
-1) valores
-2) vision
-3) relacion
-4) proceso
+1) comprension_exploracion
+2) comunicacion_clima
+3) movimiento_tactico
+4) cierre_avance
 
 [BLOCK RULES]
 Para cada bloque:
@@ -53,9 +86,14 @@ Para cada bloque:
 - No exageres conclusiones.
 
 [RECOMMENDATIONS]
-- recommendations puede tener entre 0 y 6 elementos.
-- Cada recomendación es una unidad completa: title + description + example opcional.
-- Usa example solo si aporta valor práctico claro.
+`recommendations` puede tener entre 0 y 6 elementos.
+
+Cada recomendación debe ser una unidad útil y concreta:
+- `title`: una frase corta que diga claramente qué debes mejorar.
+- `description`: una explicación breve de cómo deberías hacerlo mejor.
+- `example`: opcional, solo si aporta valor práctico claro.
+
+Reglas:
 - No rellenes por rellenar.
 - Puede haber 0 recomendaciones si no hacen falta.
 - Usa ejemplo solo si hay un caso concreto que ayuda a entender la mejora.
