@@ -49,6 +49,7 @@ let hasMicPermission = false;
 let waveAudioCtx = null;
 let waveAnalyser = null;
 let waveDataArray = null;
+let turnInFlight = false;
 
 const ui = {
   listeningGlow: $('listeningGlow'),
@@ -367,11 +368,11 @@ function updateUi() {
   ui.talkMode.classList.toggle('hidden', currentInputMode !== InputMode.TALK);
   ui.writeMode.classList.toggle('hidden', currentInputMode !== InputMode.WRITE);
 
-  const canSendText = currentInputMode === InputMode.WRITE;
-  ui.textInput.disabled = !canSendText;
+  const canSendText = currentInputMode === InputMode.WRITE && !turnInFlight;
+  ui.textInput.disabled = currentInputMode !== InputMode.WRITE || turnInFlight;
   ui.sendTextBtn.disabled = !canSendText;
   const micOn = isMicActuallyRecording();
-  ui.finishTurnBtn.disabled = !(currentInputMode === InputMode.TALK && micOn);
+  ui.finishTurnBtn.disabled = !(currentInputMode === InputMode.TALK && micOn && !turnInFlight);
   ui.inputOrb.classList.toggle('inactive', !micOn);
   setListeningGlowEnabled(micOn);
   updateFinishNegotiationButton();
@@ -477,48 +478,56 @@ function _seedDefaultIds() {
 
 async function runNegotiationTurnFromText(message) {
   syncSessionBoundaryReset();
-  if (!message) return;
+  if (!message || turnInFlight) return;
 
-  const payload = { ...ids(), message, new_conversation: false };
-  updateReplyText('...');
-  setStatusText('Procesando…');
-  withAvatarRuntime((runtime) => { runtime.setMode('THINKING'); runtime.setTalkLevel(0); });
+  turnInFlight = true;
+  updateUi();
+  try {
+    const payload = { ...ids(), message, new_conversation: false };
+    updateReplyText('...');
+    setStatusText('Procesando…');
+    withAvatarRuntime((runtime) => { runtime.setMode('THINKING'); runtime.setTalkLevel(0); });
 
-  const out = await api('/negociacion/turn', { method: 'POST', body: JSON.stringify(payload) });
-  updateReplyText(out.reply || '');
-  armFinishButton(out.finish_button_armed);
+    const out = await api('/negociacion/turn', { method: 'POST', body: JSON.stringify(payload) });
+    updateReplyText(out.reply || '');
+    armFinishButton(out.finish_button_armed);
 
-  const contract = out.entry_contract;
-  $('meta').textContent =
-    `session=${out.session_id} endpoint=${contract.entrypoint} runtime=execute_turn_with_contract ` +
-    `overrides=${contract.overrides_applied} turn=${out.latest_turn_id || '-'} ` +
-    `conversation=${out.conversation_id_after || '-'} traces=${out.trace_count}`;
-  setStatusText('Listo');
+    const contract = out.entry_contract;
+    $('meta').textContent =
+      `session=${out.session_id} endpoint=${contract.entrypoint} runtime=execute_turn_with_contract ` +
+      `overrides=${contract.overrides_applied} turn=${out.latest_turn_id || '-'} ` +
+      `conversation=${out.conversation_id_after || '-'} traces=${out.trace_count}`;
+    setStatusText('Listo');
 
-  if (out.reply) {
-    try {
-      await playTtsWithAvatar(out.reply);
-    } catch (err) {
-      console.warn('[tts] Error reproduciendo TTS; fallback visual', err);
-      withAvatarRuntime((runtime) => {
-        runtime.setMode('SPEAKING');
-        runtime.setTalkLevel(0.38);
-        window.setTimeout(() => {
-          runtime.setTalkLevel(0.16);
+    if (out.reply) {
+      try {
+        await playTtsWithAvatar(out.reply);
+      } catch (err) {
+        console.warn('[tts] Error reproduciendo TTS; fallback visual', err);
+        withAvatarRuntime((runtime) => {
+          runtime.setMode('SPEAKING');
+          runtime.setTalkLevel(0.38);
           window.setTimeout(() => {
-            runtime.setTalkLevel(0);
-            syncAvatarMode();
-          }, 240);
-        }, 260);
-      });
-      return;
+            runtime.setTalkLevel(0.16);
+            window.setTimeout(() => {
+              runtime.setTalkLevel(0);
+              syncAvatarMode();
+            }, 240);
+          }, 260);
+        });
+        return;
+      }
     }
-  }
 
-  syncAvatarMode();
+    syncAvatarMode();
+  } finally {
+    turnInFlight = false;
+    updateUi();
+  }
 }
 
 async function handleSend() {
+  if (turnInFlight) return;
   const message = ui.textInput.value.trim();
   if (!message) return;
   await runNegotiationTurnFromText(message);
@@ -546,6 +555,7 @@ ui.startBtn.addEventListener('click', () => {
 });
 
 ui.modeTalk.addEventListener('click', async () => {
+  if (turnInFlight) return;
   setInputMode(InputMode.TALK);
   if (!hasMicPermission) return;
   try {
@@ -558,6 +568,14 @@ ui.modeTalk.addEventListener('click', async () => {
   }
 });
 ui.modeWrite.addEventListener('click', () => {
+  if (turnInFlight) return;
+  if (isRecording) {
+    discardRecording = true;
+    void stopVoiceCapture().finally(() => teardownMic());
+  }
+  setInputMode(InputMode.WRITE);
+});
+ui.modeWrite.addEventListener('click', () => {
   if (isRecording) {
     discardRecording = true;
     void stopVoiceCapture().finally(() => teardownMic());
@@ -568,6 +586,7 @@ ui.modeWrite.addEventListener('click', () => {
 ui.sendTextBtn.addEventListener('click', handleSend);
 
 async function handleFinishTurn() {
+  if (turnInFlight || ui.finishTurnBtn.disabled) return;
   setStatusText('Procesando…');
   ui.finishTurnBtn.classList.remove('highlight');
   void ui.finishTurnBtn.offsetWidth;
@@ -589,8 +608,17 @@ async function handleFinishTurn() {
   } catch (err) {
     console.error('[voice] Error procesando turno hablado', err);
     setStatusText(err?.message || 'No se pudo procesar el audio.');
-    setInputMode(InputMode.WRITE);
-    syncAvatarMode();
+    if (currentInputMode === InputMode.TALK) {
+      try {
+        await startVoiceCapture();
+        updateUi();
+        syncAvatarMode();
+      } catch (_) {
+        // fallback a escritura solo si mic falla realmente
+        setInputMode(InputMode.WRITE);
+        syncAvatarMode();
+      }
+    }
   }
 }
 
@@ -689,7 +717,7 @@ window.addEventListener('keydown', (e) => {
     return;
   }
 
-  if (e.key !== 'Enter' || e.repeat || e.shiftKey) return;
+  if (e.key !== 'Enter' || e.repeat || e.shiftKey || turnInFlight) return;
   const target = e.target;
   if (target instanceof HTMLTextAreaElement && currentInputMode !== InputMode.WRITE) return;
 

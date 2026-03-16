@@ -303,7 +303,7 @@ export function createAvatarRuntime({ stageEl, config }) {
   };
   const MouthRenderTuning = {
     rimA: 0.26, rimB: 0.46, rimC: 0.68, rimD: 0.84, innerA: 0.70, innerB: 0.82, innerGain: 0.22,
-    innerCoreA: 0.82, innerCoreB: 0.96, innerCoreGain: 0.70, maskMin: 0.08,
+    innerCoreA: 0.52, innerCoreB: 0.56, innerCoreGain: 0.90, maskMin: 0.08,
     upsampleMinPoints: 260, upsampleAmpMin: 0.0007, upsampleAmpMax: 0.0015, rimResampleFactor: 50,
     pointsAlpha: 0.50,
     pointsAlphaClip: 0.012, pointsSizeNear: 3.0 * window.devicePixelRatio, pointsSizeFar: 2.3 * window.devicePixelRatio,
