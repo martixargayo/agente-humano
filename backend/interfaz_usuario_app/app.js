@@ -52,10 +52,6 @@ const ui = {
   modeWrite: $('modeWrite'),
   talkMode: $('talkMode'),
   writeMode: $('writeMode'),
-  conversationMode: $('conversationMode'),
-  conversationModeTrigger: $('conversationModeTrigger'),
-  conversationModeCurrent: $('conversationModeCurrent'),
-  conversationModeOptions: [...document.querySelectorAll('[data-agent-mode]')],
   textInput: $('textInput'),
   sendTextBtn: $('sendTextBtn'),
   finishNegotiationBtn: $('finishNegotiationBtn'),
@@ -93,27 +89,6 @@ function syncSessionBoundaryReset() {
   const currentSessionKey = `${user_id}::${session_id}`;
   if (lastSessionKey && lastSessionKey !== currentSessionKey) resetFinishButtonArmed();
   lastSessionKey = currentSessionKey;
-}
-
-function setAgentMode(mode) {
-  currentAgentMode = [AgentMode.CHAT, AgentMode.NEGOTIATION].includes(mode) ? mode : AgentMode.CHAT;
-  ui.conversationModeCurrent.textContent = AgentModeLabels[currentAgentMode];
-  ui.conversationModeOptions.forEach((opt) => {
-    const active = opt.dataset.agentMode === currentAgentMode;
-    opt.classList.toggle('active', active);
-    opt.setAttribute('aria-checked', String(active));
-  });
-}
-
-function closeConversationModeMenu() {
-  ui.conversationMode.classList.remove('open');
-  ui.conversationModeTrigger.setAttribute('aria-expanded', 'false');
-}
-
-function toggleConversationModeMenu() {
-  const open = !ui.conversationMode.classList.contains('open');
-  ui.conversationMode.classList.toggle('open', open);
-  ui.conversationModeTrigger.setAttribute('aria-expanded', String(open));
 }
 
 function updateUi() {
@@ -290,17 +265,6 @@ ui.startBtn.addEventListener('click', () => {
 ui.modeTalk.addEventListener('click', () => setInputMode(InputMode.TALK));
 ui.modeWrite.addEventListener('click', () => setInputMode(InputMode.WRITE));
 
-ui.conversationModeTrigger.addEventListener('click', (e) => {
-  e.stopPropagation();
-  toggleConversationModeMenu();
-});
-
-ui.conversationModeOptions.forEach((opt) => opt.addEventListener('click', (e) => {
-  e.stopPropagation();
-  setAgentMode(opt.dataset.agentMode);
-  closeConversationModeMenu();
-}));
-
 ui.sendTextBtn.addEventListener('click', handleSend);
 ui.textInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) {
@@ -323,7 +287,6 @@ ui.finishTurnBtn.addEventListener('click', () => {
 });
 
 ui.finishNegotiationBtn.onclick = () => {
-  if (!finishButtonArmed) return;
   if (finalizePopoverOpen) {
     closeFinalizePopover();
     return;
@@ -383,6 +346,5 @@ window.addEventListener('click', (ev) => {
     $('meta').textContent = `bootstrap_error=${String(err)}`;
   }
   setInputMode(InputMode.WRITE);
-  setAgentMode(currentAgentMode);
   startOrbLoop();
 })();

@@ -325,94 +325,6 @@
         margin-bottom: 10px;
       }
 
-      .conversation-mode {
-        position: relative;
-        margin-left: auto;
-      }
-
-      .conversation-mode-trigger {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 6px;
-        border: none;
-        background: transparent;
-        color: var(--text-primary);
-        padding: 2px 0;
-        font-size: 11px;
-        line-height: 1;
-        cursor: pointer;
-        transition: color 0.18s ease, transform 0.18s ease;
-      }
-
-      .conversation-mode-trigger:hover {
-        transform: translateY(-1px);
-        color: #e2e8f0;
-      }
-
-      .conversation-mode-trigger .mode-current {
-        font-size: 12px;
-        font-weight: 600;
-        color: #e2e8f0;
-        letter-spacing: 0.01em;
-      }
-
-      .conversation-mode-trigger .mode-chevron {
-        font-size: 13px;
-        line-height: 1;
-        color: #cbd5e1;
-        transform: translateY(0);
-      }
-
-      .conversation-mode-menu {
-        position: absolute;
-        top: calc(100% + 8px);
-        right: 0;
-        min-width: 170px;
-        background: rgba(2, 6, 23, 0.96);
-        border: 1px solid rgba(148, 163, 184, 0.28);
-        border-radius: 14px;
-        padding: 6px;
-        box-shadow: 0 16px 32px rgba(15, 23, 42, 0.38);
-        display: none;
-        z-index: 8;
-      }
-
-      .conversation-mode.open .conversation-mode-menu {
-        display: block;
-      }
-
-      .conversation-mode-option {
-        width: 100%;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        border: none;
-        border-radius: 10px;
-        background: transparent;
-        color: #cbd5e1;
-        padding: 8px 10px;
-        font-size: 12px;
-        cursor: pointer;
-        text-align: left;
-      }
-
-      .conversation-mode-option:hover {
-        background: rgba(96, 165, 250, 0.12);
-        color: #e2e8f0;
-      }
-
-      .conversation-mode-option.active {
-        background: rgba(96, 165, 250, 0.18);
-        color: #e2e8f0;
-        font-weight: 600;
-      }
-
-      .conversation-mode-option.active::after {
-        content: "✓";
-        color: #93c5fd;
-      }
-
       .mode-tabs {
         display: inline-flex;
         gap: 6px;
@@ -600,21 +512,6 @@
         box-shadow: 0 2px 5px rgba(15, 23, 42, 0.12);
       }
 
-      html[data-newbox="1"] .conversation-mode-trigger .mode-current,
-      html[data-newbox="1"] .conversation-mode-trigger .mode-chevron {
-        color: #111827;
-      }
-
-      html[data-newbox="1"] .conversation-mode-menu {
-        background: #ffffff;
-        border-color: rgba(15, 23, 42, 0.1);
-        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14);
-      }
-
-      html[data-newbox="1"] .conversation-mode-option {
-        color: rgba(15, 23, 42, 0.86);
-      }
-
       html[data-newbox="1"] .status-text {
         color: rgba(15, 23, 42, 0.74);
       }
@@ -644,12 +541,12 @@
       }
 
       html[data-newbox="1"] .send-btn {
-        width: 38px;
-        height: 38px;
-        background: #030712;
-        color: #ffffff;
-        font-size: 17px;
-        box-shadow: 0 5px 16px rgba(3, 7, 18, 0.32);
+        border-color: rgba(15, 23, 42, 0.12);
+        background: #f9fafb;
+        color: #111827;
+        width: auto;
+        height: auto;
+        box-shadow: none;
       }
 
       .finish-negotiation-button {
@@ -657,56 +554,59 @@
         right: 24px;
         bottom: 24px;
         z-index: 9;
-        border: 1px solid rgba(148, 163, 184, 0.45);
-        background: rgba(71, 85, 105, 0.85);
-        color: #e2e8f0;
-        border-radius: 14px;
-        padding: 10px 14px;
+        border: 1px solid rgba(96, 165, 250, 0.35);
+        background: rgba(191, 219, 254, 0.72);
+        color: #1e3a8a;
+        border-radius: 16px;
+        padding: 10px 16px;
         font-size: 12px;
         font-weight: 600;
         cursor: pointer;
-        opacity: 0.82;
-        box-shadow: 0 8px 20px rgba(2, 6, 23, 0.24);
+        opacity: 1;
+        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.18);
         transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
       }
 
       .finish-negotiation-button.is-armed {
-        background: rgba(37, 99, 235, 0.95);
-        border-color: rgba(147, 197, 253, 0.95);
-        color: #ffffff;
-        opacity: 1;
-        box-shadow: 0 0 0 1px rgba(147, 197, 253, 0.4), 0 12px 28px rgba(37, 99, 235, 0.35);
+        background: var(--accent-pastel);
+        border-color: rgba(96, 165, 250, 0.7);
+        color: #1e3a8a;
+        box-shadow: 0 0 0 1px rgba(147, 197, 253, 0.35), 0 12px 28px rgba(59, 130, 246, 0.22);
       }
 
       .finish-confirm-popover {
         position: fixed;
         right: 24px;
         bottom: 74px;
-        width: 280px;
-        border: 1px solid rgba(148, 163, 184, 0.38);
-        background: rgba(15, 23, 42, 0.96);
-        color: #e2e8f0;
-        border-radius: 14px;
-        padding: 12px;
+        width: min(340px, calc(100vw - 24px));
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        background: #ffffff;
+        color: #0f172a;
+        border-radius: 26px;
+        padding: 14px 16px;
         z-index: 10;
         display: none;
+        box-shadow:
+          0 14px 34px rgba(15, 23, 42, 0.14),
+          0 2px 6px rgba(15, 23, 42, 0.08);
       }
       .finish-confirm-popover.visible { display: block; }
-      .finish-confirm-popover p { margin: 0 0 10px; font-size: 13px; line-height: 1.4; }
+      .finish-confirm-popover p { margin: 0 0 12px; font-size: 13px; line-height: 1.4; color: rgba(15, 23, 42, 0.82); }
       .finish-popover-actions { display: flex; justify-content: flex-end; gap: 8px; }
       .finish-popover-btn {
-        border-radius: 10px;
-        border: 1px solid rgba(148, 163, 184, 0.4);
-        background: rgba(30, 41, 59, 0.9);
-        color: #e2e8f0;
+        border-radius: 16px;
+        border: 1px solid rgba(15, 23, 42, 0.12);
+        background: #f9fafb;
+        color: #111827;
         font-size: 12px;
-        padding: 6px 10px;
+        font-weight: 600;
+        padding: 8px 14px;
         cursor: pointer;
       }
       .finish-popover-btn.primary {
-        background: rgba(37, 99, 235, 0.96);
-        border-color: rgba(147, 197, 253, 0.95);
-        color: #fff;
+        border-color: rgba(96, 165, 250, 0.7);
+        background: var(--accent-pastel);
+        color: #1e3a8a;
       }
 
       .feedback-screen {
@@ -763,7 +663,6 @@
         .write-area { width: 100%; }
         .send-btn { align-self: flex-end; }
         .bar-top { align-items: flex-start; }
-        .conversation-mode { margin-left: 0; }
         .finish-negotiation-button { right: 12px; bottom: 12px; }
       }
     </style>
@@ -856,15 +755,15 @@
               <textarea id="textInput" rows="1" placeholder="Escribe tu mensaje..."></textarea>
               <button id="sendTextBtn" class="send-btn" aria-label="Enviar mensaje">
                 <span class="send-btn-enter">↵ Enter</span>
-                <span>Finalizar</span>
+                <span>Enviar</span>
               </button>
             </div>
           </div>
         </div>
       </div>
 
-      <button id="finishNegotiationBtn" class="finish-negotiation-button" type="button" aria-label="Finalizar negociación">
-        Finalizar negociación
+      <button id="finishNegotiationBtn" class="finish-negotiation-button" type="button" aria-label="Finalizar conversación">
+        Finalizar conversación
       </button>
       <section id="finishConfirmPopover" class="finish-confirm-popover" aria-live="polite" aria-label="Confirmar finalización">
         <p>¿Seguro que quieres finalizar la conversación?</p>
