@@ -14,6 +14,8 @@ function ids() {
 }
 
 const InputMode = { TALK: 'talk', WRITE: 'write' };
+const AgentMode = { CHAT: 'chat', NEGOTIATION: 'negotiation' };
+const AgentModeLabels = { chat: 'Chat', negotiation: 'Negociación' };
 
 const JobStageLabel = {
   created: 'Creando evaluación...',
@@ -27,6 +29,7 @@ const JobStageLabel = {
 };
 
 let currentInputMode = InputMode.TALK;
+let currentAgentMode = AgentMode.CHAT;
 let finishButtonArmed = false;
 let lastSessionKey = '';
 let orbRaf = null;
@@ -314,6 +317,14 @@ $('feedbackRetryBtn').onclick = async () => {
     showFeedbackView('error');
   }
 };
+
+document.addEventListener('click', (e) => {
+  if (!ui.conversationMode.contains(e.target)) closeConversationModeMenu();
+});
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeConversationModeMenu();
+});
 
 window.addEventListener('click', (ev) => {
   if (!finalizePopoverOpen) return;

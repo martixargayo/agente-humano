@@ -719,6 +719,24 @@
               <button id="modeTalk" class="mode-tab active" role="tab" aria-selected="true">Hablar</button>
               <button id="modeWrite" class="mode-tab" role="tab" aria-selected="false">Escribir</button>
             </div>
+            <div id="conversationMode" class="conversation-mode">
+              <button
+                id="conversationModeTrigger"
+                class="conversation-mode-trigger"
+                type="button"
+                aria-haspopup="menu"
+                aria-expanded="false"
+                aria-controls="conversationModeMenu"
+                aria-label="Seleccionar modo de conversación"
+              >
+                <span id="conversationModeCurrent" class="mode-current">Chat</span>
+                <span class="mode-chevron">▾</span>
+              </button>
+              <div id="conversationModeMenu" class="conversation-mode-menu" role="menu" aria-label="Modo de conversación">
+                <button type="button" class="conversation-mode-option active" role="menuitemradio" aria-checked="true" data-agent-mode="chat">Chat</button>
+                <button type="button" class="conversation-mode-option" role="menuitemradio" aria-checked="false" data-agent-mode="negotiation">Negociación</button>
+              </div>
+            </div>
           </div>
 
           <div id="talkMode" class="bar-content">
