@@ -3,21 +3,19 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 
-function randRange(a, b) {
-  return a + (b - a) * Math.random();
-}
+const URL_PARAMS = new URLSearchParams(window.location.search);
+const DEBUG_EDIT_ENABLED = URL_PARAMS.get('debugEdit') === '1';
+const DEBUG_MOUTH_POINTS_ENABLED = URL_PARAMS.get('debugMouthPoints') === '1';
 
-function clamp01(v) {
-  return THREE.MathUtils.clamp(v, 0, 1);
-}
-
+function randRange(a, b) { return a + (b - a) * Math.random(); }
+function clamp01(v) { return THREE.MathUtils.clamp(v, 0, 1); }
 function smoothstepJS(edge0, edge1, x) {
   if (edge0 === edge1) return x < edge0 ? 0 : 1;
   const t = clamp01((x - edge0) / (edge1 - edge0));
   return t * t * (3.0 - 2.0 * t);
 }
 
-const vertexShader = /* glsl */ `
+const realisticSurfaceVertexShader = /* glsl */ `
 precision highp float;
 uniform float uTime;
 uniform float uGlobalAmp;
@@ -48,7 +46,6 @@ attribute float aMouthWeight;
 attribute float aMouthSide;
 attribute float aHeadWeight;
 varying vec2 vUv;
-varying float vHeadWeight;
 varying float vBaseZ;
 varying vec2 vBaseXY;
 varying float vMouthWeight;
@@ -61,11 +58,9 @@ mat3 rotZ(float a){ float s=sin(a), c=cos(a); return mat3(c,-s,0.,s,c,0.,0.,0.,1
 vec3 rotateAroundPivot(vec3 p, vec3 pivot, vec3 r){ vec3 q = p - pivot; q = rotY(r.y) * rotX(r.x) * rotZ(r.z) * q; return q + pivot; }
 void main() {
   vUv = aUv;
-  vHeadWeight = aHeadWeight;
   vBaseZ = aBasePosition.z;
   vBaseXY = aBasePosition.xy;
   vMouthWeight = aMouthWeight;
-
   vec3 pos = aBasePosition;
   float t = uTime;
   vec3 globalOffset = vec3(sin(t * 0.5 + aRandom.x * 6.2831) * 0.003, cos(t * 0.4 + aRandom.y * 6.2831) * 0.002, 0.0);
@@ -80,12 +75,10 @@ void main() {
   float totalOpen = clamp(uRestOpen + max(sin(uTime * uTalkFreq), 0.0) * uTalk, 0.0, 1.0);
   float mouthFactor = aMouthWeight * totalOpen;
   vec3 mouthOffset = vec3(0.0, aMouthSide * mix(uTalkAmpBot, uTalkAmpTop, step(0.0, aMouthSide)) * mouthFactor, -uLipDepthAmp * mouthFactor);
-
   vec3 displaced = pos + globalOffset * uGlobalAmp + clusterOffset * uClusterAmp + microOffset * uNoiseAmp + breathOffset + mouthOffset;
   float dissolveBand = smoothstep(uDissolveStart, uDissolveEnd, aHeightFromTop);
   vec3 dissolveOffset = vec3((aRandom.x - 0.5) * 0.0035, (0.4 + 0.6 * (0.5 + 0.5 * sin(uTime * 2.8 + aRandom.x * 17.0 + aBasePosition.y * 9.0))) * 0.01, (aRandom.y - 0.5) * 0.003) * dissolveBand * uDissolveMotionAmp;
   displaced += dissolveOffset;
-
   vec3 bodyPos = rotateAroundPivot(displaced, uBodyPivot, uBodyRot) + uBodyOffset;
   vec3 headPos = rotateAroundPivot(bodyPos, uNeckPivot, uHeadRot);
   vec3 finalPos = mix(bodyPos, headPos, aHeadWeight);
@@ -93,7 +86,7 @@ void main() {
 }
 `;
 
-const fragmentShader = /* glsl */ `
+const realisticSurfaceFragmentShader = /* glsl */ `
 precision highp float;
 uniform sampler2D uColorMap;
 uniform float uUseMap;
@@ -105,16 +98,24 @@ uniform vec4 uEyeLeftLower;
 uniform vec4 uEyeRightMain;
 uniform vec4 uEyeRightUpper;
 uniform vec4 uEyeRightLower;
+uniform float uMouthOpenVisual;
+uniform float uMouthMeshFade;
+uniform float uMouthFeather;
+uniform float uMouthMeshAlphaMin;
+uniform float uMouthMeshFadeGamma;
+uniform float uMouthMeshFadeGain;
+uniform float uUseDiamondFade;
+uniform float uFadeDiamondCX;
+uniform float uFadeDiamondCY;
+uniform float uFadeDiamondRX;
+uniform float uFadeDiamondRY;
+uniform float uFadeDiamondRot;
+uniform float uMouthHoleActive;
 varying vec2 vUv;
 varying float vBaseZ;
 varying vec2 vBaseXY;
-
-mat2 invRot(float a) {
-  float s = sin(a);
-  float c = cos(a);
-  return mat2(c, s, -s, c);
-}
-
+varying float vMouthWeight;
+mat2 invRot(float a) { float s = sin(a); float c = cos(a); return mat2(c, s, -s, c); }
 float blinkCover(vec2 baseXY, vec4 eyeMain, vec4 upperCfg, vec4 lowerCfg, float blink) {
   vec2 local = invRot(eyeMain.w) * (baseXY - eyeMain.xy);
   float halfWidth = max(eyeMain.z, 1e-4);
@@ -128,7 +129,6 @@ float blinkCover(vec2 baseXY, vec4 eyeMain, vec4 upperCfg, vec4 lowerCfg, float 
   float belowBase = 1.0 - smoothstep(upperBase - yFeather, upperBase + yFeather, local.y);
   return xMask * aboveMoved * belowBase;
 }
-
 void main() {
   if (vBaseZ < 0.0) discard;
   vec3 texColor = texture2D(uColorMap, vUv).rgb;
@@ -139,19 +139,99 @@ void main() {
   float cover = max(leftCover, rightCover) * smoothstep(0.02, 0.95, blink);
   vec3 lidColor = texture2D(uColorMap, clamp(vUv + vec2(0.0, 0.03), 0.0, 1.0)).rgb;
   finalColor = mix(finalColor, lidColor, cover);
-  gl_FragColor = vec4(finalColor, 1.0);
+  float innerFadeMask = smoothstep(0.62 - uMouthFeather, 0.88 + uMouthFeather, vMouthWeight);
+  float mouthFadeRaw = clamp(uMouthOpenVisual * uMouthMeshFadeGain * innerFadeMask, 0.0, 1.0);
+  float mouthFade = pow(mouthFadeRaw, max(0.01, uMouthMeshFadeGamma));
+  mouthFade = clamp(mouthFade * uMouthMeshFade, 0.0, 1.0);
+  vec2 localDiamond = invRot(uFadeDiamondRot) * (vBaseXY - vec2(uFadeDiamondCX, uFadeDiamondCY));
+  float diamondField = abs(localDiamond.x) / max(1e-5, abs(uFadeDiamondRX)) + abs(localDiamond.y) / max(1e-5, abs(uFadeDiamondRY));
+  float diamondInside = step(diamondField, 1.0);
+  float mouthHoleActive = step(0.5, uMouthHoleActive) * step(0.5, uUseDiamondFade);
+  if (mouthHoleActive > 0.5 && diamondInside > 0.5) discard;
+  finalColor = mix(finalColor, finalColor * 0.88, mouthFade * 0.35);
+  float outAlpha = mix(1.0, clamp(uMouthMeshAlphaMin, 0.0, 1.0), mouthFade);
+  gl_FragColor = vec4(finalColor, outAlpha);
+}
+`;
+
+const mouthPointsVertexShader = /* glsl */ `
+precision highp float;
+uniform float uTime;
+uniform float uTalk;
+uniform float uTalkAmpTop;
+uniform float uTalkAmpBot;
+uniform float uTalkFreq;
+uniform float uLipDepthAmp;
+uniform float uRestOpen;
+uniform float uPointSizeNear;
+uniform float uPointSizeFar;
+uniform vec3 uHeadRot;
+uniform vec3 uBodyRot;
+uniform vec3 uBodyOffset;
+uniform vec3 uNeckPivot;
+uniform vec3 uBodyPivot;
+attribute vec3 aBasePosition;
+attribute float aMouthWeight;
+attribute float aMouthSide;
+attribute float aHeadWeight;
+attribute float aMouthOverlayMix;
+attribute vec2 aUv;
+varying float vMouthOverlayMix;
+varying vec2 vUv;
+varying float vBaseZ;
+mat3 rotX(float a){ float s=sin(a), c=cos(a); return mat3(1.,0.,0.,0.,c,-s,0.,s,c); }
+mat3 rotY(float a){ float s=sin(a), c=cos(a); return mat3(c,0.,s,0.,1.,0.,-s,0.,c); }
+mat3 rotZ(float a){ float s=sin(a), c=cos(a); return mat3(c,-s,0.,s,c,0.,0.,0.,1.); }
+vec3 rotateAroundPivot(vec3 p, vec3 pivot, vec3 r){ vec3 q = p - pivot; q = rotY(r.y) * rotX(r.x) * rotZ(r.z) * q; return q + pivot; }
+void main() {
+  vMouthOverlayMix = aMouthOverlayMix;
+  vUv = aUv;
+  vBaseZ = aBasePosition.z;
+  float talkOpen = max(sin(uTime * uTalkFreq), 0.0) * uTalk;
+  float totalOpen = clamp(uRestOpen + talkOpen, 0.0, 1.0);
+  float mouthFactor = aMouthWeight * totalOpen;
+  float lipAmp = mix(uTalkAmpBot, uTalkAmpTop, step(0.0, aMouthSide));
+  vec3 displaced = aBasePosition + vec3(0.0, aMouthSide * lipAmp * mouthFactor, -uLipDepthAmp * mouthFactor);
+  vec3 bodyPos = rotateAroundPivot(displaced, uBodyPivot, uBodyRot) + uBodyOffset;
+  vec3 headPos = rotateAroundPivot(bodyPos, uNeckPivot, uHeadRot);
+  vec3 finalPos = mix(bodyPos, headPos, aHeadWeight);
+  vec4 mvPosition = modelViewMatrix * vec4(finalPos, 1.0);
+  float dist = max(0.0, -mvPosition.z);
+  float distNorm = clamp((dist - 1.0) / 1.7, 0.0, 1.0);
+  gl_PointSize = mix(uPointSizeNear, uPointSizeFar, distNorm);
+  gl_Position = projectionMatrix * mvPosition;
+}
+`;
+
+const mouthPointsFragmentShader = /* glsl */ `
+precision highp float;
+uniform sampler2D uColorMap;
+uniform float uUseMap;
+uniform float uMouthPointsAlpha;
+uniform float uMouthPointsAlphaClip;
+uniform float uMouthPointsColorMul;
+uniform float uMouthPointsCullBack;
+varying float vMouthOverlayMix;
+varying vec2 vUv;
+varying float vBaseZ;
+void main() {
+  vec2 p = gl_PointCoord * 2.0 - 1.0;
+  float r2 = dot(p, p);
+  if (r2 > 1.0) discard;
+  float circle = 1.0 - smoothstep(0.68, 1.0, sqrt(r2));
+  float alpha = circle * uMouthPointsAlpha * clamp(vMouthOverlayMix, 0.0, 1.0);
+  if (alpha < uMouthPointsAlphaClip) discard;
+  if (uMouthPointsCullBack > 0.5 && vBaseZ < 0.0) discard;
+  vec3 texColor = texture2D(uColorMap, vUv).rgb;
+  vec3 baseColor = mix(vec3(0.8), texColor, uUseMap);
+  gl_FragColor = vec4(baseColor * uMouthPointsColorMul, alpha);
 }
 `;
 
 export function createAvatarRuntime({ stageEl, config }) {
   const canvas = document.createElement('canvas');
   canvas.id = 'avatarCanvas';
-  canvas.style.position = 'absolute';
-  canvas.style.inset = '0';
-  canvas.style.width = '100%';
-  canvas.style.height = '100%';
-  canvas.style.zIndex = '2';
-  canvas.style.display = 'block';
+  canvas.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;z-index:2;display:block;';
   stageEl?.appendChild(canvas);
 
   const scene = new THREE.Scene();
@@ -178,70 +258,38 @@ export function createAvatarRuntime({ stageEl, config }) {
   scene.add(rim);
   scene.add(new THREE.AmbientLight(0xffffff, 0.2));
 
+  const state = { mode: 'IDLE', talkLevel: 0, manualTalkLevel: 0, analyser: null, analyserData: null, lipsyncLevel: 0 };
   const clock = new THREE.Clock();
 
-  const state = {
-    mode: 'IDLE',
-    talkLevel: 0,
-    manualTalkLevel: 0,
-    analyser: null,
-    analyserData: null,
-    lipsyncLevel: 0,
-  };
-
+  const MouthTuning = { centerY: 0.16, centerX: -0.045, width: 0.18, height: 0.14, curve: 0.0 };
   const NeckTuning = {
-    centerX: -0.055,
-    width: 0.23,
-    curve: 0.0,
-    topY: 0.12,
-    bottomY: 0.03,
-    neckPivotY: 0.09,
-    bodyPivotY: -0.05,
+    centerX: -0.05540768292619062,
+    width: 0.3289615614114691,
+    topY: -0.3029435623085454,
+    bottomY: -0.5299623850146092,
+    curve: -0.18449820086885416,
+    neckPivotY: -0.5299623850146092,
+    bodyPivotY: -0.6499623850146092,
   };
-
-  const MouthTuning = {
-    centerY: 0.16,
-    centerX: -0.045,
-    width: 0.18,
-    height: 0.14,
-    curve: 0.0,
-  };
-
   const EyeBlinkTuning = {
-    left: {
-      centerX: -0.21262084897756595,
-      centerY: 0.49398826434773013,
-      halfWidth: 0.06927066702311041,
-      rotation: -0.07747718419813834,
-      upper: { offset: 0.015333409431849491, curve: -0.01375947353731123 },
-      lower: { offset: -0.012817365534143615, curve: 0.004398359546727952 },
-    },
-    right: {
-      centerX: 0.09769628198016435,
-      centerY: 0.48632749262174674,
-      halfWidth: 0.07165083081892201,
-      rotation: 0.05966598604243294,
-      upper: { offset: 0.009755191469550624, curve: -0.013990511698837487 },
-      lower: { offset: -0.018494072161187834, curve: 0.0027252480420008746 },
-    },
+    left: { centerX: -0.21262084897756595, centerY: 0.49398826434773013, halfWidth: 0.06927066702311041, rotation: -0.07747718419813834, upper: { offset: 0.015333409431849491, curve: -0.01375947353731123 }, lower: { offset: -0.012817365534143615, curve: 0.004398359546727952 } },
+    right: { centerX: 0.09769628198016435, centerY: 0.48632749262174674, halfWidth: 0.07165083081892201, rotation: 0.05966598604243294, upper: { offset: 0.009755191469550624, curve: -0.013990511698837487 }, lower: { offset: -0.018494072161187834, curve: 0.0027252480420008746 } },
+  };
+  const MouthRenderTuning = {
+    rimA: 0.26, rimB: 0.46, rimC: 0.68, rimD: 0.84, innerA: 0.70, innerB: 0.82, innerGain: 0.22,
+    innerCoreA: 0.82, innerCoreB: 0.96, innerCoreGain: 0.70, maskMin: 0.08, pointsAlpha: 0.50,
+    pointsAlphaClip: 0.012, pointsSizeNear: 3.0 * window.devicePixelRatio, pointsSizeFar: 2.3 * window.devicePixelRatio,
+    pointsColorMul: 0.95, meshFade: 0.42, meshFeather: 0.12, meshAlphaMin: 0.01, meshFadeGamma: 3.0, meshFadeGain: 2.2,
+    useDiamondFade: true, fadeDiamondCX: -0.045, fadeDiamondCY: 0.16, fadeDiamondRX: 0.11, fadeDiamondRY: 0.07, fadeDiamondRot: 0.0,
+    pointsOn: 0.050, pointsOff: 0.032, mouthAttack: 26.0, mouthRelease: 12.0,
   };
 
-  const EyelidMotionState = {
-    value: 0,
-    phase: 'idle',
-    timer: 0,
-    duration: 0.12,
-    nextBlinkAt: 2.2,
-    pendingDouble: false,
-    initialized: false,
-  };
-
+  const EyelidMotionState = { value: 0, phase: 'idle', timer: 0, duration: 0.12, nextBlinkAt: 2.2, pendingDouble: false, initialized: false };
   const MotionConfig = {
     head: { ampYaw: 0.040, ampPitch: 0.036, ampRoll: 0.022, holdMin: 1.3, holdMax: 3.8, smooth: 8.0, rampDur: 0.32 },
     body: { ampYaw: 0.010, ampPitch: 0.008, ampRoll: 0.008, holdMin: 1.6, holdMax: 4.2, smooth: 5.0, rampDur: 0.40 },
     micro: { yaw: 0.0045, pitch: 0.0030, roll: 0.0026 },
   };
-
   const MotionState = {
     seed: Math.random() * 1000,
     head: { current: new THREE.Vector3(), target: new THREE.Vector3(), targetFrom: new THREE.Vector3(), targetTo: new THREE.Vector3(), nextSwitch: 0, targetT0: 0 },
@@ -249,93 +297,171 @@ export function createAvatarRuntime({ stageEl, config }) {
     nod: { active: false, t0: 0, dur: 0.32, amp: 0.012 },
   };
 
-  const loader = new GLTFLoader();
-  let material = null;
-  let mesh = null;
+  let surfaceMaterial = null;
+  let surfaceMesh = null;
+  let mouthPointsMaterial = null;
+  let mouthPoints = null;
+  let mouthOpenVisual = 0;
+  let mouthPointsVisibleLatched = false;
 
-  function nextBlinkInterval() {
-    return randRange(2.0, 6.0);
+  function createStableRandom(x, y, z, salt = 0.0) {
+    const qx = Math.round(x * 10000.0) / 10000.0;
+    const qy = Math.round(y * 10000.0) / 10000.0;
+    const qz = Math.round(z * 10000.0) / 10000.0;
+    const seed = qx * 127.1 + qy * 311.7 + qz * 74.7 + salt * 19.19;
+    const v = Math.sin(seed) * 43758.5453123;
+    return v - Math.floor(v);
   }
 
-  function startEyelidBlink(durationSec) {
-    EyelidMotionState.phase = 'closing';
-    EyelidMotionState.timer = 0;
-    EyelidMotionState.duration = durationSec;
-    EyelidMotionState.value = 0;
+  function mouthRimMaskFromWeight(w) {
+    const t = MouthRenderTuning;
+    const rimMask = smoothstepJS(t.rimA, t.rimB, w) * (1.0 - smoothstepJS(t.rimC, t.rimD, w));
+    const innerTiny = smoothstepJS(t.innerA, t.innerB, w) * t.innerGain;
+    const innerCore = smoothstepJS(t.innerCoreA, t.innerCoreB, w) * t.innerCoreGain;
+    return THREE.MathUtils.clamp(rimMask + innerTiny + innerCore, 0, 1);
   }
 
-  function updateEyelidBlink(elapsed, delta) {
-    if (!EyelidMotionState.initialized) {
-      EyelidMotionState.initialized = true;
-      EyelidMotionState.nextBlinkAt = elapsed + randRange(0.45, 1.35);
+  function buildMouthPointsGeometryFromAnimatedSurface(srcGeometry) {
+    const basePosAttr = srcGeometry.getAttribute('aBasePosition');
+    const uvAttr = srcGeometry.getAttribute('aUv');
+    const mouthWeightAttr = srcGeometry.getAttribute('aMouthWeight');
+    const mouthSideAttr = srcGeometry.getAttribute('aMouthSide');
+    const headWeightAttr = srcGeometry.getAttribute('aHeadWeight');
+    if (!basePosAttr || !uvAttr || !mouthWeightAttr || !mouthSideAttr || !headWeightAttr) return null;
+
+    const p = []; const b = []; const uv = []; const mw = []; const ms = []; const hw = []; const ov = [];
+    for (let i = 0; i < basePosAttr.count; i++) {
+      const w = mouthWeightAttr.getX(i);
+      const overlay = mouthRimMaskFromWeight(w);
+      if (overlay <= MouthRenderTuning.maskMin) continue;
+      const x = basePosAttr.getX(i); const y = basePosAttr.getY(i); const z = basePosAttr.getZ(i);
+      p.push(x, y, z); b.push(x, y, z); uv.push(uvAttr.getX(i), uvAttr.getY(i));
+      mw.push(w); ms.push(mouthSideAttr.getX(i)); hw.push(headWeightAttr.getX(i)); ov.push(overlay);
     }
-    if (EyelidMotionState.phase === 'idle') {
-      if (elapsed >= EyelidMotionState.nextBlinkAt) {
-        startEyelidBlink(randRange(0.09, 0.15));
-        EyelidMotionState.pendingDouble = Math.random() < 0.2;
+    if (!p.length) return null;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(p), 3));
+    geo.setAttribute('aBasePosition', new THREE.BufferAttribute(new Float32Array(b), 3));
+    geo.setAttribute('aUv', new THREE.BufferAttribute(new Float32Array(uv), 2));
+    geo.setAttribute('aMouthWeight', new THREE.BufferAttribute(new Float32Array(mw), 1));
+    geo.setAttribute('aMouthSide', new THREE.BufferAttribute(new Float32Array(ms), 1));
+    geo.setAttribute('aHeadWeight', new THREE.BufferAttribute(new Float32Array(hw), 1));
+    geo.setAttribute('aMouthOverlayMix', new THREE.BufferAttribute(new Float32Array(ov), 1));
+    return geo;
+  }
+
+  function applyEyeUniforms(mat) {
+    const left = EyeBlinkTuning.left;
+    const right = EyeBlinkTuning.right;
+    mat.uniforms.uBlink.value = EyelidMotionState.value;
+    mat.uniforms.uEyeLeftMain.value.set(left.centerX, left.centerY, Math.max(1e-4, Math.abs(left.halfWidth)), left.rotation || 0);
+    mat.uniforms.uEyeLeftUpper.value.set(left.upper.offset, left.upper.curve, 0, 0);
+    mat.uniforms.uEyeLeftLower.value.set(left.lower.offset, left.lower.curve, 0, 0);
+    mat.uniforms.uEyeRightMain.value.set(right.centerX, right.centerY, Math.max(1e-4, Math.abs(right.halfWidth)), right.rotation || 0);
+    mat.uniforms.uEyeRightUpper.value.set(right.upper.offset, right.upper.curve, 0, 0);
+    mat.uniforms.uEyeRightLower.value.set(right.lower.offset, right.lower.curve, 0, 0);
+  }
+
+  function generateAnimatedSurfaceGeometry(srcGeometry) {
+    const geo = srcGeometry.clone();
+    const pos = geo.getAttribute('position');
+    const uv = geo.getAttribute('uv');
+    const count = pos.count;
+    const basePositions = new Float32Array(count * 3);
+    const randoms = new Float32Array(count * 3);
+    const clusterIds = new Float32Array(count);
+    const heightFromTop = new Float32Array(count);
+    const mouthWeights = new Float32Array(count);
+    const mouthSides = new Float32Array(count);
+    const headWeights = new Float32Array(count);
+    const uvArray = new Float32Array(count * 2);
+    geo.computeBoundingBox();
+    const box = geo.boundingBox;
+    const minY = box ? box.min.y : -1;
+    const maxY = box ? box.max.y : 1;
+    const yRange = Math.max(1e-6, maxY - minY);
+    for (let i = 0; i < count; i++) {
+      const x = pos.getX(i); const y = pos.getY(i); const z = pos.getZ(i);
+      basePositions[i * 3] = x; basePositions[i * 3 + 1] = y; basePositions[i * 3 + 2] = z;
+      randoms[i * 3] = createStableRandom(x, y, z, 1.0);
+      randoms[i * 3 + 1] = createStableRandom(x, y, z, 2.0);
+      randoms[i * 3 + 2] = createStableRandom(x, y, z, 3.0);
+      uvArray[i * 2] = uv ? uv.getX(i) : 0; uvArray[i * 2 + 1] = uv ? uv.getY(i) : 0;
+      const y01 = (y - minY) / yRange;
+      heightFromTop[i] = clamp01(1 - y01);
+      const cx = Math.floor((x + 0.4) * 10.0);
+      const cy = Math.floor((y + 0.4) * 10.0);
+      clusterIds[i] = cx + cy * 10.0;
+      const mwAbs = Math.max(1e-6, Math.abs(MouthTuning.width));
+      const mhAbs = Math.max(1e-6, Math.abs(MouthTuning.height));
+      const dx = x - MouthTuning.centerX; const ax = Math.abs(dx);
+      let weight = 0; let side = 0;
+      if (ax <= mwAbs) {
+        const normX = dx / mwAbs;
+        const curveY = MouthTuning.centerY - MouthTuning.curve * normX * normX;
+        const dy = y - curveY; const ay = Math.abs(dy);
+        if (ay <= mhAbs) { weight = clamp01((1 - ax / mwAbs) * (1 - ay / mhAbs)); side = dy > 0 ? 1 : (dy < 0 ? -1 : 0); }
       }
+      mouthWeights[i] = weight; mouthSides[i] = side;
+      const wAbs = Math.max(1e-6, Math.abs(NeckTuning.width));
+      const dxN = x - NeckTuning.centerX; const insideWidth = Math.abs(dxN) <= wAbs;
+      const nx = clamp01((dxN / wAbs + 1) * 0.5) * 2 - 1;
+      const curve = NeckTuning.curve * nx * nx;
+      let yTop = insideWidth ? (NeckTuning.topY - curve) : NeckTuning.topY;
+      let yBot = insideWidth ? (NeckTuning.bottomY - curve) : NeckTuning.bottomY;
+      if (yTop < yBot) [yTop, yBot] = [yBot, yTop];
+      headWeights[i] = y >= yTop ? 1 : (y <= yBot ? 0 : smoothstepJS(yBot, yTop, y));
+    }
+    geo.setAttribute('aUv', new THREE.BufferAttribute(uvArray, 2));
+    geo.setAttribute('aBasePosition', new THREE.BufferAttribute(basePositions, 3));
+    geo.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 3));
+    geo.setAttribute('aClusterId', new THREE.BufferAttribute(clusterIds, 1));
+    geo.setAttribute('aHeightFromTop', new THREE.BufferAttribute(heightFromTop, 1));
+    geo.setAttribute('aMouthWeight', new THREE.BufferAttribute(mouthWeights, 1));
+    geo.setAttribute('aMouthSide', new THREE.BufferAttribute(mouthSides, 1));
+    geo.setAttribute('aHeadWeight', new THREE.BufferAttribute(headWeights, 1));
+    return geo;
+  }
+
+  function nextBlinkInterval() { return randRange(2.0, 6.0); }
+  function startEyelidBlink(durationSec) { EyelidMotionState.phase = 'closing'; EyelidMotionState.timer = 0; EyelidMotionState.duration = durationSec; EyelidMotionState.value = 0; }
+  function updateEyelidBlink(elapsed, delta) {
+    if (!EyelidMotionState.initialized) { EyelidMotionState.initialized = true; EyelidMotionState.nextBlinkAt = elapsed + randRange(0.45, 1.35); }
+    if (EyelidMotionState.phase === 'idle') {
+      if (elapsed >= EyelidMotionState.nextBlinkAt) { startEyelidBlink(randRange(0.09, 0.15)); EyelidMotionState.pendingDouble = Math.random() < 0.2; }
       return;
     }
-
     EyelidMotionState.timer += delta;
     const closeDuration = EyelidMotionState.duration * 0.34;
     const openDuration = EyelidMotionState.duration * 0.66;
     if (EyelidMotionState.phase === 'closing') {
       const t = clamp01(EyelidMotionState.timer / closeDuration);
       EyelidMotionState.value = t;
-      if (t >= 1.0) {
-        EyelidMotionState.phase = 'opening';
-        EyelidMotionState.timer = 0;
-      }
+      if (t >= 1) { EyelidMotionState.phase = 'opening'; EyelidMotionState.timer = 0; }
       return;
     }
-
     const t = clamp01(EyelidMotionState.timer / openDuration);
-    EyelidMotionState.value = 1.0 - t;
-    if (t >= 1.0) {
-      EyelidMotionState.phase = 'idle';
-      EyelidMotionState.timer = 0;
-      EyelidMotionState.value = 0;
-      EyelidMotionState.nextBlinkAt = elapsed + (EyelidMotionState.pendingDouble ? randRange(0.08, 0.16) : nextBlinkInterval());
-      EyelidMotionState.pendingDouble = false;
-    }
+    EyelidMotionState.value = 1 - t;
+    if (t >= 1) { EyelidMotionState.phase = 'idle'; EyelidMotionState.timer = 0; EyelidMotionState.value = 0; EyelidMotionState.nextBlinkAt = elapsed + (EyelidMotionState.pendingDouble ? randRange(0.08, 0.16) : nextBlinkInterval()); EyelidMotionState.pendingDouble = false; }
   }
 
   function pickTarget(cfg) {
-    const bias = 0.65;
-    const s = () => (Math.random() * 2 - 1);
+    const bias = 0.65; const s = () => (Math.random() * 2 - 1);
     const soften = () => (Math.random() < bias ? 0.35 : 1.0) * randRange(0.4, 1.0);
     return new THREE.Vector3(s() * cfg.ampPitch * soften(), s() * cfg.ampYaw * soften(), s() * cfg.ampRoll * soften());
   }
-
   function updateChannel(ch, cfg, t, dt) {
-    if (t >= ch.nextSwitch) {
-      ch.targetFrom.copy(ch.target);
-      ch.targetTo.copy(pickTarget(cfg));
-      ch.targetT0 = t;
-      ch.nextSwitch = t + randRange(cfg.holdMin, cfg.holdMax);
-    }
-    const rampDur = Math.max(0.001, cfg.rampDur || 0.001);
-    const rampT = clamp01((t - ch.targetT0) / rampDur);
-    const rampS = rampT * rampT * (3.0 - 2.0 * rampT);
+    if (t >= ch.nextSwitch) { ch.targetFrom.copy(ch.target); ch.targetTo.copy(pickTarget(cfg)); ch.targetT0 = t; ch.nextSwitch = t + randRange(cfg.holdMin, cfg.holdMax); }
+    const rampT = clamp01((t - ch.targetT0) / Math.max(0.001, cfg.rampDur || 0.001));
+    const rampS = rampT * rampT * (3 - 2 * rampT);
     ch.target.copy(ch.targetFrom).lerp(ch.targetTo, rampS);
-    const k = 1.0 - Math.exp(-dt * cfg.smooth);
-    ch.current.lerp(ch.target, k);
+    ch.current.lerp(ch.target, 1 - Math.exp(-dt * cfg.smooth));
   }
-
   function updateNod(t, dt) {
-    if (!MotionState.nod.active && state.mode === 'LISTENING' && Math.random() < 0.18 * dt) {
-      MotionState.nod.active = true;
-      MotionState.nod.t0 = t;
-      MotionState.nod.dur = randRange(0.28, 0.40);
-      MotionState.nod.amp = randRange(0.010, 0.014);
-    }
+    if (!MotionState.nod.active && state.mode === 'LISTENING' && Math.random() < 0.18 * dt) { MotionState.nod.active = true; MotionState.nod.t0 = t; MotionState.nod.dur = randRange(0.28, 0.40); MotionState.nod.amp = randRange(0.010, 0.014); }
     if (!MotionState.nod.active) return 0;
     const u = (t - MotionState.nod.t0) / MotionState.nod.dur;
-    if (u >= 1.0) {
-      MotionState.nod.active = false;
-      return 0;
-    }
+    if (u >= 1) { MotionState.nod.active = false; return 0; }
     return Math.sin(u * Math.PI) * MotionState.nod.amp;
   }
 
@@ -348,204 +474,99 @@ export function createAvatarRuntime({ stageEl, config }) {
       sum += v * v;
     }
     const rms = Math.sqrt(sum / state.analyserData.length);
-    const SILENCE_RMS = 0.01;
-    const VOICE_RMS = 0.12;
-    let target = clamp01((rms - SILENCE_RMS) / (VOICE_RMS - SILENCE_RMS));
-    if (target > 0) target = 0.12 + (1.0 - 0.12) * target;
-    const dt = 1 / 60;
+    let target = clamp01((rms - 0.01) / (0.12 - 0.01));
+    if (target > 0) target = 0.12 + (1 - 0.12) * target;
     const speed = target > state.lipsyncLevel ? 32 : 12;
-    const smoothing = 1 - Math.exp(-dt * speed);
-    state.lipsyncLevel += (target - state.lipsyncLevel) * smoothing;
+    state.lipsyncLevel += (target - state.lipsyncLevel) * (1 - Math.exp(-(1 / 60) * speed));
     return state.lipsyncLevel;
   }
 
-  function applyEyeUniforms(mat) {
-    const left = EyeBlinkTuning.left;
-    const right = EyeBlinkTuning.right;
-    mat.uniforms.uBlink.value = EyelidMotionState.value;
-    mat.uniforms.uEyeLeftMain.value.set(left.centerX, left.centerY, Math.max(1e-4, Math.abs(left.halfWidth)), left.rotation || 0.0);
-    mat.uniforms.uEyeLeftUpper.value.set(left.upper.offset, left.upper.curve, 0, 0);
-    mat.uniforms.uEyeLeftLower.value.set(left.lower.offset, left.lower.curve, 0, 0);
-    mat.uniforms.uEyeRightMain.value.set(right.centerX, right.centerY, Math.max(1e-4, Math.abs(right.halfWidth)), right.rotation || 0.0);
-    mat.uniforms.uEyeRightUpper.value.set(right.upper.offset, right.upper.curve, 0, 0);
-    mat.uniforms.uEyeRightLower.value.set(right.lower.offset, right.lower.curve, 0, 0);
-  }
+  const loader = new GLTFLoader();
+  loader.load(config.modelUrl, (gltf) => {
+    const meshes = [];
+    gltf.scene.traverse((obj) => { if (obj.isMesh) meshes.push(obj); });
+    if (!meshes.length) return;
+    let colorMap = null;
+    for (const m of meshes) { if (m.material?.map) { colorMap = m.material.map; break; } }
 
-  function generateAnimatedSurfaceGeometry(srcGeometry) {
-    const geo = srcGeometry.clone();
-    const pos = geo.getAttribute('position');
-    const uv = geo.getAttribute('uv');
-    const count = pos.count;
+    const geoms = [];
+    meshes.forEach((m) => { const g = m.geometry.clone(); m.updateWorldMatrix(true, false); g.applyMatrix4(m.matrixWorld); geoms.push(g); });
+    const mergeFn = BufferGeometryUtils.mergeGeometries || BufferGeometryUtils.mergeBufferGeometries;
+    const mergedGeom = mergeFn(geoms, true);
+    if (!mergedGeom) return;
+    mergedGeom.computeVertexNormals();
+    mergedGeom.computeBoundingBox();
+    const center = new THREE.Vector3();
+    mergedGeom.boundingBox.getCenter(center);
+    mergedGeom.translate(-center.x, -center.y, -center.z);
 
-    const basePositions = new Float32Array(count * 3);
-    const randoms = new Float32Array(count * 3);
-    const clusterIds = new Float32Array(count);
-    const heightFromTop = new Float32Array(count);
-    const mouthWeights = new Float32Array(count);
-    const mouthSides = new Float32Array(count);
-    const headWeights = new Float32Array(count);
-    const uvArray = new Float32Array(count * 2);
+    const animatedSurfaceGeometry = generateAnimatedSurfaceGeometry(mergedGeom);
+    surfaceMaterial = new THREE.ShaderMaterial({
+      vertexShader: realisticSurfaceVertexShader,
+      fragmentShader: realisticSurfaceFragmentShader,
+      transparent: true,
+      uniforms: {
+        uTime: { value: 0 }, uGlobalAmp: { value: 1.5 }, uClusterAmp: { value: 1.5 }, uNoiseAmp: { value: 1.6 },
+        uTalk: { value: 0 }, uTalkAmpTop: { value: 0.024 }, uTalkAmpBot: { value: 0.075 }, uTalkFreq: { value: 24.0 },
+        uLipDepthAmp: { value: 0.1 }, uRestOpen: { value: 0.03 }, uBreathAmp: { value: 1.0 }, uBreathFreq: { value: 0.6 },
+        uHeadRot: { value: new THREE.Vector3() }, uBodyRot: { value: new THREE.Vector3() }, uBodyOffset: { value: new THREE.Vector3() },
+        uNeckPivot: { value: new THREE.Vector3(0, NeckTuning.neckPivotY, 0) }, uBodyPivot: { value: new THREE.Vector3(0, NeckTuning.bodyPivotY, 0) },
+        uDissolveStart: { value: 0.9 }, uDissolveEnd: { value: 1.0 }, uDissolveMotionAmp: { value: 1.0 },
+        uColorMap: { value: colorMap }, uUseMap: { value: colorMap ? 1.0 : 0.0 }, uColor: { value: new THREE.Color(0xffffff) },
+        uBlink: { value: 0 }, uEyeLeftMain: { value: new THREE.Vector4() }, uEyeLeftUpper: { value: new THREE.Vector4() },
+        uEyeLeftLower: { value: new THREE.Vector4() }, uEyeRightMain: { value: new THREE.Vector4() }, uEyeRightUpper: { value: new THREE.Vector4() },
+        uEyeRightLower: { value: new THREE.Vector4() }, uMouthOpenVisual: { value: 0 }, uMouthMeshFade: { value: MouthRenderTuning.meshFade },
+        uMouthFeather: { value: MouthRenderTuning.meshFeather }, uMouthMeshAlphaMin: { value: MouthRenderTuning.meshAlphaMin },
+        uMouthMeshFadeGamma: { value: MouthRenderTuning.meshFadeGamma }, uMouthMeshFadeGain: { value: MouthRenderTuning.meshFadeGain },
+        uUseDiamondFade: { value: MouthRenderTuning.useDiamondFade ? 1 : 0 }, uFadeDiamondCX: { value: MouthRenderTuning.fadeDiamondCX },
+        uFadeDiamondCY: { value: MouthRenderTuning.fadeDiamondCY }, uFadeDiamondRX: { value: MouthRenderTuning.fadeDiamondRX },
+        uFadeDiamondRY: { value: MouthRenderTuning.fadeDiamondRY }, uFadeDiamondRot: { value: MouthRenderTuning.fadeDiamondRot },
+        uMouthHoleActive: { value: 0 },
+      },
+    });
 
-    geo.computeBoundingBox();
-    const box = geo.boundingBox;
-    const minY = box ? box.min.y : -1;
-    const maxY = box ? box.max.y : 1;
-    const yRange = Math.max(1e-6, maxY - minY);
+    surfaceMesh = new THREE.Mesh(animatedSurfaceGeometry, surfaceMaterial);
+    surfaceMesh.frustumCulled = false;
+    surfaceMesh.scale.setScalar(config.transform.scale || 1.0);
+    surfaceMesh.position.fromArray(config.transform.offset || [0, 0, 0]);
+    scene.add(surfaceMesh);
 
-    for (let i = 0; i < count; i++) {
-      const x = pos.getX(i);
-      const y = pos.getY(i);
-      const z = pos.getZ(i);
-      basePositions[i * 3 + 0] = x;
-      basePositions[i * 3 + 1] = y;
-      basePositions[i * 3 + 2] = z;
-      randoms[i * 3 + 0] = Math.random();
-      randoms[i * 3 + 1] = Math.random();
-      randoms[i * 3 + 2] = Math.random();
-      uvArray[i * 2 + 0] = uv ? uv.getX(i) : 0;
-      uvArray[i * 2 + 1] = uv ? uv.getY(i) : 0;
-      const y01 = (y - minY) / yRange;
-      heightFromTop[i] = clamp01(1.0 - y01);
-      const cx = Math.floor((x + 0.4) * 10.0);
-      const cy = Math.floor((y + 0.4) * 10.0);
-      clusterIds[i] = cx + cy * 10.0;
-
-      const mwAbs = Math.max(1e-6, Math.abs(MouthTuning.width));
-      const mhAbs = Math.max(1e-6, Math.abs(MouthTuning.height));
-      const dx = x - MouthTuning.centerX;
-      const ax = Math.abs(dx);
-      let weight = 0;
-      let side = 0;
-      if (ax <= mwAbs) {
-        const normX = dx / mwAbs;
-        const curveY = MouthTuning.centerY - MouthTuning.curve * normX * normX;
-        const dy = y - curveY;
-        const ay = Math.abs(dy);
-        if (ay <= mhAbs) {
-          weight = clamp01((1.0 - ax / mwAbs) * (1.0 - ay / mhAbs));
-          side = dy > 0 ? 1.0 : (dy < 0 ? -1.0 : 0);
-        }
-      }
-      mouthWeights[i] = weight;
-      mouthSides[i] = side;
-
-      const wAbs = Math.max(1e-6, Math.abs(NeckTuning.width));
-      const dxN = x - NeckTuning.centerX;
-      const insideWidth = Math.abs(dxN) <= wAbs;
-      const nx = clamp01((dxN / wAbs + 1) * 0.5) * 2 - 1;
-      const curve = NeckTuning.curve * nx * nx;
-      let yTop = insideWidth ? (NeckTuning.topY - curve) : NeckTuning.topY;
-      let yBot = insideWidth ? (NeckTuning.bottomY - curve) : NeckTuning.bottomY;
-      if (yTop < yBot) [yTop, yBot] = [yBot, yTop];
-      headWeights[i] = y >= yTop ? 1.0 : (y <= yBot ? 0.0 : smoothstepJS(yBot, yTop, y));
+    const mouthGeo = buildMouthPointsGeometryFromAnimatedSurface(animatedSurfaceGeometry);
+    if (mouthGeo) {
+      mouthPointsMaterial = new THREE.ShaderMaterial({
+        vertexShader: mouthPointsVertexShader,
+        fragmentShader: mouthPointsFragmentShader,
+        transparent: true,
+        depthWrite: false,
+        uniforms: {
+          uTime: { value: 0 }, uTalk: { value: 0 }, uTalkAmpTop: { value: 0.024 }, uTalkAmpBot: { value: 0.075 }, uTalkFreq: { value: 24.0 },
+          uLipDepthAmp: { value: 0.1 }, uRestOpen: { value: 0.03 }, uPointSizeNear: { value: MouthRenderTuning.pointsSizeNear },
+          uPointSizeFar: { value: MouthRenderTuning.pointsSizeFar }, uHeadRot: { value: new THREE.Vector3() }, uBodyRot: { value: new THREE.Vector3() },
+          uBodyOffset: { value: new THREE.Vector3() }, uNeckPivot: { value: new THREE.Vector3(0, NeckTuning.neckPivotY, 0) },
+          uBodyPivot: { value: new THREE.Vector3(0, NeckTuning.bodyPivotY, 0) }, uColorMap: { value: colorMap }, uUseMap: { value: colorMap ? 1.0 : 0.0 },
+          uMouthPointsAlpha: { value: MouthRenderTuning.pointsAlpha }, uMouthPointsAlphaClip: { value: MouthRenderTuning.pointsAlphaClip },
+          uMouthPointsColorMul: { value: MouthRenderTuning.pointsColorMul }, uMouthPointsCullBack: { value: 1.0 },
+        },
+      });
+      mouthPoints = new THREE.Points(mouthGeo, mouthPointsMaterial);
+      mouthPoints.visible = false;
+      mouthPoints.frustumCulled = false;
+      mouthPoints.scale.copy(surfaceMesh.scale);
+      mouthPoints.position.copy(surfaceMesh.position);
+      scene.add(mouthPoints);
     }
 
-    geo.setAttribute('aUv', new THREE.BufferAttribute(uvArray, 2));
-    geo.setAttribute('aBasePosition', new THREE.BufferAttribute(basePositions, 3));
-    geo.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 3));
-    geo.setAttribute('aClusterId', new THREE.BufferAttribute(clusterIds, 1));
-    geo.setAttribute('aHeightFromTop', new THREE.BufferAttribute(heightFromTop, 1));
-    geo.setAttribute('aMouthWeight', new THREE.BufferAttribute(mouthWeights, 1));
-    geo.setAttribute('aMouthSide', new THREE.BufferAttribute(mouthSides, 1));
-    geo.setAttribute('aHeadWeight', new THREE.BufferAttribute(headWeights, 1));
-    return geo;
-  }
-
-  function loadModel() {
-    loader.load(
-      config.modelUrl,
-      (gltf) => {
-        const meshes = [];
-        gltf.scene.traverse((obj) => {
-          if (obj.isMesh) meshes.push(obj);
-        });
-        if (!meshes.length) {
-          console.error('[avatar-runtime] No se encontraron mallas en GLB');
-          return;
-        }
-
-        let colorMap = null;
-        for (const m of meshes) {
-          if (m.material && m.material.map) {
-            colorMap = m.material.map;
-            break;
-          }
-        }
-
-        const geoms = [];
-        meshes.forEach((m) => {
-          const g = m.geometry.clone();
-          m.updateWorldMatrix(true, false);
-          g.applyMatrix4(m.matrixWorld);
-          geoms.push(g);
-        });
-        const mergeFn = BufferGeometryUtils.mergeGeometries || BufferGeometryUtils.mergeBufferGeometries;
-        const mergedGeom = mergeFn(geoms, true);
-        if (!mergedGeom) {
-          console.error('[avatar-runtime] Fallo al fusionar geometrías');
-          return;
-        }
-        mergedGeom.computeVertexNormals();
-        mergedGeom.computeBoundingBox();
-        const center = new THREE.Vector3();
-        mergedGeom.boundingBox.getCenter(center);
-        mergedGeom.translate(-center.x, -center.y, -center.z);
-
-        const geo = generateAnimatedSurfaceGeometry(mergedGeom);
-        material = new THREE.ShaderMaterial({
-          vertexShader,
-          fragmentShader,
-          transparent: true,
-          uniforms: {
-            uTime: { value: 0 },
-            uGlobalAmp: { value: 1.5 },
-            uClusterAmp: { value: 1.5 },
-            uNoiseAmp: { value: 1.6 },
-            uTalk: { value: 0 },
-            uTalkAmpTop: { value: 0.024 },
-            uTalkAmpBot: { value: 0.075 },
-            uTalkFreq: { value: 24.0 },
-            uLipDepthAmp: { value: 0.1 },
-            uRestOpen: { value: 0.03 },
-            uBreathAmp: { value: 1.0 },
-            uBreathFreq: { value: 0.6 },
-            uHeadRot: { value: new THREE.Vector3() },
-            uBodyRot: { value: new THREE.Vector3() },
-            uBodyOffset: { value: new THREE.Vector3() },
-            uNeckPivot: { value: new THREE.Vector3(0, NeckTuning.neckPivotY, 0) },
-            uBodyPivot: { value: new THREE.Vector3(0, NeckTuning.bodyPivotY, 0) },
-            uDissolveStart: { value: 0.9 },
-            uDissolveEnd: { value: 1.0 },
-            uDissolveMotionAmp: { value: 1.0 },
-            uColorMap: { value: colorMap },
-            uUseMap: { value: colorMap ? 1.0 : 0.0 },
-            uColor: { value: new THREE.Color(0xffffff) },
-            uBlink: { value: 0 },
-            uEyeLeftMain: { value: new THREE.Vector4() },
-            uEyeLeftUpper: { value: new THREE.Vector4() },
-            uEyeLeftLower: { value: new THREE.Vector4() },
-            uEyeRightMain: { value: new THREE.Vector4() },
-            uEyeRightUpper: { value: new THREE.Vector4() },
-            uEyeRightLower: { value: new THREE.Vector4() },
-          },
-        });
-
-        mesh = new THREE.Mesh(geo, material);
-        mesh.frustumCulled = false;
-        mesh.scale.setScalar(config.transform.scale || 1.0);
-        mesh.position.fromArray(config.transform.offset || [0, 0, 0]);
-        scene.add(mesh);
-      },
-      undefined,
-      (err) => {
-        console.warn(`[avatar-runtime] No se pudo cargar GLB en ${config.modelUrl}. Debes colocar manualmente el asset en esa ruta.`, err);
-      },
-    );
-  }
+    if (DEBUG_EDIT_ENABLED) {
+      const panel = document.createElement('div');
+      panel.style.cssText = 'position:fixed;right:8px;top:8px;z-index:50;background:rgba(0,0,0,.7);color:#fff;padding:8px;font:12px sans-serif;max-width:280px';
+      panel.innerHTML = '<b>Avatar Debug</b><br/>E: mostrar/ocultar';
+      document.body.appendChild(panel);
+      window.addEventListener('keydown', (e) => { if (e.key.toLowerCase() === 'e') panel.style.display = panel.style.display === 'none' ? 'block' : 'none'; });
+    }
+  });
 
   let prevElapsed = 0;
   let rafId = null;
-
   function tick() {
     rafId = requestAnimationFrame(tick);
     const elapsed = clock.getElapsedTime();
@@ -563,52 +584,53 @@ export function createAvatarRuntime({ stageEl, config }) {
     const microRoll = Math.sin(elapsed * 1.5 + MotionState.seed * 1.3) * MotionConfig.micro.roll + Math.sin(elapsed * 2.9 + MotionState.seed * 0.4) * MotionConfig.micro.roll * 0.45;
     const nodPitch = updateNod(elapsed, dtMotion);
     const offY = 0.01 * Math.sin(elapsed * 0.9) + 0.005 * Math.sin(elapsed * 0.37);
-
     const head = MotionState.head.current;
     const body = MotionState.body.current;
     const headRot = new THREE.Vector3(head.x + microPitch + nodPitch, head.y + microYaw, head.z + microRoll).multiplyScalar(1.35);
     const bodyRot = new THREE.Vector3(body.x + microPitch * 0.25, body.y + microYaw * 0.25, body.z + microRoll * 0.25);
 
-    const targetTalk = clamp01(Math.max(state.manualTalkLevel, getTalkLevelFromAnalyser()));
-    state.talkLevel = targetTalk;
+    state.talkLevel = clamp01(Math.max(state.manualTalkLevel, getTalkLevelFromAnalyser()));
+    const mouthTarget = clamp01(state.talkLevel);
+    const mouthSpeed = mouthTarget > mouthOpenVisual ? MouthRenderTuning.mouthAttack : MouthRenderTuning.mouthRelease;
+    mouthOpenVisual += (mouthTarget - mouthOpenVisual) * (1 - Math.exp(-Math.max(0.0001, deltaRaw || 1 / 60) * mouthSpeed));
+    if (!mouthPointsVisibleLatched && mouthOpenVisual >= MouthRenderTuning.pointsOn) mouthPointsVisibleLatched = true;
+    if (mouthPointsVisibleLatched && mouthOpenVisual <= MouthRenderTuning.pointsOff) mouthPointsVisibleLatched = false;
 
-    if (material) {
-      material.uniforms.uTime.value = elapsed;
-      material.uniforms.uTalk.value = state.talkLevel;
-      material.uniforms.uHeadRot.value.copy(headRot);
-      material.uniforms.uBodyRot.value.copy(bodyRot);
-      material.uniforms.uBodyOffset.value.set(0, offY, 0);
-      applyEyeUniforms(material);
+    if (surfaceMaterial) {
+      surfaceMaterial.uniforms.uTime.value = elapsed;
+      surfaceMaterial.uniforms.uTalk.value = state.talkLevel;
+      surfaceMaterial.uniforms.uHeadRot.value.copy(headRot);
+      surfaceMaterial.uniforms.uBodyRot.value.copy(bodyRot);
+      surfaceMaterial.uniforms.uBodyOffset.value.set(0, offY, 0);
+      surfaceMaterial.uniforms.uMouthOpenVisual.value = mouthOpenVisual;
+      surfaceMaterial.uniforms.uMouthHoleActive.value = mouthPointsVisibleLatched ? 1 : 0;
+      applyEyeUniforms(surfaceMaterial);
     }
+    if (mouthPointsMaterial) {
+      mouthPointsMaterial.uniforms.uTime.value = elapsed;
+      mouthPointsMaterial.uniforms.uTalk.value = state.talkLevel;
+      mouthPointsMaterial.uniforms.uHeadRot.value.copy(headRot);
+      mouthPointsMaterial.uniforms.uBodyRot.value.copy(bodyRot);
+      mouthPointsMaterial.uniforms.uBodyOffset.value.set(0, offY, 0);
+    }
+    if (mouthPoints) mouthPoints.visible = DEBUG_MOUTH_POINTS_ENABLED || mouthPointsVisibleLatched;
 
     controls.update();
     renderer.render(scene, camera);
   }
 
   function onResize() {
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-    camera.aspect = w / h;
-    camera.updateProjectionMatrix();
-    renderer.setSize(w, h);
+    const w = window.innerWidth; const h = window.innerHeight;
+    camera.aspect = w / h; camera.updateProjectionMatrix(); renderer.setSize(w, h);
   }
 
   window.addEventListener('resize', onResize);
-  loadModel();
   tick();
 
   return {
-    setMode(mode) {
-      state.mode = mode;
-      if (mode !== 'SPEAKING') state.manualTalkLevel = 0;
-    },
-    setTalkLevel(level) {
-      state.manualTalkLevel = clamp01(level);
-    },
-    connectAnalyser(analyserNode) {
-      state.analyser = analyserNode || null;
-      state.analyserData = analyserNode ? new Uint8Array(analyserNode.frequencyBinCount) : null;
-    },
+    setMode(mode) { state.mode = mode; if (mode !== 'SPEAKING') state.manualTalkLevel = 0; },
+    setTalkLevel(level) { state.manualTalkLevel = clamp01(level); },
+    connectAnalyser(analyserNode) { state.analyser = analyserNode || null; state.analyserData = analyserNode ? new Uint8Array(analyserNode.frequencyBinCount) : null; },
     destroy() {
       if (rafId) cancelAnimationFrame(rafId);
       window.removeEventListener('resize', onResize);
