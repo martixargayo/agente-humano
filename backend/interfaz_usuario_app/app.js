@@ -734,7 +734,7 @@ window.addEventListener('keydown', (e) => {
     return;
   }
 
-  if (e.key !== 'Enter' || e.repeat || e.shiftKey || turnInFlight) return;
+  if (e.key !== 'Enter' || e.repeat || e.shiftKey || turnInFlight || voiceTurnInFlight) return;
   const target = e.target;
   if (target instanceof HTMLTextAreaElement && currentInputMode !== InputMode.WRITE) return;
 
