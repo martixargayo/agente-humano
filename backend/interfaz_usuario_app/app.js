@@ -55,14 +55,16 @@ let entryMode = InputMode.TALK;
 let scenarioReady = false;
 let entryRequested = false;
 let entryInProgress = false;
+let entryRequestedMode = null;
 let entryPermissionStatus = 'unknown';
 let availableInputDevices = [];
 let selectedEntryDeviceId = null;
-let isRefreshingDevices = false;
 let entryDeviceRefreshTimer = null;
 let entryDeviceDebounceTimer = null;
 let refreshInFlight = false;
 let refreshPendingAfterInFlight = false;
+let refreshSequence = 0;
+let micPermissionStatusRef = null;
 const LAST_DEVICE_STORAGE_KEY = 'interfaz_usuario:last_audio_input_device';
 const ENTRY_DEBUG = true;
 
@@ -251,12 +253,22 @@ function stopInputOrb() {
 async function startVoiceCapture() {
   if (!navigator.mediaDevices?.getUserMedia) throw new Error('getUserMedia no soportado');
   discardRecording = false;
-  const audioConstraints = selectedEntryDeviceId
-    ? { deviceId: { exact: selectedEntryDeviceId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-    : { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
-  micStream = await navigator.mediaDevices.getUserMedia({
-    audio: audioConstraints,
-  });
+  const buildConstraints = (deviceId, forceDefault = false) => {
+    if (!forceDefault && deviceId) {
+      return { deviceId: { exact: deviceId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+    }
+    return { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+  };
+
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: buildConstraints(selectedEntryDeviceId, false) });
+  } catch (err) {
+    const recoverable = err?.name === 'NotFoundError' || err?.name === 'OverconstrainedError';
+    if (!recoverable) throw err;
+    console.warn('[mic] Dispositivo seleccionado no disponible, reintentando con entrada por defecto', err);
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: buildConstraints(null, true) });
+    scheduleEntryDeviceRefresh('voice-capture-fallback', 0);
+  }
 
   recorderMimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
     ? 'audio/webm;codecs=opus'
@@ -436,44 +448,13 @@ function saveEntryDeviceId(deviceId) {
 
 function normalizeDeviceLabel(label, index) {
   const raw = String(label || '').trim();
-  if (!raw) return `Dispositivo de audio ${index + 1}`;
-  const withoutPrefixes = raw
-    .replace(/^(predeterminado|default)\s*-\s*/i, '')
-    .replace(/^(comunicaciones|communications)\s*-\s*/i, '')
-    .replace(/\s*\((default|predeterminado|comunicaciones|communications)\)\s*/gi, '')
+  if (!raw) return `Micrófono ${index + 1}`;
+  return raw
+    .replace(/^(default|predeterminado)\s*-\s*/i, '')
+    .replace(/^(communications|comunicaciones)\s*-\s*/i, '')
+    .replace(/\s*\((default|predeterminado|communications|comunicaciones)\)\s*/gi, '')
     .replace(/\s+/g, ' ')
     .trim();
-
-  const aliasMatch = withoutPrefixes.match(/^(micr[oó]fono|microphone|headset|auricular|altavoz|speaker)\s*\((.+)\)$/i);
-  const candidate = aliasMatch?.[2] ? aliasMatch[2].trim() : withoutPrefixes;
-
-  return candidate
-    .replace(/\s*\((hands-free|manos libres|input|entrada|output|salida)\)\s*$/i, '')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
-}
-
-function scoreAudioDeviceLabel(label) {
-  if (!label) return 0;
-  if (/airpods|bluetooth|buds|headset|auricular|micr[oó]fono|usb|wireless/i.test(label)) return 3;
-  if (/default|predeterminado|communications|comunicaciones/i.test(label)) return 1;
-  return 2;
-}
-
-function dedupeAudioInputDevices(devices) {
-  const byKey = new Map();
-  devices.forEach((device, index) => {
-    const cleanLabel = normalizeDeviceLabel(device.label, index);
-    const normalizedLabel = cleanLabel.toLowerCase().replace(/[^a-z0-9áéíóúüñ]+/gi, ' ').trim();
-    const keyLabel = normalizedLabel || `device-${index}`;
-    const groupKey = device.groupId ? `group:${device.groupId}` : `label:${keyLabel}`;
-    const current = byKey.get(groupKey);
-    const score = scoreAudioDeviceLabel(cleanLabel);
-    if (!current || score > current.score || (score === current.score && cleanLabel.length > current.cleanLabel.length)) {
-      byKey.set(groupKey, { ...device, cleanLabel, score });
-    }
-  });
-  return [...byKey.values()].map(({ score, ...device }) => device);
 }
 
 function getDeviceLabelKey(label) {
@@ -483,21 +464,49 @@ function getDeviceLabelKey(label) {
     .trim();
 }
 
-function pickBestReplacementDevice(previousDevice, devices) {
-  if (!previousDevice || !devices.length) return null;
-  if (previousDevice.groupId) {
-    const byGroup = devices.find((d) => d.groupId && d.groupId === previousDevice.groupId);
-    if (byGroup) return byGroup;
+function toUiAudioInputDevices(devices) {
+  const byIdentity = new Map();
+  devices.forEach((device, index) => {
+    if (device.kind !== 'audioinput' || !device.deviceId) return;
+    const cleanLabel = normalizeDeviceLabel(device.label, index);
+    const groupPart = device.groupId ? `g:${device.groupId}` : '';
+    const labelPart = getDeviceLabelKey(cleanLabel);
+    const dedupeKey = `${groupPart}|${labelPart}`;
+    if (!byIdentity.has(dedupeKey)) {
+      byIdentity.set(dedupeKey, {
+        deviceId: device.deviceId,
+        groupId: device.groupId || '',
+        label: device.label || '',
+        cleanLabel,
+      });
+    }
+  });
+  return [...byIdentity.values()].sort((a, b) => a.cleanLabel.localeCompare(b.cleanLabel, 'es', { sensitivity: 'base' }));
+}
+
+function pickReplacementDevice(previousDeviceId, previousList, nextList) {
+  if (!nextList.length) return null;
+  if (!previousDeviceId) return nextList[0].deviceId;
+  const exact = nextList.find((d) => d.deviceId === previousDeviceId);
+  if (exact) return exact.deviceId;
+  const previous = previousList.find((d) => d.deviceId === previousDeviceId);
+  if (!previous) return nextList[0].deviceId;
+  if (previous.groupId) {
+    const byGroup = nextList.find((d) => d.groupId && d.groupId === previous.groupId);
+    if (byGroup) return byGroup.deviceId;
   }
-  const previousKey = getDeviceLabelKey(previousDevice.cleanLabel || previousDevice.label || '');
-  if (!previousKey) return null;
-  return devices.find((d) => getDeviceLabelKey(d.cleanLabel || d.label || '') === previousKey) || null;
+  const prevLabelKey = getDeviceLabelKey(previous.cleanLabel || previous.label || '');
+  if (prevLabelKey) {
+    const byLabel = nextList.find((d) => getDeviceLabelKey(d.cleanLabel || d.label || '') === prevLabelKey);
+    if (byLabel) return byLabel.deviceId;
+  }
+  return nextList[0].deviceId;
 }
 
 function getEntryDeviceDebugList() {
   return availableInputDevices.map((device) => ({
     id: device.deviceId,
-    label: device.cleanLabel || device.label || '(sin label)',
+    label: device.cleanLabel,
     groupId: device.groupId || null,
   }));
 }
@@ -506,7 +515,7 @@ function logEntryState(tag, extra = {}) {
   if (!ENTRY_DEBUG) return;
   const startEnabled = entryMode === InputMode.WRITE
     ? true
-    : Boolean(selectedEntryDeviceId);
+    : (entryPermissionStatus !== 'denied' && Boolean(selectedEntryDeviceId));
   const startDisabled = Boolean(ui.startBtn?.disabled);
   console.debug(`[entry-state] ${tag}`, {
     entryMode,
@@ -520,35 +529,31 @@ function logEntryState(tag, extra = {}) {
   });
 }
 
-
-
-function logEntryPointerEvent(eventName, optionEl, extra = {}) {
-  if (!ENTRY_DEBUG || !optionEl) return;
-  const style = window.getComputedStyle(optionEl);
-  console.debug(`[entry-pointer] ${eventName}`, {
-    deviceId: optionEl.dataset.deviceId || null,
-    disabledAttr: optionEl.disabled,
-    pointerEvents: style.pointerEvents,
-    opacity: style.opacity,
-    position: style.position,
-    zIndex: style.zIndex,
-    selectedEntryDeviceIdBefore: selectedEntryDeviceId,
-    ...extra,
-  });
+function canStartTalkEntry() {
+  return entryPermissionStatus !== 'denied' && Boolean(selectedEntryDeviceId);
 }
 
 function getEntryModeStartEnabled() {
   if (entryMode === InputMode.WRITE) return true;
-  return Boolean(selectedEntryDeviceId);
+  return canStartTalkEntry();
 }
 
 function getCanEnterNow() {
   return getEntryModeStartEnabled() && scenarioReady;
 }
 
+function setSelectedEntryDevice(deviceId, reason = 'manual') {
+  if (!deviceId || !availableInputDevices.some((d) => d.deviceId === deviceId)) return;
+  if (selectedEntryDeviceId === deviceId) return;
+  selectedEntryDeviceId = deviceId;
+  saveEntryDeviceId(deviceId);
+  logEntryState('setSelectedEntryDevice', { reason, deviceId });
+  renderEntryDevices();
+  renderEntryState();
+}
+
 function renderEntryState() {
   if (!ui.entryOverlay) return;
-  logEntryState('renderEntryState:before-start-gating');
   ui.entryModeTalk.classList.toggle('active', entryMode === InputMode.TALK);
   ui.entryModeWrite.classList.toggle('active', entryMode === InputMode.WRITE);
   ui.entryModeTalk.setAttribute('aria-selected', String(entryMode === InputMode.TALK));
@@ -560,7 +565,6 @@ function renderEntryState() {
 
   const startEnabled = getEntryModeStartEnabled();
   ui.startBtn.disabled = !startEnabled || entryInProgress;
-  logEntryState('renderEntryState:after-start-gating', { startEnabled, entryInProgress });
   ui.startBtn.textContent = entryRequested && !scenarioReady ? 'Cargando escenario…' : 'Empezar';
 
   if (!scenarioReady) {
@@ -576,36 +580,48 @@ function renderEntryState() {
   const showSearchHeader = entryMode === InputMode.TALK;
   ui.entryDeviceSearch?.classList.toggle('hidden', !showSearchHeader);
   ui.entryDeviceLabel?.classList.add('entry-hidden');
+
+  if (entryPermissionStatus === 'prompt' || entryPermissionStatus === 'unknown') {
+    ui.entryDeviceStatus.textContent = 'Selecciona un micrófono y pulsa Empezar para conceder permisos.';
+    ui.entryDeviceStatus.classList.remove('error');
+  } else if (entryPermissionStatus === 'denied') {
+    ui.entryDeviceStatus.textContent = 'Permiso de micrófono denegado. Habilítalo en el navegador o usa modo Escribir.';
+    ui.entryDeviceStatus.classList.add('error');
+  } else if (!selectedEntryDeviceId) {
+    ui.entryDeviceStatus.textContent = 'No encontramos un micrófono válido.';
+    ui.entryDeviceStatus.classList.add('error');
+  } else {
+    ui.entryDeviceStatus.textContent = 'Micrófono seleccionado. Puedes empezar en modo hablar.';
+    ui.entryDeviceStatus.classList.remove('error');
+  }
 }
 
 function renderEntryDevices() {
   if (!ui.entryDeviceList) return;
-  ui.entryDeviceList.innerHTML = '';
+  const currentChildren = [...ui.entryDeviceList.querySelectorAll('[data-device-id]')];
+  const currentById = new Map(currentChildren.map((node) => [node.dataset.deviceId, node]));
+
   if (!availableInputDevices.length) {
+    ui.entryDeviceList.innerHTML = '';
     const empty = document.createElement('div');
     empty.className = 'entry-device-empty';
     empty.textContent = 'Ningún dispositivo conectado';
     ui.entryDeviceList.appendChild(empty);
-    for (let i = 0; i < 2; i += 1) {
-      const placeholder = document.createElement('div');
-      placeholder.className = 'entry-device-empty muted';
-      placeholder.textContent = '—';
-      ui.entryDeviceList.appendChild(placeholder);
-    }
     selectedEntryDeviceId = null;
-  } else {
-    if (!selectedEntryDeviceId || !availableInputDevices.some((d) => d.deviceId === selectedEntryDeviceId)) {
-      selectedEntryDeviceId = availableInputDevices[0]?.deviceId || null;
-    }
+    return;
+  }
 
-    availableInputDevices.forEach((device) => {
-      const option = document.createElement('button');
+  const fragment = document.createDocumentFragment();
+  availableInputDevices.forEach((device) => {
+    let option = currentById.get(device.deviceId);
+    if (!option) {
+      option = document.createElement('button');
       option.type = 'button';
       option.className = 'entry-device-option';
       option.setAttribute('role', 'option');
-      const isActive = selectedEntryDeviceId === device.deviceId;
-      option.classList.toggle('active', isActive);
-      option.setAttribute('aria-selected', String(isActive));
+      option.dataset.deviceId = device.deviceId;
+      option.addEventListener('click', () => setSelectedEntryDevice(device.deviceId, 'click'));
+
       const main = document.createElement('span');
       main.className = 'entry-device-main';
       const icon = document.createElement('span');
@@ -614,203 +630,170 @@ function renderEntryDevices() {
       icon.textContent = '🎧';
       const name = document.createElement('span');
       name.className = 'entry-device-name';
-      name.textContent = device.cleanLabel;
       main.append(icon, name);
       const check = document.createElement('span');
       check.className = 'entry-device-check';
       check.setAttribute('aria-hidden', 'true');
       check.textContent = '✓';
       option.append(main, check);
-      option.dataset.deviceId = device.deviceId;
-      option.addEventListener('pointerdown', (ev) => {
-        logEntryPointerEvent('pointerdown', option, { eventTarget: ev.target?.className || null });
-      });
-      option.addEventListener('mousedown', (ev) => {
-        logEntryPointerEvent('mousedown', option, { eventTarget: ev.target?.className || null });
-      });
-      option.addEventListener('click', (ev) => {
-        logEntryPointerEvent('click:before-select', option, { eventTarget: ev.target?.className || null });
-        const before = selectedEntryDeviceId;
-        selectedEntryDeviceId = device.deviceId;
-        saveEntryDeviceId(selectedEntryDeviceId);
-        logEntryState('manual-device-select', {
-          selectedFromClick: device.deviceId,
-          selectedEntryDeviceIdBefore: before,
-          selectedEntryDeviceIdAfter: selectedEntryDeviceId,
-          nodeDisabled: option.disabled,
-        });
-        renderEntryDevices();
-        renderEntryState();
-      });
-      ui.entryDeviceList.appendChild(option);
-    });
-    const fillerCount = Math.max(0, 3 - availableInputDevices.length);
-    for (let i = 0; i < fillerCount; i += 1) {
-      const placeholder = document.createElement('div');
-      placeholder.className = 'entry-device-empty muted';
-      placeholder.textContent = '—';
-      ui.entryDeviceList.appendChild(placeholder);
     }
-  }
 
-  if (entryPermissionStatus === 'unknown') {
-    ui.entryDeviceStatus.textContent = 'Pulsa Empezar para conceder permisos de micrófono.';
-    ui.entryDeviceStatus.classList.remove('error');
-  } else if (entryPermissionStatus !== 'granted') {
-    ui.entryDeviceStatus.textContent = 'Necesitamos permisos de micrófono para habilitar este modo.';
-    ui.entryDeviceStatus.classList.add('error');
-  } else if (!selectedEntryDeviceId) {
-    ui.entryDeviceStatus.textContent = 'No encontramos un dispositivo apto para hablar.';
-    ui.entryDeviceStatus.classList.add('error');
-  } else {
-    ui.entryDeviceStatus.textContent = 'Dispositivo listo para empezar en modo hablar.';
-    ui.entryDeviceStatus.classList.remove('error');
-  }
+    option.querySelector('.entry-device-name').textContent = device.cleanLabel;
+    const isActive = selectedEntryDeviceId === device.deviceId;
+    option.classList.toggle('active', isActive);
+    option.setAttribute('aria-selected', String(isActive));
+    fragment.appendChild(option);
+  });
 
-  logEntryState('renderEntryDevices:done');
+  ui.entryDeviceList.innerHTML = '';
+  ui.entryDeviceList.appendChild(fragment);
 }
 
-async function requestMicPermissions() {
+async function syncMicPermissionState() {
+  if (!navigator.permissions?.query) return;
+  try {
+    const status = await navigator.permissions.query({ name: 'microphone' });
+    micPermissionStatusRef = status;
+    if (status.state === 'granted' || status.state === 'denied' || status.state === 'prompt') {
+      entryPermissionStatus = status.state;
+      hasMicPermission = status.state === 'granted';
+    }
+    status.onchange = () => {
+      entryPermissionStatus = status.state;
+      hasMicPermission = status.state === 'granted';
+      scheduleEntryDeviceRefresh('permission-change', 0);
+      renderEntryState();
+    };
+  } catch (_) {}
+}
+
+async function requestMicPermissionsForEntry() {
   if (!navigator.mediaDevices?.getUserMedia) {
-    hasMicPermission = false;
     entryPermissionStatus = 'denied';
+    hasMicPermission = false;
     return false;
   }
 
-  const tryConstraints = async (constraints) => {
+  const constraints = selectedEntryDeviceId
+    ? { audio: { deviceId: { ideal: selectedEntryDeviceId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true } }
+    : { audio: true };
+
+  try {
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
     stream.getTracks().forEach((track) => track.stop());
-  };
-
-  try {
-    if (selectedEntryDeviceId) {
-      try {
-        await tryConstraints({ audio: { deviceId: { exact: selectedEntryDeviceId } } });
-      } catch (err) {
-        if (err?.name === 'NotFoundError' || err?.name === 'OverconstrainedError') {
-          selectedEntryDeviceId = null;
-          await tryConstraints({ audio: true });
-        } else {
-          throw err;
-        }
-      }
-    } else {
-      await tryConstraints({ audio: true });
-    }
-
-    hasMicPermission = true;
     entryPermissionStatus = 'granted';
+    hasMicPermission = true;
     return true;
   } catch (err) {
-    console.error('[mic] Error al solicitar permiso de micrófono', err);
-    hasMicPermission = false;
     if (err?.name === 'NotAllowedError' || err?.name === 'SecurityError') {
       entryPermissionStatus = 'denied';
     } else {
-      entryPermissionStatus = 'unknown';
+      entryPermissionStatus = 'prompt';
     }
+    hasMicPermission = false;
+    console.error('[entry] Error al pedir permiso de micrófono', err);
     return false;
   }
-}
-
-async function unlockAudioDeviceLabelsIfNeeded() {
-  if (!navigator.mediaDevices?.getUserMedia) return;
-  if (entryPermissionStatus === 'granted' || entryPermissionStatus === 'denied') return;
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    stream.getTracks().forEach((track) => track.stop());
-    entryPermissionStatus = 'granted';
-    hasMicPermission = true;
-  } catch (err) {
-    if (err?.name === 'NotAllowedError' || err?.name === 'SecurityError') {
-      entryPermissionStatus = 'denied';
-    }
-  }
-}
-
-function scheduleEntryDeviceRefresh(reason = 'manual', delayMs = 160) {
-  if (entryDeviceDebounceTimer) window.clearTimeout(entryDeviceDebounceTimer);
-  entryDeviceDebounceTimer = window.setTimeout(() => {
-    entryDeviceDebounceTimer = null;
-    if (!ui.entryOverlay || ui.entryOverlay.style.display === 'none') return;
-    if (document.visibilityState !== 'visible') return;
-    void refreshEntryDevices(reason);
-  }, delayMs);
 }
 
 async function refreshEntryDevices(reason = 'manual') {
-  if (refreshInFlight) {
-    refreshPendingAfterInFlight = true;
-    return;
-  }
-  if (!ui.entryOverlay || ui.entryOverlay.style.display === 'none') return;
-  if (document.visibilityState !== 'visible') return;
-  refreshInFlight = true;
-  refreshPendingAfterInFlight = false;
-  isRefreshingDevices = true;
-  logEntryState('refreshEntryDevices:start', { reason });
-  renderEntryState();
   if (!navigator.mediaDevices?.enumerateDevices) {
     availableInputDevices = [];
-    isRefreshingDevices = false;
-    refreshInFlight = false;
+    selectedEntryDeviceId = null;
     renderEntryDevices();
     renderEntryState();
     return;
   }
+
+  if (refreshInFlight) {
+    refreshPendingAfterInFlight = true;
+    return;
+  }
+
+  refreshInFlight = true;
+  refreshPendingAfterInFlight = false;
+  const sequence = ++refreshSequence;
+  const previousList = availableInputDevices;
+  const previousSelected = selectedEntryDeviceId;
+
   try {
-    const previousDevice = availableInputDevices.find((d) => d.deviceId === selectedEntryDeviceId) || null;
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const inputs = devices.filter((device) => device.kind === 'audioinput' && device.deviceId);
-    availableInputDevices = dedupeAudioInputDevices(inputs).sort((a, b) => a.cleanLabel.localeCompare(b.cleanLabel, 'es', { sensitivity: 'base' }));
-    const preferred = getSavedEntryDeviceId();
-    if (preferred && availableInputDevices.some((d) => d.deviceId === preferred)) {
-      selectedEntryDeviceId = preferred;
-    } else if (selectedEntryDeviceId && !availableInputDevices.some((d) => d.deviceId === selectedEntryDeviceId)) {
-      const replacement = pickBestReplacementDevice(previousDevice, availableInputDevices);
-      selectedEntryDeviceId = replacement?.deviceId || null;
+    const rawDevices = await navigator.mediaDevices.enumerateDevices();
+    if (sequence !== refreshSequence) return;
+
+    const nextDevices = toUiAudioInputDevices(rawDevices);
+    availableInputDevices = nextDevices;
+
+    const stored = getSavedEntryDeviceId();
+    const storedExists = stored && nextDevices.some((d) => d.deviceId === stored);
+
+    if (storedExists && !previousSelected) {
+      selectedEntryDeviceId = stored;
+    } else {
+      selectedEntryDeviceId = pickReplacementDevice(previousSelected, previousList, nextDevices);
     }
-    logEntryState('refreshEntryDevices:after-reconcile', {
+
+    if (selectedEntryDeviceId) saveEntryDeviceId(selectedEntryDeviceId);
+
+    logEntryState('refreshEntryDevices', {
       reason,
-      previousDeviceId: previousDevice?.deviceId || null,
-      preferred,
+      sequence,
+      previousSelected,
+      nextSelected: selectedEntryDeviceId,
     });
   } catch (err) {
-    console.warn('[entry] No se pudo enumerar dispositivos', err);
+    console.warn('[entry] enumerateDevices falló', err);
     availableInputDevices = [];
+    selectedEntryDeviceId = null;
   } finally {
-    isRefreshingDevices = false;
     refreshInFlight = false;
   }
+
   renderEntryDevices();
   renderEntryState();
-  logEntryState('refreshEntryDevices:end', { reason });
+
   if (refreshPendingAfterInFlight) {
     refreshPendingAfterInFlight = false;
-    scheduleEntryDeviceRefresh(`follow-up:${reason}`, 60);
+    scheduleEntryDeviceRefresh(`follow-up:${reason}`, 80);
   }
+}
+
+function scheduleEntryDeviceRefresh(reason = 'manual', delayMs = 120) {
+  if (entryDeviceDebounceTimer) window.clearTimeout(entryDeviceDebounceTimer);
+  entryDeviceDebounceTimer = window.setTimeout(() => {
+    entryDeviceDebounceTimer = null;
+    if (!ui.entryOverlay || ui.entryOverlay.style.display === 'none') return;
+    void refreshEntryDevices(reason);
+  }, delayMs);
 }
 
 async function validateTalkModeForEntry() {
   if (ui.entryError) ui.entryError.textContent = '';
-  if (entryPermissionStatus !== 'granted') {
-    const ok = await requestMicPermissions();
-    if (!ok) {
-      if (ui.entryError) ui.entryError.textContent = entryPermissionStatus === 'denied'
-        ? 'No pudimos habilitar micrófono. Puedes pasar a Escribir.'
-        : 'No pudimos validar el micrófono seleccionado. Reintenta o elige otro dispositivo.';
-      await refreshEntryDevices('validate-error');
-      renderEntryState();
-      return false;
+
+  await refreshEntryDevices('validate-pre-permission');
+
+  const permissionOk = entryPermissionStatus === 'granted'
+    ? true
+    : await requestMicPermissionsForEntry();
+
+  if (!permissionOk) {
+    if (ui.entryError) {
+      ui.entryError.textContent = entryPermissionStatus === 'denied'
+        ? 'No pudimos habilitar el micrófono. Activa permisos o usa Escribir.'
+        : 'No pudimos validar el micrófono. Reintenta.';
     }
-    await refreshEntryDevices('after-permission');
-  }
-  await refreshEntryDevices('validate');
-  renderEntryState();
-  if (!selectedEntryDeviceId) {
-    if (ui.entryError) ui.entryError.textContent = 'No se detectó un dispositivo válido para hablar.';
+    renderEntryState();
     return false;
   }
+
+  await refreshEntryDevices('validate-post-permission');
+
+  if (!selectedEntryDeviceId) {
+    if (ui.entryError) ui.entryError.textContent = 'No se detectó un micrófono disponible.';
+    renderEntryState();
+    return false;
+  }
+
+  renderEntryState();
   return true;
 }
 
@@ -819,7 +802,9 @@ async function finalizeEntry() {
   if (!getCanEnterNow()) return;
   entryInProgress = true;
   ui.startBtn.disabled = true;
-  if (entryMode === InputMode.WRITE) {
+  const targetMode = entryRequestedMode || entryMode;
+
+  if (targetMode === InputMode.WRITE) {
     setInputMode(InputMode.WRITE);
     setStatusText('Listo');
   } else {
@@ -832,11 +817,12 @@ async function finalizeEntry() {
       syncAvatarMode();
     } catch (err) {
       console.error('[entry] Error al iniciar modo hablar', err);
-      setInputMode(InputMode.WRITE);
-      setStatusText('No se pudo iniciar el micrófono. Modo escritura activado.');
+      setInputMode(InputMode.TALK);
+      setStatusText('No se pudo activar el micrófono. Revisa permisos/dispositivo y reintenta.');
     }
   }
 
+  entryRequestedMode = null;
   ui.entryOverlay.classList.add('hidden');
   window.setTimeout(() => {
     ui.entryOverlay.style.display = 'none';
@@ -858,6 +844,7 @@ function setEntryMode(mode) {
     return;
   }
   renderEntryState();
+  scheduleEntryDeviceRefresh('mode-talk', 0);
 }
 
 async function handleStartEntry() {
@@ -868,6 +855,7 @@ async function handleStartEntry() {
       return;
     }
   }
+  entryRequestedMode = entryMode;
   entryRequested = true;
   tryResolveEntryRequest();
 }
@@ -1215,22 +1203,9 @@ function bindRuntimeReadiness() {
 }
 
 async function bootstrapEntryDeviceBackground() {
-  try {
-    if (navigator.permissions?.query) {
-      const micPermission = await navigator.permissions.query({ name: 'microphone' });
-      if (micPermission.state === 'granted') {
-        entryPermissionStatus = 'granted';
-      } else if (micPermission.state === 'denied') {
-        entryPermissionStatus = 'denied';
-      }
-    }
-  } catch (_) {}
-
+  await syncMicPermissionState();
   await refreshEntryDevices('bootstrap');
-  if (!availableInputDevices.length && entryPermissionStatus !== 'denied') {
-    await unlockAudioDeviceLabelsIfNeeded();
-    await refreshEntryDevices('bootstrap-after-unlock');
-  }
+  renderEntryDevices();
   renderEntryState();
 }
 
@@ -1239,7 +1214,7 @@ function startEntryDevicePolling() {
   entryDeviceRefreshTimer = window.setInterval(() => {
     if (!ui.entryOverlay || ui.entryOverlay.style.display === 'none') return;
     scheduleEntryDeviceRefresh('poll', 220);
-  }, 2500);
+  }, 3000);
 }
 
 if (navigator.mediaDevices?.addEventListener) {
