@@ -66,6 +66,8 @@ let refreshInFlight = false;
 let refreshPendingAfterInFlight = false;
 let refreshSequence = 0;
 let micPermissionStatusRef = null;
+let entryLastPermissionGrantedAtMs = null;
+let firstVoiceCaptureStartError = null;
 const LAST_DEVICE_STORAGE_KEY = 'interfaz_usuario:last_audio_input_device';
 const ENTRY_DEBUG = true;
 
@@ -254,6 +256,12 @@ function stopInputOrb() {
 async function startVoiceCapture() {
   if (!navigator.mediaDevices?.getUserMedia) throw new Error('getUserMedia no soportado');
   discardRecording = false;
+  const startTs = getDiagNowMs();
+  logEntryDiag('voice-capture:start', {
+    since_permission_granted_ms: entryLastPermissionGrantedAtMs == null
+      ? null
+      : Number((startTs - entryLastPermissionGrantedAtMs).toFixed(3)),
+  });
   const buildConstraints = (deviceId, forceDefault = false) => {
     if (!forceDefault && deviceId) {
       return { deviceId: { exact: deviceId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true };
@@ -262,12 +270,40 @@ async function startVoiceCapture() {
   };
 
   try {
-    micStream = await navigator.mediaDevices.getUserMedia({ audio: buildConstraints(selectedEntryDeviceId, false) });
+    const constraints = { audio: buildConstraints(selectedEntryDeviceId, false) };
+    logEntryDiag('voice-capture:getUserMedia:call', { constraints, fallback: false });
+    micStream = await navigator.mediaDevices.getUserMedia(constraints);
+    logEntryDiag('voice-capture:getUserMedia:ok', {
+      fallback: false,
+      elapsed_ms: Number((getDiagNowMs() - startTs).toFixed(3)),
+      tracks: getTrackDiagnostics(micStream),
+    });
   } catch (err) {
+    logEntryDiag('voice-capture:getUserMedia:error', {
+      fallback: false,
+      error_name: err?.name || null,
+      error_message: err?.message || String(err),
+    });
     const recoverable = err?.name === 'NotFoundError' || err?.name === 'OverconstrainedError';
-    if (!recoverable) throw err;
+    if (!recoverable) {
+      if (!firstVoiceCaptureStartError) {
+        firstVoiceCaptureStartError = {
+          step: 'getUserMedia_initial',
+          error_name: err?.name || null,
+          error_message: err?.message || String(err),
+        };
+      }
+      throw err;
+    }
     console.warn('[mic] Dispositivo seleccionado no disponible, reintentando con entrada por defecto', err);
-    micStream = await navigator.mediaDevices.getUserMedia({ audio: buildConstraints(null, true) });
+    const fallbackConstraints = { audio: buildConstraints(null, true) };
+    logEntryDiag('voice-capture:getUserMedia:call', { constraints: fallbackConstraints, fallback: true });
+    micStream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
+    logEntryDiag('voice-capture:getUserMedia:ok', {
+      fallback: true,
+      elapsed_ms: Number((getDiagNowMs() - startTs).toFixed(3)),
+      tracks: getTrackDiagnostics(micStream),
+    });
     scheduleEntryDeviceRefresh('voice-capture-fallback', 0);
   }
 
@@ -284,11 +320,30 @@ async function startVoiceCapture() {
   mediaRecorder.start(250);
   await new Promise((resolve) => setTimeout(resolve, 0));
   isRecording = mediaRecorder.state === 'recording';
+  logEntryDiag('voice-capture:mediaRecorder:post-start', {
+    mediaRecorderState: mediaRecorder.state,
+    isRecording,
+    elapsed_ms: Number((getDiagNowMs() - startTs).toFixed(3)),
+  });
 
   if (!micStream.getTracks().some((track) => track.readyState === 'live')) {
+    if (!firstVoiceCaptureStartError) {
+      firstVoiceCaptureStartError = {
+        step: 'track_ready_state_check',
+        error_name: 'TrackNotLive',
+        error_message: 'No hay tracks live tras iniciar captura',
+      };
+    }
     throw new Error('El micrófono no está activo.');
   }
   if (!isRecording) {
+    if (!firstVoiceCaptureStartError) {
+      firstVoiceCaptureStartError = {
+        step: 'media_recorder_state_check',
+        error_name: 'MediaRecorderNotRecording',
+        error_message: 'MediaRecorder no quedó en recording tras start',
+      };
+    }
     throw new Error('No se pudo iniciar la grabación.');
   }
 
@@ -300,6 +355,10 @@ async function startVoiceCapture() {
   source.connect(waveAnalyser);
   waveDataArray = new Uint8Array(waveAnalyser.frequencyBinCount);
   ensureOrbLoop();
+
+  logEntryDiag('voice-capture:ready', {
+    elapsed_ms: Number((getDiagNowMs() - startTs).toFixed(3)),
+  });
 }
 
 function stopVoiceCapture() {
@@ -535,6 +594,38 @@ function logEntryState(tag, extra = {}) {
   });
 }
 
+function getDiagNowMs() {
+  if (typeof performance !== 'undefined' && typeof performance.now === 'function') return performance.now();
+  return Date.now();
+}
+
+function getTrackDiagnostics(stream) {
+  if (!stream?.getTracks) return [];
+  return stream.getTracks().map((track) => ({
+    kind: track.kind,
+    id: track.id,
+    label: track.label,
+    enabled: track.enabled,
+    muted: track.muted,
+    readyState: track.readyState,
+  }));
+}
+
+function logEntryDiag(tag, extra = {}) {
+  if (!ENTRY_DEBUG) return;
+  const payload = {
+    ts_ms: Number(getDiagNowMs().toFixed(3)),
+    entryMode,
+    currentInputMode,
+    selectedEntryDeviceId,
+    entryPermissionStatus,
+    ...extra,
+  };
+  if (!Array.isArray(window.__entryDiagEvents)) window.__entryDiagEvents = [];
+  window.__entryDiagEvents.push({ tag, ...payload });
+  console.debug(`[entry-diag] ${tag}`, payload);
+}
+
 function canStartTalkEntry() {
   return entryPermissionStatus !== 'denied' && Boolean(selectedEntryDeviceId);
 }
@@ -684,11 +775,28 @@ async function requestMicPermissionsForEntry() {
     ? { audio: { deviceId: { ideal: selectedEntryDeviceId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true } }
     : { audio: true };
 
+  logEntryDiag('permission:getUserMedia:call', { constraints });
+
   try {
+    const t0 = getDiagNowMs();
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    const t1 = getDiagNowMs();
+    logEntryDiag('permission:getUserMedia:ok', {
+      elapsed_ms: Number((t1 - t0).toFixed(3)),
+      tracks_before_stop: getTrackDiagnostics(stream),
+    });
+
     stream.getTracks().forEach((track) => track.stop());
+    logEntryDiag('permission:tracks:after-stop', {
+      tracks_after_stop: getTrackDiagnostics(stream),
+    });
+
     entryPermissionStatus = 'granted';
     hasMicPermission = true;
+    entryLastPermissionGrantedAtMs = t1;
+    logEntryDiag('permission:granted', {
+      granted_at_ms: Number(entryLastPermissionGrantedAtMs.toFixed(3)),
+    });
     return true;
   } catch (err) {
     if (err?.name === 'NotAllowedError' || err?.name === 'SecurityError') {
@@ -697,6 +805,10 @@ async function requestMicPermissionsForEntry() {
       entryPermissionStatus = 'prompt';
     }
     hasMicPermission = false;
+    logEntryDiag('permission:getUserMedia:error', {
+      error_name: err?.name || null,
+      error_message: err?.message || String(err),
+    });
     console.error('[entry] Error al pedir permiso de micrófono', err);
     return false;
   }
@@ -816,6 +928,12 @@ async function finalizeEntry() {
   } else {
     resolveEntryInputMode(InputMode.TALK);
     setStatusText('Activando mic…');
+    logEntryDiag('finalizeEntry:start-voice-capture:begin', {
+      since_permission_granted_ms: entryLastPermissionGrantedAtMs == null
+        ? null
+        : Number((getDiagNowMs() - entryLastPermissionGrantedAtMs).toFixed(3)),
+      first_voice_capture_start_error: firstVoiceCaptureStartError,
+    });
     try {
       await startVoiceCapture();
       updateReplyText('Te escucho. Empieza a hablar cuando quieras.');
@@ -823,6 +941,10 @@ async function finalizeEntry() {
       syncAvatarMode();
     } catch (err) {
       console.error('[entry] Error al iniciar modo hablar', err);
+      logEntryDiag('finalizeEntry:start-voice-capture:error', {
+        error_name: err?.name || null,
+        error_message: err?.message || String(err),
+      });
       resolveEntryInputMode(InputMode.TALK);
       setStatusText('No se pudo activar el micrófono. Revisa permisos/dispositivo y reintenta.');
     }
@@ -854,6 +976,8 @@ function setEntryMode(mode) {
 }
 
 async function handleStartEntry() {
+  firstVoiceCaptureStartError = null;
+  logEntryDiag('entry:start:click', { mode: entryMode });
   if (entryMode === InputMode.TALK) {
     const talkReady = await validateTalkModeForEntry();
     if (!talkReady) {
