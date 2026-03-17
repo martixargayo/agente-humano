@@ -62,6 +62,7 @@ let isRefreshingDevices = false;
 let entryDeviceRefreshTimer = null;
 let entryDeviceDebounceTimer = null;
 let refreshInFlight = false;
+let refreshPendingAfterInFlight = false;
 const LAST_DEVICE_STORAGE_KEY = 'interfaz_usuario:last_audio_input_device';
 
 const ui = {
@@ -474,6 +475,24 @@ function dedupeAudioInputDevices(devices) {
   return [...byKey.values()].map(({ score, ...device }) => device);
 }
 
+function getDeviceLabelKey(label) {
+  return String(label || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9áéíóúüñ]+/gi, ' ')
+    .trim();
+}
+
+function pickBestReplacementDevice(previousDevice, devices) {
+  if (!previousDevice || !devices.length) return null;
+  if (previousDevice.groupId) {
+    const byGroup = devices.find((d) => d.groupId && d.groupId === previousDevice.groupId);
+    if (byGroup) return byGroup;
+  }
+  const previousKey = getDeviceLabelKey(previousDevice.cleanLabel || previousDevice.label || '');
+  if (!previousKey) return null;
+  return devices.find((d) => getDeviceLabelKey(d.cleanLabel || d.label || '') === previousKey) || null;
+}
+
 function getEntryModeStartEnabled() {
   if (entryMode === InputMode.WRITE) return true;
   return entryPermissionStatus !== 'denied' && Boolean(selectedEntryDeviceId);
@@ -656,21 +675,27 @@ function scheduleEntryDeviceRefresh(reason = 'manual', delayMs = 160) {
 }
 
 async function refreshEntryDevices(reason = 'manual') {
-  if (refreshInFlight) return;
+  if (refreshInFlight) {
+    refreshPendingAfterInFlight = true;
+    return;
+  }
   if (!ui.entryOverlay || ui.entryOverlay.style.display === 'none') return;
   if (document.visibilityState !== 'visible') return;
   refreshInFlight = true;
+  refreshPendingAfterInFlight = false;
   isRefreshingDevices = true;
   renderEntryDevices();
   renderEntryState();
   if (!navigator.mediaDevices?.enumerateDevices) {
     availableInputDevices = [];
     isRefreshingDevices = false;
+    refreshInFlight = false;
     renderEntryDevices();
     renderEntryState();
     return;
   }
   try {
+    const previousDevice = availableInputDevices.find((d) => d.deviceId === selectedEntryDeviceId) || null;
     const devices = await navigator.mediaDevices.enumerateDevices();
     const inputs = devices.filter((device) => device.kind === 'audioinput' && device.deviceId);
     availableInputDevices = dedupeAudioInputDevices(inputs).sort((a, b) => a.cleanLabel.localeCompare(b.cleanLabel, 'es', { sensitivity: 'base' }));
@@ -678,7 +703,8 @@ async function refreshEntryDevices(reason = 'manual') {
     if (preferred && availableInputDevices.some((d) => d.deviceId === preferred)) {
       selectedEntryDeviceId = preferred;
     } else if (selectedEntryDeviceId && !availableInputDevices.some((d) => d.deviceId === selectedEntryDeviceId)) {
-      selectedEntryDeviceId = null;
+      const replacement = pickBestReplacementDevice(previousDevice, availableInputDevices);
+      selectedEntryDeviceId = replacement?.deviceId || null;
     }
   } catch (err) {
     console.warn('[entry] No se pudo enumerar dispositivos', err);
@@ -689,6 +715,10 @@ async function refreshEntryDevices(reason = 'manual') {
   }
   renderEntryDevices();
   renderEntryState();
+  if (refreshPendingAfterInFlight) {
+    refreshPendingAfterInFlight = false;
+    scheduleEntryDeviceRefresh(`follow-up:${reason}`, 60);
+  }
 }
 
 async function validateTalkModeForEntry() {
