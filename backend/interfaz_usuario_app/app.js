@@ -55,6 +55,7 @@ let entryMode = InputMode.TALK;
 let scenarioReady = false;
 let entryRequested = false;
 let entryInProgress = false;
+let entryRequestedMode = null;
 let entryPermissionStatus = 'unknown';
 let availableInputDevices = [];
 let selectedEntryDeviceId = null;
@@ -252,12 +253,22 @@ function stopInputOrb() {
 async function startVoiceCapture() {
   if (!navigator.mediaDevices?.getUserMedia) throw new Error('getUserMedia no soportado');
   discardRecording = false;
-  const audioConstraints = selectedEntryDeviceId
-    ? { deviceId: { exact: selectedEntryDeviceId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-    : { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
-  micStream = await navigator.mediaDevices.getUserMedia({
-    audio: audioConstraints,
-  });
+  const buildConstraints = (deviceId, forceDefault = false) => {
+    if (!forceDefault && deviceId) {
+      return { deviceId: { exact: deviceId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+    }
+    return { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+  };
+
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: buildConstraints(selectedEntryDeviceId, false) });
+  } catch (err) {
+    const recoverable = err?.name === 'NotFoundError' || err?.name === 'OverconstrainedError';
+    if (!recoverable) throw err;
+    console.warn('[mic] Dispositivo seleccionado no disponible, reintentando con entrada por defecto', err);
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: buildConstraints(null, true) });
+    scheduleEntryDeviceRefresh('voice-capture-fallback', 0);
+  }
 
   recorderMimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
     ? 'audio/webm;codecs=opus'
@@ -791,7 +802,9 @@ async function finalizeEntry() {
   if (!getCanEnterNow()) return;
   entryInProgress = true;
   ui.startBtn.disabled = true;
-  if (entryMode === InputMode.WRITE) {
+  const targetMode = entryRequestedMode || entryMode;
+
+  if (targetMode === InputMode.WRITE) {
     setInputMode(InputMode.WRITE);
     setStatusText('Listo');
   } else {
@@ -804,11 +817,12 @@ async function finalizeEntry() {
       syncAvatarMode();
     } catch (err) {
       console.error('[entry] Error al iniciar modo hablar', err);
-      setInputMode(InputMode.WRITE);
-      setStatusText('No se pudo iniciar el micrófono. Modo escritura activado.');
+      setInputMode(InputMode.TALK);
+      setStatusText('No se pudo activar el micrófono. Revisa permisos/dispositivo y reintenta.');
     }
   }
 
+  entryRequestedMode = null;
   ui.entryOverlay.classList.add('hidden');
   window.setTimeout(() => {
     ui.entryOverlay.style.display = 'none';
@@ -841,6 +855,7 @@ async function handleStartEntry() {
       return;
     }
   }
+  entryRequestedMode = entryMode;
   entryRequested = true;
   tryResolveEntryRequest();
 }
