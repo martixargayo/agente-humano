@@ -60,6 +60,7 @@ let availableInputDevices = [];
 let selectedEntryDeviceId = null;
 let isRefreshingDevices = false;
 let entryDeviceRefreshTimer = null;
+let entryDeviceDebounceTimer = null;
 let refreshInFlight = false;
 const LAST_DEVICE_STORAGE_KEY = 'interfaz_usuario:last_audio_input_device';
 
@@ -434,12 +435,27 @@ function saveEntryDeviceId(deviceId) {
 function normalizeDeviceLabel(label, index) {
   const raw = String(label || '').trim();
   if (!raw) return `Dispositivo de audio ${index + 1}`;
-  return raw
+  const withoutPrefixes = raw
     .replace(/^(predeterminado|default)\s*-\s*/i, '')
     .replace(/^(comunicaciones|communications)\s*-\s*/i, '')
     .replace(/\s*\((default|predeterminado|comunicaciones|communications)\)\s*/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const aliasMatch = withoutPrefixes.match(/^(micr[oó]fono|microphone|headset|auricular|altavoz|speaker)\s*\((.+)\)$/i);
+  const candidate = aliasMatch?.[2] ? aliasMatch[2].trim() : withoutPrefixes;
+
+  return candidate
+    .replace(/\s*\((hands-free|manos libres|input|entrada|output|salida)\)\s*$/i, '')
     .replace(/\s{2,}/g, ' ')
     .trim();
+}
+
+function scoreAudioDeviceLabel(label) {
+  if (!label) return 0;
+  if (/airpods|bluetooth|buds|headset|auricular|micr[oó]fono|usb|wireless/i.test(label)) return 3;
+  if (/default|predeterminado|communications|comunicaciones/i.test(label)) return 1;
+  return 2;
 }
 
 function dedupeAudioInputDevices(devices) {
@@ -447,9 +463,10 @@ function dedupeAudioInputDevices(devices) {
   devices.forEach((device, index) => {
     const cleanLabel = normalizeDeviceLabel(device.label, index);
     const normalizedLabel = cleanLabel.toLowerCase().replace(/[^a-z0-9áéíóúüñ]+/gi, ' ').trim();
-    const groupKey = device.groupId ? `group:${device.groupId}` : `label:${normalizedLabel}`;
+    const keyLabel = normalizedLabel || `device-${index}`;
+    const groupKey = device.groupId ? `group:${device.groupId}` : `label:${keyLabel}`;
     const current = byKey.get(groupKey);
-    const score = /(micr[oó]fono|airpods|headset|auricular|webcam|usb|bluetooth)/i.test(cleanLabel) ? 2 : 1;
+    const score = scoreAudioDeviceLabel(cleanLabel);
     if (!current || score > current.score || (score === current.score && cleanLabel.length > current.cleanLabel.length)) {
       byKey.set(groupKey, { ...device, cleanLabel, score });
     }
@@ -576,19 +593,39 @@ async function requestMicPermissions() {
     entryPermissionStatus = 'denied';
     return false;
   }
-  try {
-    const constraints = selectedEntryDeviceId
-      ? { audio: { deviceId: { exact: selectedEntryDeviceId } } }
-      : { audio: true };
+
+  const tryConstraints = async (constraints) => {
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
     stream.getTracks().forEach((track) => track.stop());
+  };
+
+  try {
+    if (selectedEntryDeviceId) {
+      try {
+        await tryConstraints({ audio: { deviceId: { exact: selectedEntryDeviceId } } });
+      } catch (err) {
+        if (err?.name === 'NotFoundError' || err?.name === 'OverconstrainedError') {
+          selectedEntryDeviceId = null;
+          await tryConstraints({ audio: true });
+        } else {
+          throw err;
+        }
+      }
+    } else {
+      await tryConstraints({ audio: true });
+    }
+
     hasMicPermission = true;
     entryPermissionStatus = 'granted';
     return true;
   } catch (err) {
-    console.error('[mic] Permiso denegado', err);
+    console.error('[mic] Error al solicitar permiso de micrófono', err);
     hasMicPermission = false;
-    entryPermissionStatus = 'denied';
+    if (err?.name === 'NotAllowedError' || err?.name === 'SecurityError') {
+      entryPermissionStatus = 'denied';
+    } else {
+      entryPermissionStatus = 'unknown';
+    }
     return false;
   }
 }
@@ -608,8 +645,19 @@ async function unlockAudioDeviceLabelsIfNeeded() {
   }
 }
 
-async function refreshEntryDevices() {
+function scheduleEntryDeviceRefresh(reason = 'manual', delayMs = 160) {
+  if (entryDeviceDebounceTimer) window.clearTimeout(entryDeviceDebounceTimer);
+  entryDeviceDebounceTimer = window.setTimeout(() => {
+    entryDeviceDebounceTimer = null;
+    if (!ui.entryOverlay || ui.entryOverlay.style.display === 'none') return;
+    if (document.visibilityState !== 'visible') return;
+    void refreshEntryDevices(reason);
+  }, delayMs);
+}
+
+async function refreshEntryDevices(reason = 'manual') {
   if (refreshInFlight) return;
+  if (!ui.entryOverlay || ui.entryOverlay.style.display === 'none') return;
   if (document.visibilityState !== 'visible') return;
   refreshInFlight = true;
   isRefreshingDevices = true;
@@ -625,9 +673,13 @@ async function refreshEntryDevices() {
   try {
     const devices = await navigator.mediaDevices.enumerateDevices();
     const inputs = devices.filter((device) => device.kind === 'audioinput' && device.deviceId);
-    availableInputDevices = dedupeAudioInputDevices(inputs);
+    availableInputDevices = dedupeAudioInputDevices(inputs).sort((a, b) => a.cleanLabel.localeCompare(b.cleanLabel, 'es', { sensitivity: 'base' }));
     const preferred = getSavedEntryDeviceId();
-    if (preferred && availableInputDevices.some((d) => d.deviceId === preferred)) selectedEntryDeviceId = preferred;
+    if (preferred && availableInputDevices.some((d) => d.deviceId === preferred)) {
+      selectedEntryDeviceId = preferred;
+    } else if (selectedEntryDeviceId && !availableInputDevices.some((d) => d.deviceId === selectedEntryDeviceId)) {
+      selectedEntryDeviceId = null;
+    }
   } catch (err) {
     console.warn('[entry] No se pudo enumerar dispositivos', err);
     availableInputDevices = [];
@@ -644,13 +696,16 @@ async function validateTalkModeForEntry() {
   if (entryPermissionStatus !== 'granted') {
     const ok = await requestMicPermissions();
     if (!ok) {
-      if (ui.entryError) ui.entryError.textContent = 'No pudimos habilitar micrófono. Puedes pasar a Escribir.';
-      await refreshEntryDevices();
+      if (ui.entryError) ui.entryError.textContent = entryPermissionStatus === 'denied'
+        ? 'No pudimos habilitar micrófono. Puedes pasar a Escribir.'
+        : 'No pudimos validar el micrófono seleccionado. Reintenta o elige otro dispositivo.';
+      await refreshEntryDevices('validate-error');
       renderEntryState();
       return false;
     }
+    await refreshEntryDevices('after-permission');
   }
-  await refreshEntryDevices();
+  await refreshEntryDevices('validate');
   renderEntryState();
   if (!selectedEntryDeviceId) {
     if (ui.entryError) ui.entryError.textContent = 'No se detectó un dispositivo válido para hablar.';
@@ -1071,10 +1126,10 @@ async function bootstrapEntryDeviceBackground() {
     }
   } catch (_) {}
 
-  await refreshEntryDevices();
+  await refreshEntryDevices('bootstrap');
   if (!availableInputDevices.length && entryPermissionStatus !== 'denied') {
     await unlockAudioDeviceLabelsIfNeeded();
-    await refreshEntryDevices();
+    await refreshEntryDevices('bootstrap-after-unlock');
   }
   renderEntryState();
 }
@@ -1083,26 +1138,26 @@ function startEntryDevicePolling() {
   if (entryDeviceRefreshTimer) window.clearInterval(entryDeviceRefreshTimer);
   entryDeviceRefreshTimer = window.setInterval(() => {
     if (!ui.entryOverlay || ui.entryOverlay.style.display === 'none') return;
-    void refreshEntryDevices();
+    scheduleEntryDeviceRefresh('poll', 220);
   }, 2500);
 }
 
 if (navigator.mediaDevices?.addEventListener) {
   navigator.mediaDevices.addEventListener('devicechange', () => {
-    void refreshEntryDevices();
+    scheduleEntryDeviceRefresh('devicechange', 140);
   });
 }
 
 window.addEventListener('focus', () => {
-  void refreshEntryDevices();
+  scheduleEntryDeviceRefresh('focus', 120);
 });
 
 window.addEventListener('pageshow', () => {
-  void refreshEntryDevices();
+  scheduleEntryDeviceRefresh('pageshow', 120);
 });
 
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') void refreshEntryDevices();
+  if (document.visibilityState === 'visible') scheduleEntryDeviceRefresh('visibilitychange', 80);
 });
 
 (async function initInterfazUsuarioSession() {
@@ -1127,6 +1182,7 @@ document.addEventListener('visibilitychange', () => {
   await bootstrapEntryDeviceBackground();
   setEntryMode(InputMode.TALK);
   renderEntryState();
+  scheduleEntryDeviceRefresh('post-init', 0);
   stopInputOrb();
   syncAvatarMode();
 })();
