@@ -49,6 +49,7 @@ let hasMicPermission = false;
 let waveAudioCtx = null;
 let waveAnalyser = null;
 let waveDataArray = null;
+let waveSourceNode = null;
 let turnInFlight = false;
 let voiceTurnInFlight = false;
 let entryMode = InputMode.TALK;
@@ -203,6 +204,10 @@ async function warmupFrontendTts() {
 
 function teardownMic() {
   stopInputOrb();
+  if (waveSourceNode) {
+    try { waveSourceNode.disconnect(); } catch (_) {}
+  }
+  waveSourceNode = null;
   waveAudioCtx = null;
   waveAnalyser = null;
   waveDataArray = null;
@@ -311,8 +316,8 @@ async function startVoiceCapture() {
   await waveAudioCtx.resume();
   waveAnalyser = waveAudioCtx.createAnalyser();
   waveAnalyser.fftSize = 1024;
-  const source = waveAudioCtx.createMediaStreamSource(micStream);
-  source.connect(waveAnalyser);
+  waveSourceNode = waveAudioCtx.createMediaStreamSource(micStream);
+  waveSourceNode.connect(waveAnalyser);
   waveDataArray = new Uint8Array(waveAnalyser.frequencyBinCount);
   ensureOrbLoop();
 }
@@ -869,6 +874,8 @@ async function handleStartEntry() {
       setStatusText('Activando mic…');
       await startVoiceCapture();
       setStatusText('Escuchando…');
+      updateUi();
+      syncAvatarMode();
     } catch (err) {
       console.error('[entry] No se pudo precalentar captura desde Empezar', err);
       if (ui.entryError) ui.entryError.textContent = 'No pudimos iniciar el micrófono. Reintenta o usa Escribir.';
