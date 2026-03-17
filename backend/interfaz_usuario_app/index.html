@@ -319,9 +319,9 @@
 
       .entry-write-content p {
         margin: 0;
-        color: rgba(15, 23, 42, 0.72);
-        font-size: 12px;
-        line-height: 1.55;
+        color: rgba(15, 23, 42, 0.74);
+        font-size: 14px;
+        line-height: 1.4;
       }
 
       .entry-write-content p + p {
@@ -347,6 +347,113 @@
         margin-bottom: 10px;
         color: rgba(15, 23, 42, 0.62);
         font-size: 12px;
+      }
+
+      .entry-device-search.hidden {
+        display: none;
+      }
+
+      .entry-device-search-spinner {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        border: 2px solid rgba(148, 163, 184, 0.45);
+        border-top-color: rgba(100, 116, 139, 0.9);
+        animation: entrySpin 1s linear infinite;
+      }
+
+      .entry-device-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        height: 172px;
+        overflow-y: auto;
+        padding-right: 2px;
+      }
+
+      .entry-device-option {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        border-radius: 14px;
+        border: 1px solid rgba(15, 23, 42, 0.12);
+        background: #fff;
+        color: #111827;
+        font-size: 13px;
+        padding: 10px 12px;
+        cursor: pointer;
+        text-align: left;
+        min-height: 48px;
+      }
+
+      .entry-device-option.active {
+        border-color: rgba(96, 165, 250, 0.7);
+        box-shadow: 0 0 0 1px rgba(147, 197, 253, 0.35);
+        background: #f8fbff;
+      }
+
+      .entry-device-main {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .entry-device-icon {
+        font-size: 14px;
+        opacity: 0.78;
+      }
+
+      .entry-device-name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .entry-device-check {
+        font-size: 12px;
+        color: rgba(37, 99, 235, 0.9);
+        opacity: 0;
+      }
+
+      .entry-device-option.active .entry-device-check {
+        opacity: 1;
+      }
+
+      .entry-device-empty {
+        border-radius: 14px;
+        border: 1px dashed rgba(15, 23, 42, 0.2);
+        color: rgba(15, 23, 42, 0.58);
+        font-size: 13px;
+        padding: 12px;
+        min-height: 48px;
+        display: flex;
+        align-items: center;
+      }
+
+      .entry-device-empty.muted {
+        color: rgba(148, 163, 184, 0.8);
+      }
+
+      .entry-device-status {
+        margin-top: 12px;
+        min-height: 18px;
+        color: rgba(15, 23, 42, 0.72);
+        font-size: 12px;
+      }
+
+      .entry-device-status.error {
+        color: #dc2626;
+      }
+
+      .entry-actions {
+        margin-top: 14px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
       }
 
       .entry-device-search.hidden {
@@ -764,7 +871,7 @@
         gap: 8px;
         color: rgba(15, 23, 42, 0.7);
         font-size: 12px;
-        margin-top: 12px;
+        margin-top: 22px;
       }
 
       .entry-scenario-state.ready {
@@ -1241,8 +1348,8 @@
 
             <div id="entryTalkContent" class="entry-talk-content">
               <p id="entryDeviceLabel" class="entry-device-label">Dispositivos de audio</p>
-              <div id="entryDeviceSearch" class="entry-device-search hidden" aria-live="polite">
-                <span>Buscando dispositivos</span>
+              <div id="entryDeviceSearch" class="entry-device-search" aria-live="polite">
+                <span>Buscando dispositivos de audio</span>
                 <span class="entry-device-search-spinner" aria-hidden="true"></span>
               </div>
               <div id="entryDeviceList" class="entry-device-list" role="listbox" aria-label="Seleccionar dispositivo de audio"></div>

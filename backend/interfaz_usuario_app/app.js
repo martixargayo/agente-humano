@@ -459,7 +459,7 @@ function dedupeAudioInputDevices(devices) {
 
 function getEntryModeStartEnabled() {
   if (entryMode === InputMode.WRITE) return true;
-  return entryPermissionStatus === 'granted' && Boolean(selectedEntryDeviceId);
+  return entryPermissionStatus !== 'denied' && Boolean(selectedEntryDeviceId);
 }
 
 function getCanEnterNow() {
@@ -491,9 +491,9 @@ function renderEntryState() {
     ui.entryScenarioState.classList.add('ready');
   }
 
-  const showSearching = entryMode === InputMode.TALK && isRefreshingDevices;
-  ui.entryDeviceSearch?.classList.toggle('hidden', !showSearching);
-  ui.entryDeviceLabel?.classList.toggle('entry-hidden', showSearching);
+  const showSearchHeader = entryMode === InputMode.TALK;
+  ui.entryDeviceSearch?.classList.toggle('hidden', !showSearchHeader);
+  ui.entryDeviceLabel?.classList.add('entry-hidden');
 }
 
 function renderEntryDevices() {
@@ -593,8 +593,24 @@ async function requestMicPermissions() {
   }
 }
 
+async function unlockAudioDeviceLabelsIfNeeded() {
+  if (!navigator.mediaDevices?.getUserMedia) return;
+  if (entryPermissionStatus === 'granted' || entryPermissionStatus === 'denied') return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach((track) => track.stop());
+    entryPermissionStatus = 'granted';
+    hasMicPermission = true;
+  } catch (err) {
+    if (err?.name === 'NotAllowedError' || err?.name === 'SecurityError') {
+      entryPermissionStatus = 'denied';
+    }
+  }
+}
+
 async function refreshEntryDevices() {
   if (refreshInFlight) return;
+  if (document.visibilityState !== 'visible') return;
   refreshInFlight = true;
   isRefreshingDevices = true;
   renderEntryDevices();
@@ -1056,6 +1072,10 @@ async function bootstrapEntryDeviceBackground() {
   } catch (_) {}
 
   await refreshEntryDevices();
+  if (!availableInputDevices.length && entryPermissionStatus !== 'denied') {
+    await unlockAudioDeviceLabelsIfNeeded();
+    await refreshEntryDevices();
+  }
   renderEntryState();
 }
 
@@ -1074,6 +1094,10 @@ if (navigator.mediaDevices?.addEventListener) {
 }
 
 window.addEventListener('focus', () => {
+  void refreshEntryDevices();
+});
+
+window.addEventListener('pageshow', () => {
   void refreshEntryDevices();
 });
 
