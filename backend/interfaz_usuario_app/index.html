@@ -4,6 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Interfaz Usuario</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
     <script type="importmap">
       {
         "imports": {
@@ -229,38 +232,228 @@
         }
       }
 
-      .permission-overlay {
+      .entry-overlay {
         position: fixed;
         inset: 0;
         display: flex;
+        flex-direction: column;
         align-items: center;
         justify-content: center;
-        background: rgba(2, 6, 23, 0.75);
-        backdrop-filter: blur(10px);
-        z-index: 5;
+        background: #fff;
+        z-index: 12;
         padding: 24px;
+        transition: opacity 0.24s ease;
+        font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       }
 
-      .permission-card {
-        width: min(420px, 92vw);
-        padding: 28px 30px;
-        border-radius: 24px;
-        background: rgba(15, 23, 42, 0.75);
-        border: 1px solid rgba(148, 163, 184, 0.3);
-        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+      .entry-overlay * {
+        font-family: inherit;
+      }
+
+      .entry-overlay.hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .entry-mode-tabs {
+        display: inline-flex;
+        gap: 6px;
+        background: #f3f4f6;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        border-radius: 999px;
+        padding: 5px;
+        margin-bottom: 18px;
+      }
+
+      .entry-mode-tab {
+        border: none;
+        background: transparent;
+        color: rgba(15, 23, 42, 0.72);
+        border-radius: 999px;
+        padding: 6px 16px;
+        font-size: 13px;
+        cursor: pointer;
+      }
+
+      .entry-mode-tab.active {
+        background: #fff;
+        color: #111827;
+        box-shadow: 0 2px 5px rgba(15, 23, 42, 0.12);
+      }
+
+      .entry-card {
+        width: min(460px, 92vw);
+        min-height: 340px;
+        padding: 24px 26px;
+        border-radius: 26px;
+        background: #fff;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        box-shadow:
+          0 14px 34px rgba(15, 23, 42, 0.14),
+          0 2px 6px rgba(15, 23, 42, 0.08);
         text-align: center;
+        display: flex;
+        align-items: center;
+        justify-content: center;
       }
 
-      .permission-card h1 {
+      .entry-card-content {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        min-height: 250px;
+      }
+
+      .entry-subtitle {
+        margin: 0;
+        color: rgba(15, 23, 42, 0.74);
+        font-size: 14px;
+        line-height: 1.4;
+      }
+
+      .entry-talk-content,
+      .entry-write-content {
+        margin-top: 18px;
+      }
+
+      .entry-write-content p {
+        margin: 0;
+        color: rgba(15, 23, 42, 0.74);
+        font-size: 14px;
+        line-height: 1.4;
+      }
+
+      .entry-write-content p + p {
+        margin-top: 6px;
+      }
+
+      .entry-hidden {
+        display: none;
+      }
+
+      .entry-device-label {
         margin: 0 0 10px;
-        font-size: 22px;
-        letter-spacing: 0.01em;
+        font-size: 12px;
+        color: rgba(15, 23, 42, 0.64);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
       }
 
-      .permission-card p {
-        margin: 0 0 18px;
-        color: var(--text-muted);
-        font-size: 15px;
+      .entry-device-search {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 10px;
+        color: rgba(15, 23, 42, 0.62);
+        font-size: 12px;
+      }
+
+      .entry-device-search.hidden {
+        display: none;
+      }
+
+      .entry-device-search-spinner {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        border: 2px solid rgba(148, 163, 184, 0.45);
+        border-top-color: rgba(100, 116, 139, 0.9);
+        animation: entrySpin 1s linear infinite;
+      }
+
+      .entry-device-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        height: 172px;
+        overflow-y: auto;
+        padding-right: 2px;
+      }
+
+      .entry-device-option {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        border-radius: 14px;
+        border: 1px solid rgba(15, 23, 42, 0.12);
+        background: #fff;
+        color: #111827;
+        font-size: 13px;
+        padding: 10px 12px;
+        cursor: pointer;
+        text-align: left;
+        min-height: 48px;
+      }
+
+      .entry-device-option.active {
+        border-color: rgba(96, 165, 250, 0.7);
+        box-shadow: 0 0 0 1px rgba(147, 197, 253, 0.35);
+        background: #f8fbff;
+      }
+
+      .entry-device-main {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .entry-device-icon {
+        font-size: 14px;
+        opacity: 0.78;
+      }
+
+      .entry-device-name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .entry-device-check {
+        font-size: 12px;
+        color: rgba(37, 99, 235, 0.9);
+        opacity: 0;
+      }
+
+      .entry-device-option.active .entry-device-check {
+        opacity: 1;
+      }
+
+      .entry-device-empty {
+        border-radius: 14px;
+        border: 1px dashed rgba(15, 23, 42, 0.2);
+        color: rgba(15, 23, 42, 0.58);
+        font-size: 13px;
+        padding: 12px;
+        min-height: 48px;
+        display: flex;
+        align-items: center;
+      }
+
+      .entry-device-empty.muted {
+        color: rgba(148, 163, 184, 0.8);
+      }
+
+      .entry-device-status {
+        margin-top: 12px;
+        min-height: 18px;
+        color: rgba(15, 23, 42, 0.72);
+        font-size: 12px;
+      }
+
+      .entry-device-status.error {
+        color: #dc2626;
+      }
+
+      .entry-actions {
+        margin-top: 14px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
       }
 
       .primary-btn {
@@ -277,6 +470,39 @@
       }
 
       .primary-btn:hover { transform: translateY(-1px); box-shadow: 0 10px 30px rgba(37, 99, 235, 0.25); }
+      .primary-btn:disabled {
+        opacity: 0.48;
+        cursor: default;
+        transform: none;
+        box-shadow: none;
+      }
+
+      .entry-scenario-state {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: rgba(15, 23, 42, 0.7);
+        font-size: 12px;
+        margin-top: 22px;
+      }
+
+      .entry-scenario-state.ready {
+        color: rgba(15, 23, 42, 0.62);
+      }
+
+      .entry-spinner,
+      .entry-scenario-spinner {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        border: 2px solid rgba(148, 163, 184, 0.4);
+        border-top-color: rgba(59, 130, 246, 0.9);
+        animation: entrySpin 0.9s linear infinite;
+      }
+
+      @keyframes entrySpin {
+        to { transform: rotate(360deg); }
+      }
 
       .error-text {
         margin-top: 12px;
@@ -723,12 +949,41 @@
         </div>
       </div>
 
-      <div id="permissionOverlay" class="permission-overlay" role="dialog" aria-modal="true">
-        <div class="permission-card">
-          <h1>Iniciar conversación</h1>
-          <p>Necesitamos acceso al micrófono para conversar.</p>
-          <button id="startBtn" class="primary-btn">Permitir y comenzar</button>
-          <div id="permissionError" class="error-text" aria-live="polite"></div>
+      <div id="entryOverlay" class="entry-overlay" role="dialog" aria-modal="true">
+        <div class="entry-mode-tabs" role="tablist" aria-label="Modo de acceso">
+          <button id="entryModeTalk" class="entry-mode-tab active" role="tab" aria-selected="true">Hablar</button>
+          <button id="entryModeWrite" class="entry-mode-tab" role="tab" aria-selected="false">Escribir</button>
+        </div>
+        <div class="entry-card">
+          <div class="entry-card-content">
+            <p class="entry-subtitle" id="entrySubtitle">Prepara tu dispositivo para hablar.</p>
+
+            <div id="entryTalkContent" class="entry-talk-content">
+              <p id="entryDeviceLabel" class="entry-device-label">Dispositivos de audio</p>
+              <div id="entryDeviceSearch" class="entry-device-search" aria-live="polite">
+                <span>Buscando dispositivos de audio</span>
+                <span class="entry-device-search-spinner" aria-hidden="true"></span>
+              </div>
+              <div id="entryDeviceList" class="entry-device-list" role="listbox" aria-label="Seleccionar dispositivo de audio"></div>
+              <div id="entryDeviceStatus" class="entry-device-status" aria-live="polite"></div>
+            </div>
+  
+            <div id="entryWriteContent" class="entry-write-content entry-hidden">
+              <p>Entrarás en modo escritura.</p>
+              <p>Podrás empezar aunque no haya micrófono disponible.</p>
+            </div>
+
+            <div class="entry-actions">
+              <button id="startBtn" class="primary-btn">Empezar</button>
+            </div>
+
+            <div id="entryError" class="error-text" aria-live="polite"></div>
+          </div>
+        </div>
+
+        <div id="entryScenarioState" class="entry-scenario-state" aria-live="polite">
+          <span id="entryScenarioSpinner" class="entry-scenario-spinner" aria-hidden="true"></span>
+          <span id="entryLoadingText">Cargando escenario</span>
         </div>
       </div>
 

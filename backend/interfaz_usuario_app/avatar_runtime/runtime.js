@@ -285,6 +285,28 @@ export function createAvatarRuntime({ stageEl, config }) {
   scene.add(new THREE.AmbientLight(0xffffff, 0.2));
 
   const state = { mode: 'IDLE', talkLevel: 0, manualTalkLevel: 0, analyser: null, analyserData: null, lipsyncLevel: 0 };
+  let runtimeReady = false;
+  let runtimeError = null;
+  const readyListeners = new Set();
+  const errorListeners = new Set();
+
+  function emitRuntimeReady() {
+    runtimeReady = true;
+    runtimeError = null;
+    window.dispatchEvent(new CustomEvent('avatar-runtime-ready'));
+    readyListeners.forEach((cb) => {
+      try { cb(); } catch (_) {}
+    });
+  }
+
+  function emitRuntimeError(error) {
+    runtimeReady = false;
+    runtimeError = error;
+    window.dispatchEvent(new CustomEvent('avatar-runtime-error', { detail: { error } }));
+    errorListeners.forEach((cb) => {
+      try { cb(error); } catch (_) {}
+    });
+  }
   const clock = new THREE.Clock();
 
   const MouthTuning = { centerY: 0.16, centerX: -0.045, width: 0.18, height: 0.14, curve: 0.0 };
@@ -624,7 +646,10 @@ export function createAvatarRuntime({ stageEl, config }) {
   loader.load(config.modelUrl, (gltf) => {
     const meshes = [];
     gltf.scene.traverse((obj) => { if (obj.isMesh) meshes.push(obj); });
-    if (!meshes.length) return;
+    if (!meshes.length) {
+      emitRuntimeError(new Error('No se encontraron meshes en el GLTF.'));
+      return;
+    }
     let colorMap = null;
     for (const m of meshes) { if (m.material?.map) { colorMap = m.material.map; break; } }
 
@@ -632,7 +657,10 @@ export function createAvatarRuntime({ stageEl, config }) {
     meshes.forEach((m) => { const g = m.geometry.clone(); m.updateWorldMatrix(true, false); g.applyMatrix4(m.matrixWorld); geoms.push(g); });
     const mergeFn = BufferGeometryUtils.mergeGeometries || BufferGeometryUtils.mergeBufferGeometries;
     const mergedGeom = mergeFn(geoms, true);
-    if (!mergedGeom) return;
+    if (!mergedGeom) {
+      emitRuntimeError(new Error('No se pudo fusionar geometría del avatar.'));
+      return;
+    }
     mergedGeom.computeVertexNormals();
     mergedGeom.computeBoundingBox();
     const center = new THREE.Vector3();
@@ -708,6 +736,10 @@ export function createAvatarRuntime({ stageEl, config }) {
       document.body.appendChild(panel);
       window.addEventListener('keydown', (e) => { if (e.key.toLowerCase() === 'e') panel.style.display = panel.style.display === 'none' ? 'block' : 'none'; });
     }
+    emitRuntimeReady();
+  }, undefined, (error) => {
+    console.error('[avatar-runtime] Error cargando avatar', error);
+    emitRuntimeError(error);
   });
 
   let prevElapsed = 0;
@@ -803,6 +835,24 @@ export function createAvatarRuntime({ stageEl, config }) {
   };
 
   return {
+    isReady() { return runtimeReady; },
+    getLastError() { return runtimeError; },
+    onReady(cb) {
+      if (typeof cb !== 'function') return () => {};
+      readyListeners.add(cb);
+      if (runtimeReady) {
+        try { cb(); } catch (_) {}
+      }
+      return () => readyListeners.delete(cb);
+    },
+    onError(cb) {
+      if (typeof cb !== 'function') return () => {};
+      errorListeners.add(cb);
+      if (runtimeError) {
+        try { cb(runtimeError); } catch (_) {}
+      }
+      return () => errorListeners.delete(cb);
+    },
     setMode(mode) { state.mode = mode; if (mode !== 'SPEAKING') state.manualTalkLevel = 0; },
     setTalkLevel(level) { state.manualTalkLevel = clamp01(level); },
     connectAnalyser(analyserNode) { state.analyser = analyserNode || null; state.analyserData = analyserNode ? new Uint8Array(analyserNode.frequencyBinCount) : null; },
@@ -814,6 +864,8 @@ export function createAvatarRuntime({ stageEl, config }) {
       controls.dispose();
       renderer.dispose();
       if (canvas.parentNode) canvas.parentNode.removeChild(canvas);
+      readyListeners.clear();
+      errorListeners.clear();
     },
   };
 }
