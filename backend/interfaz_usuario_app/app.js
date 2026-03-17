@@ -65,6 +65,7 @@ let entryDeviceDebounceTimer = null;
 let refreshInFlight = false;
 let refreshPendingAfterInFlight = false;
 let refreshSequence = 0;
+let talkModeTransitionTimer = null;
 const LAST_DEVICE_STORAGE_KEY = 'interfaz_usuario:last_audio_input_device';
 
 const ui = {
@@ -1024,19 +1025,36 @@ ui.entryModeWrite?.addEventListener('click', () => {
 
 ui.modeTalk.addEventListener('click', async () => {
   if (turnInFlight) return;
-  setInputMode(InputMode.TALK);
-  if (!hasMicPermission) return;
-  try {
-    await startVoiceCapture();
-    updateUi();
-    syncAvatarMode();
-  } catch (err) {
-    console.error('[mic] No se pudo iniciar grabación', err);
-    setInputMode(InputMode.WRITE);
+
+  if (talkModeTransitionTimer) {
+    window.clearTimeout(talkModeTransitionTimer);
+    talkModeTransitionTimer = null;
   }
+
+  setInputMode(InputMode.WRITE);
+  talkModeTransitionTimer = window.setTimeout(async () => {
+    talkModeTransitionTimer = null;
+    if (turnInFlight || voiceTurnInFlight) return;
+
+    setInputMode(InputMode.TALK);
+    if (!hasMicPermission) return;
+
+    try {
+      await startVoiceCapture();
+      updateUi();
+      syncAvatarMode();
+    } catch (err) {
+      console.error('[mic] No se pudo iniciar grabación', err);
+      setInputMode(InputMode.WRITE);
+    }
+  }, 120);
 });
 ui.modeWrite.addEventListener('click', () => {
   if (turnInFlight) return;
+  if (talkModeTransitionTimer) {
+    window.clearTimeout(talkModeTransitionTimer);
+    talkModeTransitionTimer = null;
+  }
   if (isRecording) {
     discardRecording = true;
     void stopVoiceCapture().finally(() => teardownMic());
