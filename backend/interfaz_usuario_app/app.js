@@ -68,6 +68,8 @@ let refreshSequence = 0;
 let micPermissionStatusRef = null;
 let entryLastPermissionGrantedAtMs = null;
 let firstVoiceCaptureStartError = null;
+let voiceCaptureSequence = 0;
+let lastVoiceCaptureSignalSummary = null;
 const LAST_DEVICE_STORAGE_KEY = 'interfaz_usuario:last_audio_input_device';
 const ENTRY_DEBUG = true;
 
@@ -257,7 +259,21 @@ async function startVoiceCapture() {
   if (!navigator.mediaDevices?.getUserMedia) throw new Error('getUserMedia no soportado');
   discardRecording = false;
   const startTs = getDiagNowMs();
+  const captureId = ++voiceCaptureSequence;
+  const capturePath = (ui.entryOverlay?.style?.display ?? '') !== 'none'
+    ? 'prejoin-entry'
+    : (entryRequestedMode === InputMode.TALK ? 'entry-finalize' : 'post-entry-toggle');
+  const chunkStats = {
+    captureId,
+    startTs,
+    firstChunkAtMs: null,
+    chunkCount: 0,
+    chunkSizes: [],
+    totalBytes: 0,
+  };
   logEntryDiag('voice-capture:start', {
+    captureId,
+    capturePath,
     since_permission_granted_ms: entryLastPermissionGrantedAtMs == null
       ? null
       : Number((startTs - entryLastPermissionGrantedAtMs).toFixed(3)),
@@ -271,15 +287,17 @@ async function startVoiceCapture() {
 
   try {
     const constraints = { audio: buildConstraints(selectedEntryDeviceId, false) };
-    logEntryDiag('voice-capture:getUserMedia:call', { constraints, fallback: false });
+    logEntryDiag('voice-capture:getUserMedia:call', { captureId, constraints, fallback: false });
     micStream = await navigator.mediaDevices.getUserMedia(constraints);
     logEntryDiag('voice-capture:getUserMedia:ok', {
+      captureId,
       fallback: false,
       elapsed_ms: Number((getDiagNowMs() - startTs).toFixed(3)),
       tracks: getTrackDiagnostics(micStream),
     });
   } catch (err) {
     logEntryDiag('voice-capture:getUserMedia:error', {
+      captureId,
       fallback: false,
       error_name: err?.name || null,
       error_message: err?.message || String(err),
@@ -297,9 +315,10 @@ async function startVoiceCapture() {
     }
     console.warn('[mic] Dispositivo seleccionado no disponible, reintentando con entrada por defecto', err);
     const fallbackConstraints = { audio: buildConstraints(null, true) };
-    logEntryDiag('voice-capture:getUserMedia:call', { constraints: fallbackConstraints, fallback: true });
+    logEntryDiag('voice-capture:getUserMedia:call', { captureId, constraints: fallbackConstraints, fallback: true });
     micStream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
     logEntryDiag('voice-capture:getUserMedia:ok', {
+      captureId,
       fallback: true,
       elapsed_ms: Number((getDiagNowMs() - startTs).toFixed(3)),
       tracks: getTrackDiagnostics(micStream),
@@ -314,13 +333,27 @@ async function startVoiceCapture() {
   audioChunks = [];
 
   mediaRecorder.ondataavailable = (event) => {
-    if (event?.data && event.data.size > 0) audioChunks.push(event.data);
+    if (!(event?.data && event.data.size > 0)) return;
+    audioChunks.push(event.data);
+    const now = getDiagNowMs();
+    if (chunkStats.firstChunkAtMs == null) {
+      chunkStats.firstChunkAtMs = now;
+      logEntryDiag('voice-capture:recorder:first-chunk', {
+        captureId,
+        firstChunkDelayMs: Number((now - startTs).toFixed(3)),
+        firstChunkSize: event.data.size,
+      });
+    }
+    chunkStats.chunkCount += 1;
+    chunkStats.totalBytes += event.data.size;
+    if (chunkStats.chunkSizes.length < 12) chunkStats.chunkSizes.push(event.data.size);
   };
 
   mediaRecorder.start(250);
   await new Promise((resolve) => setTimeout(resolve, 0));
   isRecording = mediaRecorder.state === 'recording';
   logEntryDiag('voice-capture:mediaRecorder:post-start', {
+    captureId,
     mediaRecorderState: mediaRecorder.state,
     isRecording,
     elapsed_ms: Number((getDiagNowMs() - startTs).toFixed(3)),
@@ -349,6 +382,7 @@ async function startVoiceCapture() {
 
   const hadAudioCtxBefore = Boolean(audioCtx && audioCtx.state !== 'closed');
   logEntryDiag('voice-capture:audioctx:before', {
+    captureId,
     hadAudioCtxBefore,
     audioCtxStateBefore: audioCtx?.state || null,
   });
@@ -356,11 +390,13 @@ async function startVoiceCapture() {
   const resumeStart = getDiagNowMs();
   waveAudioCtx = getOrCreateAudioContext();
   logEntryDiag('voice-capture:audioctx:created', {
+    captureId,
     sameAsGlobalAudioCtx: waveAudioCtx === audioCtx,
     audioCtxStateAfterGet: waveAudioCtx?.state || null,
   });
   await waveAudioCtx.resume();
   logEntryDiag('voice-capture:audioctx:resumed', {
+    captureId,
     resumeElapsedMs: Number((getDiagNowMs() - resumeStart).toFixed(3)),
     audioCtxStateAfterResume: waveAudioCtx?.state || null,
   });
@@ -383,6 +419,7 @@ async function startVoiceCapture() {
     }
   })();
   logEntryDiag('voice-capture:analyser:connected', {
+    captureId,
     analyserSetupElapsedMs: Number((getDiagNowMs() - analyserStart).toFixed(3)),
     fftSize: waveAnalyser.fftSize,
     frequencyBinCount: waveAnalyser.frequencyBinCount,
@@ -397,12 +434,14 @@ async function startVoiceCapture() {
       waveAnalyser.getByteTimeDomainData(waveDataArray);
       const stats = analyzeWaveformFrame(waveDataArray);
       logEntryDiag('voice-capture:signal:sample+200ms', {
+        captureId,
         sampleElapsedMs: Number((getDiagNowMs() - windowStart).toFixed(3)),
         stats,
         tracks: getTrackDiagnostics(micStream),
       });
     } catch (err) {
       logEntryDiag('voice-capture:signal:sample+200ms:error', {
+        captureId,
         error_name: err?.name || null,
         error_message: err?.message || String(err),
       });
@@ -411,7 +450,66 @@ async function startVoiceCapture() {
 
   ensureOrbLoop();
 
+  const signalWindowMs = 2800;
+  const signalSamplePeriodMs = 80;
+  const signalSamples = [];
+  const signalTimer = window.setInterval(() => {
+    if (!waveAnalyser || !waveDataArray || !micStream) return;
+    try {
+      waveAnalyser.getByteTimeDomainData(waveDataArray);
+      const stats = analyzeWaveformFrame(waveDataArray);
+      signalSamples.push({
+        relMs: Number((getDiagNowMs() - startTs).toFixed(3)),
+        rms: Number(stats.rms.toFixed(6)),
+        peak: Number(stats.peak.toFixed(6)),
+        tracks: getTrackDiagnostics(micStream),
+      });
+    } catch (err) {
+      signalSamples.push({
+        relMs: Number((getDiagNowMs() - startTs).toFixed(3)),
+        error_name: err?.name || null,
+        error_message: err?.message || String(err),
+      });
+    }
+  }, signalSamplePeriodMs);
+
+  window.setTimeout(() => {
+    window.clearInterval(signalTimer);
+    const validSignalSamples = signalSamples.filter((s) => typeof s.rms === 'number');
+    const summary = summarizeSignalSamples(validSignalSamples);
+    lastVoiceCaptureSignalSummary = {
+      captureId,
+      capturePath,
+      summary,
+      firstSamples: validSignalSamples.slice(0, 8),
+      lastSamples: validSignalSamples.slice(-8),
+      recorder: {
+        firstChunkDelayMs: chunkStats.firstChunkAtMs == null ? null : Number((chunkStats.firstChunkAtMs - startTs).toFixed(3)),
+        chunkCount: chunkStats.chunkCount,
+        chunkSizes: chunkStats.chunkSizes,
+        totalBytes: chunkStats.totalBytes,
+      },
+    };
+    logEntryDiag('voice-capture:signal:window-summary', {
+      captureId,
+      capturePath,
+      windowMs: signalWindowMs,
+      samplePeriodMs: signalSamplePeriodMs,
+      summary,
+      firstSamples: validSignalSamples.slice(0, 4),
+      lastSamples: validSignalSamples.slice(-4),
+      recorder: {
+        firstChunkDelayMs: chunkStats.firstChunkAtMs == null ? null : Number((chunkStats.firstChunkAtMs - startTs).toFixed(3)),
+        chunkCount: chunkStats.chunkCount,
+        chunkSizes: chunkStats.chunkSizes,
+        totalBytes: chunkStats.totalBytes,
+      },
+    });
+  }, signalWindowMs);
+
   logEntryDiag('voice-capture:ready', {
+    captureId,
+    capturePath,
     elapsed_ms: Number((getDiagNowMs() - startTs).toFixed(3)),
     readyCriterion: 'pipeline-mounted',
     tracksAtReady: getTrackDiagnostics(micStream),
@@ -452,13 +550,26 @@ function stopVoiceCapture() {
 }
 
 async function transcribeAudio(blob) {
+  const sttStart = getDiagNowMs();
+  logEntryDiag('stt:request:start', {
+    blobSizeBytes: blob?.size || 0,
+    mimeType: recorderMimeType,
+    lastVoiceCaptureSignalSummary,
+  });
   const audioFile = new File([blob], 'grabacion.webm', { type: recorderMimeType });
   const formData = new FormData();
   formData.append('file', audioFile);
   const response = await fetch('/stt_google', { method: 'POST', body: formData });
   if (!response.ok) throw new Error(await response.text());
   const data = await response.json();
-  return (data?.text || '').trim();
+  const text = (data?.text || '').trim();
+  logEntryDiag('stt:request:ok', {
+    elapsedMs: Number((getDiagNowMs() - sttStart).toFixed(3)),
+    blobSizeBytes: blob?.size || 0,
+    transcriptLength: text.length,
+    transcriptPreview: text.slice(0, 80),
+  });
+  return text;
 }
 
 async function playTtsWithAvatar(replyText) {
@@ -695,6 +806,81 @@ function analyzeWaveformFrame(byteData) {
     sum += v * v;
   }
   return { rms: Math.sqrt(sum / byteData.length), peak };
+}
+
+function summarizeSignalSamples(samples, { flatRmsThreshold = 0.0015, activeRmsThreshold = 0.015 } = {}) {
+  if (!samples.length) {
+    return {
+      sampleCount: 0,
+      durationMs: 0,
+      rmsMin: 0,
+      rmsMax: 0,
+      peakMax: 0,
+      dynamicRangeRms: 0,
+      activeFramePercent: 0,
+      flatFramePercent: 0,
+      firstNonFlatMs: null,
+      firstActiveMs: null,
+      firstTrackMutedTrueMs: null,
+      anyTrackReadyStateEnded: false,
+      anyTrackEnabledFalse: false,
+    };
+  }
+
+  let rmsMin = Number.POSITIVE_INFINITY;
+  let rmsMax = 0;
+  let peakMax = 0;
+  let activeFrames = 0;
+  let flatFrames = 0;
+  let firstNonFlatMs = null;
+  let firstActiveMs = null;
+  let firstTrackMutedTrueMs = null;
+  let anyTrackReadyStateEnded = false;
+  let anyTrackEnabledFalse = false;
+
+  for (const sample of samples) {
+    const rms = Number(sample.rms || 0);
+    const peak = Number(sample.peak || 0);
+    if (rms < rmsMin) rmsMin = rms;
+    if (rms > rmsMax) rmsMax = rms;
+    if (peak > peakMax) peakMax = peak;
+
+    const relMs = Number(sample.relMs || 0);
+    if (rms <= flatRmsThreshold) {
+      flatFrames += 1;
+    } else if (firstNonFlatMs == null) {
+      firstNonFlatMs = relMs;
+    }
+
+    if (rms >= activeRmsThreshold) {
+      activeFrames += 1;
+      if (firstActiveMs == null) firstActiveMs = relMs;
+    }
+
+    const tracks = Array.isArray(sample.tracks) ? sample.tracks : [];
+    if (firstTrackMutedTrueMs == null && tracks.some((t) => t?.muted === true)) {
+      firstTrackMutedTrueMs = relMs;
+    }
+    if (tracks.some((t) => t?.readyState === 'ended')) anyTrackReadyStateEnded = true;
+    if (tracks.some((t) => t?.enabled === false)) anyTrackEnabledFalse = true;
+  }
+
+  const durationMs = Number(samples[samples.length - 1].relMs || 0);
+  return {
+    sampleCount: samples.length,
+    durationMs,
+    rmsMin: Number(rmsMin.toFixed(6)),
+    rmsMax: Number(rmsMax.toFixed(6)),
+    peakMax: Number(peakMax.toFixed(6)),
+    dynamicRangeRms: Number((rmsMax - rmsMin).toFixed(6)),
+    activeFramePercent: Number(((activeFrames * 100) / samples.length).toFixed(2)),
+    flatFramePercent: Number(((flatFrames * 100) / samples.length).toFixed(2)),
+    firstNonFlatMs,
+    firstActiveMs,
+    firstTrackMutedTrueMs,
+    anyTrackReadyStateEnded,
+    anyTrackEnabledFalse,
+  };
 }
 
 function canStartTalkEntry() {
