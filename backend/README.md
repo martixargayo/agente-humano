@@ -54,3 +54,46 @@ Comprobación rápida:
 - `pyright`
 
 Nota sobre APIs: una API key/credenciales incorrectas causa fallos en runtime (401/403, permisos, credenciales), no errores de importación estática.
+
+## Deploy Railway v1 (scope mínimo)
+
+Objetivo de esta salida: 1 instancia Railway con superficie pública oficial en `/interfaz_usuario` + `/api/interfaz_usuario`.
+
+### Arranque
+
+Con `Procfile` en raíz:
+
+```procfile
+web: cd backend && uvicorn api.app:app --host 0.0.0.0 --port ${PORT}
+```
+
+Si prefieres configurarlo en panel Railway (sin Procfile), usa exactamente:
+
+```bash
+cd backend && uvicorn api.app:app --host 0.0.0.0 --port ${PORT}
+```
+
+### Variables de entorno mínimas en Railway
+
+Obligatoria:
+- `OPENAI_API_KEY`
+
+Recomendadas para superficie pública v1:
+- `ENABLE_AVATAR_APP=0`
+- `ENABLE_OPTIMIZADOR_APP=0`
+
+Opcionales (speech):
+- `OPENAI_TTS_MODEL`, `OPENAI_TTS_VOICE`, `OPENAI_TTS_FORMAT`, `OPENAI_TTS_SPEED`, `OPENAI_STT_MODEL`
+- `GOOGLE_CREDENTIALS_PATH` + `GOOGLE_STT_*` (si no se configuran, `/stt_google` intenta fallback OpenAI STT)
+
+### Smoke check post-deploy
+
+1. `GET /health` → `{"status":"ok"}`
+2. `GET /interfaz_usuario` carga la interfaz pública
+3. `POST /api/interfaz_usuario/negociacion/turn` responde `reply`
+
+### Límites explícitos de esta v1
+
+- Estado conversacional en RAM (no reanudación robusta tras reinicio/redeploy).
+- Sin multi-réplica en esta fase.
+- Esta fase no incluye cambios de sesiones, feedback runtime, persistencia ni integración Moodle.

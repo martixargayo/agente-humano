@@ -59,11 +59,17 @@ app.add_middleware(
     allow_headers=["*"],          # Content-Type, Authorization, etc.
 )
 
-# --- Servir el avatar 3D como estático en /avatar ---
+# --- Servir frontends estáticos (flags de entorno para exposición pública) ---
 
-AVATAR_DIR = BACKEND_DIR / "avatar_app"  # carpeta que has creado
+def _env_flag(name: str, default: str = "1") -> bool:
+    return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
 
-if AVATAR_DIR.exists():
+
+ENABLE_AVATAR_APP = _env_flag("ENABLE_AVATAR_APP", "1")
+ENABLE_OPTIMIZADOR_APP = _env_flag("ENABLE_OPTIMIZADOR_APP", "1")
+
+AVATAR_DIR = BACKEND_DIR / "avatar_app"
+if ENABLE_AVATAR_APP and AVATAR_DIR.exists():
     app.mount(
         "/avatar",
         StaticFiles(directory=str(AVATAR_DIR), html=True),
@@ -71,7 +77,7 @@ if AVATAR_DIR.exists():
     )
 
 OPTIMIZADOR_DIR = AVATAR_DIR / "optimizador"
-if OPTIMIZADOR_DIR.exists():
+if ENABLE_OPTIMIZADOR_APP and OPTIMIZADOR_DIR.exists():
     app.mount(
         "/optimizador",
         StaticFiles(directory=str(OPTIMIZADOR_DIR), html=True),
