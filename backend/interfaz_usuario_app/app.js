@@ -49,6 +49,7 @@ let hasMicPermission = false;
 let waveAudioCtx = null;
 let waveAnalyser = null;
 let waveDataArray = null;
+let pendingPermissionStream = null;
 let turnInFlight = false;
 let voiceTurnInFlight = false;
 let entryMode = InputMode.TALK;
@@ -212,6 +213,13 @@ function teardownMic() {
   micStream = null;
 }
 
+function releasePendingPermissionStream() {
+  try {
+    if (pendingPermissionStream) pendingPermissionStream.getTracks().forEach((t) => t.stop());
+  } catch (_) {}
+  pendingPermissionStream = null;
+}
+
 function computeIdlePulse(timeMs) {
   return 0.08 * (0.5 + 0.5 * Math.sin((timeMs * 2 * Math.PI) / 3800));
 }
@@ -251,7 +259,7 @@ function stopInputOrb() {
   if (ui.inputOrb) ui.inputOrb.style.setProperty('--orb-scale', '0.85');
 }
 
-async function startVoiceCapture() {
+async function startVoiceCapture({ preferredStream = null } = {}) {
   if (!navigator.mediaDevices?.getUserMedia) throw new Error('getUserMedia no soportado');
   discardRecording = false;
   const buildConstraints = (deviceId, forceDefault = false) => {
@@ -261,14 +269,20 @@ async function startVoiceCapture() {
     return { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
   };
 
-  try {
-    micStream = await navigator.mediaDevices.getUserMedia({ audio: buildConstraints(selectedEntryDeviceId, false) });
-  } catch (err) {
-    const recoverable = err?.name === 'NotFoundError' || err?.name === 'OverconstrainedError';
-    if (!recoverable) throw err;
-    console.warn('[mic] Dispositivo seleccionado no disponible, reintentando con entrada por defecto', err);
-    micStream = await navigator.mediaDevices.getUserMedia({ audio: buildConstraints(null, true) });
-    scheduleEntryDeviceRefresh('voice-capture-fallback', 0);
+  const hasLiveAudioTrack = (stream) => Boolean(stream?.getAudioTracks?.().some((track) => track.readyState === 'live'));
+
+  if (hasLiveAudioTrack(preferredStream)) {
+    micStream = preferredStream;
+  } else {
+    try {
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: buildConstraints(selectedEntryDeviceId, false) });
+    } catch (err) {
+      const recoverable = err?.name === 'NotFoundError' || err?.name === 'OverconstrainedError';
+      if (!recoverable) throw err;
+      console.warn('[mic] Dispositivo seleccionado no disponible, reintentando con entrada por defecto', err);
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: buildConstraints(null, true) });
+      scheduleEntryDeviceRefresh('voice-capture-fallback', 0);
+    }
   }
 
   recorderMimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
@@ -673,8 +687,9 @@ async function syncMicPermissionState() {
   } catch (_) {}
 }
 
-async function requestMicPermissionsForEntry() {
+async function requestMicPermissionsForEntry({ keepStream = false } = {}) {
   if (!navigator.mediaDevices?.getUserMedia) {
+    releasePendingPermissionStream();
     entryPermissionStatus = 'denied';
     hasMicPermission = false;
     return false;
@@ -685,12 +700,18 @@ async function requestMicPermissionsForEntry() {
     : { audio: true };
 
   try {
+    releasePendingPermissionStream();
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
-    stream.getTracks().forEach((track) => track.stop());
+    if (keepStream) {
+      pendingPermissionStream = stream;
+    } else {
+      stream.getTracks().forEach((track) => track.stop());
+    }
     entryPermissionStatus = 'granted';
     hasMicPermission = true;
     return true;
   } catch (err) {
+    releasePendingPermissionStream();
     if (err?.name === 'NotAllowedError' || err?.name === 'SecurityError') {
       entryPermissionStatus = 'denied';
     } else {
@@ -779,7 +800,7 @@ async function validateTalkModeForEntry() {
 
   const permissionOk = entryPermissionStatus === 'granted'
     ? true
-    : await requestMicPermissionsForEntry();
+    : await requestMicPermissionsForEntry({ keepStream: true });
 
   if (!permissionOk) {
     if (ui.entryError) {
@@ -811,19 +832,22 @@ async function finalizeEntry() {
   const targetMode = entryRequestedMode || entryMode;
 
   if (targetMode === InputMode.WRITE) {
+    releasePendingPermissionStream();
     resolveEntryInputMode(InputMode.WRITE);
     setStatusText('Listo');
   } else {
-    resolveEntryInputMode(InputMode.TALK);
     setStatusText('Activando mic…');
     try {
-      await startVoiceCapture();
+      const prewarmedStream = pendingPermissionStream;
+      pendingPermissionStream = null;
+      await startVoiceCapture({ preferredStream: prewarmedStream });
+      resolveEntryInputMode(InputMode.TALK);
       updateReplyText('Te escucho. Empieza a hablar cuando quieras.');
       updateUi();
       syncAvatarMode();
     } catch (err) {
+      releasePendingPermissionStream();
       console.error('[entry] Error al iniciar modo hablar', err);
-      resolveEntryInputMode(InputMode.TALK);
       setStatusText('No se pudo activar el micrófono. Revisa permisos/dispositivo y reintenta.');
     }
   }
@@ -845,6 +869,7 @@ function tryResolveEntryRequest() {
 function setEntryMode(mode) {
   entryMode = mode;
   if (mode === InputMode.WRITE) {
+    releasePendingPermissionStream();
     if (ui.entryError) ui.entryError.textContent = '';
     renderEntryState();
     return;
