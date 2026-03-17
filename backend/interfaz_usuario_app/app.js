@@ -65,13 +65,7 @@ let entryDeviceDebounceTimer = null;
 let refreshInFlight = false;
 let refreshPendingAfterInFlight = false;
 let refreshSequence = 0;
-let micPermissionStatusRef = null;
-let entryLastPermissionGrantedAtMs = null;
-let firstVoiceCaptureStartError = null;
-let voiceCaptureSequence = 0;
-let lastVoiceCaptureSignalSummary = null;
 const LAST_DEVICE_STORAGE_KEY = 'interfaz_usuario:last_audio_input_device';
-const ENTRY_DEBUG = true;
 
 const ui = {
   listeningGlow: $('listeningGlow'),
@@ -212,6 +206,10 @@ function teardownMic() {
   waveAudioCtx = null;
   waveAnalyser = null;
   waveDataArray = null;
+  isRecording = false;
+  mediaRecorder = null;
+  audioChunks = [];
+  discardRecording = false;
   try { if (micStream) micStream.getTracks().forEach((t) => t.stop()); } catch (_) {}
   micStream = null;
 }
@@ -257,264 +255,66 @@ function stopInputOrb() {
 
 async function startVoiceCapture() {
   if (!navigator.mediaDevices?.getUserMedia) throw new Error('getUserMedia no soportado');
+  if (isMicActuallyRecording()) return;
+
   discardRecording = false;
-  const startTs = getDiagNowMs();
-  const captureId = ++voiceCaptureSequence;
-  const capturePath = (ui.entryOverlay?.style?.display ?? '') !== 'none'
-    ? 'prejoin-entry'
-    : (entryRequestedMode === InputMode.TALK ? 'entry-finalize' : 'post-entry-toggle');
-  const chunkStats = {
-    captureId,
-    startTs,
-    firstChunkAtMs: null,
-    chunkCount: 0,
-    chunkSizes: [],
-    totalBytes: 0,
-  };
-  logEntryDiag('voice-capture:start', {
-    captureId,
-    capturePath,
-    since_permission_granted_ms: entryLastPermissionGrantedAtMs == null
-      ? null
-      : Number((startTs - entryLastPermissionGrantedAtMs).toFixed(3)),
+  teardownMic();
+
+  const buildConstraints = (deviceId = null) => ({
+    audio: deviceId
+      ? {
+          deviceId: { exact: deviceId },
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        }
+      : {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
   });
-  const buildConstraints = (deviceId, forceDefault = false) => {
-    if (!forceDefault && deviceId) {
-      return { deviceId: { exact: deviceId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true };
-    }
-    return { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
-  };
 
   try {
-    const constraints = { audio: buildConstraints(selectedEntryDeviceId, false) };
-    logEntryDiag('voice-capture:getUserMedia:call', { captureId, constraints, fallback: false });
-    micStream = await navigator.mediaDevices.getUserMedia(constraints);
-    logEntryDiag('voice-capture:getUserMedia:ok', {
-      captureId,
-      fallback: false,
-      elapsed_ms: Number((getDiagNowMs() - startTs).toFixed(3)),
-      tracks: getTrackDiagnostics(micStream),
-    });
+    micStream = await navigator.mediaDevices.getUserMedia(buildConstraints(selectedEntryDeviceId));
   } catch (err) {
-    logEntryDiag('voice-capture:getUserMedia:error', {
-      captureId,
-      fallback: false,
-      error_name: err?.name || null,
-      error_message: err?.message || String(err),
-    });
     const recoverable = err?.name === 'NotFoundError' || err?.name === 'OverconstrainedError';
-    if (!recoverable) {
-      if (!firstVoiceCaptureStartError) {
-        firstVoiceCaptureStartError = {
-          step: 'getUserMedia_initial',
-          error_name: err?.name || null,
-          error_message: err?.message || String(err),
-        };
-      }
-      throw err;
-    }
-    console.warn('[mic] Dispositivo seleccionado no disponible, reintentando con entrada por defecto', err);
-    const fallbackConstraints = { audio: buildConstraints(null, true) };
-    logEntryDiag('voice-capture:getUserMedia:call', { captureId, constraints: fallbackConstraints, fallback: true });
-    micStream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
-    logEntryDiag('voice-capture:getUserMedia:ok', {
-      captureId,
-      fallback: true,
-      elapsed_ms: Number((getDiagNowMs() - startTs).toFixed(3)),
-      tracks: getTrackDiagnostics(micStream),
-    });
-    scheduleEntryDeviceRefresh('voice-capture-fallback', 0);
+    if (!recoverable) throw err;
+    micStream = await navigator.mediaDevices.getUserMedia(buildConstraints());
+    void refreshEntryDevices('capture-fallback-device');
   }
 
   recorderMimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
     ? 'audio/webm;codecs=opus'
     : 'audio/webm';
+
   mediaRecorder = new MediaRecorder(micStream, { mimeType: recorderMimeType });
   audioChunks = [];
 
   mediaRecorder.ondataavailable = (event) => {
-    if (!(event?.data && event.data.size > 0)) return;
-    audioChunks.push(event.data);
-    const now = getDiagNowMs();
-    if (chunkStats.firstChunkAtMs == null) {
-      chunkStats.firstChunkAtMs = now;
-      logEntryDiag('voice-capture:recorder:first-chunk', {
-        captureId,
-        firstChunkDelayMs: Number((now - startTs).toFixed(3)),
-        firstChunkSize: event.data.size,
-      });
-    }
-    chunkStats.chunkCount += 1;
-    chunkStats.totalBytes += event.data.size;
-    if (chunkStats.chunkSizes.length < 12) chunkStats.chunkSizes.push(event.data.size);
+    if (event?.data && event.data.size > 0) audioChunks.push(event.data);
   };
 
   mediaRecorder.start(250);
   await new Promise((resolve) => setTimeout(resolve, 0));
   isRecording = mediaRecorder.state === 'recording';
-  logEntryDiag('voice-capture:mediaRecorder:post-start', {
-    captureId,
-    mediaRecorderState: mediaRecorder.state,
-    isRecording,
-    elapsed_ms: Number((getDiagNowMs() - startTs).toFixed(3)),
-  });
 
   if (!micStream.getTracks().some((track) => track.readyState === 'live')) {
-    if (!firstVoiceCaptureStartError) {
-      firstVoiceCaptureStartError = {
-        step: 'track_ready_state_check',
-        error_name: 'TrackNotLive',
-        error_message: 'No hay tracks live tras iniciar captura',
-      };
-    }
     throw new Error('El micrófono no está activo.');
   }
+
   if (!isRecording) {
-    if (!firstVoiceCaptureStartError) {
-      firstVoiceCaptureStartError = {
-        step: 'media_recorder_state_check',
-        error_name: 'MediaRecorderNotRecording',
-        error_message: 'MediaRecorder no quedó en recording tras start',
-      };
-    }
     throw new Error('No se pudo iniciar la grabación.');
   }
 
-  const hadAudioCtxBefore = Boolean(audioCtx && audioCtx.state !== 'closed');
-  logEntryDiag('voice-capture:audioctx:before', {
-    captureId,
-    hadAudioCtxBefore,
-    audioCtxStateBefore: audioCtx?.state || null,
-  });
-
-  const resumeStart = getDiagNowMs();
   waveAudioCtx = getOrCreateAudioContext();
-  logEntryDiag('voice-capture:audioctx:created', {
-    captureId,
-    sameAsGlobalAudioCtx: waveAudioCtx === audioCtx,
-    audioCtxStateAfterGet: waveAudioCtx?.state || null,
-  });
   await waveAudioCtx.resume();
-  logEntryDiag('voice-capture:audioctx:resumed', {
-    captureId,
-    resumeElapsedMs: Number((getDiagNowMs() - resumeStart).toFixed(3)),
-    audioCtxStateAfterResume: waveAudioCtx?.state || null,
-  });
-
-  const analyserStart = getDiagNowMs();
   waveAnalyser = waveAudioCtx.createAnalyser();
   waveAnalyser.fftSize = 1024;
   const source = waveAudioCtx.createMediaStreamSource(micStream);
   source.connect(waveAnalyser);
   waveDataArray = new Uint8Array(waveAnalyser.frequencyBinCount);
-  const firstFrameStats = (() => {
-    try {
-      waveAnalyser.getByteTimeDomainData(waveDataArray);
-      return analyzeWaveformFrame(waveDataArray);
-    } catch (err) {
-      return {
-        error_name: err?.name || null,
-        error_message: err?.message || String(err),
-      };
-    }
-  })();
-  logEntryDiag('voice-capture:analyser:connected', {
-    captureId,
-    analyserSetupElapsedMs: Number((getDiagNowMs() - analyserStart).toFixed(3)),
-    fftSize: waveAnalyser.fftSize,
-    frequencyBinCount: waveAnalyser.frequencyBinCount,
-    firstFrameStats,
-    tracksAtAnalyserConnect: getTrackDiagnostics(micStream),
-  });
-
-  const windowStart = getDiagNowMs();
-  window.setTimeout(() => {
-    if (!waveAnalyser || !waveDataArray || !micStream) return;
-    try {
-      waveAnalyser.getByteTimeDomainData(waveDataArray);
-      const stats = analyzeWaveformFrame(waveDataArray);
-      logEntryDiag('voice-capture:signal:sample+200ms', {
-        captureId,
-        sampleElapsedMs: Number((getDiagNowMs() - windowStart).toFixed(3)),
-        stats,
-        tracks: getTrackDiagnostics(micStream),
-      });
-    } catch (err) {
-      logEntryDiag('voice-capture:signal:sample+200ms:error', {
-        captureId,
-        error_name: err?.name || null,
-        error_message: err?.message || String(err),
-      });
-    }
-  }, 200);
-
   ensureOrbLoop();
-
-  const signalWindowMs = 2800;
-  const signalSamplePeriodMs = 80;
-  const signalSamples = [];
-  const signalTimer = window.setInterval(() => {
-    if (!waveAnalyser || !waveDataArray || !micStream) return;
-    try {
-      waveAnalyser.getByteTimeDomainData(waveDataArray);
-      const stats = analyzeWaveformFrame(waveDataArray);
-      signalSamples.push({
-        relMs: Number((getDiagNowMs() - startTs).toFixed(3)),
-        rms: Number(stats.rms.toFixed(6)),
-        peak: Number(stats.peak.toFixed(6)),
-        tracks: getTrackDiagnostics(micStream),
-      });
-    } catch (err) {
-      signalSamples.push({
-        relMs: Number((getDiagNowMs() - startTs).toFixed(3)),
-        error_name: err?.name || null,
-        error_message: err?.message || String(err),
-      });
-    }
-  }, signalSamplePeriodMs);
-
-  window.setTimeout(() => {
-    window.clearInterval(signalTimer);
-    const validSignalSamples = signalSamples.filter((s) => typeof s.rms === 'number');
-    const summary = summarizeSignalSamples(validSignalSamples);
-    lastVoiceCaptureSignalSummary = {
-      captureId,
-      capturePath,
-      summary,
-      firstSamples: validSignalSamples.slice(0, 8),
-      lastSamples: validSignalSamples.slice(-8),
-      recorder: {
-        firstChunkDelayMs: chunkStats.firstChunkAtMs == null ? null : Number((chunkStats.firstChunkAtMs - startTs).toFixed(3)),
-        chunkCount: chunkStats.chunkCount,
-        chunkSizes: chunkStats.chunkSizes,
-        totalBytes: chunkStats.totalBytes,
-      },
-    };
-    logEntryDiag('voice-capture:signal:window-summary', {
-      captureId,
-      capturePath,
-      windowMs: signalWindowMs,
-      samplePeriodMs: signalSamplePeriodMs,
-      summary,
-      firstSamples: validSignalSamples.slice(0, 4),
-      lastSamples: validSignalSamples.slice(-4),
-      recorder: {
-        firstChunkDelayMs: chunkStats.firstChunkAtMs == null ? null : Number((chunkStats.firstChunkAtMs - startTs).toFixed(3)),
-        chunkCount: chunkStats.chunkCount,
-        chunkSizes: chunkStats.chunkSizes,
-        totalBytes: chunkStats.totalBytes,
-      },
-    });
-  }, signalWindowMs);
-
-  logEntryDiag('voice-capture:ready', {
-    captureId,
-    capturePath,
-    elapsed_ms: Number((getDiagNowMs() - startTs).toFixed(3)),
-    readyCriterion: 'pipeline-mounted',
-    tracksAtReady: getTrackDiagnostics(micStream),
-    mediaRecorderStateAtReady: mediaRecorder?.state || null,
-  });
 }
 
 function stopVoiceCapture() {
@@ -526,11 +326,13 @@ function stopVoiceCapture() {
       audioChunks = [];
       isRecording = false;
       mediaRecorder = null;
+
       if (discardRecording) {
         discardRecording = false;
         resolve(null);
         return;
       }
+
       resolve(blob);
     };
 
@@ -550,26 +352,13 @@ function stopVoiceCapture() {
 }
 
 async function transcribeAudio(blob) {
-  const sttStart = getDiagNowMs();
-  logEntryDiag('stt:request:start', {
-    blobSizeBytes: blob?.size || 0,
-    mimeType: recorderMimeType,
-    lastVoiceCaptureSignalSummary,
-  });
   const audioFile = new File([blob], 'grabacion.webm', { type: recorderMimeType });
   const formData = new FormData();
   formData.append('file', audioFile);
   const response = await fetch('/stt_google', { method: 'POST', body: formData });
   if (!response.ok) throw new Error(await response.text());
   const data = await response.json();
-  const text = (data?.text || '').trim();
-  logEntryDiag('stt:request:ok', {
-    elapsedMs: Number((getDiagNowMs() - sttStart).toFixed(3)),
-    blobSizeBytes: blob?.size || 0,
-    transcriptLength: text.length,
-    transcriptPreview: text.slice(0, 80),
-  });
-  return text;
+  return (data?.text || '').trim();
 }
 
 async function playTtsWithAvatar(replyText) {
@@ -737,152 +526,6 @@ function pickReplacementDevice(previousDeviceId, previousList, nextList) {
   return nextList[0].deviceId;
 }
 
-function getEntryDeviceDebugList() {
-  return availableInputDevices.map((device) => ({
-    id: device.deviceId,
-    label: device.cleanLabel,
-    groupId: device.groupId || null,
-  }));
-}
-
-function logEntryState(tag, extra = {}) {
-  if (!ENTRY_DEBUG) return;
-  const startEnabled = entryMode === InputMode.WRITE
-    ? true
-    : (entryPermissionStatus !== 'denied' && Boolean(selectedEntryDeviceId));
-  const startDisabled = Boolean(ui.startBtn?.disabled);
-  console.debug(`[entry-state] ${tag}`, {
-    entryMode,
-    entryPermissionStatus,
-    selectedEntryDeviceId,
-    availableInputDevicesCount: availableInputDevices.length,
-    availableInputDevices: getEntryDeviceDebugList(),
-    startEnabled,
-    startBtnDisabled: startDisabled,
-    ...extra,
-  });
-}
-
-function getDiagNowMs() {
-  if (typeof performance !== 'undefined' && typeof performance.now === 'function') return performance.now();
-  return Date.now();
-}
-
-function getTrackDiagnostics(stream) {
-  if (!stream?.getTracks) return [];
-  return stream.getTracks().map((track) => ({
-    kind: track.kind,
-    id: track.id,
-    label: track.label,
-    enabled: track.enabled,
-    muted: track.muted,
-    readyState: track.readyState,
-  }));
-}
-
-function logEntryDiag(tag, extra = {}) {
-  if (!ENTRY_DEBUG) return;
-  const payload = {
-    ts_ms: Number(getDiagNowMs().toFixed(3)),
-    entryMode,
-    currentInputMode,
-    selectedEntryDeviceId,
-    entryPermissionStatus,
-    ...extra,
-  };
-  if (!Array.isArray(window.__entryDiagEvents)) window.__entryDiagEvents = [];
-  window.__entryDiagEvents.push({ tag, ...payload });
-  console.debug(`[entry-diag] ${tag}`, payload);
-}
-
-function analyzeWaveformFrame(byteData) {
-  if (!byteData?.length) return { rms: 0, peak: 0 };
-  let sum = 0;
-  let peak = 0;
-  for (let i = 0; i < byteData.length; i += 1) {
-    const v = byteData[i] / 128 - 1;
-    const av = Math.abs(v);
-    if (av > peak) peak = av;
-    sum += v * v;
-  }
-  return { rms: Math.sqrt(sum / byteData.length), peak };
-}
-
-function summarizeSignalSamples(samples, { flatRmsThreshold = 0.0015, activeRmsThreshold = 0.015 } = {}) {
-  if (!samples.length) {
-    return {
-      sampleCount: 0,
-      durationMs: 0,
-      rmsMin: 0,
-      rmsMax: 0,
-      peakMax: 0,
-      dynamicRangeRms: 0,
-      activeFramePercent: 0,
-      flatFramePercent: 0,
-      firstNonFlatMs: null,
-      firstActiveMs: null,
-      firstTrackMutedTrueMs: null,
-      anyTrackReadyStateEnded: false,
-      anyTrackEnabledFalse: false,
-    };
-  }
-
-  let rmsMin = Number.POSITIVE_INFINITY;
-  let rmsMax = 0;
-  let peakMax = 0;
-  let activeFrames = 0;
-  let flatFrames = 0;
-  let firstNonFlatMs = null;
-  let firstActiveMs = null;
-  let firstTrackMutedTrueMs = null;
-  let anyTrackReadyStateEnded = false;
-  let anyTrackEnabledFalse = false;
-
-  for (const sample of samples) {
-    const rms = Number(sample.rms || 0);
-    const peak = Number(sample.peak || 0);
-    if (rms < rmsMin) rmsMin = rms;
-    if (rms > rmsMax) rmsMax = rms;
-    if (peak > peakMax) peakMax = peak;
-
-    const relMs = Number(sample.relMs || 0);
-    if (rms <= flatRmsThreshold) {
-      flatFrames += 1;
-    } else if (firstNonFlatMs == null) {
-      firstNonFlatMs = relMs;
-    }
-
-    if (rms >= activeRmsThreshold) {
-      activeFrames += 1;
-      if (firstActiveMs == null) firstActiveMs = relMs;
-    }
-
-    const tracks = Array.isArray(sample.tracks) ? sample.tracks : [];
-    if (firstTrackMutedTrueMs == null && tracks.some((t) => t?.muted === true)) {
-      firstTrackMutedTrueMs = relMs;
-    }
-    if (tracks.some((t) => t?.readyState === 'ended')) anyTrackReadyStateEnded = true;
-    if (tracks.some((t) => t?.enabled === false)) anyTrackEnabledFalse = true;
-  }
-
-  const durationMs = Number(samples[samples.length - 1].relMs || 0);
-  return {
-    sampleCount: samples.length,
-    durationMs,
-    rmsMin: Number(rmsMin.toFixed(6)),
-    rmsMax: Number(rmsMax.toFixed(6)),
-    peakMax: Number(peakMax.toFixed(6)),
-    dynamicRangeRms: Number((rmsMax - rmsMin).toFixed(6)),
-    activeFramePercent: Number(((activeFrames * 100) / samples.length).toFixed(2)),
-    flatFramePercent: Number(((flatFrames * 100) / samples.length).toFixed(2)),
-    firstNonFlatMs,
-    firstActiveMs,
-    firstTrackMutedTrueMs,
-    anyTrackReadyStateEnded,
-    anyTrackEnabledFalse,
-  };
-}
-
 function canStartTalkEntry() {
   return entryPermissionStatus !== 'denied' && Boolean(selectedEntryDeviceId);
 }
@@ -901,7 +544,6 @@ function setSelectedEntryDevice(deviceId, reason = 'manual') {
   if (selectedEntryDeviceId === deviceId) return;
   selectedEntryDeviceId = deviceId;
   saveEntryDeviceId(deviceId);
-  logEntryState('setSelectedEntryDevice', { reason, deviceId });
   renderEntryDevices();
   renderEntryState();
 }
@@ -1007,7 +649,6 @@ async function syncMicPermissionState() {
   if (!navigator.permissions?.query) return;
   try {
     const status = await navigator.permissions.query({ name: 'microphone' });
-    micPermissionStatusRef = status;
     if (status.state === 'granted' || status.state === 'denied' || status.state === 'prompt') {
       entryPermissionStatus = status.state;
       hasMicPermission = status.state === 'granted';
@@ -1032,28 +673,11 @@ async function requestMicPermissionsForEntry() {
     ? { audio: { deviceId: { ideal: selectedEntryDeviceId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true } }
     : { audio: true };
 
-  logEntryDiag('permission:getUserMedia:call', { constraints });
-
   try {
-    const t0 = getDiagNowMs();
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
-    const t1 = getDiagNowMs();
-    logEntryDiag('permission:getUserMedia:ok', {
-      elapsed_ms: Number((t1 - t0).toFixed(3)),
-      tracks_before_stop: getTrackDiagnostics(stream),
-    });
-
     stream.getTracks().forEach((track) => track.stop());
-    logEntryDiag('permission:tracks:after-stop', {
-      tracks_after_stop: getTrackDiagnostics(stream),
-    });
-
     entryPermissionStatus = 'granted';
     hasMicPermission = true;
-    entryLastPermissionGrantedAtMs = t1;
-    logEntryDiag('permission:granted', {
-      granted_at_ms: Number(entryLastPermissionGrantedAtMs.toFixed(3)),
-    });
     return true;
   } catch (err) {
     if (err?.name === 'NotAllowedError' || err?.name === 'SecurityError') {
@@ -1062,10 +686,6 @@ async function requestMicPermissionsForEntry() {
       entryPermissionStatus = 'prompt';
     }
     hasMicPermission = false;
-    logEntryDiag('permission:getUserMedia:error', {
-      error_name: err?.name || null,
-      error_message: err?.message || String(err),
-    });
     console.error('[entry] Error al pedir permiso de micrófono', err);
     return false;
   }
@@ -1109,12 +729,6 @@ async function refreshEntryDevices(reason = 'manual') {
 
     if (selectedEntryDeviceId) saveEntryDeviceId(selectedEntryDeviceId);
 
-    logEntryState('refreshEntryDevices', {
-      reason,
-      sequence,
-      previousSelected,
-      nextSelected: selectedEntryDeviceId,
-    });
   } catch (err) {
     console.warn('[entry] enumerateDevices falló', err);
     availableInputDevices = [];
@@ -1185,12 +799,6 @@ async function finalizeEntry() {
   } else {
     resolveEntryInputMode(InputMode.TALK);
     setStatusText('Activando mic…');
-    logEntryDiag('finalizeEntry:start-voice-capture:begin', {
-      since_permission_granted_ms: entryLastPermissionGrantedAtMs == null
-        ? null
-        : Number((getDiagNowMs() - entryLastPermissionGrantedAtMs).toFixed(3)),
-      first_voice_capture_start_error: firstVoiceCaptureStartError,
-    });
     try {
       await startVoiceCapture();
       updateReplyText('Te escucho. Empieza a hablar cuando quieras.');
@@ -1198,10 +806,6 @@ async function finalizeEntry() {
       syncAvatarMode();
     } catch (err) {
       console.error('[entry] Error al iniciar modo hablar', err);
-      logEntryDiag('finalizeEntry:start-voice-capture:error', {
-        error_name: err?.name || null,
-        error_message: err?.message || String(err),
-      });
       resolveEntryInputMode(InputMode.TALK);
       setStatusText('No se pudo activar el micrófono. Revisa permisos/dispositivo y reintenta.');
     }
@@ -1233,8 +837,6 @@ function setEntryMode(mode) {
 }
 
 async function handleStartEntry() {
-  firstVoiceCaptureStartError = null;
-  logEntryDiag('entry:start:click', { mode: entryMode });
   if (entryMode === InputMode.TALK) {
     const talkReady = await validateTalkModeForEntry();
     if (!talkReady) {
@@ -1606,28 +1208,23 @@ function startEntryDevicePolling() {
 
 if (navigator.mediaDevices?.addEventListener) {
   navigator.mediaDevices.addEventListener('devicechange', () => {
-    logEntryState('event:devicechange');
     scheduleEntryDeviceRefresh('devicechange', 140);
   });
 }
 
 window.addEventListener('focus', () => {
-  logEntryState('event:focus');
   scheduleEntryDeviceRefresh('focus', 120);
 });
 
 window.addEventListener('pageshow', () => {
-  logEntryState('event:pageshow');
   scheduleEntryDeviceRefresh('pageshow', 120);
 });
 
 document.addEventListener('visibilitychange', () => {
-  logEntryState('event:visibilitychange', { visibilityState: document.visibilityState });
   if (document.visibilityState === 'visible') scheduleEntryDeviceRefresh('visibilitychange', 80);
 });
 
 (async function initInterfazUsuarioSession() {
-  logEntryState('init:prejoin-start');
   _seedDefaultIds();
   syncSessionBoundaryReset();
   try {
@@ -1639,21 +1236,9 @@ document.addEventListener('visibilitychange', () => {
     $('meta').textContent = `bootstrap_error=${String(err)}`;
   }
   try {
-    logEntryDiag('init:audioctx:resume-attempt', {
-      audioCtxStateBefore: audioCtx?.state || null,
-    });
     await getOrCreateAudioContext().resume();
-    logEntryDiag('init:audioctx:resume-ok', {
-      audioCtxStateAfter: audioCtx?.state || null,
-    });
     await warmupFrontendTts();
-  } catch (err) {
-    logEntryDiag('init:audioctx:resume-error', {
-      error_name: err?.name || null,
-      error_message: err?.message || String(err),
-      audioCtxStateAfterError: audioCtx?.state || null,
-    });
-  }
+  } catch (_) {}
 
   if (!entryResolvedInputMode) setInputMode(InputMode.WRITE);
   bindRuntimeReadiness();
