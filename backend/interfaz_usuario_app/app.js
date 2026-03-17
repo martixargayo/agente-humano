@@ -64,6 +64,7 @@ let entryDeviceDebounceTimer = null;
 let refreshInFlight = false;
 let refreshPendingAfterInFlight = false;
 const LAST_DEVICE_STORAGE_KEY = 'interfaz_usuario:last_audio_input_device';
+const ENTRY_DEBUG = true;
 
 const ui = {
   listeningGlow: $('listeningGlow'),
@@ -493,9 +494,35 @@ function pickBestReplacementDevice(previousDevice, devices) {
   return devices.find((d) => getDeviceLabelKey(d.cleanLabel || d.label || '') === previousKey) || null;
 }
 
+function getEntryDeviceDebugList() {
+  return availableInputDevices.map((device) => ({
+    id: device.deviceId,
+    label: device.cleanLabel || device.label || '(sin label)',
+    groupId: device.groupId || null,
+  }));
+}
+
+function logEntryState(tag, extra = {}) {
+  if (!ENTRY_DEBUG) return;
+  const startEnabled = entryMode === InputMode.WRITE
+    ? true
+    : Boolean(selectedEntryDeviceId);
+  const startDisabled = Boolean(ui.startBtn?.disabled);
+  console.debug(`[entry-state] ${tag}`, {
+    entryMode,
+    entryPermissionStatus,
+    selectedEntryDeviceId,
+    availableInputDevicesCount: availableInputDevices.length,
+    availableInputDevices: getEntryDeviceDebugList(),
+    startEnabled,
+    startBtnDisabled: startDisabled,
+    ...extra,
+  });
+}
+
 function getEntryModeStartEnabled() {
   if (entryMode === InputMode.WRITE) return true;
-  return entryPermissionStatus !== 'denied' && Boolean(selectedEntryDeviceId);
+  return Boolean(selectedEntryDeviceId);
 }
 
 function getCanEnterNow() {
@@ -504,6 +531,7 @@ function getCanEnterNow() {
 
 function renderEntryState() {
   if (!ui.entryOverlay) return;
+  logEntryState('renderEntryState:before-start-gating');
   ui.entryModeTalk.classList.toggle('active', entryMode === InputMode.TALK);
   ui.entryModeWrite.classList.toggle('active', entryMode === InputMode.WRITE);
   ui.entryModeTalk.setAttribute('aria-selected', String(entryMode === InputMode.TALK));
@@ -515,6 +543,7 @@ function renderEntryState() {
 
   const startEnabled = getEntryModeStartEnabled();
   ui.startBtn.disabled = !startEnabled || entryInProgress;
+  logEntryState('renderEntryState:after-start-gating', { startEnabled, entryInProgress });
   ui.startBtn.textContent = entryRequested && !scenarioReady ? 'Cargando escenario…' : 'Empezar';
 
   if (!scenarioReady) {
@@ -548,6 +577,10 @@ function renderEntryDevices() {
     }
     selectedEntryDeviceId = null;
   } else {
+    if (!selectedEntryDeviceId || !availableInputDevices.some((d) => d.deviceId === selectedEntryDeviceId)) {
+      selectedEntryDeviceId = availableInputDevices[0]?.deviceId || null;
+    }
+
     availableInputDevices.forEach((device) => {
       const option = document.createElement('button');
       option.type = 'button';
@@ -574,14 +607,12 @@ function renderEntryDevices() {
       option.addEventListener('click', () => {
         selectedEntryDeviceId = device.deviceId;
         saveEntryDeviceId(selectedEntryDeviceId);
+        logEntryState('manual-device-select', { selectedFromClick: device.deviceId });
         renderEntryDevices();
         renderEntryState();
       });
       ui.entryDeviceList.appendChild(option);
     });
-    if (!selectedEntryDeviceId || !availableInputDevices.some((d) => d.deviceId === selectedEntryDeviceId)) {
-      selectedEntryDeviceId = availableInputDevices[0]?.deviceId || null;
-    }
     const fillerCount = Math.max(0, 3 - availableInputDevices.length);
     for (let i = 0; i < fillerCount; i += 1) {
       const placeholder = document.createElement('div');
@@ -604,6 +635,8 @@ function renderEntryDevices() {
     ui.entryDeviceStatus.textContent = 'Dispositivo listo para empezar en modo hablar.';
     ui.entryDeviceStatus.classList.remove('error');
   }
+
+  logEntryState('renderEntryDevices:done');
 }
 
 async function requestMicPermissions() {
@@ -684,6 +717,7 @@ async function refreshEntryDevices(reason = 'manual') {
   refreshInFlight = true;
   refreshPendingAfterInFlight = false;
   isRefreshingDevices = true;
+  logEntryState('refreshEntryDevices:start', { reason });
   renderEntryDevices();
   renderEntryState();
   if (!navigator.mediaDevices?.enumerateDevices) {
@@ -706,6 +740,11 @@ async function refreshEntryDevices(reason = 'manual') {
       const replacement = pickBestReplacementDevice(previousDevice, availableInputDevices);
       selectedEntryDeviceId = replacement?.deviceId || null;
     }
+    logEntryState('refreshEntryDevices:after-reconcile', {
+      reason,
+      previousDeviceId: previousDevice?.deviceId || null,
+      preferred,
+    });
   } catch (err) {
     console.warn('[entry] No se pudo enumerar dispositivos', err);
     availableInputDevices = [];
@@ -715,6 +754,7 @@ async function refreshEntryDevices(reason = 'manual') {
   }
   renderEntryDevices();
   renderEntryState();
+  logEntryState('refreshEntryDevices:end', { reason });
   if (refreshPendingAfterInFlight) {
     refreshPendingAfterInFlight = false;
     scheduleEntryDeviceRefresh(`follow-up:${reason}`, 60);
@@ -1174,23 +1214,28 @@ function startEntryDevicePolling() {
 
 if (navigator.mediaDevices?.addEventListener) {
   navigator.mediaDevices.addEventListener('devicechange', () => {
+    logEntryState('event:devicechange');
     scheduleEntryDeviceRefresh('devicechange', 140);
   });
 }
 
 window.addEventListener('focus', () => {
+  logEntryState('event:focus');
   scheduleEntryDeviceRefresh('focus', 120);
 });
 
 window.addEventListener('pageshow', () => {
+  logEntryState('event:pageshow');
   scheduleEntryDeviceRefresh('pageshow', 120);
 });
 
 document.addEventListener('visibilitychange', () => {
+  logEntryState('event:visibilitychange', { visibilityState: document.visibilityState });
   if (document.visibilityState === 'visible') scheduleEntryDeviceRefresh('visibilitychange', 80);
 });
 
 (async function initInterfazUsuarioSession() {
+  logEntryState('init:prejoin-start');
   _seedDefaultIds();
   syncSessionBoundaryReset();
   try {
