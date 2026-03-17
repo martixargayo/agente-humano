@@ -56,6 +56,7 @@ let scenarioReady = false;
 let entryRequested = false;
 let entryInProgress = false;
 let entryRequestedMode = null;
+let entryResolvedInputMode = null;
 let entryPermissionStatus = 'unknown';
 let availableInputDevices = [];
 let selectedEntryDeviceId = null;
@@ -432,6 +433,11 @@ function setInputMode(mode) {
   syncAvatarMode();
 }
 
+function resolveEntryInputMode(mode) {
+  entryResolvedInputMode = mode;
+  setInputMode(mode);
+}
+
 function getSavedEntryDeviceId() {
   try {
     return window.localStorage.getItem(LAST_DEVICE_STORAGE_KEY);
@@ -805,10 +811,10 @@ async function finalizeEntry() {
   const targetMode = entryRequestedMode || entryMode;
 
   if (targetMode === InputMode.WRITE) {
-    setInputMode(InputMode.WRITE);
+    resolveEntryInputMode(InputMode.WRITE);
     setStatusText('Listo');
   } else {
-    setInputMode(InputMode.TALK);
+    resolveEntryInputMode(InputMode.TALK);
     setStatusText('Activando mic…');
     try {
       await startVoiceCapture();
@@ -817,7 +823,7 @@ async function finalizeEntry() {
       syncAvatarMode();
     } catch (err) {
       console.error('[entry] Error al iniciar modo hablar', err);
-      setInputMode(InputMode.TALK);
+      resolveEntryInputMode(InputMode.TALK);
       setStatusText('No se pudo activar el micrófono. Revisa permisos/dispositivo y reintenta.');
     }
   }
@@ -1256,7 +1262,7 @@ document.addEventListener('visibilitychange', () => {
     await warmupFrontendTts();
   } catch (_) {}
 
-  setInputMode(InputMode.WRITE);
+  if (!entryResolvedInputMode) setInputMode(InputMode.WRITE);
   bindRuntimeReadiness();
   startEntryDevicePolling();
   await bootstrapEntryDeviceBackground();
