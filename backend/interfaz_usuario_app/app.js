@@ -58,6 +58,14 @@ let entryInProgress = false;
 let entryPermissionStatus = 'unknown';
 let availableInputDevices = [];
 let selectedEntryDeviceId = null;
+let isRefreshingDevices = false;
+let entryPreviewStream = null;
+let entryPreviewAudioContext = null;
+let entryPreviewAnalyser = null;
+let entryPreviewData = null;
+let entryPreviewRaf = null;
+let entryMicLevel = 0;
+let entryMicActive = false;
 const LAST_DEVICE_STORAGE_KEY = 'interfaz_usuario:last_audio_input_device';
 
 const ui = {
@@ -68,9 +76,13 @@ const ui = {
   entryTalkContent: $('entryTalkContent'),
   entryWriteContent: $('entryWriteContent'),
   entrySubtitle: $('entrySubtitle'),
-  entryDeviceSelect: $('entryDeviceSelect'),
+  entryDeviceList: $('entryDeviceList'),
   entryDeviceStatus: $('entryDeviceStatus'),
+  entryMicMeter: $('entryMicMeter'),
+  entryMicMeterFill: $('entryMicMeterFill'),
+  entryMicMeterText: $('entryMicMeterText'),
   entryError: $('entryError'),
+  entryLoading: $('entryLoading'),
   entryLoadingText: $('entryLoadingText'),
   startBtn: $('startBtn'),
   replyContainer: $('replyContainer'),
@@ -424,9 +436,102 @@ function saveEntryDeviceId(deviceId) {
   } catch (_) {}
 }
 
+function normalizeDeviceLabel(label, index) {
+  const raw = String(label || '').trim();
+  if (!raw) return `Dispositivo de audio ${index + 1}`;
+  return raw
+    .replace(/^(predeterminado|default)\s*-\s*/i, '')
+    .replace(/^(comunicaciones|communications)\s*-\s*/i, '')
+    .replace(/\s*\((default|predeterminado|comunicaciones|communications)\)\s*/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+function dedupeAudioInputDevices(devices) {
+  const seen = new Set();
+  const deduped = [];
+  devices.forEach((device, index) => {
+    const cleanLabel = normalizeDeviceLabel(device.label, index);
+    const normalizedKey = cleanLabel.toLowerCase().replace(/[^a-z0-9áéíóúüñ]+/gi, ' ').trim();
+    if (!normalizedKey || seen.has(normalizedKey)) return;
+    seen.add(normalizedKey);
+    deduped.push({ ...device, cleanLabel });
+  });
+  return deduped;
+}
+
+function stopEntryMicPreview() {
+  if (entryPreviewRaf) cancelAnimationFrame(entryPreviewRaf);
+  entryPreviewRaf = null;
+  if (entryPreviewStream) {
+    try { entryPreviewStream.getTracks().forEach((track) => track.stop()); } catch (_) {}
+  }
+  entryPreviewStream = null;
+  entryPreviewAnalyser = null;
+  entryPreviewData = null;
+  entryMicLevel = 0;
+  entryMicActive = false;
+  if (ui.entryMicMeterFill) ui.entryMicMeterFill.style.setProperty('--mic-level', '0');
+  if (ui.entryMicMeterText) ui.entryMicMeterText.textContent = 'Sin señal de micrófono.';
+}
+
+async function ensureEntryMicPreview() {
+  if (entryPermissionStatus !== 'granted' || !selectedEntryDeviceId) {
+    stopEntryMicPreview();
+    return;
+  }
+  if (entryPreviewStream) return;
+  if (!navigator.mediaDevices?.getUserMedia) return;
+  try {
+    const previewStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        deviceId: { exact: selectedEntryDeviceId },
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    });
+    entryPreviewStream = previewStream;
+    if (!entryPreviewAudioContext || entryPreviewAudioContext.state === 'closed') {
+      entryPreviewAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    await entryPreviewAudioContext.resume();
+    const source = entryPreviewAudioContext.createMediaStreamSource(previewStream);
+    entryPreviewAnalyser = entryPreviewAudioContext.createAnalyser();
+    entryPreviewAnalyser.fftSize = 512;
+    source.connect(entryPreviewAnalyser);
+    entryPreviewData = new Uint8Array(entryPreviewAnalyser.frequencyBinCount);
+
+    const updatePreview = () => {
+      if (!entryPreviewAnalyser || !entryPreviewData) return;
+      entryPreviewAnalyser.getByteTimeDomainData(entryPreviewData);
+      let sum = 0;
+      for (let i = 0; i < entryPreviewData.length; i += 1) {
+        const v = entryPreviewData[i] / 128 - 1;
+        sum += v * v;
+      }
+      const rms = Math.sqrt(sum / entryPreviewData.length);
+      const target = Math.min(1, Math.max(0, rms * 7));
+      entryMicLevel += (target - entryMicLevel) * 0.22;
+      entryMicActive = entryMicLevel > 0.06;
+      if (ui.entryMicMeterFill) ui.entryMicMeterFill.style.setProperty('--mic-level', String(entryMicLevel.toFixed(3)));
+      if (ui.entryMicMeterText) {
+        ui.entryMicMeterText.textContent = entryMicActive
+          ? 'Micrófono detectando voz.'
+          : 'Habla para comprobar el micrófono.';
+      }
+      entryPreviewRaf = requestAnimationFrame(updatePreview);
+    };
+    entryPreviewRaf = requestAnimationFrame(updatePreview);
+  } catch (err) {
+    console.warn('[entry] No se pudo iniciar preview de micrófono', err);
+    stopEntryMicPreview();
+  }
+}
+
 function getEntryModeStartEnabled() {
   if (entryMode === InputMode.WRITE) return true;
-  return entryPermissionStatus === 'granted' && Boolean(selectedEntryDeviceId);
+  return entryPermissionStatus === 'granted' && Boolean(selectedEntryDeviceId) && entryMicActive;
 }
 
 function getCanEnterNow() {
@@ -441,9 +546,8 @@ function renderEntryState() {
   ui.entryModeWrite.setAttribute('aria-selected', String(entryMode === InputMode.WRITE));
   ui.entryTalkContent.classList.toggle('entry-hidden', entryMode !== InputMode.TALK);
   ui.entryWriteContent.classList.toggle('entry-hidden', entryMode !== InputMode.WRITE);
-  ui.entrySubtitle.textContent = entryMode === InputMode.TALK
-    ? 'Prepara tu dispositivo para hablar.'
-    : 'Entrarás directamente en modo escritura.';
+  ui.entrySubtitle.textContent = entryMode === InputMode.TALK ? 'Prepara tu dispositivo para hablar.' : '';
+  ui.entrySubtitle.classList.toggle('entry-hidden', entryMode !== InputMode.TALK);
 
   const startEnabled = getEntryModeStartEnabled();
   ui.startBtn.disabled = !startEnabled || entryInProgress;
@@ -451,43 +555,80 @@ function renderEntryState() {
 
   if (!scenarioReady) {
     ui.entryLoadingText.textContent = 'Cargando escenario';
+    ui.entryLoading.classList.remove('hidden');
   } else if (entryRequested && !getCanEnterNow()) {
-    ui.entryLoadingText.textContent = 'Esperando condiciones de acceso';
+    ui.entryLoading.classList.add('hidden');
   } else {
-    ui.entryLoadingText.textContent = 'Escenario listo';
+    ui.entryLoading.classList.add('hidden');
+  }
+
+  if (entryMode !== InputMode.TALK) {
+    ui.entryMicMeter.classList.add('entry-hidden');
+  } else {
+    ui.entryMicMeter.classList.remove('entry-hidden');
   }
 }
 
 function renderEntryDevices() {
-  if (!ui.entryDeviceSelect) return;
-  ui.entryDeviceSelect.innerHTML = '';
+  if (!ui.entryDeviceList) return;
+  ui.entryDeviceList.innerHTML = '';
   if (!availableInputDevices.length) {
-    const option = document.createElement('option');
-    option.value = '';
-    option.textContent = 'Sin dispositivos detectados';
-    ui.entryDeviceSelect.appendChild(option);
-    ui.entryDeviceSelect.disabled = true;
+    const empty = document.createElement('div');
+    empty.className = 'entry-device-empty';
+    empty.textContent = isRefreshingDevices ? 'Buscando dispositivos...' : 'Sin dispositivos detectados';
+    ui.entryDeviceList.appendChild(empty);
     selectedEntryDeviceId = null;
   } else {
-    ui.entryDeviceSelect.disabled = false;
-    availableInputDevices.forEach((device, index) => {
-      const option = document.createElement('option');
-      option.value = device.deviceId;
-      option.textContent = device.label || `Micrófono ${index + 1}`;
-      ui.entryDeviceSelect.appendChild(option);
+    availableInputDevices.forEach((device) => {
+      const option = document.createElement('button');
+      option.type = 'button';
+      option.className = 'entry-device-option';
+      option.setAttribute('role', 'option');
+      const isActive = selectedEntryDeviceId === device.deviceId;
+      option.classList.toggle('active', isActive);
+      option.setAttribute('aria-selected', String(isActive));
+      const main = document.createElement('span');
+      main.className = 'entry-device-main';
+      const icon = document.createElement('span');
+      icon.className = 'entry-device-icon';
+      icon.setAttribute('aria-hidden', 'true');
+      icon.textContent = '🎧';
+      const name = document.createElement('span');
+      name.className = 'entry-device-name';
+      name.textContent = device.cleanLabel;
+      main.append(icon, name);
+      const check = document.createElement('span');
+      check.className = 'entry-device-check';
+      check.setAttribute('aria-hidden', 'true');
+      check.textContent = '✓';
+      option.append(main, check);
+      option.addEventListener('click', () => {
+        selectedEntryDeviceId = device.deviceId;
+        saveEntryDeviceId(selectedEntryDeviceId);
+        stopEntryMicPreview();
+        void ensureEntryMicPreview();
+        renderEntryDevices();
+        renderEntryState();
+      });
+      ui.entryDeviceList.appendChild(option);
     });
     if (!selectedEntryDeviceId || !availableInputDevices.some((d) => d.deviceId === selectedEntryDeviceId)) {
       selectedEntryDeviceId = availableInputDevices[0]?.deviceId || null;
     }
-    ui.entryDeviceSelect.value = selectedEntryDeviceId || '';
   }
 
-  if (entryPermissionStatus !== 'granted') {
+  if (entryPermissionStatus === 'unknown') {
+    ui.entryDeviceStatus.textContent = 'Pulsa Empezar para conceder permisos de micrófono.';
+    ui.entryDeviceStatus.classList.remove('error');
+  } else if (entryPermissionStatus !== 'granted') {
     ui.entryDeviceStatus.textContent = 'Necesitamos permisos de micrófono para habilitar este modo.';
     ui.entryDeviceStatus.classList.add('error');
   } else if (!selectedEntryDeviceId) {
     ui.entryDeviceStatus.textContent = 'No encontramos un dispositivo apto para hablar.';
     ui.entryDeviceStatus.classList.add('error');
+  } else if (!entryMicActive) {
+    ui.entryDeviceStatus.textContent = 'Habla para verificar actividad del micrófono.';
+    ui.entryDeviceStatus.classList.remove('error');
   } else {
     ui.entryDeviceStatus.textContent = 'Dispositivo listo para empezar en modo hablar.';
     ui.entryDeviceStatus.classList.remove('error');
@@ -518,36 +659,55 @@ async function requestMicPermissions() {
 }
 
 async function refreshEntryDevices() {
+  isRefreshingDevices = true;
+  renderEntryDevices();
   if (!navigator.mediaDevices?.enumerateDevices) {
     availableInputDevices = [];
+    isRefreshingDevices = false;
     renderEntryDevices();
     renderEntryState();
     return;
   }
   try {
     const devices = await navigator.mediaDevices.enumerateDevices();
-    availableInputDevices = devices.filter((device) => device.kind === 'audioinput' && device.deviceId);
+    const inputs = devices.filter((device) => device.kind === 'audioinput' && device.deviceId);
+    availableInputDevices = dedupeAudioInputDevices(inputs);
     const preferred = getSavedEntryDeviceId();
     if (preferred && availableInputDevices.some((d) => d.deviceId === preferred)) selectedEntryDeviceId = preferred;
   } catch (err) {
     console.warn('[entry] No se pudo enumerar dispositivos', err);
     availableInputDevices = [];
+  } finally {
+    isRefreshingDevices = false;
   }
   renderEntryDevices();
+  if (entryPermissionStatus === 'granted') {
+    stopEntryMicPreview();
+    await ensureEntryMicPreview();
+  }
   renderEntryState();
 }
 
-async function prepareTalkModeForEntry() {
+async function validateTalkModeForEntry() {
   if (ui.entryError) ui.entryError.textContent = '';
-  const ok = await requestMicPermissions();
-  await refreshEntryDevices();
-  renderEntryState();
-  if (!ok) {
-    if (ui.entryError) ui.entryError.textContent = 'No pudimos habilitar micrófono. Puedes pasar a Escribir.';
-    return false;
+  if (entryPermissionStatus !== 'granted') {
+    const ok = await requestMicPermissions();
+    if (!ok) {
+      if (ui.entryError) ui.entryError.textContent = 'No pudimos habilitar micrófono. Puedes pasar a Escribir.';
+      await refreshEntryDevices();
+      renderEntryState();
+      return false;
+    }
   }
+  await refreshEntryDevices();
+  await ensureEntryMicPreview();
+  renderEntryState();
   if (!selectedEntryDeviceId) {
     if (ui.entryError) ui.entryError.textContent = 'No se detectó un dispositivo válido para hablar.';
+    return false;
+  }
+  if (!entryMicActive) {
+    if (ui.entryError) ui.entryError.textContent = 'Habla un momento para validar señal de micrófono.';
     return false;
   }
   return true;
@@ -558,6 +718,7 @@ async function finalizeEntry() {
   if (!getCanEnterNow()) return;
   entryInProgress = true;
   ui.startBtn.disabled = true;
+  stopEntryMicPreview();
 
   if (entryMode === InputMode.WRITE) {
     setInputMode(InputMode.WRITE);
@@ -597,12 +758,12 @@ function setEntryMode(mode) {
     renderEntryState();
     return;
   }
-  void prepareTalkModeForEntry();
+  renderEntryState();
 }
 
 async function handleStartEntry() {
   if (entryMode === InputMode.TALK) {
-    const talkReady = await prepareTalkModeForEntry();
+    const talkReady = await validateTalkModeForEntry();
     if (!talkReady) {
       renderEntryState();
       return;
@@ -785,13 +946,6 @@ ui.entryModeWrite?.addEventListener('click', () => {
   setEntryMode(InputMode.WRITE);
 });
 
-ui.entryDeviceSelect?.addEventListener('change', () => {
-  selectedEntryDeviceId = ui.entryDeviceSelect.value || null;
-  saveEntryDeviceId(selectedEntryDeviceId);
-  renderEntryDevices();
-  renderEntryState();
-});
-
 ui.modeTalk.addEventListener('click', async () => {
   if (turnInFlight) return;
   setInputMode(InputMode.TALK);
@@ -961,6 +1115,25 @@ function bindRuntimeReadiness() {
   }
 }
 
+async function bootstrapEntryDeviceBackground() {
+  try {
+    if (navigator.permissions?.query) {
+      const micPermission = await navigator.permissions.query({ name: 'microphone' });
+      if (micPermission.state === 'granted') {
+        entryPermissionStatus = 'granted';
+      } else if (micPermission.state === 'denied') {
+        entryPermissionStatus = 'denied';
+      }
+    }
+  } catch (_) {}
+
+  await refreshEntryDevices();
+  if (entryPermissionStatus === 'granted') {
+    await ensureEntryMicPreview();
+  }
+  renderEntryState();
+}
+
 if (navigator.mediaDevices?.addEventListener) {
   navigator.mediaDevices.addEventListener('devicechange', () => {
     void refreshEntryDevices();
@@ -985,7 +1158,7 @@ if (navigator.mediaDevices?.addEventListener) {
 
   setInputMode(InputMode.WRITE);
   bindRuntimeReadiness();
-  await refreshEntryDevices();
+  await bootstrapEntryDeviceBackground();
   setEntryMode(InputMode.TALK);
   renderEntryState();
   stopInputOrb();
