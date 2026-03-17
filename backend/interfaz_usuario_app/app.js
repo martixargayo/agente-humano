@@ -811,10 +811,12 @@ async function finalizeEntry() {
     setStatusText('Listo');
   } else {
     resolveEntryInputMode(InputMode.TALK);
-    setStatusText('Activando mic…');
     updateReplyText('Te escucho. Empieza a hablar cuando quieras.');
     try {
-      await startVoiceCapture();
+      if (!isMicActuallyRecording()) {
+        setStatusText('Activando mic…');
+        await startVoiceCapture();
+      }
       setStatusText('Escuchando…');
     } catch (err) {
       console.error('[entry] No se pudo iniciar captura en modo hablar', err);
@@ -843,6 +845,10 @@ function tryResolveEntryRequest() {
 function setEntryMode(mode) {
   entryMode = mode;
   if (mode === InputMode.WRITE) {
+    if (isMicActuallyRecording()) {
+      discardRecording = true;
+      void stopVoiceCapture().finally(() => teardownMic());
+    }
     if (ui.entryError) ui.entryError.textContent = '';
     renderEntryState();
     return;
@@ -855,6 +861,17 @@ async function handleStartEntry() {
   if (entryMode === InputMode.TALK) {
     const talkReady = await validateTalkModeForEntry();
     if (!talkReady) {
+      renderEntryState();
+      return;
+    }
+
+    try {
+      setStatusText('Activando mic…');
+      await startVoiceCapture();
+      setStatusText('Escuchando…');
+    } catch (err) {
+      console.error('[entry] No se pudo precalentar captura desde Empezar', err);
+      if (ui.entryError) ui.entryError.textContent = 'No pudimos iniciar el micrófono. Reintenta o usa Escribir.';
       renderEntryState();
       return;
     }
