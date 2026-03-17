@@ -70,6 +70,212 @@ let micPermissionStatusRef = null;
 const LAST_DEVICE_STORAGE_KEY = 'interfaz_usuario:last_audio_input_device';
 const ENTRY_DEBUG = true;
 
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function describeTrack(track) {
+  if (!track) return null;
+  let settings = {};
+  try { settings = track.getSettings ? track.getSettings() : {}; } catch (_) {}
+  return {
+    kind: track.kind,
+    id: track.id,
+    label: track.label || '',
+    enabled: track.enabled,
+    muted: track.muted,
+    readyState: track.readyState,
+    settings,
+  };
+}
+
+function describeStream(stream) {
+  if (!stream) return { exists: false };
+  let tracks = [];
+  try {
+    tracks = stream.getTracks().map(describeTrack);
+  } catch (_) {}
+  return {
+    exists: true,
+    id: stream.id,
+    active: Boolean(stream.active),
+    tracks,
+  };
+}
+
+function audioDiag(tag, extra = {}) {
+  if (!ENTRY_DEBUG) return;
+  console.debug(`[audio-diag] ${tag}`, {
+    ts: nowIso(),
+    currentInputMode,
+    entryMode,
+    entryRequestedMode,
+    entryResolvedInputMode,
+    scenarioReady,
+    hasMicPermission,
+    entryPermissionStatus,
+    selectedEntryDeviceId,
+    isRecording,
+    turnInFlight,
+    voiceTurnInFlight,
+    mediaRecorderExists: Boolean(mediaRecorder),
+    mediaRecorderState: mediaRecorder?.state || null,
+    audioCtxState: audioCtx?.state || null,
+    waveAudioCtxState: waveAudioCtx?.state || null,
+    waveAnalyserExists: Boolean(waveAnalyser),
+    waveDataArrayLength: waveDataArray?.length || 0,
+    micStream: describeStream(micStream),
+    pendingPermissionStream: describeStream(pendingPermissionStream),
+    ...extra,
+  });
+}
+
+function pickFirstAudioTrack(stream) {
+  try {
+    return stream?.getAudioTracks?.()[0] || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function waitForTrackUnmuted(track, timeoutMs = 1400) {
+  if (!track) return false;
+  if (track.readyState !== 'live') return false;
+  if (!track.muted) return true;
+
+  const startedAt = performance.now();
+  audioDiag('waitForTrackUnmuted:start', {
+    track: describeTrack(track),
+    timeoutMs,
+  });
+
+  return new Promise((resolve) => {
+    let done = false;
+    let timeoutId = null;
+
+    const finish = (ok, reason) => {
+      if (done) return;
+      done = true;
+      try { track.removeEventListener('unmute', onUnmute); } catch (_) {}
+      if (timeoutId) window.clearTimeout(timeoutId);
+      audioDiag('waitForTrackUnmuted:finish', {
+        ok,
+        reason,
+        elapsedMs: Math.round(performance.now() - startedAt),
+        track: describeTrack(track),
+      });
+      resolve(ok);
+    };
+
+    const onUnmute = () => finish(true, 'event:unmute');
+    try { track.addEventListener('unmute', onUnmute, { once: true }); } catch (_) {}
+
+    timeoutId = window.setTimeout(() => {
+      finish(!track.muted, 'timeout');
+    }, timeoutMs);
+  });
+}
+
+async function measureStreamSignal(readinessStream, {
+  sampleMs = 650,
+  frameStepMs = 50,
+  rmsFloor = 0.0015,
+  minDynamicRange = 2,
+  minSignalFrames = 2,
+} = {}) {
+  const ctx = getOrCreateAudioContext();
+  await ctx.resume();
+
+  const analyser = ctx.createAnalyser();
+  analyser.fftSize = 1024;
+  analyser.smoothingTimeConstant = 0.2;
+  const source = ctx.createMediaStreamSource(readinessStream);
+  source.connect(analyser);
+
+  const bins = new Uint8Array(analyser.frequencyBinCount);
+  const start = performance.now();
+  let frames = 0;
+  let dynamicFrames = 0;
+  let signalFrames = 0;
+  let maxRms = 0;
+  let maxPeakToPeak = 0;
+
+  try {
+    while ((performance.now() - start) < sampleMs) {
+      analyser.getByteTimeDomainData(bins);
+      frames += 1;
+
+      let sum = 0;
+      let minV = 255;
+      let maxV = 0;
+      for (let i = 0; i < bins.length; i += 1) {
+        const raw = bins[i];
+        const v = raw / 128 - 1;
+        sum += v * v;
+        if (raw < minV) minV = raw;
+        if (raw > maxV) maxV = raw;
+      }
+      const rms = Math.sqrt(sum / bins.length);
+      const peakToPeak = maxV - minV;
+      if (rms > maxRms) maxRms = rms;
+      if (peakToPeak > maxPeakToPeak) maxPeakToPeak = peakToPeak;
+      if (peakToPeak >= minDynamicRange) dynamicFrames += 1;
+      if (rms >= rmsFloor) signalFrames += 1;
+
+      await new Promise((resolve) => window.setTimeout(resolve, frameStepMs));
+    }
+  } finally {
+    try { source.disconnect(); } catch (_) {}
+  }
+
+  const ok = dynamicFrames >= minSignalFrames || signalFrames >= minSignalFrames;
+  return {
+    ok,
+    frames,
+    dynamicFrames,
+    signalFrames,
+    maxRms,
+    maxPeakToPeak,
+    thresholds: { rmsFloor, minDynamicRange, minSignalFrames },
+    sampleMs,
+  };
+}
+
+async function verifyMicStreamReadiness(stream, track, { unmuteTimeoutMs = 1800 } = {}) {
+  if (!stream) {
+    return { ok: false, reason: 'missing-stream' };
+  }
+  if (!track) {
+    return { ok: false, reason: 'missing-track' };
+  }
+  if (track.readyState !== 'live') {
+    return { ok: false, reason: 'track-not-live', track: describeTrack(track) };
+  }
+
+  const unmuted = await waitForTrackUnmuted(track, unmuteTimeoutMs);
+  if (!unmuted) {
+    return { ok: false, reason: 'track-muted-timeout', track: describeTrack(track) };
+  }
+
+  const signal = await measureStreamSignal(stream);
+  if (!signal.ok) {
+    return {
+      ok: false,
+      reason: 'no-usable-signal-window',
+      track: describeTrack(track),
+      signal,
+    };
+  }
+
+  return {
+    ok: true,
+    reason: 'stream-stable',
+    track: describeTrack(track),
+    signal,
+  };
+}
+
+
 const ui = {
   listeningGlow: $('listeningGlow'),
   entryOverlay: $('entryOverlay'),
@@ -118,6 +324,7 @@ function withAvatarRuntime(fn) {
 }
 
 function syncAvatarMode() {
+  audioDiag('syncAvatarMode:enter');
   withAvatarRuntime((runtime) => {
     if (isMicActuallyRecording() && currentInputMode === InputMode.TALK) {
       runtime.setMode('LISTENING');
@@ -205,6 +412,7 @@ async function warmupFrontendTts() {
 }
 
 function teardownMic() {
+  audioDiag('teardownMic:enter');
   stopInputOrb();
   waveAudioCtx = null;
   waveAnalyser = null;
@@ -260,8 +468,10 @@ function stopInputOrb() {
 }
 
 async function startVoiceCapture({ preferredStream = null } = {}) {
+  audioDiag('startVoiceCapture:enter', { preferredStream: describeStream(preferredStream) });
   if (!navigator.mediaDevices?.getUserMedia) throw new Error('getUserMedia no soportado');
   discardRecording = false;
+
   const buildConstraints = (deviceId, forceDefault = false) => {
     if (!forceDefault && deviceId) {
       return { deviceId: { exact: deviceId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true };
@@ -271,57 +481,103 @@ async function startVoiceCapture({ preferredStream = null } = {}) {
 
   const hasLiveAudioTrack = (stream) => Boolean(stream?.getAudioTracks?.().some((track) => track.readyState === 'live'));
 
-  if (hasLiveAudioTrack(preferredStream)) {
-    micStream = preferredStream;
-  } else {
-    try {
-      micStream = await navigator.mediaDevices.getUserMedia({ audio: buildConstraints(selectedEntryDeviceId, false) });
-    } catch (err) {
-      const recoverable = err?.name === 'NotFoundError' || err?.name === 'OverconstrainedError';
-      if (!recoverable) throw err;
-      console.warn('[mic] Dispositivo seleccionado no disponible, reintentando con entrada por defecto', err);
-      micStream = await navigator.mediaDevices.getUserMedia({ audio: buildConstraints(null, true) });
-      scheduleEntryDeviceRefresh('voice-capture-fallback', 0);
-    }
-  }
-
-  recorderMimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-    ? 'audio/webm;codecs=opus'
-    : 'audio/webm';
-  mediaRecorder = new MediaRecorder(micStream, { mimeType: recorderMimeType });
-  audioChunks = [];
-
-  mediaRecorder.ondataavailable = (event) => {
-    if (event?.data && event.data.size > 0) audioChunks.push(event.data);
+  const acquireStream = async ({ forceDefault = false } = {}) => {
+    const constraints = buildConstraints(selectedEntryDeviceId, forceDefault);
+    return navigator.mediaDevices.getUserMedia({ audio: constraints });
   };
 
-  mediaRecorder.start(250);
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  isRecording = mediaRecorder.state === 'recording';
+  const tryStartWithStream = async (candidateStream, attemptLabel) => {
+    micStream = candidateStream;
+    const mainTrack = pickFirstAudioTrack(micStream);
+    const readiness = await verifyMicStreamReadiness(micStream, mainTrack);
+    audioDiag('startVoiceCapture:readiness-result', {
+      attemptLabel,
+      readiness,
+      track: describeTrack(mainTrack),
+    });
 
-  if (!micStream.getTracks().some((track) => track.readyState === 'live')) {
-    throw new Error('El micrófono no está activo.');
-  }
-  if (!isRecording) {
-    throw new Error('No se pudo iniciar la grabación.');
-  }
+    if (!readiness.ok) {
+      throw new Error(`Micrófono no estable (${readiness.reason}).`);
+    }
 
-  waveAudioCtx = getOrCreateAudioContext();
-  await waveAudioCtx.resume();
-  waveAnalyser = waveAudioCtx.createAnalyser();
-  waveAnalyser.fftSize = 1024;
-  const source = waveAudioCtx.createMediaStreamSource(micStream);
-  source.connect(waveAnalyser);
-  waveDataArray = new Uint8Array(waveAnalyser.frequencyBinCount);
-  ensureOrbLoop();
+    recorderMimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus'
+      : 'audio/webm';
+    mediaRecorder = new MediaRecorder(micStream, { mimeType: recorderMimeType });
+    audioChunks = [];
+
+    mediaRecorder.ondataavailable = (event) => {
+      if (event?.data && event.data.size > 0) audioChunks.push(event.data);
+    };
+
+    mediaRecorder.start(250);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    isRecording = mediaRecorder.state === 'recording';
+
+    if (!micStream.getTracks().some((track) => track.readyState === 'live')) {
+      throw new Error('El micrófono no está activo.');
+    }
+    if (!isRecording) {
+      throw new Error('No se pudo iniciar la grabación.');
+    }
+
+    waveAudioCtx = getOrCreateAudioContext();
+    await waveAudioCtx.resume();
+    waveAnalyser = waveAudioCtx.createAnalyser();
+    waveAnalyser.fftSize = 1024;
+    const source = waveAudioCtx.createMediaStreamSource(micStream);
+    source.connect(waveAnalyser);
+    waveDataArray = new Uint8Array(waveAnalyser.frequencyBinCount);
+    ensureOrbLoop();
+    audioDiag('startVoiceCapture:ready', { attemptLabel, readiness });
+  };
+
+  let lastErr = null;
+
+  try {
+    if (hasLiveAudioTrack(preferredStream)) {
+      await tryStartWithStream(preferredStream, 'preferred-stream');
+      return;
+    }
+
+    try {
+      const selectedStream = await acquireStream({ forceDefault: false });
+      audioDiag('startVoiceCapture:getUserMedia:selected-device-success');
+      await tryStartWithStream(selectedStream, 'selected-device');
+      return;
+    } catch (err) {
+      lastErr = err;
+      audioDiag('startVoiceCapture:selected-device-attempt-failed', { errName: err?.name, errMessage: err?.message });
+      try { if (micStream) micStream.getTracks().forEach((t) => t.stop()); } catch (_) {}
+      micStream = null;
+    }
+
+    const fallbackStream = await acquireStream({ forceDefault: true });
+    scheduleEntryDeviceRefresh('voice-capture-fallback', 0);
+    audioDiag('startVoiceCapture:getUserMedia:fallback-default-success');
+    await tryStartWithStream(fallbackStream, 'default-fallback');
+  } catch (err) {
+    lastErr = err;
+    try {
+      if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
+    } catch (_) {}
+    mediaRecorder = null;
+    isRecording = false;
+    audioChunks = [];
+    teardownMic();
+    audioDiag('startVoiceCapture:failed', { errName: err?.name, errMessage: err?.message });
+    throw lastErr;
+  }
 }
 
 function stopVoiceCapture() {
+  audioDiag('stopVoiceCapture:enter');
   if (!mediaRecorder || !isRecording) return Promise.resolve(null);
 
   return new Promise((resolve, reject) => {
     mediaRecorder.onstop = () => {
       const blob = new Blob(audioChunks, { type: recorderMimeType });
+      audioDiag('stopVoiceCapture:onstop', { blobSize: blob.size, chunks: audioChunks.length });
       audioChunks = [];
       isRecording = false;
       mediaRecorder = null;
@@ -418,6 +674,7 @@ function syncSessionBoundaryReset() {
 }
 
 function updateUi() {
+  audioDiag('updateUi');
   ui.modeTalk.classList.toggle('active', currentInputMode === InputMode.TALK);
   ui.modeWrite.classList.toggle('active', currentInputMode === InputMode.WRITE);
   ui.modeTalk.setAttribute('aria-selected', String(currentInputMode === InputMode.TALK));
@@ -437,6 +694,7 @@ function updateUi() {
 }
 
 function setInputMode(mode) {
+  audioDiag('setInputMode:before', { nextMode: mode });
   currentInputMode = mode;
   if (mode === InputMode.WRITE && isMicActuallyRecording()) {
     discardRecording = true;
@@ -445,9 +703,11 @@ function setInputMode(mode) {
   setStatusText(mode === InputMode.TALK ? (isMicActuallyRecording() ? 'Escuchando…' : 'Listo') : 'Listo');
   updateUi();
   syncAvatarMode();
+  audioDiag('setInputMode:after', { nextMode: mode });
 }
 
 function resolveEntryInputMode(mode) {
+  audioDiag('resolveEntryInputMode', { mode });
   entryResolvedInputMode = mode;
   setInputMode(mode);
 }
@@ -688,6 +948,7 @@ async function syncMicPermissionState() {
 }
 
 async function requestMicPermissionsForEntry({ keepStream = false } = {}) {
+  audioDiag('requestMicPermissionsForEntry:enter', { keepStream });
   if (!navigator.mediaDevices?.getUserMedia) {
     releasePendingPermissionStream();
     entryPermissionStatus = 'denied';
@@ -709,6 +970,7 @@ async function requestMicPermissionsForEntry({ keepStream = false } = {}) {
     }
     entryPermissionStatus = 'granted';
     hasMicPermission = true;
+    audioDiag('requestMicPermissionsForEntry:success', { keepStream, grantedStream: describeStream(stream) });
     return true;
   } catch (err) {
     releasePendingPermissionStream();
@@ -719,6 +981,7 @@ async function requestMicPermissionsForEntry({ keepStream = false } = {}) {
     }
     hasMicPermission = false;
     console.error('[entry] Error al pedir permiso de micrófono', err);
+    audioDiag('requestMicPermissionsForEntry:error', { keepStream, errName: err?.name, errMessage: err?.message });
     return false;
   }
 }
@@ -794,6 +1057,7 @@ function scheduleEntryDeviceRefresh(reason = 'manual', delayMs = 120) {
 }
 
 async function validateTalkModeForEntry() {
+  audioDiag('validateTalkModeForEntry:enter');
   if (ui.entryError) ui.entryError.textContent = '';
 
   await refreshEntryDevices('validate-pre-permission');
@@ -809,6 +1073,7 @@ async function validateTalkModeForEntry() {
         : 'No pudimos validar el micrófono. Reintenta.';
     }
     renderEntryState();
+    audioDiag('validateTalkModeForEntry:permission-failed');
     return false;
   }
 
@@ -817,46 +1082,68 @@ async function validateTalkModeForEntry() {
   if (!selectedEntryDeviceId) {
     if (ui.entryError) ui.entryError.textContent = 'No se detectó un micrófono disponible.';
     renderEntryState();
+    audioDiag('validateTalkModeForEntry:no-selected-device');
     return false;
   }
 
   renderEntryState();
+  audioDiag('validateTalkModeForEntry:ok');
   return true;
 }
 
 async function finalizeEntry() {
+  audioDiag('finalizeEntry:enter');
   if (entryInProgress) return;
   if (!getCanEnterNow()) return;
   entryInProgress = true;
   ui.startBtn.disabled = true;
   const targetMode = entryRequestedMode || entryMode;
+  let entryCompleted = false;
 
   if (targetMode === InputMode.WRITE) {
     releasePendingPermissionStream();
     resolveEntryInputMode(InputMode.WRITE);
     setStatusText('Listo');
+    audioDiag('finalizeEntry:write-mode-resolved');
+    entryCompleted = true;
   } else {
-    setStatusText('Activando mic…');
+    setStatusText('Validando micrófono…');
     try {
       const prewarmedStream = pendingPermissionStream;
       pendingPermissionStream = null;
+      audioDiag('finalizeEntry:before-startVoiceCapture', { prewarmedStream: describeStream(prewarmedStream) });
       await startVoiceCapture({ preferredStream: prewarmedStream });
       resolveEntryInputMode(InputMode.TALK);
       updateReplyText('Te escucho. Empieza a hablar cuando quieras.');
+      setStatusText('Escuchando…');
       updateUi();
       syncAvatarMode();
+      audioDiag('finalizeEntry:talk-mode-resolved');
+      entryCompleted = true;
     } catch (err) {
       releasePendingPermissionStream();
       console.error('[entry] Error al iniciar modo hablar', err);
       setStatusText('No se pudo activar el micrófono. Revisa permisos/dispositivo y reintenta.');
+      if (ui.entryError) ui.entryError.textContent = 'Micrófono no estable. Reintenta o cambia de dispositivo.';
+      renderEntryState();
+      audioDiag('finalizeEntry:talk-mode-error', { errName: err?.name, errMessage: err?.message });
     }
   }
 
-  entryRequestedMode = null;
-  ui.entryOverlay.classList.add('hidden');
-  window.setTimeout(() => {
-    ui.entryOverlay.style.display = 'none';
-  }, 240);
+  if (entryCompleted) {
+    entryRequested = false;
+    entryRequestedMode = null;
+    ui.entryOverlay.classList.add('hidden');
+    window.setTimeout(() => {
+      ui.entryOverlay.style.display = 'none';
+    }, 240);
+  } else {
+    entryRequested = false;
+    entryRequestedMode = null;
+  }
+
+  entryInProgress = false;
+  renderEntryState();
 }
 
 function tryResolveEntryRequest() {
@@ -879,14 +1166,17 @@ function setEntryMode(mode) {
 }
 
 async function handleStartEntry() {
+  audioDiag('handleStartEntry:enter');
   if (entryMode === InputMode.TALK) {
     const talkReady = await validateTalkModeForEntry();
     if (!talkReady) {
       renderEntryState();
+      audioDiag('handleStartEntry:talk-not-ready');
       return;
     }
   }
   entryRequestedMode = entryMode;
+  audioDiag('handleStartEntry:requested', { requestedMode: entryRequestedMode });
   entryRequested = true;
   tryResolveEntryRequest();
 }
