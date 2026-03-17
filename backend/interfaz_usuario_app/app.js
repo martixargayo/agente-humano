@@ -347,17 +347,75 @@ async function startVoiceCapture() {
     throw new Error('No se pudo iniciar la grabación.');
   }
 
+  const hadAudioCtxBefore = Boolean(audioCtx && audioCtx.state !== 'closed');
+  logEntryDiag('voice-capture:audioctx:before', {
+    hadAudioCtxBefore,
+    audioCtxStateBefore: audioCtx?.state || null,
+  });
+
+  const resumeStart = getDiagNowMs();
   waveAudioCtx = getOrCreateAudioContext();
+  logEntryDiag('voice-capture:audioctx:created', {
+    sameAsGlobalAudioCtx: waveAudioCtx === audioCtx,
+    audioCtxStateAfterGet: waveAudioCtx?.state || null,
+  });
   await waveAudioCtx.resume();
+  logEntryDiag('voice-capture:audioctx:resumed', {
+    resumeElapsedMs: Number((getDiagNowMs() - resumeStart).toFixed(3)),
+    audioCtxStateAfterResume: waveAudioCtx?.state || null,
+  });
+
+  const analyserStart = getDiagNowMs();
   waveAnalyser = waveAudioCtx.createAnalyser();
   waveAnalyser.fftSize = 1024;
   const source = waveAudioCtx.createMediaStreamSource(micStream);
   source.connect(waveAnalyser);
   waveDataArray = new Uint8Array(waveAnalyser.frequencyBinCount);
+  const firstFrameStats = (() => {
+    try {
+      waveAnalyser.getByteTimeDomainData(waveDataArray);
+      return analyzeWaveformFrame(waveDataArray);
+    } catch (err) {
+      return {
+        error_name: err?.name || null,
+        error_message: err?.message || String(err),
+      };
+    }
+  })();
+  logEntryDiag('voice-capture:analyser:connected', {
+    analyserSetupElapsedMs: Number((getDiagNowMs() - analyserStart).toFixed(3)),
+    fftSize: waveAnalyser.fftSize,
+    frequencyBinCount: waveAnalyser.frequencyBinCount,
+    firstFrameStats,
+    tracksAtAnalyserConnect: getTrackDiagnostics(micStream),
+  });
+
+  const windowStart = getDiagNowMs();
+  window.setTimeout(() => {
+    if (!waveAnalyser || !waveDataArray || !micStream) return;
+    try {
+      waveAnalyser.getByteTimeDomainData(waveDataArray);
+      const stats = analyzeWaveformFrame(waveDataArray);
+      logEntryDiag('voice-capture:signal:sample+200ms', {
+        sampleElapsedMs: Number((getDiagNowMs() - windowStart).toFixed(3)),
+        stats,
+        tracks: getTrackDiagnostics(micStream),
+      });
+    } catch (err) {
+      logEntryDiag('voice-capture:signal:sample+200ms:error', {
+        error_name: err?.name || null,
+        error_message: err?.message || String(err),
+      });
+    }
+  }, 200);
+
   ensureOrbLoop();
 
   logEntryDiag('voice-capture:ready', {
     elapsed_ms: Number((getDiagNowMs() - startTs).toFixed(3)),
+    readyCriterion: 'pipeline-mounted',
+    tracksAtReady: getTrackDiagnostics(micStream),
+    mediaRecorderStateAtReady: mediaRecorder?.state || null,
   });
 }
 
@@ -624,6 +682,19 @@ function logEntryDiag(tag, extra = {}) {
   if (!Array.isArray(window.__entryDiagEvents)) window.__entryDiagEvents = [];
   window.__entryDiagEvents.push({ tag, ...payload });
   console.debug(`[entry-diag] ${tag}`, payload);
+}
+
+function analyzeWaveformFrame(byteData) {
+  if (!byteData?.length) return { rms: 0, peak: 0 };
+  let sum = 0;
+  let peak = 0;
+  for (let i = 0; i < byteData.length; i += 1) {
+    const v = byteData[i] / 128 - 1;
+    const av = Math.abs(v);
+    if (av > peak) peak = av;
+    sum += v * v;
+  }
+  return { rms: Math.sqrt(sum / byteData.length), peak };
 }
 
 function canStartTalkEntry() {
@@ -1382,9 +1453,21 @@ document.addEventListener('visibilitychange', () => {
     $('meta').textContent = `bootstrap_error=${String(err)}`;
   }
   try {
+    logEntryDiag('init:audioctx:resume-attempt', {
+      audioCtxStateBefore: audioCtx?.state || null,
+    });
     await getOrCreateAudioContext().resume();
+    logEntryDiag('init:audioctx:resume-ok', {
+      audioCtxStateAfter: audioCtx?.state || null,
+    });
     await warmupFrontendTts();
-  } catch (_) {}
+  } catch (err) {
+    logEntryDiag('init:audioctx:resume-error', {
+      error_name: err?.name || null,
+      error_message: err?.message || String(err),
+      audioCtxStateAfterError: audioCtx?.state || null,
+    });
+  }
 
   if (!entryResolvedInputMode) setInputMode(InputMode.WRITE);
   bindRuntimeReadiness();
