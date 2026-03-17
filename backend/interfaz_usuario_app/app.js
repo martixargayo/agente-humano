@@ -65,7 +65,6 @@ let entryDeviceDebounceTimer = null;
 let refreshInFlight = false;
 let refreshPendingAfterInFlight = false;
 let refreshSequence = 0;
-let talkModeTransitionTimer = null;
 const LAST_DEVICE_STORAGE_KEY = 'interfaz_usuario:last_audio_input_device';
 
 const ui = {
@@ -671,8 +670,21 @@ async function requestMicPermissionsForEntry() {
   }
 
   const constraints = selectedEntryDeviceId
-    ? { audio: { deviceId: { ideal: selectedEntryDeviceId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true } }
-    : { audio: true };
+    ? {
+        audio: {
+          deviceId: { exact: selectedEntryDeviceId },
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      }
+    : {
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      };
 
   try {
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -798,11 +810,18 @@ async function finalizeEntry() {
     resolveEntryInputMode(InputMode.WRITE);
     setStatusText('Listo');
   } else {
-    // En entry no iniciamos grabación: solo dejamos el micro validado/conectado.
-    // La captura se inicia cuando el usuario activa explícitamente el modo Hablar en la UI principal.
-    resolveEntryInputMode(InputMode.WRITE);
-    setStatusText('Listo');
-    updateReplyText('Micrófono listo. Pulsa Hablar para empezar a grabar.');
+    resolveEntryInputMode(InputMode.TALK);
+    setStatusText('Activando mic…');
+    updateReplyText('Te escucho. Empieza a hablar cuando quieras.');
+    try {
+      await startVoiceCapture();
+      setStatusText('Escuchando…');
+    } catch (err) {
+      console.error('[entry] No se pudo iniciar captura en modo hablar', err);
+      resolveEntryInputMode(InputMode.WRITE);
+      setStatusText('Listo');
+      updateReplyText('No se pudo iniciar el micrófono. Puedes continuar en modo escritura.');
+    }
     updateUi();
     syncAvatarMode();
   }
@@ -1019,37 +1038,26 @@ ui.entryModeWrite?.addEventListener('click', () => {
 });
 
 ui.modeTalk.addEventListener('click', async () => {
-  if (turnInFlight) return;
+  if (turnInFlight || voiceTurnInFlight) return;
 
-  if (talkModeTransitionTimer) {
-    window.clearTimeout(talkModeTransitionTimer);
-    talkModeTransitionTimer = null;
+  setInputMode(InputMode.TALK);
+  if (!hasMicPermission) return;
+
+  try {
+    setStatusText('Activando mic…');
+    await startVoiceCapture();
+    setStatusText('Escuchando…');
+    updateUi();
+    syncAvatarMode();
+  } catch (err) {
+    console.error('[mic] No se pudo iniciar grabación', err);
+    setInputMode(InputMode.WRITE);
+    setStatusText('Listo');
+    syncAvatarMode();
   }
-
-  setInputMode(InputMode.WRITE);
-  talkModeTransitionTimer = window.setTimeout(async () => {
-    talkModeTransitionTimer = null;
-    if (turnInFlight || voiceTurnInFlight) return;
-
-    setInputMode(InputMode.TALK);
-    if (!hasMicPermission) return;
-
-    try {
-      await startVoiceCapture();
-      updateUi();
-      syncAvatarMode();
-    } catch (err) {
-      console.error('[mic] No se pudo iniciar grabación', err);
-      setInputMode(InputMode.WRITE);
-    }
-  }, 120);
 });
 ui.modeWrite.addEventListener('click', () => {
   if (turnInFlight) return;
-  if (talkModeTransitionTimer) {
-    window.clearTimeout(talkModeTransitionTimer);
-    talkModeTransitionTimer = null;
-  }
   if (isRecording) {
     discardRecording = true;
     void stopVoiceCapture().finally(() => teardownMic());
