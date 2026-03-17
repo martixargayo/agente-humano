@@ -51,11 +51,27 @@ let waveAnalyser = null;
 let waveDataArray = null;
 let turnInFlight = false;
 let voiceTurnInFlight = false;
+let entryMode = InputMode.TALK;
+let scenarioReady = false;
+let entryRequested = false;
+let entryInProgress = false;
+let entryPermissionStatus = 'unknown';
+let availableInputDevices = [];
+let selectedEntryDeviceId = null;
+const LAST_DEVICE_STORAGE_KEY = 'interfaz_usuario:last_audio_input_device';
 
 const ui = {
   listeningGlow: $('listeningGlow'),
-  permissionOverlay: $('permissionOverlay'),
-  permissionError: $('permissionError'),
+  entryOverlay: $('entryOverlay'),
+  entryModeTalk: $('entryModeTalk'),
+  entryModeWrite: $('entryModeWrite'),
+  entryTalkContent: $('entryTalkContent'),
+  entryWriteContent: $('entryWriteContent'),
+  entrySubtitle: $('entrySubtitle'),
+  entryDeviceSelect: $('entryDeviceSelect'),
+  entryDeviceStatus: $('entryDeviceStatus'),
+  entryError: $('entryError'),
+  entryLoadingText: $('entryLoadingText'),
   startBtn: $('startBtn'),
   replyContainer: $('replyContainer'),
   lastReply: $('lastReply'),
@@ -225,8 +241,11 @@ function stopInputOrb() {
 async function startVoiceCapture() {
   if (!navigator.mediaDevices?.getUserMedia) throw new Error('getUserMedia no soportado');
   discardRecording = false;
+  const audioConstraints = selectedEntryDeviceId
+    ? { deviceId: { exact: selectedEntryDeviceId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+    : { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
   micStream = await navigator.mediaDevices.getUserMedia({
-    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    audio: audioConstraints,
   });
 
   recorderMimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
@@ -391,6 +410,208 @@ function setInputMode(mode) {
   syncAvatarMode();
 }
 
+function getSavedEntryDeviceId() {
+  try {
+    return window.localStorage.getItem(LAST_DEVICE_STORAGE_KEY);
+  } catch (_) {
+    return null;
+  }
+}
+
+function saveEntryDeviceId(deviceId) {
+  try {
+    if (deviceId) window.localStorage.setItem(LAST_DEVICE_STORAGE_KEY, deviceId);
+  } catch (_) {}
+}
+
+function getEntryModeStartEnabled() {
+  if (entryMode === InputMode.WRITE) return true;
+  return entryPermissionStatus === 'granted' && Boolean(selectedEntryDeviceId);
+}
+
+function getCanEnterNow() {
+  return getEntryModeStartEnabled() && scenarioReady;
+}
+
+function renderEntryState() {
+  if (!ui.entryOverlay) return;
+  ui.entryModeTalk.classList.toggle('active', entryMode === InputMode.TALK);
+  ui.entryModeWrite.classList.toggle('active', entryMode === InputMode.WRITE);
+  ui.entryModeTalk.setAttribute('aria-selected', String(entryMode === InputMode.TALK));
+  ui.entryModeWrite.setAttribute('aria-selected', String(entryMode === InputMode.WRITE));
+  ui.entryTalkContent.classList.toggle('entry-hidden', entryMode !== InputMode.TALK);
+  ui.entryWriteContent.classList.toggle('entry-hidden', entryMode !== InputMode.WRITE);
+  ui.entrySubtitle.textContent = entryMode === InputMode.TALK
+    ? 'Prepara tu dispositivo para hablar.'
+    : 'Entrarás directamente en modo escritura.';
+
+  const startEnabled = getEntryModeStartEnabled();
+  ui.startBtn.disabled = !startEnabled || entryInProgress;
+  ui.startBtn.textContent = entryRequested && !getCanEnterNow() ? 'Esperando...' : 'Empezar';
+
+  if (!scenarioReady) {
+    ui.entryLoadingText.textContent = 'Cargando escenario';
+  } else if (entryRequested && !getCanEnterNow()) {
+    ui.entryLoadingText.textContent = 'Esperando condiciones de acceso';
+  } else {
+    ui.entryLoadingText.textContent = 'Escenario listo';
+  }
+}
+
+function renderEntryDevices() {
+  if (!ui.entryDeviceSelect) return;
+  ui.entryDeviceSelect.innerHTML = '';
+  if (!availableInputDevices.length) {
+    const option = document.createElement('option');
+    option.value = '';
+    option.textContent = 'Sin dispositivos detectados';
+    ui.entryDeviceSelect.appendChild(option);
+    ui.entryDeviceSelect.disabled = true;
+    selectedEntryDeviceId = null;
+  } else {
+    ui.entryDeviceSelect.disabled = false;
+    availableInputDevices.forEach((device, index) => {
+      const option = document.createElement('option');
+      option.value = device.deviceId;
+      option.textContent = device.label || `Micrófono ${index + 1}`;
+      ui.entryDeviceSelect.appendChild(option);
+    });
+    if (!selectedEntryDeviceId || !availableInputDevices.some((d) => d.deviceId === selectedEntryDeviceId)) {
+      selectedEntryDeviceId = availableInputDevices[0]?.deviceId || null;
+    }
+    ui.entryDeviceSelect.value = selectedEntryDeviceId || '';
+  }
+
+  if (entryPermissionStatus !== 'granted') {
+    ui.entryDeviceStatus.textContent = 'Necesitamos permisos de micrófono para habilitar este modo.';
+    ui.entryDeviceStatus.classList.add('error');
+  } else if (!selectedEntryDeviceId) {
+    ui.entryDeviceStatus.textContent = 'No encontramos un dispositivo apto para hablar.';
+    ui.entryDeviceStatus.classList.add('error');
+  } else {
+    ui.entryDeviceStatus.textContent = 'Dispositivo listo para empezar en modo hablar.';
+    ui.entryDeviceStatus.classList.remove('error');
+  }
+}
+
+async function requestMicPermissions() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    hasMicPermission = false;
+    entryPermissionStatus = 'denied';
+    return false;
+  }
+  try {
+    const constraints = selectedEntryDeviceId
+      ? { audio: { deviceId: { exact: selectedEntryDeviceId } } }
+      : { audio: true };
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    stream.getTracks().forEach((track) => track.stop());
+    hasMicPermission = true;
+    entryPermissionStatus = 'granted';
+    return true;
+  } catch (err) {
+    console.error('[mic] Permiso denegado', err);
+    hasMicPermission = false;
+    entryPermissionStatus = 'denied';
+    return false;
+  }
+}
+
+async function refreshEntryDevices() {
+  if (!navigator.mediaDevices?.enumerateDevices) {
+    availableInputDevices = [];
+    renderEntryDevices();
+    renderEntryState();
+    return;
+  }
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    availableInputDevices = devices.filter((device) => device.kind === 'audioinput' && device.deviceId);
+    const preferred = getSavedEntryDeviceId();
+    if (preferred && availableInputDevices.some((d) => d.deviceId === preferred)) selectedEntryDeviceId = preferred;
+  } catch (err) {
+    console.warn('[entry] No se pudo enumerar dispositivos', err);
+    availableInputDevices = [];
+  }
+  renderEntryDevices();
+  renderEntryState();
+}
+
+async function prepareTalkModeForEntry() {
+  if (ui.entryError) ui.entryError.textContent = '';
+  const ok = await requestMicPermissions();
+  await refreshEntryDevices();
+  renderEntryState();
+  if (!ok) {
+    if (ui.entryError) ui.entryError.textContent = 'No pudimos habilitar micrófono. Puedes pasar a Escribir.';
+    return false;
+  }
+  if (!selectedEntryDeviceId) {
+    if (ui.entryError) ui.entryError.textContent = 'No se detectó un dispositivo válido para hablar.';
+    return false;
+  }
+  return true;
+}
+
+async function finalizeEntry() {
+  if (entryInProgress) return;
+  if (!getCanEnterNow()) return;
+  entryInProgress = true;
+  ui.startBtn.disabled = true;
+
+  if (entryMode === InputMode.WRITE) {
+    setInputMode(InputMode.WRITE);
+    setStatusText('Listo');
+  } else {
+    setInputMode(InputMode.TALK);
+    setStatusText('Activando mic…');
+    try {
+      await startVoiceCapture();
+      updateReplyText('Te escucho. Empieza a hablar cuando quieras.');
+      updateUi();
+      syncAvatarMode();
+    } catch (err) {
+      console.error('[entry] Error al iniciar modo hablar', err);
+      setInputMode(InputMode.WRITE);
+      setStatusText('No se pudo iniciar el micrófono. Modo escritura activado.');
+    }
+  }
+
+  ui.entryOverlay.classList.add('hidden');
+  window.setTimeout(() => {
+    ui.entryOverlay.style.display = 'none';
+  }, 240);
+}
+
+function tryResolveEntryRequest() {
+  renderEntryState();
+  if (entryRequested && getCanEnterNow()) {
+    void finalizeEntry();
+  }
+}
+
+function setEntryMode(mode) {
+  entryMode = mode;
+  if (mode === InputMode.WRITE) {
+    if (ui.entryError) ui.entryError.textContent = '';
+    renderEntryState();
+    return;
+  }
+  void prepareTalkModeForEntry();
+}
+
+async function handleStartEntry() {
+  if (entryMode === InputMode.TALK) {
+    const talkReady = await prepareTalkModeForEntry();
+    if (!talkReady) {
+      renderEntryState();
+      return;
+    }
+  }
+  entryRequested = true;
+  tryResolveEntryRequest();
+}
+
 function stopFeedbackPolling() {
   if (feedbackPollingTimer) {
     window.clearTimeout(feedbackPollingTimer);
@@ -553,7 +774,22 @@ $('newConv').onclick = async () => {
 };
 
 ui.startBtn.addEventListener('click', () => {
-  void startConversation();
+  void handleStartEntry();
+});
+
+ui.entryModeTalk?.addEventListener('click', () => {
+  setEntryMode(InputMode.TALK);
+});
+
+ui.entryModeWrite?.addEventListener('click', () => {
+  setEntryMode(InputMode.WRITE);
+});
+
+ui.entryDeviceSelect?.addEventListener('change', () => {
+  selectedEntryDeviceId = ui.entryDeviceSelect.value || null;
+  saveEntryDeviceId(selectedEntryDeviceId);
+  renderEntryDevices();
+  renderEntryState();
 });
 
 ui.modeTalk.addEventListener('click', async () => {
@@ -571,13 +807,6 @@ ui.modeTalk.addEventListener('click', async () => {
 });
 ui.modeWrite.addEventListener('click', () => {
   if (turnInFlight) return;
-  if (isRecording) {
-    discardRecording = true;
-    void stopVoiceCapture().finally(() => teardownMic());
-  }
-  setInputMode(InputMode.WRITE);
-});
-ui.modeWrite.addEventListener('click', () => {
   if (isRecording) {
     discardRecording = true;
     void stopVoiceCapture().finally(() => teardownMic());
@@ -632,53 +861,6 @@ ui.finishTurnBtn.addEventListener('click', () => {
   void handleFinishTurn();
 });
 
-async function requestMicPermissions() {
-  if (!navigator.mediaDevices?.getUserMedia) return false;
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    stream.getTracks().forEach((track) => track.stop());
-    hasMicPermission = true;
-    return true;
-  } catch (err) {
-    console.error('[mic] Permiso denegado', err);
-    hasMicPermission = false;
-    return false;
-  }
-}
-
-async function startConversation() {
-  if (ui.permissionError) ui.permissionError.textContent = '';
-  const ok = await requestMicPermissions();
-  if (!ok) {
-    if (ui.permissionError) {
-      ui.permissionError.textContent = 'No pudimos acceder al micrófono. Continuamos en modo escritura.';
-    }
-    if (ui.permissionOverlay) ui.permissionOverlay.style.display = 'none';
-    setInputMode(InputMode.WRITE);
-    updateReplyText('No detectamos micrófono. Puedes escribir tu mensaje y continuar.');
-    setStatusText('Micrófono no disponible. Modo escritura activado.');
-    return;
-  }
-
-  try {
-    await getOrCreateAudioContext().resume();
-    await warmupFrontendTts();
-  } catch (_) {}
-
-  if (ui.permissionOverlay) ui.permissionOverlay.style.display = 'none';
-  setInputMode(InputMode.TALK);
-  updateReplyText('Te escucho. Empieza a hablar cuando quieras.');
-  setStatusText('Activando mic…');
-  try {
-    await startVoiceCapture();
-    updateUi();
-    syncAvatarMode();
-  } catch (err) {
-    console.error('[mic] Error al iniciar grabación', err);
-    setInputMode(InputMode.WRITE);
-    setStatusText('No se pudo iniciar el micrófono.');
-  }
-}
 
 ui.finishNegotiationBtn.onclick = () => {
   if (finalizePopoverOpen) {
@@ -747,6 +929,44 @@ window.addEventListener('click', (ev) => {
   if (popover && btn && target instanceof Node && !popover.contains(target) && !btn.contains(target)) closeFinalizePopover();
 });
 
+window.addEventListener('avatar-runtime-ready', () => {
+  scenarioReady = true;
+  tryResolveEntryRequest();
+});
+
+window.addEventListener('avatar-runtime-error', () => {
+  scenarioReady = false;
+  if (ui.entryError) ui.entryError.textContent = 'No se pudo cargar el escenario. Recarga para reintentar.';
+  renderEntryState();
+});
+
+function bindRuntimeReadiness() {
+  const runtime = window.__avatarRuntime;
+  if (!runtime) return;
+  if (typeof runtime.onReady === 'function') {
+    runtime.onReady(() => {
+      scenarioReady = true;
+      tryResolveEntryRequest();
+    });
+  }
+  if (typeof runtime.onError === 'function') {
+    runtime.onError(() => {
+      scenarioReady = false;
+      if (ui.entryError) ui.entryError.textContent = 'No se pudo cargar el escenario. Recarga para reintentar.';
+      renderEntryState();
+    });
+  }
+  if (typeof runtime.isReady === 'function' && runtime.isReady()) {
+    scenarioReady = true;
+  }
+}
+
+if (navigator.mediaDevices?.addEventListener) {
+  navigator.mediaDevices.addEventListener('devicechange', () => {
+    void refreshEntryDevices();
+  });
+}
+
 (async function initInterfazUsuarioSession() {
   _seedDefaultIds();
   syncSessionBoundaryReset();
@@ -758,7 +978,16 @@ window.addEventListener('click', (ev) => {
   } catch (err) {
     $('meta').textContent = `bootstrap_error=${String(err)}`;
   }
+  try {
+    await getOrCreateAudioContext().resume();
+    await warmupFrontendTts();
+  } catch (_) {}
+
   setInputMode(InputMode.WRITE);
+  bindRuntimeReadiness();
+  await refreshEntryDevices();
+  setEntryMode(InputMode.TALK);
+  renderEntryState();
   stopInputOrb();
   syncAvatarMode();
 })();
