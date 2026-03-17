@@ -520,6 +520,23 @@ function logEntryState(tag, extra = {}) {
   });
 }
 
+
+
+function logEntryPointerEvent(eventName, optionEl, extra = {}) {
+  if (!ENTRY_DEBUG || !optionEl) return;
+  const style = window.getComputedStyle(optionEl);
+  console.debug(`[entry-pointer] ${eventName}`, {
+    deviceId: optionEl.dataset.deviceId || null,
+    disabledAttr: optionEl.disabled,
+    pointerEvents: style.pointerEvents,
+    opacity: style.opacity,
+    position: style.position,
+    zIndex: style.zIndex,
+    selectedEntryDeviceIdBefore: selectedEntryDeviceId,
+    ...extra,
+  });
+}
+
 function getEntryModeStartEnabled() {
   if (entryMode === InputMode.WRITE) return true;
   return Boolean(selectedEntryDeviceId);
@@ -604,10 +621,24 @@ function renderEntryDevices() {
       check.setAttribute('aria-hidden', 'true');
       check.textContent = '✓';
       option.append(main, check);
-      option.addEventListener('click', () => {
+      option.dataset.deviceId = device.deviceId;
+      option.addEventListener('pointerdown', (ev) => {
+        logEntryPointerEvent('pointerdown', option, { eventTarget: ev.target?.className || null });
+      });
+      option.addEventListener('mousedown', (ev) => {
+        logEntryPointerEvent('mousedown', option, { eventTarget: ev.target?.className || null });
+      });
+      option.addEventListener('click', (ev) => {
+        logEntryPointerEvent('click:before-select', option, { eventTarget: ev.target?.className || null });
+        const before = selectedEntryDeviceId;
         selectedEntryDeviceId = device.deviceId;
         saveEntryDeviceId(selectedEntryDeviceId);
-        logEntryState('manual-device-select', { selectedFromClick: device.deviceId });
+        logEntryState('manual-device-select', {
+          selectedFromClick: device.deviceId,
+          selectedEntryDeviceIdBefore: before,
+          selectedEntryDeviceIdAfter: selectedEntryDeviceId,
+          nodeDisabled: option.disabled,
+        });
         renderEntryDevices();
         renderEntryState();
       });
@@ -718,7 +749,6 @@ async function refreshEntryDevices(reason = 'manual') {
   refreshPendingAfterInFlight = false;
   isRefreshingDevices = true;
   logEntryState('refreshEntryDevices:start', { reason });
-  renderEntryDevices();
   renderEntryState();
   if (!navigator.mediaDevices?.enumerateDevices) {
     availableInputDevices = [];
