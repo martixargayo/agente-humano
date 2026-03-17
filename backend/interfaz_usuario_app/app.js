@@ -798,18 +798,13 @@ async function finalizeEntry() {
     resolveEntryInputMode(InputMode.WRITE);
     setStatusText('Listo');
   } else {
-    resolveEntryInputMode(InputMode.TALK);
-    setStatusText('Activando mic…');
-    try {
-      await startVoiceCapture();
-      updateReplyText('Te escucho. Empieza a hablar cuando quieras.');
-      updateUi();
-      syncAvatarMode();
-    } catch (err) {
-      console.error('[entry] Error al iniciar modo hablar', err);
-      resolveEntryInputMode(InputMode.TALK);
-      setStatusText('No se pudo activar el micrófono. Revisa permisos/dispositivo y reintenta.');
-    }
+    // En entry no iniciamos grabación: solo dejamos el micro validado/conectado.
+    // La captura se inicia cuando el usuario activa explícitamente el modo Hablar en la UI principal.
+    resolveEntryInputMode(InputMode.WRITE);
+    setStatusText('Listo');
+    updateReplyText('Micrófono listo. Pulsa Hablar para empezar a grabar.');
+    updateUi();
+    syncAvatarMode();
   }
 
   entryRequestedMode = null;
