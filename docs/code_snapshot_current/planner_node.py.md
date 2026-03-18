@@ -1,3 +1,15 @@
+# File Snapshot
+
+Original path:
+`backend/negociacion/planner_node.py`
+
+Snapshot status:
+`current`
+
+Language / type:
+`python`
+
+```python
 from __future__ import annotations
 
 from typing import List, Literal
@@ -78,3 +90,5 @@ class PlannerOutput(BaseModel):
     limits: PlannerLimits
     memory_targets: list[str] = Field(default_factory=list)
     done_criteria: list[str]
+
+```
