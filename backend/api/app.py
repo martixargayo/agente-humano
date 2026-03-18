@@ -1,6 +1,7 @@
 # backend/api/app.py
 from __future__ import annotations
 
+import json
 import os
 import pathlib
 import sys
@@ -100,27 +101,48 @@ if INTERFAZ_USUARIO_DIR.exists():
 # --- Google Cloud Speech-to-Text (entrada de audio) ---
 
 # Ruta al JSON desde .env
-GOOGLE_CREDENTIALS_PATH = os.getenv(
-    "GOOGLE_CREDENTIALS_PATH",
-    "/workspaces/agente-humano/backend/keys/google-stt.json",  # fallback seguro
-)
+DEFAULT_GOOGLE_CREDENTIALS_PATH = "/workspaces/agente-humano/backend/keys/google-stt.json"
+
+
+def _get_google_credentials_path() -> str:
+    return os.getenv(
+        "GOOGLE_CREDENTIALS_PATH",
+        DEFAULT_GOOGLE_CREDENTIALS_PATH,  # fallback seguro local
+    ).strip()
+
 
 def _build_speech_client() -> speech.SpeechClient | None:
-    if not os.path.exists(GOOGLE_CREDENTIALS_PATH):
-        logger.warning(
-            "google_stt_credentials_missing path=%s",
-            GOOGLE_CREDENTIALS_PATH,
-        )
-        return None
+    service_account_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
+    credentials_path = _get_google_credentials_path()
 
-    try:
-        _ = service_account.Credentials.from_service_account_file(
-            GOOGLE_CREDENTIALS_PATH
-        )
-        return speech.SpeechClient.from_service_account_file(GOOGLE_CREDENTIALS_PATH)
-    except Exception as exc:
-        logger.warning("google_stt_client_init_error=%s", exc)
-        return None
+    if service_account_json:
+        try:
+            info = json.loads(service_account_json)
+            credentials = service_account.Credentials.from_service_account_info(info)
+            logger.info("google_stt_credentials_source=env_json")
+            return speech.SpeechClient(credentials=credentials)
+        except Exception as exc:
+            logger.warning("google_stt_credentials_env_json_invalid error=%s", exc)
+
+    if credentials_path:
+        if not os.path.exists(credentials_path):
+            logger.warning("google_stt_credentials_path_missing path=%s", credentials_path)
+        else:
+            try:
+                credentials = service_account.Credentials.from_service_account_file(
+                    credentials_path
+                )
+                logger.info("google_stt_credentials_source=path path=%s", credentials_path)
+                return speech.SpeechClient(credentials=credentials)
+            except Exception as exc:
+                logger.warning(
+                    "google_stt_client_init_error source=path path=%s error=%s",
+                    credentials_path,
+                    exc,
+                )
+
+    logger.warning("google_stt_credentials_unavailable fallback=openai")
+    return None
 
 
 speech_client = _build_speech_client()

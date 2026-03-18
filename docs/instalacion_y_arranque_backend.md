@@ -64,7 +64,7 @@ Según `backend/requirements.txt`:
 
 Aunque Google STT sea opcional a nivel funcional, `backend/api/app.py` importa `google.cloud.speech` en import-time, así que **la librería debe estar instalada** para arrancar el proceso.
 
-Lo opcional en práctica es la **credencial** de Google (`GOOGLE_CREDENTIALS_PATH`), no el paquete.
+Lo opcional en práctica es la **credencial** de Google (`GOOGLE_SERVICE_ACCOUNT_JSON` o `GOOGLE_CREDENTIALS_PATH`), no el paquete.
 
 ---
 
@@ -99,13 +99,18 @@ ENABLE_OPTIMIZADOR_APP=0
 - `OPENAI_STT_MODEL`
 
 #### Google STT (feature opcional)
+- `GOOGLE_SERVICE_ACCOUNT_JSON`
 - `GOOGLE_CREDENTIALS_PATH`
 - `GOOGLE_STT_MODEL`
 - `GOOGLE_STT_LANGUAGE`
 - `GOOGLE_STT_PUNCTUATION`
 - `GOOGLE_STT_ENCODING`
 
-Si falta credencial Google válida, `/stt_google` intenta fallback con OpenAI STT (si hay `OPENAI_API_KEY`).
+Prioridad de credenciales: `GOOGLE_SERVICE_ACCOUNT_JSON` > `GOOGLE_CREDENTIALS_PATH`.
+
+- **Railway recomendado:** definir `GOOGLE_SERVICE_ACCOUNT_JSON` con el JSON completo de la service account.
+- **Local recomendado:** definir `GOOGLE_CREDENTIALS_PATH` apuntando al archivo JSON local.
+- Si Google no puede inicializarse con ninguna de las dos, `/stt_google` intenta fallback con OpenAI STT (si hay `OPENAI_API_KEY`).
 
 ---
 
@@ -195,9 +200,9 @@ Acción: confirmar `pwd` y usar ruta real existente.
 
 ### 3) `/stt_google` falla con credenciales Google
 
-Causa probable: `GOOGLE_CREDENTIALS_PATH` ausente o inválido.
+Causa probable: `GOOGLE_SERVICE_ACCOUNT_JSON` inválido, o `GOOGLE_CREDENTIALS_PATH` ausente/inválido.
 
-Comportamiento esperado: fallback a OpenAI STT si `OPENAI_API_KEY` está configurada.
+Comportamiento esperado: se intenta primero `GOOGLE_SERVICE_ACCOUNT_JSON`, luego `GOOGLE_CREDENTIALS_PATH` y, si Google sigue sin quedar disponible, fallback a OpenAI STT si `OPENAI_API_KEY` está configurada.
 
 ### 4) Respuestas degradadas o TTS deshabilitado
 
