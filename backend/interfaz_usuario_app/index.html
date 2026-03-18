@@ -1158,23 +1158,16 @@
       }
 
       .audio-device-trigger {
-        min-width: min(320px, 38vw);
-        max-width: 100%;
         display: inline-flex;
         align-items: center;
-        justify-content: space-between;
-        gap: 12px;
+        justify-content: flex-end;
+        gap: 8px;
         border-radius: 999px;
-        border: 1px solid rgba(15, 23, 42, 0.12);
-        background: #ffffff;
+        border: 1px solid transparent;
+        background: transparent;
         color: #111827;
-        padding: 8px 12px;
+        padding: 4px 0 4px 8px;
         cursor: pointer;
-        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
-      }
-
-      .audio-device-trigger:hover {
-        background: #f9fafb;
       }
 
       .audio-device-trigger:focus-visible {
@@ -1187,6 +1180,7 @@
         display: inline-flex;
         align-items: center;
         gap: 8px;
+        justify-content: flex-end;
       }
 
       .audio-device-trigger-icon {
@@ -1213,7 +1207,7 @@
 
       .audio-device-trigger-chevron {
         flex: 0 0 auto;
-        color: rgba(15, 23, 42, 0.7);
+        color: #111827;
         font-size: 12px;
         transition: transform 0.18s ease;
       }
@@ -1316,6 +1310,25 @@
         color: rgba(15, 23, 42, 0.62);
         font-size: 13px;
         line-height: 1.4;
+      }
+
+      .audio-device-empty-actions {
+        margin-top: 10px;
+      }
+
+      .audio-device-inline-action {
+        border: 1px solid rgba(15, 23, 42, 0.12);
+        background: #ffffff;
+        color: #111827;
+        border-radius: 999px;
+        padding: 7px 12px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .audio-device-inline-action:hover {
+        background: #f8fafc;
       }
 
       .audio-device-footer {
@@ -1753,7 +1766,8 @@
         .bar-top { flex-wrap: wrap; align-items: flex-start; }
         .bar-top-right { width: 100%; justify-content: flex-start; }
         .audio-device-selector { width: 100%; }
-        .audio-device-trigger { width: 100%; min-width: 0; }
+        .audio-device-trigger { width: 100%; min-width: 0; justify-content: flex-start; padding-left: 0; }
+        .audio-device-trigger-main { justify-content: flex-start; }
         .audio-device-popover { left: 0; right: 0; width: auto; }
         .finish-button { width: 100%; justify-content: center; }
         .write-area { width: 100%; }

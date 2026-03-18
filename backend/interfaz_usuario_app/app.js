@@ -177,7 +177,6 @@ const ui = {
   audioDeviceSelectedList: $('audioDeviceSelectedList'),
   audioDeviceOtherList: $('audioDeviceOtherList'),
   audioDevicePopoverDivider: $('audioDevicePopoverDivider'),
-  feedbackFloatingLayer: $('feedbackFloatingLayer'),
 };
 
 // Hard guard: if any stale HTML/version still injects the old Chat/Negociación selector,
@@ -766,9 +765,23 @@ function renderAudioDeviceSelector() {
   if (entryPermissionStatus !== 'granted') {
     const empty = document.createElement('div');
     empty.className = 'audio-device-empty';
-    empty.textContent = entryPermissionStatus === 'denied'
-      ? 'Permiso de micrófono denegado. Habilítalo en el navegador o usa modo Escribir.'
+    const text = document.createElement('div');
+    text.textContent = entryPermissionStatus === 'denied'
+      ? 'Necesitamos permiso para listar los micrófonos disponibles.'
       : 'Necesitamos permiso para listar los micrófonos disponibles.';
+    empty.appendChild(text);
+
+    const actions = document.createElement('div');
+    actions.className = 'audio-device-empty-actions';
+    const action = document.createElement('button');
+    action.type = 'button';
+    action.className = 'audio-device-inline-action';
+    action.textContent = 'Activar permisos';
+    action.addEventListener('click', () => {
+      void handleAudioDevicePermissionRequest();
+    });
+    actions.appendChild(action);
+    empty.appendChild(actions);
     ui.audioDeviceSelectedList.appendChild(empty);
     if (ui.audioDevicePopoverDivider) ui.audioDevicePopoverDivider.hidden = true;
     return;
@@ -890,6 +903,22 @@ async function handleAudioDeviceChangeRequest(deviceId) {
   }
 
   await restartVoiceCaptureAfterDeviceSwitch(previousDeviceId);
+}
+
+async function handleAudioDevicePermissionRequest() {
+  if (audioDeviceSwitchInFlight) return;
+  setStatusText('Activando mic…');
+  const permissionOk = await requestMicPermissionsForEntry();
+  await refreshEntryDevices(permissionOk ? 'audio-selector-permission-ok' : 'audio-selector-permission-error');
+  renderAudioDeviceSelector();
+
+  if (permissionOk) {
+    setStatusText(isMicActuallyRecording() ? 'Escuchando…' : 'Listo');
+    return;
+  }
+
+  setStatusText('Listo');
+  showAudioDeviceToast(lastEntryMicError || 'No pudimos activar el micrófono. Revisa los permisos e inténtalo de nuevo.');
 }
 
 function stopAudioDevicePopoverPolling() {
