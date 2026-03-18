@@ -923,6 +923,30 @@
         pointer-events: none;
       }
 
+      .audio-device-toast {
+        position: fixed;
+        left: 50%;
+        bottom: 124px;
+        transform: translateX(-50%) translateY(8px);
+        max-width: min(560px, calc(100vw - 32px));
+        padding: 10px 14px;
+        border-radius: 14px;
+        background: rgba(17, 24, 39, 0.92);
+        color: #f9fafb;
+        font-size: 13px;
+        line-height: 1.4;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.26);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.22s ease, transform 0.22s ease;
+        z-index: 7;
+      }
+
+      .audio-device-toast.visible {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+      }
+
       .bottom-bar {
         position: fixed;
         left: 50%;
@@ -946,6 +970,15 @@
         justify-content: space-between;
         gap: 12px;
         margin-bottom: 10px;
+      }
+
+      .bar-top-right {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        min-width: 0;
+        flex: 1;
       }
 
       .mode-tabs {
@@ -1117,6 +1150,206 @@
 
       html[data-newbox="1"] .bar-top {
         margin-bottom: 8px;
+      }
+
+      .audio-device-selector {
+        position: relative;
+        min-width: 0;
+      }
+
+      .audio-device-trigger {
+        display: inline-flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        border-radius: 999px;
+        border: 1px solid transparent;
+        background: transparent;
+        color: #111827;
+        padding: 4px 0 4px 8px;
+        cursor: pointer;
+      }
+
+      .audio-device-trigger:focus-visible {
+        outline: 2px solid rgba(59, 130, 246, 0.38);
+        outline-offset: 2px;
+      }
+
+      .audio-device-trigger-main {
+        min-width: 0;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        justify-content: flex-end;
+      }
+
+      .audio-device-trigger-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: #111827;
+        flex: 0 0 auto;
+      }
+
+      .audio-device-trigger-label {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 13px;
+        font-weight: 500;
+      }
+
+      .audio-device-trigger-label.muted {
+        color: rgba(15, 23, 42, 0.56);
+        font-weight: 400;
+      }
+
+      .audio-device-trigger-chevron {
+        flex: 0 0 auto;
+        color: #111827;
+        font-size: 12px;
+        transition: transform 0.18s ease;
+      }
+
+      .audio-device-selector.open .audio-device-trigger-chevron {
+        transform: rotate(180deg);
+      }
+
+      .audio-device-popover {
+        position: absolute;
+        right: 0;
+        bottom: calc(100% + 10px);
+        width: min(340px, 78vw);
+        display: none;
+        flex-direction: column;
+        gap: 12px;
+        padding: 14px;
+        border-radius: 18px;
+        border: 1px solid rgba(15, 23, 42, 0.1);
+        background: rgba(255, 255, 255, 0.98);
+        box-shadow:
+          0 18px 40px rgba(15, 23, 42, 0.16),
+          0 4px 12px rgba(15, 23, 42, 0.08);
+        z-index: 8;
+      }
+
+      .audio-device-selector.open .audio-device-popover {
+        display: flex;
+      }
+
+      .audio-device-popover-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .audio-device-popover-divider {
+        height: 1px;
+        background: rgba(148, 163, 184, 0.28);
+      }
+
+      .audio-device-option {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 10px 12px;
+        border-radius: 14px;
+        border: 1px solid rgba(15, 23, 42, 0.1);
+        background: #ffffff;
+        color: #111827;
+        cursor: pointer;
+        text-align: left;
+      }
+
+      .audio-device-option:hover {
+        background: #f8fafc;
+      }
+
+      .audio-device-option.active {
+        border-color: rgba(96, 165, 250, 0.72);
+        background: #eff6ff;
+        box-shadow: 0 0 0 1px rgba(147, 197, 253, 0.3);
+      }
+
+      .audio-device-option-main {
+        min-width: 0;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .audio-device-option-icon {
+        color: #111827;
+        opacity: 0.92;
+      }
+
+      .audio-device-option-name {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 13px;
+      }
+
+      .audio-device-option-check {
+        color: #2563eb;
+        opacity: 0;
+      }
+
+      .audio-device-option.active .audio-device-option-check {
+        opacity: 1;
+      }
+
+      .audio-device-empty {
+        padding: 12px;
+        border-radius: 14px;
+        border: 1px dashed rgba(15, 23, 42, 0.16);
+        color: rgba(15, 23, 42, 0.62);
+        font-size: 13px;
+        line-height: 1.4;
+      }
+
+      .audio-device-empty-actions {
+        margin-top: 10px;
+      }
+
+      .audio-device-inline-action {
+        border: 1px solid rgba(15, 23, 42, 0.12);
+        background: #ffffff;
+        color: #111827;
+        border-radius: 999px;
+        padding: 7px 12px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .audio-device-inline-action:hover {
+        background: #f8fafc;
+      }
+
+      .audio-device-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding-top: 4px;
+        border-top: 1px solid rgba(148, 163, 184, 0.22);
+        color: rgba(15, 23, 42, 0.62);
+        font-size: 12px;
+      }
+
+      .audio-device-footer-spinner {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        border: 2px solid rgba(148, 163, 184, 0.45);
+        border-top-color: rgba(100, 116, 139, 0.9);
+        animation: entrySpin 1s linear infinite;
+        flex: 0 0 auto;
       }
 
       html[data-newbox="1"] .mode-tabs {
@@ -1493,11 +1726,17 @@
 
       @media (max-width: 640px) {
         .reply-container { bottom: 150px; font-size: 13px; }
+        .audio-device-toast { bottom: 164px; font-size: 12px; }
         .bar-content { flex-direction: column; align-items: flex-start; }
+        .bar-top { flex-wrap: wrap; align-items: flex-start; }
+        .bar-top-right { width: 100%; justify-content: flex-start; }
+        .audio-device-selector { width: 100%; }
+        .audio-device-trigger { width: 100%; min-width: 0; justify-content: flex-start; padding-left: 0; }
+        .audio-device-trigger-main { justify-content: flex-start; }
+        .audio-device-popover { left: 0; right: 0; width: auto; }
         .finish-button { width: 100%; justify-content: center; }
         .write-area { width: 100%; }
         .send-btn { align-self: flex-end; }
-        .bar-top { align-items: flex-start; }
         .finish-negotiation-button { right: 12px; bottom: 12px; }
       }
     </style>
@@ -1576,6 +1815,8 @@
         <span id="lastReply"></span>
       </div>
 
+      <div id="audioDeviceToast" class="audio-device-toast" aria-live="polite"></div>
+
       <div class="bottom-bar" aria-live="polite">
         <div class="bar-inner">
           <div class="bar-top">
@@ -1583,22 +1824,39 @@
               <button id="modeTalk" class="mode-tab active" role="tab" aria-selected="true">Hablar</button>
               <button id="modeWrite" class="mode-tab" role="tab" aria-selected="false">Escribir</button>
             </div>
-            <div id="conversationMode" class="conversation-mode">
-              <button
-                id="conversationModeTrigger"
-                class="conversation-mode-trigger"
-                type="button"
-                aria-haspopup="menu"
-                aria-expanded="false"
-                aria-controls="conversationModeMenu"
-                aria-label="Seleccionar modo de conversación"
-              >
-                <span id="conversationModeCurrent" class="mode-current">Chat</span>
-                <span class="mode-chevron">▾</span>
-              </button>
-              <div id="conversationModeMenu" class="conversation-mode-menu" role="menu" aria-label="Modo de conversación">
-                <button type="button" class="conversation-mode-option active" role="menuitemradio" aria-checked="true" data-agent-mode="chat">Chat</button>
-                <button type="button" class="conversation-mode-option" role="menuitemradio" aria-checked="false" data-agent-mode="negotiation">Negociación</button>
+            <div class="bar-top-right">
+              <div id="audioDeviceSelector" class="audio-device-selector">
+                <button
+                  id="audioDeviceTrigger"
+                  class="audio-device-trigger"
+                  type="button"
+                  aria-haspopup="dialog"
+                  aria-expanded="false"
+                  aria-controls="audioDevicePopover"
+                  aria-label="Seleccionar micrófono"
+                >
+                  <span class="audio-device-trigger-main">
+                    <span class="audio-device-trigger-icon" aria-hidden="true">
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M3.5 8.5V7.5C3.5 5.01472 5.51472 3 8 3C10.4853 3 12.5 5.01472 12.5 7.5V8.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+                        <path d="M4.5 8.5H3.5C2.94772 8.5 2.5 8.94772 2.5 9.5V10.5C2.5 11.0523 2.94772 11.5 3.5 11.5H5V8.5H4.5Z" fill="currentColor"/>
+                        <path d="M11.5 8.5H12.5C13.0523 8.5 13.5 8.94772 13.5 9.5V10.5C13.5 11.0523 13.0523 11.5 12.5 11.5H11V8.5H11.5Z" fill="currentColor"/>
+                        <path d="M5 11.5V12C5 12.8284 5.67157 13.5 6.5 13.5H9.5C10.3284 13.5 11 12.8284 11 12V11.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                      </svg>
+                    </span>
+                    <span id="audioDeviceTriggerLabel" class="audio-device-trigger-label">Micrófono</span>
+                  </span>
+                  <span class="audio-device-trigger-chevron" aria-hidden="true">▾</span>
+                </button>
+                <div id="audioDevicePopover" class="audio-device-popover" role="dialog" aria-label="Dispositivos de audio">
+                  <div id="audioDeviceSelectedList" class="audio-device-popover-list"></div>
+                  <div id="audioDevicePopoverDivider" class="audio-device-popover-divider" hidden></div>
+                  <div id="audioDeviceOtherList" class="audio-device-popover-list"></div>
+                  <div class="audio-device-footer" aria-live="polite">
+                    <span>Buscando dispositivos…</span>
+                    <span class="audio-device-footer-spinner" aria-hidden="true"></span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
