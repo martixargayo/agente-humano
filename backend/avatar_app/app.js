@@ -590,6 +590,58 @@ function base64ToAudioData(b64, mimeType = 'audio/wav') {
 
 const BACKEND_URL = '';
 
+let ttsWarmupPromise = null;
+
+function warmupTTS({
+  text = 'Hola, preparando la voz.',
+  timeoutMs = 5000,
+} = {}) {
+  if (ttsWarmupPromise) return ttsWarmupPromise;
+
+  ttsWarmupPromise = (async () => {
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timerId = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+    try {
+      const res = await fetch(`${BACKEND_URL}/tts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+        signal: controller?.signal,
+      });
+
+      if (!res.ok) {
+        if (AudioDebug.enabled) {
+          console.warn('[audio-debug] Warmup TTS sin éxito', {
+            status: res.status,
+          });
+        }
+        return false;
+      }
+
+      const data = await res.json().catch(() => ({}));
+      const ok = Boolean(data?.audio_base64);
+
+      if (AudioDebug.enabled) {
+        console.info('[audio-debug] Warmup TTS completado', {
+          ok,
+          timeoutMs,
+        });
+      }
+
+      return ok;
+    } catch (err) {
+      if (AudioDebug.enabled) {
+        console.warn('[audio-debug] Warmup TTS falló', err);
+      }
+      return false;
+    } finally {
+      if (timerId) clearTimeout(timerId);
+    }
+  })();
+
+  return ttsWarmupPromise;
+}
+
 async function requestTTS(text) {
   const res = await fetch(`${BACKEND_URL}/tts`, {
     method: 'POST',
@@ -615,6 +667,11 @@ async function sendTextToAgent(message, { mode = 'negociar', withAudio = true } 
   AvatarState.mode = 'THINKING';
 
   try {
+    if (withAudio) {
+      // Precarga silenciosa para evitar cold start de voces pesadas (p. ej., Onyx)
+      await warmupTTS();
+    }
+
     const endpoint = mode === 'chat' ? '/chat' : '/negociar';
     const res = await fetch(`${BACKEND_URL}${endpoint}`, {
       method: 'POST',
@@ -677,12 +734,93 @@ async function playAudioFromAudioData(
   }
 
   if (AudioDebug.enabled) {
-  console.log('[avatar] TTS decodificado', {
-    mimeType: audioData?.mimeType,
-    blobSize: audioData?.blob?.size,
-    duration: audioBuffer?.duration,
-  });
-}
+    console.log('[avatar] TTS decodificado', {
+      mimeType: audioData?.mimeType,
+      blobSize: audioData?.blob?.size,
+      duration: audioBuffer?.duration,
+    });
+  }
+
+  // === Recorte de silencio inicial ===
+  // Algunas voces (p. ej., Onyx) traen un pequeño silencio / breath al inicio.
+  // Detectamos el primer sample con energía y arrancamos la reproducción desde ahí
+  // para evitar que la boca se mueva “a medio audio”.
+  const analyseLeadingVoice = (
+    buffer,
+    {
+      threshold = 0.002,
+      windowMs = 12,
+      lookaheadMs = 1800,
+      consecutiveWindows = 2,
+      minVoiceDurationMs = 80,
+    } = {},
+  ) => {
+    // Detecta el primer tramo con RMS real en vez de un único sample para no comerse
+    // el ataque suave de voces como Onyx (que pueden arrancar con valores muy bajos).
+    if (!buffer?.numberOfChannels) return { offsetSec: 0, hasVoice: false };
+
+    const channelData = buffer.getChannelData(0);
+    const sampleRate = buffer.sampleRate || 48000;
+    const windowSize = Math.max(1, Math.floor((sampleRate * windowMs) / 1000));
+    const maxSamples = Math.min(
+      channelData.length,
+      Math.floor((sampleRate * lookaheadMs) / 1000),
+    );
+
+    const rmsAt = (offset, len) => {
+      let sum = 0;
+      for (let i = 0; i < len; i++) {
+        const v = channelData[offset + i];
+        sum += v * v;
+      }
+      return Math.sqrt(sum / len);
+    };
+
+    let consec = 0;
+    let voicedSamples = 0;
+    let firstVoiceOffset = null;
+
+    for (let start = 0; start + windowSize <= maxSamples; start += windowSize) {
+      const rms = rmsAt(start, windowSize);
+      if (rms > threshold) {
+        consec += 1;
+        voicedSamples += windowSize;
+        if (consec >= consecutiveWindows && firstVoiceOffset === null) {
+          const offsetSamples = start - (consecutiveWindows - 1) * windowSize;
+          firstVoiceOffset = Math.max(0, offsetSamples);
+        }
+      } else {
+        consec = 0;
+      }
+    }
+
+    const minVoiceSamples = Math.floor((sampleRate * minVoiceDurationMs) / 1000);
+    return {
+      offsetSec: firstVoiceOffset != null ? firstVoiceOffset / sampleRate : 0,
+      hasVoice: voicedSamples >= minVoiceSamples,
+    };
+  };
+
+  const { offsetSec: startOffsetSec, hasVoice } = analyseLeadingVoice(audioBuffer);
+
+  if (!hasVoice) {
+    cleanupAudio();
+    AvatarState.mode = 'IDLE';
+    AvatarState.speechIntensity = 1.0;
+    AvatarState.talkLevel = 0;
+    throw new Error('El audio TTS no contiene voz; se omitió la reproducción para evitar silencio.');
+  }
+
+  const clampedOffset = Math.max(
+    0,
+    Math.min(startOffsetSec, Math.max(0, audioBuffer.duration - 0.05)),
+  );
+  if (AudioDebug.enabled && clampedOffset > 0) {
+    console.info('[audio-debug] Recortando silencio inicial', {
+      startOffsetSec: Number(clampedOffset.toFixed(3)),
+      duration: Number(audioBuffer.duration.toFixed(3)),
+    });
+  }
 
   analyser = audioCtx.createAnalyser();
   analyser.fftSize = 512;
@@ -724,7 +862,8 @@ async function playAudioFromAudioData(
   if (AudioDebug.enabled) {
     console.log('[avatar] TTS playback start');
   }
-  audioSource.start();
+  // Saltamos el silencio inicial estimado para que el audio y el lip-sync arranquen alineados
+  audioSource.start(0, clampedOffset);
 }
 
 function getTalkLevelFromAudio() {
@@ -918,6 +1057,9 @@ const sendToAgentBtn = document.getElementById('sendToAgentBtn');
 const userTextEl = document.getElementById('userText');
 const textOnlyCheckbox = document.getElementById('textOnly');
 const idleMotionToggle = document.getElementById('idleMotionToggle');
+
+// Calentamos el TTS en segundo plano para que la primera frase no salga con silencio
+warmupTTS();
 
 if (sendToAgentBtn) {
   sendToAgentBtn.addEventListener('click', async () => {
