@@ -59,6 +59,7 @@ let entryInProgress = false;
 let entryRequestedMode = null;
 let entryResolvedInputMode = null;
 let entryPermissionStatus = 'unknown';
+let lastEntryMicError = '';
 let availableInputDevices = [];
 let selectedEntryDeviceId = null;
 let entryDeviceRefreshTimer = null;
@@ -532,7 +533,9 @@ function pickReplacementDevice(previousDeviceId, previousList, nextList) {
 }
 
 function canStartTalkEntry() {
-  return entryPermissionStatus !== 'denied' && Boolean(selectedEntryDeviceId);
+  if (entryPermissionStatus === 'denied') return false;
+  if (entryPermissionStatus === 'granted') return Boolean(selectedEntryDeviceId);
+  return true;
 }
 
 function getEntryModeStartEnabled() {
@@ -561,12 +564,22 @@ function renderEntryState() {
   ui.entryModeWrite.setAttribute('aria-selected', String(entryMode === InputMode.WRITE));
   ui.entryTalkContent.classList.toggle('entry-hidden', entryMode !== InputMode.TALK);
   ui.entryWriteContent.classList.toggle('entry-hidden', entryMode !== InputMode.WRITE);
-  ui.entrySubtitle.textContent = entryMode === InputMode.TALK ? 'Prepara tu dispositivo para hablar.' : '';
+  ui.entrySubtitle.textContent = entryMode === InputMode.TALK
+    ? (entryPermissionStatus === 'granted'
+        ? 'Selecciona tu micrófono y entra cuando quieras.'
+        : 'Necesitamos permiso de micrófono para detectar tus dispositivos.')
+    : '';
   ui.entrySubtitle.classList.toggle('entry-hidden', entryMode !== InputMode.TALK);
 
   const startEnabled = getEntryModeStartEnabled();
   ui.startBtn.disabled = !startEnabled || entryInProgress;
-  ui.startBtn.textContent = entryRequested && !scenarioReady ? 'Cargando escenario…' : 'Empezar';
+  if (entryRequested && !scenarioReady) {
+    ui.startBtn.textContent = 'Cargando escenario…';
+  } else if (entryMode === InputMode.TALK && entryPermissionStatus !== 'granted') {
+    ui.startBtn.textContent = 'Activar micrófono';
+  } else {
+    ui.startBtn.textContent = 'Empezar';
+  }
 
   if (!scenarioReady) {
     ui.entryLoadingText.textContent = 'Cargando escenario';
@@ -579,17 +592,23 @@ function renderEntryState() {
   }
 
   const showSearchHeader = entryMode === InputMode.TALK;
+  const waitingForPermission = entryMode === InputMode.TALK && entryPermissionStatus !== 'granted';
   ui.entryDeviceSearch?.classList.toggle('hidden', !showSearchHeader);
-  ui.entryDeviceLabel?.classList.add('entry-hidden');
+  ui.entryDeviceLabel?.classList.toggle('entry-hidden', waitingForPermission || entryMode !== InputMode.TALK);
+  if (ui.entryDeviceSearch) {
+    ui.entryDeviceSearch.innerHTML = waitingForPermission
+      ? '<span>Necesitamos permiso para listar los micrófonos disponibles</span>'
+      : '<span>Micrófonos detectados</span>';
+  }
 
   if (entryPermissionStatus === 'prompt' || entryPermissionStatus === 'unknown') {
-    ui.entryDeviceStatus.textContent = 'Selecciona un micrófono y pulsa Empezar para conceder permisos.';
+    ui.entryDeviceStatus.textContent = 'Pulsa “Activar micrófono” para conceder acceso y cargar tus dispositivos de audio.';
     ui.entryDeviceStatus.classList.remove('error');
   } else if (entryPermissionStatus === 'denied') {
     ui.entryDeviceStatus.textContent = 'Permiso de micrófono denegado. Habilítalo en el navegador o usa modo Escribir.';
     ui.entryDeviceStatus.classList.add('error');
   } else if (!selectedEntryDeviceId) {
-    ui.entryDeviceStatus.textContent = 'No encontramos un micrófono válido.';
+    ui.entryDeviceStatus.textContent = 'No encontramos un micrófono válido después de conceder permiso.';
     ui.entryDeviceStatus.classList.add('error');
   } else {
     ui.entryDeviceStatus.textContent = 'Micrófono seleccionado. Puedes empezar en modo hablar.';
@@ -601,6 +620,16 @@ function renderEntryDevices() {
   if (!ui.entryDeviceList) return;
   const currentChildren = [...ui.entryDeviceList.querySelectorAll('[data-device-id]')];
   const currentById = new Map(currentChildren.map((node) => [node.dataset.deviceId, node]));
+
+  if (entryPermissionStatus !== 'granted') {
+    ui.entryDeviceList.innerHTML = '';
+    const empty = document.createElement('div');
+    empty.className = 'entry-device-empty';
+    empty.textContent = 'Activa el micrófono para mostrar tus dispositivos disponibles';
+    ui.entryDeviceList.appendChild(empty);
+    selectedEntryDeviceId = null;
+    return;
+  }
 
   if (!availableInputDevices.length) {
     ui.entryDeviceList.innerHTML = '';
@@ -671,37 +700,61 @@ async function requestMicPermissionsForEntry() {
   if (!navigator.mediaDevices?.getUserMedia) {
     entryPermissionStatus = 'denied';
     hasMicPermission = false;
+    lastEntryMicError = 'Este navegador no soporta acceso al micrófono.';
     return false;
   }
 
-  const constraints = selectedEntryDeviceId
-    ? {
-        audio: {
-          deviceId: { exact: selectedEntryDeviceId },
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      }
-    : {
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      };
+  lastEntryMicError = '';
 
   try {
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    await getOrCreateAudioContext().resume();
+  } catch (_) {}
+
+  const baseAudioConstraints = {
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+  };
+  const preferredConstraints = selectedEntryDeviceId
+    ? { audio: { ...baseAudioConstraints, deviceId: { exact: selectedEntryDeviceId } } }
+    : { audio: baseAudioConstraints };
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia(preferredConstraints);
     stream.getTracks().forEach((track) => track.stop());
     entryPermissionStatus = 'granted';
     hasMicPermission = true;
     return true;
   } catch (err) {
+    const recoverable = err?.name === 'NotReadableError'
+      || err?.name === 'NotFoundError'
+      || err?.name === 'OverconstrainedError';
+
+    if (recoverable && selectedEntryDeviceId) {
+      try {
+        const fallbackStream = await navigator.mediaDevices.getUserMedia({ audio: baseAudioConstraints });
+        fallbackStream.getTracks().forEach((track) => track.stop());
+        entryPermissionStatus = 'granted';
+        hasMicPermission = true;
+        lastEntryMicError = '';
+        return true;
+      } catch (fallbackErr) {
+        err = fallbackErr;
+      }
+    }
+
     if (err?.name === 'NotAllowedError' || err?.name === 'SecurityError') {
       entryPermissionStatus = 'denied';
+      lastEntryMicError = 'Has bloqueado el permiso del micrófono.';
+    } else if (err?.name === 'NotReadableError') {
+      entryPermissionStatus = 'prompt';
+      lastEntryMicError = 'No se pudo iniciar el micrófono. Cierra otras apps que lo estén usando y reintenta.';
+    } else if (err?.name === 'NotFoundError' || err?.name === 'OverconstrainedError') {
+      entryPermissionStatus = 'prompt';
+      lastEntryMicError = 'No encontramos un micrófono disponible con esa selección.';
     } else {
       entryPermissionStatus = 'prompt';
+      lastEntryMicError = 'No pudimos activar el micrófono. Reintenta.';
     }
     hasMicPermission = false;
     console.error('[entry] Error al pedir permiso de micrófono', err);
@@ -733,7 +786,9 @@ async function refreshEntryDevices(reason = 'manual') {
     const rawDevices = await navigator.mediaDevices.enumerateDevices();
     if (sequence !== refreshSequence) return;
 
-    const nextDevices = toUiAudioInputDevices(rawDevices);
+    const nextDevices = entryPermissionStatus === 'granted'
+      ? toUiAudioInputDevices(rawDevices)
+      : [];
     availableInputDevices = nextDevices;
 
     const stored = getSavedEntryDeviceId();
@@ -776,23 +831,31 @@ function scheduleEntryDeviceRefresh(reason = 'manual', delayMs = 120) {
 async function validateTalkModeForEntry() {
   if (ui.entryError) ui.entryError.textContent = '';
 
-  await refreshEntryDevices('validate-pre-permission');
+  if (entryPermissionStatus !== 'granted') {
+    const permissionOk = await requestMicPermissionsForEntry();
+    await refreshEntryDevices(permissionOk ? 'validate-post-permission' : 'validate-permission-error');
 
-  const permissionOk = entryPermissionStatus === 'granted'
-    ? true
-    : await requestMicPermissionsForEntry();
-
-  if (!permissionOk) {
-    if (ui.entryError) {
-      ui.entryError.textContent = entryPermissionStatus === 'denied'
-        ? 'No pudimos habilitar el micrófono. Activa permisos o usa Escribir.'
-        : 'No pudimos validar el micrófono. Reintenta.';
+    if (!permissionOk) {
+      if (ui.entryError) {
+        ui.entryError.textContent = lastEntryMicError || (entryPermissionStatus === 'denied'
+          ? 'No pudimos habilitar el micrófono. Activa permisos o usa Escribir.'
+          : 'No pudimos validar el micrófono. Reintenta.');
+      }
+      renderEntryState();
+      return false;
     }
+
+    if (!selectedEntryDeviceId) {
+      if (ui.entryError) ui.entryError.textContent = 'Concediste permiso, pero no detectamos un micrófono disponible.';
+      renderEntryState();
+      return false;
+    }
+
     renderEntryState();
-    return false;
+    return 'ready-after-permission';
   }
 
-  await refreshEntryDevices('validate-post-permission');
+  await refreshEntryDevices('validate-existing-permission');
 
   if (!selectedEntryDeviceId) {
     if (ui.entryError) ui.entryError.textContent = 'No se detectó un micrófono disponible.';
@@ -801,7 +864,7 @@ async function validateTalkModeForEntry() {
   }
 
   renderEntryState();
-  return true;
+  return 'ready';
 }
 
 async function finalizeEntry() {
@@ -870,6 +933,12 @@ async function handleStartEntry() {
       return;
     }
 
+    if (talkReady === 'ready-after-permission') {
+      if (ui.entryError) ui.entryError.textContent = 'Micrófono activado. Revisa la selección si quieres y pulsa Empezar para entrar.';
+      renderEntryState();
+      return;
+    }
+
     try {
       setStatusText('Activando mic…');
       await startVoiceCapture();
@@ -878,7 +947,11 @@ async function handleStartEntry() {
       syncAvatarMode();
     } catch (err) {
       console.error('[entry] No se pudo precalentar captura desde Empezar', err);
-      if (ui.entryError) ui.entryError.textContent = 'No pudimos iniciar el micrófono. Reintenta o usa Escribir.';
+      if (ui.entryError) {
+        ui.entryError.textContent = err?.name === 'NotReadableError'
+          ? 'No se pudo iniciar el micrófono. Puede estar ocupado por otra app; reintenta o usa Escribir.'
+          : 'No pudimos iniciar el micrófono. Reintenta o usa Escribir.';
+      }
       renderEntryState();
       return;
     }
@@ -1280,10 +1353,6 @@ document.addEventListener('visibilitychange', () => {
   } catch (err) {
     $('meta').textContent = `bootstrap_error=${String(err)}`;
   }
-  try {
-    await getOrCreateAudioContext().resume();
-    await warmupFrontendTts();
-  } catch (_) {}
 
   if (!entryResolvedInputMode) setInputMode(InputMode.WRITE);
   bindRuntimeReadiness();
