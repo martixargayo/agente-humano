@@ -90,7 +90,9 @@ const FloatingPhraseQuadrantOrder = ['topLeft', 'topRight', 'bottomLeft', 'botto
 let currentInputMode = InputMode.TALK;
 let currentAgentMode = AgentMode.CHAT;
 let finishButtonArmed = false;
+let latestTraceCount = 0;
 let lastSessionKey = '';
+const MIN_TURNS_BEFORE_FINALIZE = 5;
 let orbRaf = null;
 let orbLevel = 0;
 let finalizePopoverOpen = false;
@@ -159,6 +161,9 @@ const ui = {
   textInput: $('textInput'),
   sendTextBtn: $('sendTextBtn'),
   finishNegotiationBtn: $('finishNegotiationBtn'),
+  finishConfirmMessage: $('finishConfirmMessage'),
+  finishConfirmHint: $('finishConfirmHint'),
+  finishConfirmBtn: $('finishConfirmBtn'),
   conversationMode: $('conversationMode'),
   feedbackFloatingLayer: $('feedbackFloatingLayer'),
 };
@@ -467,6 +472,47 @@ function setListeningGlowEnabled(enabled) {
   ui.listeningGlow.classList.toggle('active', Boolean(enabled));
 }
 
+function getRemainingTurnsBeforeFinalize() {
+  return Math.max(0, MIN_TURNS_BEFORE_FINALIZE - latestTraceCount);
+}
+
+function canFinalizeConversation() {
+  return getRemainingTurnsBeforeFinalize() === 0;
+}
+
+function getFinalizePopoverCopy() {
+  const remainingTurns = getRemainingTurnsBeforeFinalize();
+  if (remainingTurns === 0) {
+    return {
+      message: '¿Seguro que quieres finalizar la conversación?',
+      hint: '',
+      confirmDisabled: false,
+    };
+  }
+
+  const turnWord = remainingTurns === 1 ? 'turno' : 'turnos';
+  return {
+    message: 'La conversación no es suficientemente relevante para haber llegado a un resultado siguiendo el método adecuado.',
+    hint: `Finalizar conversación disponible en ${remainingTurns} ${turnWord}.`,
+    confirmDisabled: true,
+  };
+}
+
+function renderFinalizePopoverState() {
+  if (!ui.finishConfirmMessage || !ui.finishConfirmHint || !ui.finishConfirmBtn) return;
+  const copy = getFinalizePopoverCopy();
+  ui.finishConfirmMessage.textContent = copy.message;
+  ui.finishConfirmHint.textContent = copy.hint;
+  ui.finishConfirmHint.classList.toggle('hidden', !copy.hint);
+  ui.finishConfirmBtn.disabled = copy.confirmDisabled;
+}
+
+function setLatestTraceCount(nextCount) {
+  const numericCount = Number(nextCount);
+  latestTraceCount = Number.isFinite(numericCount) && numericCount > 0 ? Math.floor(numericCount) : 0;
+  renderFinalizePopoverState();
+}
+
 function updateFinishNegotiationButton() {
   ui.finishNegotiationBtn.classList.toggle('is-armed', finishButtonArmed);
 }
@@ -489,6 +535,7 @@ function syncSessionBoundaryReset() {
 }
 
 function updateUi() {
+  renderFinalizePopoverState();
   ui.modeTalk.classList.toggle('active', currentInputMode === InputMode.TALK);
   ui.modeWrite.classList.toggle('active', currentInputMode === InputMode.WRITE);
   ui.modeTalk.setAttribute('aria-selected', String(currentInputMode === InputMode.TALK));
@@ -1139,6 +1186,7 @@ function closeFinalizePopover() {
 }
 
 function openFinalizePopover() {
+  renderFinalizePopoverState();
   finalizePopoverOpen = true;
   $('finishConfirmPopover')?.classList.add('visible');
 }
@@ -1231,6 +1279,7 @@ async function runNegotiationTurnFromText(message, { allowWhileVoiceTurn = false
     const out = await api('/negociacion/turn', { method: 'POST', body: JSON.stringify(payload) });
     updateReplyText(out.reply || '');
     armFinishButton(out.finish_button_armed);
+    setLatestTraceCount(out.trace_count);
 
     const contract = out.entry_contract;
     $('meta').textContent =
@@ -1286,6 +1335,7 @@ $('newConv').onclick = async () => {
   $('sessionId').value = out.session_id;
   lastSessionKey = `${payload.user_id}::${out.session_id}`;
   resetFinishButtonArmed();
+  setLatestTraceCount(0);
   $('meta').textContent = `nueva session=${out.session_id}`;
   updateReplyText('');
 };
@@ -1389,6 +1439,7 @@ ui.finishNegotiationBtn.onclick = () => {
 $('finishCancelBtn').onclick = closeFinalizePopover;
 
 $('finishConfirmBtn').onclick = async () => {
+  if (!canFinalizeConversation()) return;
   closeFinalizePopover();
   try {
     await startFeedbackEvaluation();
@@ -1517,6 +1568,7 @@ document.addEventListener('visibilitychange', () => {
     const out = await api('/sessions/bootstrap', { method: 'POST', body: JSON.stringify(ids()) });
     lastSessionKey = `${out.user_id}::${out.session_id}`;
     resetFinishButtonArmed();
+    setLatestTraceCount(out.trace_count);
     $('meta').textContent = `session=${out.session_id} traces=${out.trace_count} conversation_id=${out.conversation_id || '-'}`;
   } catch (err) {
     $('meta').textContent = `bootstrap_error=${String(err)}`;
@@ -1530,5 +1582,6 @@ document.addEventListener('visibilitychange', () => {
   renderEntryState();
   scheduleEntryDeviceRefresh('post-init', 0);
   stopInputOrb();
+  renderFinalizePopoverState();
   syncAvatarMode();
 })();
