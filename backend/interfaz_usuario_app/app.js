@@ -49,6 +49,7 @@ let hasMicPermission = false;
 let waveAudioCtx = null;
 let waveAnalyser = null;
 let waveDataArray = null;
+let waveSourceNode = null;
 let turnInFlight = false;
 let voiceTurnInFlight = false;
 let entryMode = InputMode.TALK;
@@ -65,7 +66,6 @@ let entryDeviceDebounceTimer = null;
 let refreshInFlight = false;
 let refreshPendingAfterInFlight = false;
 let refreshSequence = 0;
-let talkModeTransitionTimer = null;
 const LAST_DEVICE_STORAGE_KEY = 'interfaz_usuario:last_audio_input_device';
 
 const ui = {
@@ -204,6 +204,10 @@ async function warmupFrontendTts() {
 
 function teardownMic() {
   stopInputOrb();
+  if (waveSourceNode) {
+    try { waveSourceNode.disconnect(); } catch (_) {}
+  }
+  waveSourceNode = null;
   waveAudioCtx = null;
   waveAnalyser = null;
   waveDataArray = null;
@@ -312,8 +316,8 @@ async function startVoiceCapture() {
   await waveAudioCtx.resume();
   waveAnalyser = waveAudioCtx.createAnalyser();
   waveAnalyser.fftSize = 1024;
-  const source = waveAudioCtx.createMediaStreamSource(micStream);
-  source.connect(waveAnalyser);
+  waveSourceNode = waveAudioCtx.createMediaStreamSource(micStream);
+  waveSourceNode.connect(waveAnalyser);
   waveDataArray = new Uint8Array(waveAnalyser.frequencyBinCount);
   ensureOrbLoop();
 }
@@ -671,8 +675,21 @@ async function requestMicPermissionsForEntry() {
   }
 
   const constraints = selectedEntryDeviceId
-    ? { audio: { deviceId: { ideal: selectedEntryDeviceId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true } }
-    : { audio: true };
+    ? {
+        audio: {
+          deviceId: { exact: selectedEntryDeviceId },
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      }
+    : {
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      };
 
   try {
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -798,11 +815,20 @@ async function finalizeEntry() {
     resolveEntryInputMode(InputMode.WRITE);
     setStatusText('Listo');
   } else {
-    // En entry no iniciamos grabación: solo dejamos el micro validado/conectado.
-    // La captura se inicia cuando el usuario activa explícitamente el modo Hablar en la UI principal.
-    resolveEntryInputMode(InputMode.WRITE);
-    setStatusText('Listo');
-    updateReplyText('Micrófono listo. Pulsa Hablar para empezar a grabar.');
+    resolveEntryInputMode(InputMode.TALK);
+    updateReplyText('Te escucho. Empieza a hablar cuando quieras.');
+    try {
+      if (!isMicActuallyRecording()) {
+        setStatusText('Activando mic…');
+        await startVoiceCapture();
+      }
+      setStatusText('Escuchando…');
+    } catch (err) {
+      console.error('[entry] No se pudo iniciar captura en modo hablar', err);
+      resolveEntryInputMode(InputMode.WRITE);
+      setStatusText('Listo');
+      updateReplyText('No se pudo iniciar el micrófono. Puedes continuar en modo escritura.');
+    }
     updateUi();
     syncAvatarMode();
   }
@@ -824,6 +850,10 @@ function tryResolveEntryRequest() {
 function setEntryMode(mode) {
   entryMode = mode;
   if (mode === InputMode.WRITE) {
+    if (isMicActuallyRecording()) {
+      discardRecording = true;
+      void stopVoiceCapture().finally(() => teardownMic());
+    }
     if (ui.entryError) ui.entryError.textContent = '';
     renderEntryState();
     return;
@@ -836,6 +866,19 @@ async function handleStartEntry() {
   if (entryMode === InputMode.TALK) {
     const talkReady = await validateTalkModeForEntry();
     if (!talkReady) {
+      renderEntryState();
+      return;
+    }
+
+    try {
+      setStatusText('Activando mic…');
+      await startVoiceCapture();
+      setStatusText('Escuchando…');
+      updateUi();
+      syncAvatarMode();
+    } catch (err) {
+      console.error('[entry] No se pudo precalentar captura desde Empezar', err);
+      if (ui.entryError) ui.entryError.textContent = 'No pudimos iniciar el micrófono. Reintenta o usa Escribir.';
       renderEntryState();
       return;
     }
@@ -1019,37 +1062,26 @@ ui.entryModeWrite?.addEventListener('click', () => {
 });
 
 ui.modeTalk.addEventListener('click', async () => {
-  if (turnInFlight) return;
+  if (turnInFlight || voiceTurnInFlight) return;
 
-  if (talkModeTransitionTimer) {
-    window.clearTimeout(talkModeTransitionTimer);
-    talkModeTransitionTimer = null;
+  setInputMode(InputMode.TALK);
+  if (!hasMicPermission) return;
+
+  try {
+    setStatusText('Activando mic…');
+    await startVoiceCapture();
+    setStatusText('Escuchando…');
+    updateUi();
+    syncAvatarMode();
+  } catch (err) {
+    console.error('[mic] No se pudo iniciar grabación', err);
+    setInputMode(InputMode.WRITE);
+    setStatusText('Listo');
+    syncAvatarMode();
   }
-
-  setInputMode(InputMode.WRITE);
-  talkModeTransitionTimer = window.setTimeout(async () => {
-    talkModeTransitionTimer = null;
-    if (turnInFlight || voiceTurnInFlight) return;
-
-    setInputMode(InputMode.TALK);
-    if (!hasMicPermission) return;
-
-    try {
-      await startVoiceCapture();
-      updateUi();
-      syncAvatarMode();
-    } catch (err) {
-      console.error('[mic] No se pudo iniciar grabación', err);
-      setInputMode(InputMode.WRITE);
-    }
-  }, 120);
 });
 ui.modeWrite.addEventListener('click', () => {
   if (turnInFlight) return;
-  if (talkModeTransitionTimer) {
-    window.clearTimeout(talkModeTransitionTimer);
-    talkModeTransitionTimer = null;
-  }
   if (isRecording) {
     discardRecording = true;
     void stopVoiceCapture().finally(() => teardownMic());

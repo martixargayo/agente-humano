@@ -15,6 +15,7 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse
+from fastapi import Request
 from pydantic import BaseModel
 
 from google.cloud import speech
@@ -50,6 +51,16 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("tts_audio")
 
 app = FastAPI(title="Agente Humano - MVP")
+
+
+@app.middleware("http")
+async def disable_ui_static_cache(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/interfaz_usuario"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
 
 app.add_middleware(
     CORSMiddleware,
