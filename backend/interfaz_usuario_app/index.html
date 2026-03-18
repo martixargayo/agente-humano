@@ -1230,7 +1230,8 @@
           0 2px 6px rgba(15, 23, 42, 0.08);
       }
       .finish-confirm-popover.visible { display: block; }
-      .finish-confirm-popover p { margin: 0 0 12px; font-size: 13px; line-height: 1.4; color: rgba(15, 23, 42, 0.82); }
+      .finish-confirm-popover p { margin: 0 0 8px; font-size: 13px; line-height: 1.4; color: rgba(15, 23, 42, 0.82); }
+      .finish-confirm-hint { margin: 0 0 12px; font-size: 12px; line-height: 1.4; color: rgba(71, 85, 105, 0.92); min-height: 17px; }
       .finish-popover-actions { display: flex; justify-content: flex-end; gap: 8px; }
       .finish-popover-btn {
         border-radius: 16px;
@@ -1246,6 +1247,10 @@
         border-color: rgba(96, 165, 250, 0.7);
         background: var(--accent-pastel);
         color: #1e3a8a;
+      }
+      .finish-popover-btn:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
       }
 
       .feedback-screen {
@@ -1630,7 +1635,8 @@
         Finalizar conversación
       </button>
       <section id="finishConfirmPopover" class="finish-confirm-popover" aria-live="polite" aria-label="Confirmar finalización">
-        <p>¿Seguro que quieres finalizar la conversación?</p>
+        <p id="finishConfirmMessage">¿Seguro que quieres finalizar la conversación?</p>
+        <div id="finishConfirmHint" class="finish-confirm-hint"></div>
         <div class="finish-popover-actions">
           <button id="finishCancelBtn" class="finish-popover-btn" type="button">Cancelar</button>
           <button id="finishConfirmBtn" class="finish-popover-btn primary" type="button">Finalizar y evaluar</button>

@@ -16,6 +16,7 @@ function ids() {
 const InputMode = { TALK: 'talk', WRITE: 'write' };
 const AgentMode = { CHAT: 'chat', NEGOTIATION: 'negotiation' };
 const AgentModeLabels = { chat: 'Chat', negotiation: 'Negociación' };
+const MIN_TURNS_FOR_FINALIZATION = 5;
 
 const JobStageLabel = {
   created: 'Creando evaluación...',
@@ -37,6 +38,7 @@ let orbLevel = 0;
 let finalizePopoverOpen = false;
 let feedbackPollingTimer = null;
 let feedbackEvaluationId = null;
+let negotiationTurnCount = 0;
 let audioCtx = null;
 let ttsWarmedUp = false;
 let micStream = null;
@@ -968,12 +970,42 @@ function stopFeedbackPolling() {
   }
 }
 
+function getRemainingTurnsForFinalization() {
+  return Math.max(MIN_TURNS_FOR_FINALIZATION - negotiationTurnCount, 0);
+}
+
+function canFinalizeConversation() {
+  return getRemainingTurnsForFinalization() === 0;
+}
+
+function updateFinalizePopoverContent() {
+  const messageNode = $('finishConfirmMessage');
+  const hintNode = $('finishConfirmHint');
+  const confirmBtn = $('finishConfirmBtn');
+  if (!messageNode || !hintNode || !confirmBtn) return;
+
+  const remainingTurns = getRemainingTurnsForFinalization();
+  const finalizeReady = remainingTurns === 0;
+
+  if (finalizeReady) {
+    messageNode.textContent = '¿Seguro que quieres finalizar la conversación?';
+    hintNode.textContent = 'Se evaluará la conversación completa al confirmar.';
+    confirmBtn.disabled = false;
+    return;
+  }
+
+  messageNode.textContent = 'La conversación todavía no es suficientemente relevante para cerrar una evaluación con el método adecuado.';
+  hintNode.textContent = `Finalizar conversación disponible en ${remainingTurns} turno${remainingTurns === 1 ? '' : 's'}.`;
+  confirmBtn.disabled = true;
+}
+
 function closeFinalizePopover() {
   finalizePopoverOpen = false;
   $('finishConfirmPopover')?.classList.remove('visible');
 }
 
 function openFinalizePopover() {
+  updateFinalizePopoverContent();
   finalizePopoverOpen = true;
   $('finishConfirmPopover')?.classList.add('visible');
 }
@@ -1062,7 +1094,9 @@ async function runNegotiationTurnFromText(message, { allowWhileVoiceTurn = false
 
     const out = await api('/negociacion/turn', { method: 'POST', body: JSON.stringify(payload) });
     updateReplyText(out.reply || '');
+    negotiationTurnCount = Number.isFinite(out.trace_count) ? out.trace_count : negotiationTurnCount;
     armFinishButton(out.finish_button_armed);
+    updateFinalizePopoverContent();
 
     const contract = out.entry_contract;
     $('meta').textContent =
@@ -1109,6 +1143,8 @@ async function handleSend() {
 $('bootstrap').onclick = async () => {
   syncSessionBoundaryReset();
   const out = await api('/sessions/bootstrap', { method: 'POST', body: JSON.stringify(ids()) });
+  negotiationTurnCount = Number.isFinite(out.trace_count) ? out.trace_count : 0;
+  updateFinalizePopoverContent();
   $('meta').textContent = `session=${out.session_id} traces=${out.trace_count} conversation_id=${out.conversation_id || '-'}`;
 };
 
@@ -1117,7 +1153,9 @@ $('newConv').onclick = async () => {
   const out = await api('/negociacion/new_conversation', { method: 'POST', body: JSON.stringify(payload) });
   $('sessionId').value = out.session_id;
   lastSessionKey = `${payload.user_id}::${out.session_id}`;
+  negotiationTurnCount = 0;
   resetFinishButtonArmed();
+  updateFinalizePopoverContent();
   $('meta').textContent = `nueva session=${out.session_id}`;
   updateReplyText('');
 };
@@ -1221,6 +1259,7 @@ ui.finishNegotiationBtn.onclick = () => {
 $('finishCancelBtn').onclick = closeFinalizePopover;
 
 $('finishConfirmBtn').onclick = async () => {
+  if (!canFinalizeConversation()) return;
   closeFinalizePopover();
   try {
     await startFeedbackEvaluation();
@@ -1287,6 +1326,8 @@ window.addEventListener('avatar-runtime-error', () => {
   if (ui.entryError) ui.entryError.textContent = 'No se pudo cargar el escenario. Recarga para reintentar.';
   renderEntryState();
 });
+
+updateFinalizePopoverContent();
 
 function bindRuntimeReadiness() {
   const runtime = window.__avatarRuntime;
