@@ -67,6 +67,10 @@ let entryDeviceDebounceTimer = null;
 let refreshInFlight = false;
 let refreshPendingAfterInFlight = false;
 let refreshSequence = 0;
+let audioDevicePopoverOpen = false;
+let audioDevicePopoverPollTimer = null;
+let audioDeviceSwitchInFlight = false;
+let audioDeviceToastTimer = null;
 const LAST_DEVICE_STORAGE_KEY = 'interfaz_usuario:last_audio_input_device';
 
 const ui = {
@@ -88,6 +92,7 @@ const ui = {
   startBtn: $('startBtn'),
   replyContainer: $('replyContainer'),
   lastReply: $('lastReply'),
+  audioDeviceToast: $('audioDeviceToast'),
   statusText: $('statusText'),
   inputOrb: $('inputOrb'),
   finishTurnBtn: $('finishTurnBtn'),
@@ -99,6 +104,13 @@ const ui = {
   sendTextBtn: $('sendTextBtn'),
   finishNegotiationBtn: $('finishNegotiationBtn'),
   conversationMode: $('conversationMode'),
+  audioDeviceSelector: $('audioDeviceSelector'),
+  audioDeviceTrigger: $('audioDeviceTrigger'),
+  audioDeviceTriggerLabel: $('audioDeviceTriggerLabel'),
+  audioDevicePopover: $('audioDevicePopover'),
+  audioDeviceSelectedList: $('audioDeviceSelectedList'),
+  audioDeviceOtherList: $('audioDeviceOtherList'),
+  audioDevicePopoverDivider: $('audioDevicePopoverDivider'),
 };
 
 // Hard guard: if any stale HTML/version still injects the old Chat/Negociación selector,
@@ -108,6 +120,14 @@ $('conversationMode')?.remove();
 function closeConversationModeMenu() {
   if (!ui.conversationMode) return;
   ui.conversationMode.classList.remove('open');
+}
+
+function isEntryOverlayVisible() {
+  return Boolean(ui.entryOverlay && ui.entryOverlay.style.display !== 'none');
+}
+
+function isAnyAudioDeviceSurfaceVisible() {
+  return isEntryOverlayVisible() || audioDevicePopoverOpen;
 }
 
 function withAvatarRuntime(fn) {
@@ -135,6 +155,17 @@ function isMicActuallyRecording() {
 function updateReplyText(text) {
   ui.lastReply.textContent = text;
   ui.replyContainer.classList.toggle('hidden', !text);
+}
+
+function showAudioDeviceToast(message, durationMs = 3200) {
+  if (!ui.audioDeviceToast) return;
+  ui.audioDeviceToast.textContent = message;
+  ui.audioDeviceToast.classList.add('visible');
+  if (audioDeviceToastTimer) window.clearTimeout(audioDeviceToastTimer);
+  audioDeviceToastTimer = window.setTimeout(() => {
+    audioDeviceToastTimer = null;
+    ui.audioDeviceToast.classList.remove('visible');
+  }, durationMs);
 }
 
 function getOrCreateAudioContext() {
@@ -439,10 +470,11 @@ function updateUi() {
   ui.textInput.disabled = currentInputMode !== InputMode.WRITE || isBusy;
   ui.sendTextBtn.disabled = !canSendText;
   const micOn = isMicActuallyRecording();
-  ui.finishTurnBtn.disabled = !(currentInputMode === InputMode.TALK && micOn && !isBusy);
+  ui.finishTurnBtn.disabled = !(currentInputMode === InputMode.TALK && micOn && !isBusy && !audioDeviceSwitchInFlight);
   ui.inputOrb.classList.toggle('inactive', !micOn);
   setListeningGlowEnabled(micOn);
   updateFinishNegotiationButton();
+  renderAudioDeviceSelector();
 }
 
 function setInputMode(mode) {
@@ -554,6 +586,234 @@ function setSelectedEntryDevice(deviceId, reason = 'manual') {
   saveEntryDeviceId(deviceId);
   renderEntryDevices();
   renderEntryState();
+  renderAudioDeviceSelector();
+}
+
+function getAudioDeviceTriggerText() {
+  if (entryPermissionStatus === 'denied') {
+    return { text: 'Permiso de micrófono bloqueado', muted: true };
+  }
+  if (entryPermissionStatus === 'prompt' || entryPermissionStatus === 'unknown') {
+    return { text: 'Activar micrófono', muted: true };
+  }
+  const selected = availableInputDevices.find((device) => device.deviceId === selectedEntryDeviceId);
+  if (selected) return { text: selected.cleanLabel, muted: false };
+  if (availableInputDevices.length) return { text: availableInputDevices[0].cleanLabel, muted: false };
+  return { text: 'Sin micrófonos disponibles', muted: true };
+}
+
+function createAudioDeviceOption(device, { active = false } = {}) {
+  const option = document.createElement('button');
+  option.type = 'button';
+  option.className = 'audio-device-option';
+  option.dataset.deviceId = device.deviceId;
+  option.setAttribute('role', 'option');
+  option.setAttribute('aria-selected', String(active));
+  option.title = device.cleanLabel;
+
+  if (active) option.classList.add('active');
+  option.addEventListener('click', () => {
+    void handleAudioDeviceChangeRequest(device.deviceId);
+  });
+
+  const main = document.createElement('span');
+  main.className = 'audio-device-option-main';
+
+  const icon = document.createElement('span');
+  icon.className = 'audio-device-option-icon';
+  icon.setAttribute('aria-hidden', 'true');
+  icon.textContent = '🎧';
+
+  const name = document.createElement('span');
+  name.className = 'audio-device-option-name';
+  name.textContent = device.cleanLabel;
+
+  const check = document.createElement('span');
+  check.className = 'audio-device-option-check';
+  check.setAttribute('aria-hidden', 'true');
+  check.textContent = '✓';
+
+  main.append(icon, name);
+  option.append(main, check);
+  return option;
+}
+
+function renderAudioDeviceSelector() {
+  if (!ui.audioDeviceSelector || !ui.audioDeviceTriggerLabel || !ui.audioDeviceSelectedList || !ui.audioDeviceOtherList) return;
+
+  const triggerState = getAudioDeviceTriggerText();
+  ui.audioDeviceTriggerLabel.textContent = triggerState.text;
+  ui.audioDeviceTriggerLabel.classList.toggle('muted', triggerState.muted);
+  if (ui.audioDeviceTrigger) {
+    ui.audioDeviceTrigger.setAttribute('aria-expanded', String(audioDevicePopoverOpen));
+    ui.audioDeviceTrigger.disabled = audioDeviceSwitchInFlight;
+    ui.audioDeviceTriggerLabel.title = triggerState.text;
+  }
+  ui.audioDeviceSelector.classList.toggle('open', audioDevicePopoverOpen);
+
+  ui.audioDeviceSelectedList.innerHTML = '';
+  ui.audioDeviceOtherList.innerHTML = '';
+
+  if (entryPermissionStatus !== 'granted') {
+    const empty = document.createElement('div');
+    empty.className = 'audio-device-empty';
+    empty.textContent = entryPermissionStatus === 'denied'
+      ? 'Permiso de micrófono denegado. Habilítalo en el navegador o usa modo Escribir.'
+      : 'Necesitamos permiso para listar los micrófonos disponibles.';
+    ui.audioDeviceSelectedList.appendChild(empty);
+    if (ui.audioDevicePopoverDivider) ui.audioDevicePopoverDivider.hidden = true;
+    return;
+  }
+
+  if (!availableInputDevices.length) {
+    const empty = document.createElement('div');
+    empty.className = 'audio-device-empty';
+    empty.textContent = 'No hay micrófonos disponibles en este momento.';
+    ui.audioDeviceSelectedList.appendChild(empty);
+    if (ui.audioDevicePopoverDivider) ui.audioDevicePopoverDivider.hidden = true;
+    return;
+  }
+
+  const selected = availableInputDevices.find((device) => device.deviceId === selectedEntryDeviceId) || availableInputDevices[0];
+  const others = availableInputDevices.filter((device) => device.deviceId !== selected.deviceId);
+
+  ui.audioDeviceSelectedList.appendChild(createAudioDeviceOption(selected, { active: true }));
+  if (ui.audioDevicePopoverDivider) ui.audioDevicePopoverDivider.hidden = others.length === 0;
+  others.forEach((device) => {
+    ui.audioDeviceOtherList.appendChild(createAudioDeviceOption(device));
+  });
+}
+
+function getAudioDeviceSwitchFailureMessage(err) {
+  if (err?.name === 'NotReadableError') {
+    return 'No se pudo activar el nuevo micrófono. Cierra otras apps que lo estén usando y vuelve a intentarlo.';
+  }
+  if (err?.name === 'NotFoundError' || err?.name === 'OverconstrainedError') {
+    return 'No encontramos ese micrófono disponible. Revisa la conexión y vuelve a intentarlo.';
+  }
+  return 'No se pudo cambiar el micrófono. Reintenta o usa modo Escribir si el problema continúa.';
+}
+
+async function restorePreviousMicrophoneAfterFailure(previousDeviceId) {
+  if (previousDeviceId && previousDeviceId !== selectedEntryDeviceId && availableInputDevices.some((device) => device.deviceId === previousDeviceId)) {
+    setSelectedEntryDevice(previousDeviceId, 'restore-after-switch-failure');
+  }
+
+  if (currentInputMode !== InputMode.TALK || !hasMicPermission) {
+    setStatusText('Listo');
+    updateUi();
+    syncAvatarMode();
+    return false;
+  }
+
+  try {
+    await startVoiceCapture();
+    setStatusText('Escuchando…');
+    updateUi();
+    syncAvatarMode();
+    return true;
+  } catch (restoreErr) {
+    console.error('[audio-selector] No se pudo restaurar el micrófono previo', restoreErr);
+    setInputMode(InputMode.WRITE);
+    setStatusText('Listo');
+    updateUi();
+    syncAvatarMode();
+    return false;
+  }
+}
+
+async function restartVoiceCaptureAfterDeviceSwitch(previousDeviceId) {
+  audioDeviceSwitchInFlight = true;
+  updateUi();
+  setStatusText('Cambiando mic…');
+
+  discardRecording = true;
+  try {
+    await stopVoiceCapture();
+  } catch (stopErr) {
+    console.warn('[audio-selector] Error deteniendo captura previa para cambiar micrófono', stopErr);
+  }
+  teardownMic();
+
+  try {
+    await startVoiceCapture();
+    setStatusText('Escuchando…');
+    showAudioDeviceToast('Se ha cambiado el micrófono. Vuelve a decir lo que estabas diciendo porque tu respuesta puede haberse perdido.');
+    updateUi();
+    syncAvatarMode();
+    closeAudioDevicePopover();
+    return true;
+  } catch (err) {
+    console.error('[audio-selector] No se pudo activar el nuevo micrófono', err);
+    const restored = await restorePreviousMicrophoneAfterFailure(previousDeviceId);
+    showAudioDeviceToast(restored
+      ? 'No se pudo activar el nuevo micrófono. Seguimos usando el anterior.'
+      : getAudioDeviceSwitchFailureMessage(err));
+    return false;
+  } finally {
+    audioDeviceSwitchInFlight = false;
+    updateUi();
+    void refreshEntryDevices('audio-selector-post-switch');
+  }
+}
+
+async function handleAudioDeviceChangeRequest(deviceId) {
+  if (!deviceId || !availableInputDevices.some((device) => device.deviceId === deviceId)) return;
+  if (audioDeviceSwitchInFlight) return;
+
+  if (turnInFlight || voiceTurnInFlight) {
+    showAudioDeviceToast('Espera a que termine este turno para cambiar de micrófono.');
+    setStatusText('Procesando…');
+    return;
+  }
+
+  const previousDeviceId = selectedEntryDeviceId;
+  if (previousDeviceId === deviceId) {
+    closeAudioDevicePopover();
+    return;
+  }
+
+  setSelectedEntryDevice(deviceId, 'audio-selector');
+
+  if (!isMicActuallyRecording() || currentInputMode !== InputMode.TALK) {
+    closeAudioDevicePopover();
+    return;
+  }
+
+  await restartVoiceCaptureAfterDeviceSwitch(previousDeviceId);
+}
+
+function stopAudioDevicePopoverPolling() {
+  if (audioDevicePopoverPollTimer) {
+    window.clearInterval(audioDevicePopoverPollTimer);
+    audioDevicePopoverPollTimer = null;
+  }
+}
+
+function closeAudioDevicePopover() {
+  if (!audioDevicePopoverOpen) return;
+  audioDevicePopoverOpen = false;
+  stopAudioDevicePopoverPolling();
+  renderAudioDeviceSelector();
+}
+
+function openAudioDevicePopover() {
+  if (audioDevicePopoverOpen) return;
+  audioDevicePopoverOpen = true;
+  renderAudioDeviceSelector();
+  scheduleEntryDeviceRefresh('audio-selector-open', 0);
+  stopAudioDevicePopoverPolling();
+  audioDevicePopoverPollTimer = window.setInterval(() => {
+    scheduleEntryDeviceRefresh('audio-selector-poll', 120);
+  }, 3000);
+}
+
+function toggleAudioDevicePopover() {
+  if (audioDevicePopoverOpen) {
+    closeAudioDevicePopover();
+    return;
+  }
+  openAudioDevicePopover();
 }
 
 function renderEntryState() {
@@ -614,6 +874,7 @@ function renderEntryState() {
     ui.entryDeviceStatus.textContent = 'Micrófono seleccionado. Puedes empezar en modo hablar.';
     ui.entryDeviceStatus.classList.remove('error');
   }
+  renderAudioDeviceSelector();
 }
 
 function renderEntryDevices() {
@@ -812,6 +1073,7 @@ async function refreshEntryDevices(reason = 'manual') {
 
   renderEntryDevices();
   renderEntryState();
+  renderAudioDeviceSelector();
 
   if (refreshPendingAfterInFlight) {
     refreshPendingAfterInFlight = false;
@@ -823,7 +1085,7 @@ function scheduleEntryDeviceRefresh(reason = 'manual', delayMs = 120) {
   if (entryDeviceDebounceTimer) window.clearTimeout(entryDeviceDebounceTimer);
   entryDeviceDebounceTimer = window.setTimeout(() => {
     entryDeviceDebounceTimer = null;
-    if (!ui.entryOverlay || ui.entryOverlay.style.display === 'none') return;
+    if (!isAnyAudioDeviceSurfaceVisible()) return;
     void refreshEntryDevices(reason);
   }, delayMs);
 }
@@ -1134,6 +1396,10 @@ ui.entryModeWrite?.addEventListener('click', () => {
   setEntryMode(InputMode.WRITE);
 });
 
+ui.audioDeviceTrigger?.addEventListener('click', () => {
+  toggleAudioDevicePopover();
+});
+
 ui.modeTalk.addEventListener('click', async () => {
   if (turnInFlight || voiceTurnInFlight) return;
 
@@ -1247,9 +1513,15 @@ document.addEventListener('click', (e) => {
   if (!ui.conversationMode.contains(e.target)) closeConversationModeMenu();
 });
 
+document.addEventListener('click', (e) => {
+  if (!audioDevicePopoverOpen || !ui.audioDeviceSelector) return;
+  if (e.target instanceof Node && !ui.audioDeviceSelector.contains(e.target)) closeAudioDevicePopover();
+});
+
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     closeConversationModeMenu();
+    closeAudioDevicePopover();
     return;
   }
 
@@ -1319,7 +1591,7 @@ async function bootstrapEntryDeviceBackground() {
 function startEntryDevicePolling() {
   if (entryDeviceRefreshTimer) window.clearInterval(entryDeviceRefreshTimer);
   entryDeviceRefreshTimer = window.setInterval(() => {
-    if (!ui.entryOverlay || ui.entryOverlay.style.display === 'none') return;
+    if (!isEntryOverlayVisible()) return;
     scheduleEntryDeviceRefresh('poll', 220);
   }, 3000);
 }
