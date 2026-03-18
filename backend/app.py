@@ -581,16 +581,41 @@ async def tts_realtime_generate_wav(text: str, voice: str | None = None) -> tupl
 
     voice_name = (voice or REALTIME_VOICE_DEFAULT).strip() or REALTIME_VOICE_DEFAULT
 
-     # Conectamos al WebSocket Realtime (firmando cabeceras en formato lista de tuplas)
+    # Conectamos al WebSocket Realtime (firmando cabeceras en formato lista de tuplas)
     headers = [
         ("Authorization", f"Bearer {api_key}"),
         ("OpenAI-Beta", "realtime=v1"),
     ]
 
-    async with ws_connect(
-        REALTIME_WS_URL,
-        additional_headers=headers,
-    ) as ws:
+    async def _connect_realtime_ws():
+        """
+        Abre el WebSocket para Realtime manejando diferencias entre
+        versiones de `websockets` que aceptan `extra_headers` o
+        `additional_headers`.
+        """
+
+        try:
+            return await ws_connect(
+                REALTIME_WS_URL,
+                extra_headers=headers,
+            )
+        except TypeError as exc:
+            # Algunos entornos envían los kwargs sin consumirlos al loop,
+            # produciendo el error "BaseEventLoop.create_connection() got
+            # an unexpected keyword argument 'extra_headers'". En ese caso
+            # reintentamos con el nombre alternativo.
+            if "extra_headers" not in str(exc):
+                raise
+
+            logger.warning(
+                "ws_connect no acepta 'extra_headers'; reintentando con 'additional_headers'"
+            )
+            return await ws_connect(
+                REALTIME_WS_URL,
+                additional_headers=headers,
+            )
+
+    async with await _connect_realtime_ws() as ws:
         # 1) Actualizamos sesión: solo audio de salida + instrucciones de "lector literal"
         session_update = {
             "type": "session.update",
