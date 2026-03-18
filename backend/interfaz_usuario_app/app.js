@@ -566,7 +566,7 @@ function renderEntryState() {
   ui.entryWriteContent.classList.toggle('entry-hidden', entryMode !== InputMode.WRITE);
   ui.entrySubtitle.textContent = entryMode === InputMode.TALK
     ? (entryPermissionStatus === 'granted'
-        ? 'Selecciona tu micrófono y entra cuando quieras.'
+        ? ''
         : 'Necesitamos permiso de micrófono para detectar tus dispositivos.')
     : '';
   ui.entrySubtitle.classList.toggle('entry-hidden', entryMode !== InputMode.TALK);
@@ -598,7 +598,7 @@ function renderEntryState() {
   if (ui.entryDeviceSearch) {
     ui.entryDeviceSearch.innerHTML = waitingForPermission
       ? '<span>Necesitamos permiso para listar los micrófonos disponibles</span>'
-      : '<span>Micrófonos detectados</span>';
+      : '<span>Micrófonos detectados</span><span class="entry-device-search-spinner" aria-hidden="true"></span>';
   }
 
   if (entryPermissionStatus === 'prompt' || entryPermissionStatus === 'unknown') {
@@ -934,7 +934,7 @@ async function handleStartEntry() {
     }
 
     if (talkReady === 'ready-after-permission') {
-      if (ui.entryError) ui.entryError.textContent = 'Micrófono activado. Revisa la selección si quieres y pulsa Empezar para entrar.';
+      if (ui.entryError) ui.entryError.textContent = '';
       renderEntryState();
       return;
     }
