@@ -1230,8 +1230,6 @@ $('finishConfirmBtn').onclick = async () => {
   }
 };
 
-$('feedbackBackBtn').onclick = () => showFeedbackView('app');
-
 $('feedbackRetryBtn').onclick = async () => {
   showFeedbackView('app');
   try {
@@ -1241,6 +1239,8 @@ $('feedbackRetryBtn').onclick = async () => {
     showFeedbackView('error');
   }
 };
+
+$('feedbackBackBtnSecondary').onclick = () => showFeedbackView('app');
 
 document.addEventListener('click', (e) => {
   if (!ui.conversationMode) return;
