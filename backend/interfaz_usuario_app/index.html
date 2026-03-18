@@ -1350,21 +1350,21 @@
         background:
           radial-gradient(circle at 50% 50%, rgba(252, 252, 253, 0) 0 15%, rgba(252, 252, 253, 0.9) 30%, rgba(252, 252, 253, 1) 48%),
           linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(252, 252, 253, 0.98));
-        z-index: 1;
+        z-index: 0;
       }
       .feedback-loading-layout::after {
         content: '';
         position: absolute;
         inset: 0;
-        background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0) 0 20%, rgba(252, 252, 253, 0.48) 42%, rgba(252, 252, 253, 0.92) 74%, rgba(252, 252, 253, 1) 100%);
-        z-index: 2;
+        background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0) 0 20%, rgba(252, 252, 253, 0.2) 42%, rgba(252, 252, 253, 0.78) 74%, rgba(252, 252, 253, 0.94) 100%);
+        z-index: 1;
         pointer-events: none;
       }
       .feedback-floating-layer {
         position: absolute;
         inset: 0;
         pointer-events: none;
-        z-index: 0;
+        z-index: 2;
         overflow: hidden;
       }
       .feedback-floating-line {
