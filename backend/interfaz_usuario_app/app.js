@@ -28,6 +28,43 @@ const JobStageLabel = {
   failed: 'No se pudo completar la evaluación.',
 };
 
+const FeedbackFloatingPhrases = [
+  [['token-keyword', 'Analizando'], ['token-entity', 'tendencias']],
+  [['token-keyword', 'Detectando'], ['token-value', 'patrones']],
+  [['token-keyword', 'Evaluando'], ['token-metric', 'puntos fuertes']],
+  [['token-keyword', 'Identificando'], ['token-entity', 'áreas de mejora']],
+  [['token-keyword', 'Procesando'], ['token-value', 'métricas']],
+  [['token-keyword', 'Correlacionando'], ['token-entity', 'resultados']],
+  [['token-keyword', 'Comparando'], ['token-metric', 'desempeño']],
+  [['token-keyword', 'Generando'], ['token-value', 'insights']],
+  [['token-keyword', 'Estimando'], ['token-entity', 'evolución']],
+  [['token-keyword', 'Revisando'], ['token-metric', 'consistencia']],
+  [['token-keyword', 'Mapeando'], ['token-value', 'habilidades']],
+  [['token-keyword', 'Sintetizando'], ['token-entity', 'observaciones']],
+];
+
+const FloatingPhraseAnchorsDesktop = [
+  { top: [10, 18], left: [6, 16] },
+  { top: [12, 20], left: [72, 84] },
+  { top: [24, 34], left: [10, 22] },
+  { top: [24, 34], left: [76, 88] },
+  { top: [40, 50], left: [3, 14] },
+  { top: [40, 50], left: [82, 92] },
+  { top: [66, 78], left: [9, 20] },
+  { top: [66, 78], left: [72, 84] },
+  { top: [82, 90], left: [16, 30] },
+  { top: [80, 90], left: [64, 80] },
+];
+
+const FloatingPhraseAnchorsMobile = [
+  { top: [12, 20], left: [6, 18] },
+  { top: [16, 24], left: [64, 78] },
+  { top: [28, 36], left: [8, 18] },
+  { top: [62, 70], left: [72, 84] },
+  { top: [76, 84], left: [10, 22] },
+  { top: [82, 90], left: [58, 74] },
+];
+
 let currentInputMode = InputMode.TALK;
 let currentAgentMode = AgentMode.CHAT;
 let finishButtonArmed = false;
@@ -37,6 +74,7 @@ let orbLevel = 0;
 let finalizePopoverOpen = false;
 let feedbackPollingTimer = null;
 let feedbackEvaluationId = null;
+let feedbackFloatingTimer = null;
 let audioCtx = null;
 let ttsWarmedUp = false;
 let micStream = null;
@@ -99,6 +137,7 @@ const ui = {
   sendTextBtn: $('sendTextBtn'),
   finishNegotiationBtn: $('finishNegotiationBtn'),
   conversationMode: $('conversationMode'),
+  feedbackFloatingLayer: $('feedbackFloatingLayer'),
 };
 
 // Hard guard: if any stale HTML/version still injects the old Chat/Negociación selector,
@@ -968,6 +1007,80 @@ function stopFeedbackPolling() {
   }
 }
 
+function stopFeedbackFloatingPhrases() {
+  if (feedbackFloatingTimer) {
+    window.clearTimeout(feedbackFloatingTimer);
+    feedbackFloatingTimer = null;
+  }
+  if (ui.feedbackFloatingLayer) ui.feedbackFloatingLayer.innerHTML = '';
+}
+
+function renderFeedbackPhraseMarkup(parts) {
+  return `<code>${parts.map(([klass, text]) => `<span class="token ${klass}">${text}</span>`).join('<span class="token token-muted">&nbsp;</span>')}</code>`;
+}
+
+function randomInRange([min, max]) {
+  return min + Math.random() * (max - min);
+}
+
+function spawnFeedbackFloatingPhrase() {
+  if (!$('feedbackLoadingScreen') || $('feedbackLoadingScreen').classList.contains('hidden')) return;
+  if (!ui.feedbackFloatingLayer) return;
+
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const isMobile = window.matchMedia('(max-width: 640px)').matches;
+  const anchors = isMobile ? FloatingPhraseAnchorsMobile : FloatingPhraseAnchorsDesktop;
+  const maxActive = reducedMotion ? (isMobile ? 2 : 3) : (isMobile ? 4 : 6);
+  const activeCount = ui.feedbackFloatingLayer.childElementCount;
+  if (activeCount >= maxActive) return;
+
+  const phrase = FeedbackFloatingPhrases[Math.floor(Math.random() * FeedbackFloatingPhrases.length)];
+  const anchor = anchors[Math.floor(Math.random() * anchors.length)];
+  const el = document.createElement('span');
+  const durationMs = reducedMotion ? 0 : 7600 + Math.random() * 2400;
+  const opacity = reducedMotion ? 0.18 : 0.19 + Math.random() * 0.12;
+  const scale = 0.92 + Math.random() * 0.12;
+  const blur = reducedMotion ? 0 : Math.random() > 0.72 ? 0.35 : 0;
+
+  el.className = 'feedback-floating-line';
+  el.style.top = `${randomInRange(anchor.top).toFixed(2)}%`;
+  el.style.left = `${randomInRange(anchor.left).toFixed(2)}%`;
+  el.style.setProperty('--line-opacity', opacity.toFixed(2));
+  el.style.setProperty('--line-scale', scale.toFixed(2));
+  el.style.setProperty('--line-blur', `${blur.toFixed(2)}px`);
+  el.style.setProperty('--line-duration', `${durationMs}ms`);
+  el.innerHTML = renderFeedbackPhraseMarkup(phrase);
+  ui.feedbackFloatingLayer.appendChild(el);
+
+  if (reducedMotion) {
+    el.style.opacity = String(opacity);
+    el.style.transform = 'none';
+    return;
+  }
+
+  window.setTimeout(() => el.remove(), durationMs);
+}
+
+function scheduleFeedbackFloatingPhrase() {
+  if (!$('feedbackLoadingScreen') || $('feedbackLoadingScreen').classList.contains('hidden')) return;
+
+  spawnFeedbackFloatingPhrase();
+
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const isMobile = window.matchMedia('(max-width: 640px)').matches;
+  const nextDelay = reducedMotion ? 2400 : (isMobile ? 1150 : 900) + Math.random() * 1200;
+  feedbackFloatingTimer = window.setTimeout(scheduleFeedbackFloatingPhrase, nextDelay);
+}
+
+function startFeedbackFloatingPhrases() {
+  stopFeedbackFloatingPhrases();
+  if (!ui.feedbackFloatingLayer) return;
+
+  const initialBursts = window.matchMedia('(max-width: 640px)').matches ? 2 : 4;
+  for (let idx = 0; idx < initialBursts; idx += 1) spawnFeedbackFloatingPhrase();
+  scheduleFeedbackFloatingPhrase();
+}
+
 function closeFinalizePopover() {
   finalizePopoverOpen = false;
   $('finishConfirmPopover')?.classList.remove('visible');
@@ -993,6 +1106,9 @@ function showFeedbackView(mode) {
   loading.classList.toggle('hidden', mode !== 'loading');
   report.classList.toggle('hidden', mode !== 'report');
   error.classList.toggle('hidden', mode !== 'error');
+
+  if (mode === 'loading') startFeedbackFloatingPhrases();
+  else stopFeedbackFloatingPhrases();
 }
 
 function renderFinalReport(report) {
