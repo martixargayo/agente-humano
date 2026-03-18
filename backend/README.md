@@ -7,7 +7,7 @@ Sistema IA con OpenAI Responses API para agente humano conversacional (chat + ne
   - Summarizer (trimming + summarizing por turnos)
   - Planner (Structured Outputs con JSON Schema estricto)
   - Executor (respuesta final)
-- Entrada de voz por Google STT (`/stt_google`).
+- Entrada de voz por Google STT (`/stt_google`), con credencial por `GOOGLE_SERVICE_ACCOUNT_JSON` o `GOOGLE_CREDENTIALS_PATH` y fallback a OpenAI STT si Google no queda disponible.
 - Salida de voz por OpenAI TTS (`/tts`, modelo por defecto `gpt-4o-mini-tts`).
 - Endpoints conversacionales:
   - `/chat`
@@ -84,7 +84,7 @@ Recomendadas para superficie pública v1:
 
 Opcionales (speech):
 - `OPENAI_TTS_MODEL`, `OPENAI_TTS_VOICE`, `OPENAI_TTS_FORMAT`, `OPENAI_TTS_SPEED`, `OPENAI_STT_MODEL`
-- `GOOGLE_CREDENTIALS_PATH` + `GOOGLE_STT_*` (si no se configuran, `/stt_google` intenta fallback OpenAI STT)
+- `GOOGLE_SERVICE_ACCOUNT_JSON` (Railway recomendado), `GOOGLE_CREDENTIALS_PATH` (local) y `GOOGLE_STT_*`. Prioridad: JSON inline > path > fallback OpenAI STT en `/stt_google`.
 
 ### Smoke check post-deploy
 
