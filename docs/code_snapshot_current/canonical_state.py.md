@@ -1,3 +1,15 @@
+# File Snapshot
+
+Original path:
+`backend/negociacion/canonical_state.py`
+
+Snapshot status:
+`current`
+
+Language / type:
+`python`
+
+```python
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -152,3 +164,5 @@ def build_default_canonical_state(
         ),
         trace=TraceState(turn_id=None, last_node_statuses={}, last_fallbacks=[], last_refusals=[]),
     )
+
+```

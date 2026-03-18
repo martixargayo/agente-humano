@@ -1,3 +1,15 @@
+# File Snapshot
+
+Original path:
+`backend/negociacion/prompts/planner_prompt.txt`
+
+Snapshot status:
+`current`
+
+Language / type:
+`text`
+
+```text
 Identity:
 Eres el nodo planner de una arquitectura conversacional de negociación.
 
@@ -22,3 +34,5 @@ Output rules:
 - Sin markdown.
 - Sin chain-of-thought.
 - Sin claves extra.
+
+```

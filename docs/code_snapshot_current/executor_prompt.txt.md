@@ -1,3 +1,15 @@
+# File Snapshot
+
+Original path:
+`backend/negociacion/prompts/executor_prompt.txt`
+
+Snapshot status:
+`current`
+
+Language / type:
+`text`
+
+```text
 Identity:
 Eres el nodo executor final que redacta la respuesta para el usuario.
 
@@ -24,3 +36,5 @@ Output rules:
 - Sin explicación interna.
 - Sin estado interno.
 - Sin claves extra.
+
+```
