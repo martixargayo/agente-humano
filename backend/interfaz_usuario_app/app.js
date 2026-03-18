@@ -43,27 +43,49 @@ const FeedbackFloatingPhrases = [
   [['token-keyword', 'Sintetizando'], ['token-entity', 'observaciones']],
 ];
 
-const FloatingPhraseAnchorsDesktop = [
-  { top: [10, 18], left: [6, 16] },
-  { top: [12, 20], left: [72, 84] },
-  { top: [24, 34], left: [10, 22] },
-  { top: [24, 34], left: [76, 88] },
-  { top: [40, 50], left: [3, 14] },
-  { top: [40, 50], left: [82, 92] },
-  { top: [66, 78], left: [9, 20] },
-  { top: [66, 78], left: [72, 84] },
-  { top: [82, 90], left: [16, 30] },
-  { top: [80, 90], left: [64, 80] },
-];
+const FloatingPhraseQuadrantsDesktop = {
+  topLeft: [
+    { top: [10, 18], left: [6, 16] },
+    { top: [22, 32], left: [10, 22] },
+    { top: [38, 46], left: [4, 14] },
+  ],
+  topRight: [
+    { top: [10, 18], left: [72, 84] },
+    { top: [22, 32], left: [76, 88] },
+    { top: [38, 46], left: [82, 92] },
+  ],
+  bottomLeft: [
+    { top: [62, 72], left: [8, 18] },
+    { top: [74, 84], left: [12, 24] },
+    { top: [82, 90], left: [18, 30] },
+  ],
+  bottomRight: [
+    { top: [62, 72], left: [72, 84] },
+    { top: [74, 84], left: [66, 78] },
+    { top: [82, 90], left: [62, 76] },
+  ],
+};
 
-const FloatingPhraseAnchorsMobile = [
-  { top: [12, 20], left: [6, 18] },
-  { top: [16, 24], left: [64, 78] },
-  { top: [28, 36], left: [8, 18] },
-  { top: [62, 70], left: [72, 84] },
-  { top: [76, 84], left: [10, 22] },
-  { top: [82, 90], left: [58, 74] },
-];
+const FloatingPhraseQuadrantsMobile = {
+  topLeft: [
+    { top: [11, 19], left: [4, 16] },
+    { top: [24, 32], left: [6, 18] },
+  ],
+  topRight: [
+    { top: [12, 20], left: [64, 78] },
+    { top: [26, 34], left: [68, 82] },
+  ],
+  bottomLeft: [
+    { top: [66, 76], left: [8, 20] },
+    { top: [80, 88], left: [10, 22] },
+  ],
+  bottomRight: [
+    { top: [66, 76], left: [64, 78] },
+    { top: [80, 88], left: [60, 74] },
+  ],
+};
+
+const FloatingPhraseQuadrantOrder = ['topLeft', 'topRight', 'bottomLeft', 'bottomRight'];
 
 let currentInputMode = InputMode.TALK;
 let currentAgentMode = AgentMode.CHAT;
@@ -75,6 +97,7 @@ let finalizePopoverOpen = false;
 let feedbackPollingTimer = null;
 let feedbackEvaluationId = null;
 let feedbackFloatingTimer = null;
+let feedbackQuadrantCursor = 0;
 let audioCtx = null;
 let ttsWarmedUp = false;
 let micStream = null;
@@ -1023,19 +1046,46 @@ function randomInRange([min, max]) {
   return min + Math.random() * (max - min);
 }
 
+function nextFeedbackQuadrant(isMobile) {
+  if (!ui.feedbackFloatingLayer) return { quadrant: 'topLeft', anchor: { top: [12, 18], left: [8, 16] } };
+
+  const quadrants = isMobile ? FloatingPhraseQuadrantsMobile : FloatingPhraseQuadrantsDesktop;
+  const activeCounts = Object.fromEntries(FloatingPhraseQuadrantOrder.map((name) => [name, 0]));
+
+  Array.from(ui.feedbackFloatingLayer.children).forEach((child) => {
+    const quadrant = child?.dataset?.quadrant;
+    if (quadrant in activeCounts) activeCounts[quadrant] += 1;
+  });
+
+  const minCount = Math.min(...Object.values(activeCounts));
+  const candidates = FloatingPhraseQuadrantOrder.filter((name) => activeCounts[name] === minCount);
+  const orderedCandidates = candidates.sort((a, b) => {
+    const aIdx = FloatingPhraseQuadrantOrder.indexOf(a);
+    const bIdx = FloatingPhraseQuadrantOrder.indexOf(b);
+    const aDistance = (aIdx - feedbackQuadrantCursor + FloatingPhraseQuadrantOrder.length) % FloatingPhraseQuadrantOrder.length;
+    const bDistance = (bIdx - feedbackQuadrantCursor + FloatingPhraseQuadrantOrder.length) % FloatingPhraseQuadrantOrder.length;
+    return aDistance - bDistance;
+  });
+
+  const quadrant = orderedCandidates[0] || FloatingPhraseQuadrantOrder[feedbackQuadrantCursor % FloatingPhraseQuadrantOrder.length];
+  const anchors = quadrants[quadrant] || quadrants.topLeft;
+  const anchor = anchors[Math.floor(Math.random() * anchors.length)];
+  feedbackQuadrantCursor = (FloatingPhraseQuadrantOrder.indexOf(quadrant) + 1) % FloatingPhraseQuadrantOrder.length;
+  return { quadrant, anchor };
+}
+
 function spawnFeedbackFloatingPhrase() {
   if (!$('feedbackLoadingScreen') || $('feedbackLoadingScreen').classList.contains('hidden')) return;
   if (!ui.feedbackFloatingLayer) return;
 
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const isMobile = window.matchMedia('(max-width: 640px)').matches;
-  const anchors = isMobile ? FloatingPhraseAnchorsMobile : FloatingPhraseAnchorsDesktop;
-  const maxActive = reducedMotion ? (isMobile ? 2 : 3) : (isMobile ? 4 : 6);
+  const maxActive = reducedMotion ? (isMobile ? 4 : 4) : (isMobile ? 4 : 6);
   const activeCount = ui.feedbackFloatingLayer.childElementCount;
   if (activeCount >= maxActive) return;
 
   const phrase = FeedbackFloatingPhrases[Math.floor(Math.random() * FeedbackFloatingPhrases.length)];
-  const anchor = anchors[Math.floor(Math.random() * anchors.length)];
+  const { quadrant, anchor } = nextFeedbackQuadrant(isMobile);
   const el = document.createElement('span');
   const durationMs = reducedMotion ? 0 : 7600 + Math.random() * 2400;
   const opacity = reducedMotion ? 0.18 : 0.19 + Math.random() * 0.12;
@@ -1043,6 +1093,7 @@ function spawnFeedbackFloatingPhrase() {
   const blur = reducedMotion ? 0 : Math.random() > 0.72 ? 0.35 : 0;
 
   el.className = 'feedback-floating-line';
+  el.dataset.quadrant = quadrant;
   el.style.top = `${randomInRange(anchor.top).toFixed(2)}%`;
   el.style.left = `${randomInRange(anchor.left).toFixed(2)}%`;
   el.style.setProperty('--line-opacity', opacity.toFixed(2));
@@ -1076,7 +1127,8 @@ function startFeedbackFloatingPhrases() {
   stopFeedbackFloatingPhrases();
   if (!ui.feedbackFloatingLayer) return;
 
-  const initialBursts = window.matchMedia('(max-width: 640px)').matches ? 2 : 4;
+  feedbackQuadrantCursor = 0;
+  const initialBursts = 4;
   for (let idx = 0; idx < initialBursts; idx += 1) spawnFeedbackFloatingPhrase();
   scheduleFeedbackFloatingPhrase();
 }

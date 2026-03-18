@@ -1253,7 +1253,7 @@
         inset: 0;
         z-index: 11;
         overflow: hidden;
-        background: #fcfcfd;
+        background: #FFFFFF;
       }
       .feedback-screen.hidden { display: none; }
       .feedback-card {
@@ -1348,15 +1348,15 @@
         position: absolute;
         inset: 0;
         background:
-          radial-gradient(circle at 50% 50%, rgba(252, 252, 253, 0) 0 15%, rgba(252, 252, 253, 0.9) 30%, rgba(252, 252, 253, 1) 48%),
-          linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(252, 252, 253, 0.98));
+          radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0) 0 15%, rgba(255, 255, 255, 0.94) 30%, rgba(255, 255, 255, 1) 48%),
+          linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(255, 255, 255, 1));
         z-index: 0;
       }
       .feedback-loading-layout::after {
         content: '';
         position: absolute;
         inset: 0;
-        background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0) 0 20%, rgba(252, 252, 253, 0.2) 42%, rgba(252, 252, 253, 0.78) 74%, rgba(252, 252, 253, 0.94) 100%);
+        background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0) 0 20%, rgba(255, 255, 255, 0.12) 42%, rgba(255, 255, 255, 0.68) 74%, rgba(255, 255, 255, 0.9) 100%);
         z-index: 1;
         pointer-events: none;
       }
@@ -1369,10 +1369,10 @@
       }
       .feedback-floating-line {
         position: absolute;
-        max-width: min(26vw, 320px);
+        max-width: min(34vw, 520px);
         white-space: nowrap;
         font-family: 'JetBrains Mono', 'SFMono-Regular', ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, monospace;
-        font-size: clamp(11px, 1vw, 14px);
+        font-size: clamp(22px, 2vw, 28px);
         line-height: 1.4;
         letter-spacing: -0.01em;
         opacity: 0;
@@ -1464,8 +1464,8 @@
           padding: 20px;
         }
         .feedback-floating-line {
-          max-width: 34vw;
-          font-size: 12px;
+          max-width: 38vw;
+          font-size: 24px;
         }
       }
 
@@ -1493,8 +1493,8 @@
 
       @media (max-width: 480px) {
         .feedback-floating-line {
-          font-size: 11px;
-          max-width: 40vw;
+          font-size: 18px;
+          max-width: 44vw;
         }
       }
 

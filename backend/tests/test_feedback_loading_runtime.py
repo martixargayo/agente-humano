@@ -130,6 +130,10 @@ if (!layer) throw new Error('feedbackFloatingLayer missing');
 if (layer.childElementCount < 4) {
   throw new Error(`expected at least 4 floating lines, got ${layer.childElementCount}`);
 }
+const quadrants = new Set(layer.children.map((child) => child.dataset.quadrant));
+if (quadrants.size < 4) {
+  throw new Error(`expected coverage in 4 quadrants, got ${JSON.stringify(Array.from(quadrants))}`);
+}
 const rendered = layer.children.map((child) => child.innerHTML).join('\n');
 for (const phrase of ['Analizando', 'Detectando', 'Evaluando', 'Identificando', 'Procesando', 'Correlacionando', 'Comparando', 'Generando', 'Estimando', 'Revisando', 'Mapeando', 'Sintetizando']) {
   if (context.FeedbackFloatingPhrases && !rendered.includes(phrase)) {
@@ -147,6 +151,7 @@ if (!loadingScreen || loadingScreen.classList.contains('hidden')) {
 
 console.log(JSON.stringify({
   floatingCount: layer.childElementCount,
+  quadrants: Array.from(quadrants),
   sample: layer.children.slice(0, 3).map((child) => child.innerHTML),
   queuedTimers: timers.length,
 }, null, 2));
@@ -163,3 +168,7 @@ console.log(JSON.stringify({
     assert result.returncode == 0, result.stderr or result.stdout
     assert 'floatingCount' in result.stdout
     assert 'token-keyword' in result.stdout
+    assert 'topLeft' in result.stdout
+    assert 'topRight' in result.stdout
+    assert 'bottomLeft' in result.stdout
+    assert 'bottomRight' in result.stdout
