@@ -99,7 +99,24 @@ def _interfaz_usuario_index_response() -> FileResponse:
     return FileResponse(index_path)
 
 
+def _interfaz_usuario_asset_response(*relative_parts: str) -> FileResponse:
+    asset_path = INTERFAZ_USUARIO_DIR.joinpath(*relative_parts)
+    if not asset_path.exists() or not asset_path.is_file():
+        raise HTTPException(status_code=404, detail="interfaz_usuario_asset_missing")
+    return FileResponse(asset_path)
+
+
 if INTERFAZ_USUARIO_DIR.exists():
+    @app.get("/interfaz_usuario/app.js", include_in_schema=False)
+    def interfaz_usuario_app_js() -> FileResponse:
+        return _interfaz_usuario_asset_response("app.js")
+
+
+    @app.get("/interfaz_usuario/feedback_report_view.js", include_in_schema=False)
+    def interfaz_usuario_feedback_report_js() -> FileResponse:
+        return _interfaz_usuario_asset_response("feedback_report_view.js")
+
+
     @app.get("/interfaz_usuario/{public_slug}", include_in_schema=False)
     def interfaz_usuario_public_context(public_slug: str) -> FileResponse:
         from negociacion.contexts import resolve_public_slug_to_context_id
