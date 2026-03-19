@@ -10,7 +10,8 @@ from ..orchestration.flow_config import build_negotiation_pipeline_config
 from ..orchestration.turn_contract import TurnEntryContract, execute_turn_with_contract
 from ..state.canonical_state import build_default_canonical_state
 from ..state.shared_types import ThreadMode
-from . import datasets_bridge, evals_bridge, experiments_bridge, guardrails_bridge, session_bridge, storage, trace_reader
+from ..traces.context_meta import build_trace_context_meta
+from . import context_bridge, datasets_bridge, evals_bridge, experiments_bridge, guardrails_bridge, session_bridge, storage, trace_reader
 from .prompts_bridge import list_prompts as _list_prompts
 
 def _apply_contextual_state_overrides(state: Any, config: Any, entries: list[dict[str, Any]]) -> None:
@@ -52,8 +53,9 @@ def list_sessions() -> list[dict[str, Any]]:
 
 
 
-def ensure_session(*, user_id: str, session_id: str) -> dict[str, Any]:
+def ensure_session(*, user_id: str, session_id: str, context_id: str | None = None) -> dict[str, Any]:
     state = get_session_state(user_id=user_id, session_id=session_id)
+    base_context = context_bridge.ensure_optimizer_session_context(state=state, requested_context_id=context_id)
     traces = storage.resolve_traces(state)
     meta = state.world_state.get("optimizador_sandbox_meta", {}) if isinstance(state.world_state, dict) else {}
     return {
@@ -64,6 +66,7 @@ def ensure_session(*, user_id: str, session_id: str) -> dict[str, Any]:
         "last_updated": state.last_updated.isoformat(),
         "is_sandbox": bool(meta),
         "sandbox_meta": meta if isinstance(meta, dict) else {},
+        "base_context": base_context,
     }
 
 def list_conversations(user_id: str, session_id: str) -> list[dict[str, Any]]:
@@ -93,19 +96,26 @@ def duplicate_sandbox_session(
     source_user_id: str,
     source_session_id: str,
     source_conversation_id: str | None,
+    context_id: str | None = None,
 ) -> dict[str, Any]:
     return session_bridge.duplicate_sandbox_session(
         source_user_id=source_user_id,
         source_session_id=source_session_id,
         source_conversation_id=source_conversation_id,
         optimizer_session_id=optimizer_session_id,
+        context_id=context_id,
     )
 
 
-def new_conversation_session(*, optimizer_session_id: str, user_id: str, session_id: str) -> dict[str, Any]:
+def new_conversation_session(*, optimizer_session_id: str, user_id: str, session_id: str, context_id: str | None = None) -> dict[str, Any]:
     state = get_session_state(user_id=user_id, session_id=session_id)
     new_session_id = f"{session_id}__newconv__{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}_{uuid4().hex[:6]}"
     new_state = SessionState(user_id=user_id, session_id=new_session_id)
+    base_context = context_bridge.inherit_or_bind_sandbox_context(
+        source_state=state,
+        target_state=new_state,
+        requested_context_id=context_id,
+    )
     new_state.world_state["optimizador_sandbox_meta"] = {
         "optimizer_session_id": optimizer_session_id,
         "source_user_id": user_id,
@@ -114,6 +124,7 @@ def new_conversation_session(*, optimizer_session_id: str, user_id: str, session
         "clone_strategy": "new_conversation_clean_start",
         "cloned_at": datetime.now(timezone.utc).isoformat(),
         "preferred_conversation_id": None,
+        "base_context": base_context,
     }
     from sessions.state import SESSIONS
     SESSIONS[(user_id, new_session_id)] = new_state
@@ -123,6 +134,7 @@ def new_conversation_session(*, optimizer_session_id: str, user_id: str, session
         "user_id": user_id,
         "session_id": new_session_id,
         "sandbox_meta": new_state.world_state["optimizador_sandbox_meta"],
+        "base_context": base_context,
     }
 
 
@@ -137,13 +149,14 @@ def run_sandbox_turn(
     repeat_from_turn_id: str | None,
 ) -> dict[str, Any]:
     state = get_session_state(user_id=user_id, session_id=session_id)
-    base_config = build_negotiation_pipeline_config()
+    base_context = context_bridge.ensure_optimizer_session_context(state=state)
+    base_config = build_negotiation_pipeline_config(context_id=base_context["context_id"])
     resolved_entries = experiments_bridge.resolve_entries(
         optimizer_session_id=optimizer_session_id,
         conversation_id=conversation_id,
         turn_id=scope_turn_id,
     )
-    config, tempdir = experiments_bridge.apply_overrides(base_config, resolved_entries)
+    config, tempdir = experiments_bridge.apply_overrides(base_config, resolved_entries, context_id=base_context["context_id"])
     _apply_contextual_state_overrides(state, config, resolved_entries)
     clone_used, new_conversation = _resolve_optimizer_contract_flags(state)
     try:
@@ -178,6 +191,7 @@ def run_sandbox_turn(
             "session_key": storage.session_key(user_id, session_id),
             "conversation_id": conversation_id,
             "versioning": versioning,
+            "base_context": build_trace_context_meta(state=state, overrides_applied=bool(resolved_entries)).model_dump(mode="json"),
         }
 
     turns = list_turns(user_id, session_id, conversation_id=conversation_id)

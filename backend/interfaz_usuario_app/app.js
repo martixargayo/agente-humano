@@ -13,6 +13,19 @@ function ids() {
   return { user_id: $('userId').value.trim(), session_id: $('sessionId').value.trim() };
 }
 
+function readPublicSlugFromUrl() {
+  const path = window.location.pathname.replace(/\/+$/, '');
+  const match = path.match(/^\/interfaz_usuario\/([^/]+)$/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+function bootstrapPayload() {
+  const payload = ids();
+  const publicSlug = readPublicSlugFromUrl();
+  if (publicSlug) payload.public_slug = publicSlug;
+  return payload;
+}
+
 const InputMode = { TALK: 'talk', WRITE: 'write' };
 const AgentMode = { CHAT: 'chat', NEGOTIATION: 'negotiation' };
 const AgentModeLabels = { chat: 'Chat', negotiation: 'Negociación' };
@@ -1616,7 +1629,7 @@ async function handleSend() {
 
 $('bootstrap').onclick = async () => {
   syncSessionBoundaryReset();
-  const out = await api('/sessions/bootstrap', { method: 'POST', body: JSON.stringify(ids()) });
+  const out = await api('/sessions/bootstrap', { method: 'POST', body: JSON.stringify(bootstrapPayload()) });
   $('meta').textContent = `session=${out.session_id} traces=${out.trace_count} conversation_id=${out.conversation_id || '-'}`;
 };
 
@@ -1866,7 +1879,7 @@ document.addEventListener('visibilitychange', () => {
   _seedDefaultIds();
   syncSessionBoundaryReset();
   try {
-    const out = await api('/sessions/bootstrap', { method: 'POST', body: JSON.stringify(ids()) });
+    const out = await api('/sessions/bootstrap', { method: 'POST', body: JSON.stringify(bootstrapPayload()) });
     lastSessionKey = `${out.user_id}::${out.session_id}`;
     resetFinishButtonArmed();
     setLatestTraceCount(out.trace_count);

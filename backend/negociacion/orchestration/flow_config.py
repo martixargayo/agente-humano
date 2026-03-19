@@ -69,7 +69,13 @@ from ..traces.builders import (
 )
 from ..traces.constants import TRACE_VERSION
 from ..traces.models import EvalGrades, PromptArtifacts, SDKCompatibilityInfo, StructuredCallResult, TurnTrace
-from ..contexts import resolve_default_negotiation_context
+from ..traces.context_meta import build_trace_context_meta
+from ..contexts import (
+    read_bound_context_from_session,
+    resolve_context_for_prompts_dir,
+    resolve_default_negotiation_context,
+    resolve_negotiation_context,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -259,10 +265,11 @@ class StateRepository:
         traces.append(turn_trace.model_dump(mode="json"))
 
 
-def build_negotiation_pipeline_config() -> NegotiationTurnConfig:
+def build_negotiation_pipeline_config(*, context_id: str | None = None) -> NegotiationTurnConfig:
+    resolved_context = resolve_negotiation_context(context_id) if context_id else resolve_default_negotiation_context()
     return NegotiationTurnConfig(
         memory_key=NEGOTIATION_FLOW_DETAILS["memory_key"],
-        prompts_dir=str(resolve_default_negotiation_context().prompts_dir),
+        prompts_dir=str(resolved_context.prompts_dir),
         model_memory=NEGOTIATION_FLOW_DETAILS["model_memory"],
         model_phase_classifier=NEGOTIATION_FLOW_DETAILS["model_phase_classifier"],
         model_planner=NEGOTIATION_FLOW_DETAILS["model_planner"],
@@ -287,7 +294,9 @@ def build_negotiation_pipeline_config() -> NegotiationTurnConfig:
 def _default_canonical_state(session_state: SessionState | None = None, thread_mode: ThreadMode = ThreadMode.conversation) -> CanonicalState:
     session_id = session_state.session_id if session_state and session_state.session_id else "pending_session"
     user_id = session_state.user_id if session_state and session_state.user_id else None
-    return build_default_canonical_state(session_id=session_id, user_id=user_id, thread_mode=thread_mode)
+    bound = read_bound_context_from_session(session_state) if session_state is not None else None
+    context_id = bound.context_id if bound is not None else None
+    return build_default_canonical_state(session_id=session_id, user_id=user_id, thread_mode=thread_mode, context_id=context_id)
 
 
 # ==================================================
@@ -323,9 +332,9 @@ def _resolve_context_asset_path(
     *,
     asset_name: Literal["phase_cards", "phase_classifier_card"],
 ) -> Path:
-    resolved_context = resolve_default_negotiation_context()
     prompts_path = Path(prompts_dir)
-    if prompts_path == resolved_context.prompts_dir:
+    resolved_context = resolve_context_for_prompts_dir(prompts_path)
+    if resolved_context is not None:
         if asset_name == "phase_cards":
             return resolved_context.phase_cards_path
         return resolved_context.phase_classifier_card_path
@@ -1246,6 +1255,8 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
     output_triggered = bool(output_result.reasons)
     guardrails_triggered = input_result.decision != InputGuardrailDecision.allow or output_triggered
 
+    trace_context_meta = build_trace_context_meta(state=state)
+
     turn_trace = TurnTrace(
         trace_version=TRACE_VERSION,
         turn_id=turn_id,
@@ -1307,6 +1318,7 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
         schema_version_executor=executor_output.schema_version,
         sdk_compatibility=sdk_info,
         grades=grades,
+        context_meta=trace_context_meta,
         logs=logs,
         nodes=nodes,
     )

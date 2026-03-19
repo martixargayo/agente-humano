@@ -15,7 +15,7 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
 from google.cloud import speech
@@ -90,7 +90,31 @@ app.include_router(interfaz_usuario_router)
 
 
 INTERFAZ_USUARIO_DIR = BACKEND_DIR / "interfaz_usuario_app"
+
+
+def _interfaz_usuario_index_response() -> FileResponse:
+    index_path = INTERFAZ_USUARIO_DIR / "index.html"
+    if not index_path.exists():
+        raise HTTPException(status_code=404, detail="interfaz_usuario_index_missing")
+    return FileResponse(index_path)
+
+
 if INTERFAZ_USUARIO_DIR.exists():
+    @app.get("/interfaz_usuario/{public_slug}", include_in_schema=False)
+    def interfaz_usuario_public_context(public_slug: str) -> FileResponse:
+        from negociacion.contexts import resolve_public_slug_to_context_id
+
+        resolve_public_slug_to_context_id(public_slug)
+        return _interfaz_usuario_index_response()
+
+
+    @app.get("/interfaz_usuario/{public_slug}/", include_in_schema=False)
+    def interfaz_usuario_public_context_slash(public_slug: str) -> FileResponse:
+        from negociacion.contexts import resolve_public_slug_to_context_id
+
+        resolve_public_slug_to_context_id(public_slug)
+        return _interfaz_usuario_index_response()
+
     app.mount(
         "/interfaz_usuario",
         StaticFiles(directory=str(INTERFAZ_USUARIO_DIR), html=True),

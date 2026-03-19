@@ -6,6 +6,8 @@ from pydantic import BaseModel, ConfigDict
 class SessionBootstrapRequest(BaseModel):
     user_id: str = "u_interfaz"
     session_id: str = "interfaz-main"
+    context_id: str | None = None
+    public_slug: str | None = None
 
 
 class NegotiationTurnRequest(BaseModel):

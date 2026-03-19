@@ -1,0 +1,79 @@
+{
+  "schema_version": "negotiation_brief.v1",
+  "contexto_de_mercado": {
+    "valor_estimado": "El valor de mercado estimado de este modelo está en torno a 6000-6500 euros.",
+    "lectura": "Contexto oficial alternativo de validación multi-context con la misma semántica negociadora del baseline."
+  },
+  "realidad_de_la_alternativa": {
+    "resumen": "Carlos no tiene una alternativa equivalente cómoda en la zona.",
+    "detalle": "Comprar una unidad parecida fuera implica sumar transporte y matriculación.",
+    "coste_equivalente_aproximado": "La mejor alternativa real se acerca a 8000 euros de coste total.",
+    "lectura": "Por eso Carlos intentará acercarse al precio de mercado, pero sabe que debe ser realista si quiere este coche concreto."
+  },
+  "objetivo_y_marco_de_decision": {
+    "objetivo": "Intentar comprar por precio de mercado o lo más cerca posible.",
+    "realismo": "Este contexto oficial valida que el stack soporte más de un contexto real sin alterar el flow ni el motor.",
+    "criterio": "Empujará para mejorar el precio, pero un acuerdo por debajo de 8000 puede seguir pareciéndole bueno si el conjunto del trato encaja.",
+    "por_encima_de_eso": "Por encima de ese nivel solo le compensa si el vendedor añade valor real suficiente o reduce riesgo de forma clara."
+  },
+  "mapa_de_valor": {
+    "nota": "Los valores aproximados sirven también como referencia para estimar el valor de otras concesiones parecidas que aparezcan en la negociación.",
+    "items": [
+      {
+        "elemento": "1 año de garantía",
+        "valor_aproximado_eur": 600,
+        "tipo_de_efecto": "suma_valor_real",
+        "lectura": "Reduce riesgo postcompra y puede justificar pagar más."
+      },
+      {
+        "elemento": "ITV pasada antes de venderlo",
+        "valor_aproximado_eur": null,
+        "tipo_de_efecto": "suma_valor_real",
+        "lectura": "Reduce coste y fricción inmediata y puede justificar algo más de precio."
+      },
+      {
+        "elemento": "pack o kit de ruedas",
+        "valor_aproximado_eur": null,
+        "tipo_de_efecto": "suma_valor_real",
+        "lectura": "Añade valor material directo y puede compensar parte del precio."
+      },
+      {
+        "elemento": "cerrar hoy mismo",
+        "valor_aproximado_eur": 0,
+        "tipo_de_efecto": "facilita_acuerdo",
+        "lectura": "No justifica pagar más por sí solo, pero puede hacer a Carlos algo más flexible para cerrar."
+      },
+      {
+        "elemento": "operativa sencilla y poco roce",
+        "valor_aproximado_eur": 0,
+        "tipo_de_efecto": "facilita_acuerdo",
+        "lectura": "No suma valor económico real al coche, pero ayuda a rebajar resistencia para llegar a un entendimiento."
+      }
+    ]
+  },
+  "monedas_de_intercambio_del_comprador": {
+    "puede_ofrecer": [
+      {
+        "elemento": "pago en efectivo",
+        "uso": "Puede usarse para intentar que el vendedor baje expectativas o cierre antes."
+      },
+      {
+        "elemento": "encargarse del papeleo",
+        "uso": "Puede usarse como contrapartida operativa para pedir mejor precio o mejores condiciones."
+      },
+      {
+        "elemento": "rapidez y facilidad para cerrar",
+        "uso": "Puede usarse para reducir fricción del vendedor, pero no debe regalarse sin retorno."
+      }
+    ]
+  },
+  "informacion_privada_sensible": {
+    "no_conviene_revelar_espontaneamente": [
+      "El coste real de su alternativa.",
+      "La escasez de alternativas equivalentes en la zona.",
+      "Su flexibilidad real.",
+      "Qué concesiones valora más internamente."
+    ],
+    "lectura": "Si el vendedor no lo sabe y lo intenta descubrir, conviene evitar revelarlo. Si el vendedor ya lo sabe de forma explícita y lo dice correctamente, no tiene sentido negarlo de manera artificial."
+  }
+}

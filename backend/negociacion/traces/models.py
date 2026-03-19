@@ -50,6 +50,16 @@ NodeInputSummary = MemoryInputSummary | PhaseInputSummary | PlannerInputSummary 
 NodeOutputSummary = MemoryOutputSummary | PhaseOutputSummary | PlannerOutputSummary | ExecutorOutputSummary
 
 
+class TraceContextMeta(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    flow_id: str | None = None
+    context_id: str | None = None
+    context_version: str | None = None
+    official_context_used: bool = True
+    context_scope: str | None = None
+
+
 class PromptArtifacts(BaseModel):
     model_config = ConfigDict(extra="forbid")
     developer_prompt_text: str | None = None
@@ -178,6 +188,7 @@ class TurnTrace(BaseModel):
     schema_version_executor: str
     sdk_compatibility: SDKCompatibilityInfo
     grades: EvalGrades
+    context_meta: TraceContextMeta | None = None
 
     # Ordered execution timeline, useful for latency/status sequencing.
     # When input_guardrail_decision=="block", cognitive nodes may not run and logs can be empty by design.

@@ -1,0 +1,32 @@
+{
+  "flow_id": "negociacion",
+  "context_id": "validacion_multicontexto",
+  "title": "Contexto oficial de validación multi-context",
+  "public_slug": "negociacion-validacion",
+  "status": "active",
+  "context_version": "1.0.0",
+  "bundle": {
+    "prompts_dir": "prompts",
+    "assets_dir": "assets",
+    "evaluation_dir": "evaluation"
+  },
+  "files": {
+    "prompts": [
+      "planner_prompt.txt",
+      "executor_prompt.txt",
+      "summarizer_prompt.txt",
+      "phase_classifier_prompt.txt"
+    ],
+    "assets": [
+      "persona.json",
+      "negotiation_brief.json",
+      "phase_cards.json",
+      "phase_classifier_card.json"
+    ],
+    "evaluation": [
+      "core_evaluator_prompt.txt",
+      "trajectory_evaluator_prompt.txt",
+      "rubric.json"
+    ]
+  }
+}

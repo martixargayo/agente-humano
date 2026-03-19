@@ -5,6 +5,7 @@ from typing import Any
 
 from sessions.state import SessionState
 
+from ..traces.context_meta import build_trace_context_meta
 from .flow_config import NegotiationTurnConfig, run_negotiation_cognitive_turn
 
 
@@ -43,7 +44,9 @@ def execute_turn_with_contract(
     reply, updated_state = run_negotiation_cognitive_turn(state, user_message, config)
 
     latest = _resolve_latest_trace(updated_state, config.memory_key)
+    context_meta = build_trace_context_meta(state=updated_state, overrides_applied=contract.overrides_applied).model_dump(mode="json")
     if latest is not None:
+        latest.setdefault("context_meta", context_meta)
         latest["_entry_contract"] = {
             "entry_surface": contract.entry_surface,
             "entrypoint": contract.entrypoint,
@@ -51,6 +54,7 @@ def execute_turn_with_contract(
             "optimizer_wrapper_used": contract.optimizer_wrapper_used,
             "new_conversation": contract.new_conversation,
             "clone_used": contract.clone_used,
+            "context_meta": context_meta,
             "config_snapshot": {
                 "memory_key": config.memory_key,
                 "thread_mode_default": config.thread_mode_default.value,

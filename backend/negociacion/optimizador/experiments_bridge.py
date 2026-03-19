@@ -8,7 +8,8 @@ from typing import Any
 
 from ..orchestration.flow_config import NegotiationTurnConfig
 from .models import OverrideEntry
-from .prompts_bridge import PROMPT_FILES, PROMPTS_DIR
+from ..contexts import resolve_negotiation_context
+from .prompts_bridge import PROMPT_FILES
 
 _ALLOWED_CONFIG_FIELDS: dict[str, type] = {
     "model_memory": str,
@@ -94,6 +95,7 @@ def resolve_entries(
 def apply_overrides(
     base_config: NegotiationTurnConfig,
     entries: list[dict[str, Any]],
+    context_id: str | None = None,
 ) -> tuple[NegotiationTurnConfig, TemporaryDirectory | None]:
     config_patch: dict[str, Any] = {}
     for entry in entries:
@@ -109,7 +111,7 @@ def apply_overrides(
     tempdir = TemporaryDirectory(prefix="optimizador_prompts_")
     tmp_dir = Path(tempdir.name)
 
-    _copy_base_prompt_bundle(tmp_dir)
+    _copy_base_prompt_bundle(tmp_dir, context_id=context_id, prompts_dir=Path(base_config.prompts_dir))
 
     for entry in prompt_entries:
         file_name = PROMPT_FILES.get(entry["key"])
@@ -138,11 +140,18 @@ def describe_effective_overrides(entries: list[dict[str, Any]]) -> dict[str, Any
     return grouped
 
 
-def _copy_base_prompt_bundle(tmp_dir: Path) -> None:
-    for file_name in list(PROMPT_FILES.values()) + ["phase_cards.json", "persona.json"]:
-        source = PROMPTS_DIR / file_name
+def _copy_base_prompt_bundle(tmp_dir: Path, *, context_id: str | None = None, prompts_dir: Path | None = None) -> None:
+    resolved = resolve_negotiation_context(context_id) if context_id else None
+    prompts_dir = resolved.prompts_dir if resolved is not None else (prompts_dir or Path())
+    for file_name in list(PROMPT_FILES.values()):
+        source = prompts_dir / file_name
         if source.exists():
             (tmp_dir / file_name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    if resolved is not None:
+        assets = {"phase_cards.json": resolved.phase_cards_path, "persona.json": resolved.persona_path}
+        for target_name, source in assets.items():
+            if source.exists():
+                (tmp_dir / target_name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
 
 
 def _json_string(value: Any) -> str:

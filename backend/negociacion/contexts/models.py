@@ -5,6 +5,14 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict
 
 
+class BoundNegotiationContext(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    flow_id: str
+    context_id: str
+    context_version: str
+
+
 class ResolvedNegotiationContext(BaseModel):
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 

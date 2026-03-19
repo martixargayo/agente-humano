@@ -15,7 +15,12 @@ router.include_router(feedback_router)
 
 @router.post("/sessions/bootstrap")
 def bootstrap_session(payload: SessionBootstrapRequest) -> dict:
-    return services.ensure_session(user_id=payload.user_id, session_id=payload.session_id)
+    return services.ensure_session(
+        user_id=payload.user_id,
+        session_id=payload.session_id,
+        context_id=payload.context_id,
+        public_slug=payload.public_slug,
+    )
 
 
 @router.post("/negociacion/new_conversation")

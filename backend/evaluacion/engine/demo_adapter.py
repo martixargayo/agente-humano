@@ -11,6 +11,7 @@ from evaluacion.contracts.models import (
     TraceDigest,
 )
 from evaluacion.dev_fixtures.models import FeedbackDemoFixtureV1
+from negociacion.contexts import resolve_default_negotiation_context
 
 
 def fixture_to_bundle(*, fixture: FeedbackDemoFixtureV1, evaluation_id: str) -> FeedbackInputBundleV1:
@@ -34,6 +35,8 @@ def fixture_to_bundle(*, fixture: FeedbackDemoFixtureV1, evaluation_id: str) -> 
     offer_signals = sum(1 for t in turns if any(x in t.user_text.lower() for x in ("precio", "euros", "oferta", "rebaja")))
     blocker_signals = sum(1 for t in turns if any(x in t.user_text.lower() for x in ("no puedo", "imposible", "difícil", "bloque")))
 
+    default_context = resolve_default_negotiation_context()
+
     return FeedbackInputBundleV1(
         schema_version="feedback_input_bundle.v1",
         evaluation_id=evaluation_id,
@@ -47,6 +50,9 @@ def fixture_to_bundle(*, fixture: FeedbackDemoFixtureV1, evaluation_id: str) -> 
         ),
         domain_context=DomainContext(
             domain="negociacion",
+            flow_id=default_context.flow_id,
+            context_id=default_context.context_id,
+            context_version=default_context.context_version,
             final_phase=fixture.domain_context.final_phase,
             finish_button_was_armed=fixture.domain_context.finish_button_was_armed,
         ),

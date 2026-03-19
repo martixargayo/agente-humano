@@ -4,7 +4,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any
 
-from . import storage
+from . import context_bridge, storage
 
 
 def list_sessions() -> list[dict[str, Any]]:
@@ -12,6 +12,7 @@ def list_sessions() -> list[dict[str, Any]]:
     for user_id, session_id, state in storage.iter_session_entries():
         traces = storage.resolve_traces(state)
         meta = state.world_state.get("optimizador_sandbox_meta", {}) if isinstance(state.world_state, dict) else {}
+        context = context_bridge.ensure_optimizer_session_context(state=state)
         sessions.append(
             {
                 "session_key": storage.session_key(user_id, session_id),
@@ -21,6 +22,7 @@ def list_sessions() -> list[dict[str, Any]]:
                 "last_updated": state.last_updated.isoformat(),
                 "is_sandbox": bool(meta),
                 "sandbox_meta": meta if isinstance(meta, dict) else {},
+                "base_context": context,
             }
         )
     sessions.sort(key=lambda item: item["last_updated"], reverse=True)
@@ -44,6 +46,7 @@ def duplicate_sandbox_session(
     source_session_id: str,
     optimizer_session_id: str,
     source_conversation_id: str | None,
+    context_id: str | None = None,
 ) -> dict[str, Any]:
     source = storage.get_state(source_user_id, source_session_id)
     if source is None:
@@ -59,6 +62,11 @@ def duplicate_sandbox_session(
     cloned.session_id = sandbox_session_id
     cloned.user_id = sandbox_user_id
     cloned.world_state = copy.deepcopy(source.world_state)
+    context = context_bridge.inherit_or_bind_sandbox_context(
+        source_state=source,
+        target_state=cloned,
+        requested_context_id=context_id,
+    )
     cloned.world_state["optimizador_sandbox_meta"] = {
         "optimizer_session_id": optimizer_session_id,
         "source_user_id": source_user_id,
@@ -67,6 +75,7 @@ def duplicate_sandbox_session(
         "clone_strategy": "full_session_with_preferred_conversation",
         "cloned_at": datetime.now(timezone.utc).isoformat(),
         "preferred_conversation_id": source_conversation_id,
+        "base_context": context,
     }
 
     from sessions.state import SESSIONS
@@ -77,4 +86,5 @@ def duplicate_sandbox_session(
         "user_id": sandbox_user_id,
         "session_id": sandbox_session_id,
         "sandbox_meta": cloned.world_state["optimizador_sandbox_meta"],
+        "base_context": context,
     }
