@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from pydantic import field_validator
 
 from .shared_types import NegotiationPhase, ThreadMode
+from ..contexts import resolve_default_negotiation_context
 
 
 EMERGENCY_PERSONA_DEFAULTS: dict[str, dict[str, object]] = {
@@ -111,7 +112,7 @@ EMERGENCY_NEGOTIATION_BRIEF_DEFAULTS: dict[str, object] = {
 
 
 def _load_persona_defaults() -> dict[str, dict[str, object]]:
-    path = Path(__file__).resolve().parent.parent / "prompts" / "persona.json"
+    path = resolve_default_negotiation_context().persona_path
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
@@ -126,7 +127,7 @@ def _load_persona_defaults() -> dict[str, dict[str, object]]:
 
 
 def _load_negotiation_brief_defaults() -> dict[str, object]:
-    path = Path(__file__).resolve().parent.parent / "prompts" / "negotiation_brief.json"
+    path = resolve_default_negotiation_context().negotiation_brief_path
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
