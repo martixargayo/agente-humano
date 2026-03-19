@@ -190,6 +190,7 @@ const ui = {
   audioDeviceSelectedList: $('audioDeviceSelectedList'),
   audioDeviceOtherList: $('audioDeviceOtherList'),
   audioDevicePopoverDivider: $('audioDevicePopoverDivider'),
+  feedbackFloatingLayer: $('feedbackFloatingLayer'),
 };
 
 // Hard guard: if any stale HTML/version still injects the old Chat/Negociación selector,
