@@ -69,6 +69,7 @@ from ..traces.builders import (
 )
 from ..traces.constants import TRACE_VERSION
 from ..traces.models import EvalGrades, PromptArtifacts, SDKCompatibilityInfo, StructuredCallResult, TurnTrace
+from ..contexts import resolve_default_negotiation_context
 
 logger = logging.getLogger(__name__)
 
@@ -185,7 +186,7 @@ class FlowDetails(TypedDict):
 
 
 BASE_DIR = Path(__file__).resolve().parent
-PROMPTS_DIR = BASE_DIR.parent / "prompts"
+LEGACY_PROMPTS_DIR = BASE_DIR.parent / "prompts"
 
 NEGOTIATION_FLOW_DETAILS: FlowDetails = {
     "flow_name": "negociacion",
@@ -261,7 +262,7 @@ class StateRepository:
 def build_negotiation_pipeline_config() -> NegotiationTurnConfig:
     return NegotiationTurnConfig(
         memory_key=NEGOTIATION_FLOW_DETAILS["memory_key"],
-        prompts_dir=str(PROMPTS_DIR),
+        prompts_dir=str(resolve_default_negotiation_context().prompts_dir),
         model_memory=NEGOTIATION_FLOW_DETAILS["model_memory"],
         model_phase_classifier=NEGOTIATION_FLOW_DETAILS["model_phase_classifier"],
         model_planner=NEGOTIATION_FLOW_DETAILS["model_planner"],
@@ -317,8 +318,26 @@ def _phase_classifier_card_fallback(path: Path, error: Exception | None = None) 
     return fallback_card, source
 
 
+def _resolve_context_asset_path(
+    prompts_dir: str,
+    *,
+    asset_name: Literal["phase_cards", "phase_classifier_card"],
+) -> Path:
+    resolved_context = resolve_default_negotiation_context()
+    prompts_path = Path(prompts_dir)
+    if prompts_path == resolved_context.prompts_dir:
+        if asset_name == "phase_cards":
+            return resolved_context.phase_cards_path
+        return resolved_context.phase_classifier_card_path
+
+    if prompts_path == LEGACY_PROMPTS_DIR:
+        return LEGACY_PROMPTS_DIR / f"{asset_name}.json"
+
+    return prompts_path / f"{asset_name}.json"
+
+
 def _load_phase_classifier_card(prompts_dir: str) -> tuple[dict[str, object], str]:
-    path = Path(prompts_dir) / "phase_classifier_card.json"
+    path = _resolve_context_asset_path(prompts_dir, asset_name="phase_classifier_card")
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except Exception as exc:
@@ -333,7 +352,7 @@ def _load_phase_classifier_card(prompts_dir: str) -> tuple[dict[str, object], st
 
 
 def _load_phase_cards(prompts_dir: str) -> dict[NegotiationPhase, PhaseCard]:
-    path = Path(prompts_dir) / "phase_cards.json"
+    path = _resolve_context_asset_path(prompts_dir, asset_name="phase_cards")
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except Exception as exc:
