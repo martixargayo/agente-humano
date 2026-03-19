@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from evaluacion.contracts.models import TrajectoryRunnerInputV1, TrajectoryTurn, TurnTrajectoryV1
+from evaluacion.domains.negotiation.assets_loader import resolve_negotiation_evaluation_assets
 from evaluacion.engine.flow_config import TRAJECTORY_MODEL
 from evaluacion.engine.runners.common import load_prompt_text, run_structured
-
-PROMPT_PATH = Path(__file__).resolve().parent.parent.parent / "prompts" / "trajectory_evaluator_prompt.txt"
 
 
 def _fallback_output(trajectory_input: TrajectoryRunnerInputV1) -> TurnTrajectoryV1:
@@ -44,7 +41,7 @@ def _fallback_output(trajectory_input: TrajectoryRunnerInputV1) -> TurnTrajector
 
 
 def run_trajectory_evaluator(trajectory_input: TrajectoryRunnerInputV1) -> tuple[TurnTrajectoryV1, str]:
-    prompt = load_prompt_text(PROMPT_PATH)
+    prompt = load_prompt_text(resolve_negotiation_evaluation_assets(trajectory_input.domain_context).trajectory_prompt_path)
     parsed = run_structured(
         model=TRAJECTORY_MODEL,
         developer_prompt=prompt,

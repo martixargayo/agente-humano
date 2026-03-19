@@ -69,6 +69,9 @@ def _run_pipeline_from_bundle(*, evaluation_id: str, bundle: FeedbackInputBundle
                 "bundle_hash": stable_hash(bundle.model_dump(mode="json")),
                 "core_input_hash": stable_hash(core_input.model_dump(mode="json")),
                 "trajectory_input_hash": stable_hash(trajectory_input.model_dump(mode="json")),
+                "flow_id": str(bundle.domain_context.flow_id or ""),
+                "context_id": str(bundle.domain_context.context_id or ""),
+                "context_version": str(bundle.domain_context.context_version or ""),
             },
             stage_latencies_ms={"building_inputs": int((time.perf_counter() - t0) * 1000)},
         )
@@ -126,6 +129,9 @@ def _run_pipeline_from_bundle(*, evaluation_id: str, bundle: FeedbackInputBundle
             trajectory_model=TRAJECTORY_MODEL,
             core_prompt_version=CORE_PROMPT_VERSION,
             trajectory_prompt_version=TRAJECTORY_PROMPT_VERSION,
+            flow_id=bundle.domain_context.flow_id,
+            context_id=bundle.domain_context.context_id,
+            context_version=bundle.domain_context.context_version,
         )
         report: UiFeedbackReportV1 = assemble_ui_report(
             core=core_output,

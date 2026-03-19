@@ -50,6 +50,9 @@ class ConversationStats(BaseModel):
 class DomainContext(BaseModel):
     model_config = ConfigDict(extra="forbid")
     domain: Literal["negociacion"]
+    flow_id: str | None = None
+    context_id: str | None = None
+    context_version: str | None = None
     final_phase: str | None = None
     finish_button_was_armed: bool = False
 
@@ -132,6 +135,7 @@ class TrajectoryRunnerInputV1(BaseModel):
 
     schema_version: Literal["trajectory_runner_input.v1"]
     evaluation_id: str
+    domain_context: DomainContext
     turns_for_trajectory: list[BundleTurn]
 
 
@@ -238,6 +242,9 @@ class Provenance(BaseModel):
     trajectory_model: str
     core_prompt_version: str
     trajectory_prompt_version: str
+    flow_id: str | None = None
+    context_id: str | None = None
+    context_version: str | None = None
 
 
 class UiFeedbackReportV1(BaseModel):

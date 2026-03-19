@@ -15,7 +15,7 @@ def list_sessions() -> dict:
 
 @router.post("/sessions/bootstrap")
 def bootstrap_session(payload: BootstrapSessionRequest) -> dict:
-    return services.ensure_session(user_id=payload.user_id, session_id=payload.session_id)
+    return services.ensure_session(user_id=payload.user_id, session_id=payload.session_id, context_id=payload.context_id)
 
 
 @router.get("/sessions/{user_id}/{session_id}/conversations")
@@ -88,6 +88,7 @@ def sandbox_clone(payload: SandboxCloneRequest) -> dict:
             source_user_id=payload.source_user_id,
             source_session_id=payload.source_session_id,
             source_conversation_id=payload.source_conversation_id,
+            context_id=payload.context_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -101,6 +102,7 @@ def sandbox_new_conversation(payload: NewConversationRequest) -> dict:
         optimizer_session_id=payload.optimizer_session_id,
         user_id=payload.user_id,
         session_id=payload.session_id,
+        context_id=payload.context_id,
     )
 
 @router.post("/sandbox/turn")

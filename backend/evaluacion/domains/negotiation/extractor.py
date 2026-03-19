@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from sessions.state import SessionState
 
+from .context_resolver import resolve_evaluation_context_from_session
+
 from evaluacion.contracts.models import (
     BundleTurn,
     ConversationBlock,
@@ -59,7 +61,15 @@ def _build_domain_context(state: SessionState) -> DomainContext:
     ui_state = canonical.get("ui_state", {}) if isinstance(canonical, dict) else {}
     phase = planner_state.get("current_phase") if isinstance(planner_state, dict) else None
     armed = bool(ui_state.get("finish_button_armed", False)) if isinstance(ui_state, dict) else False
-    return DomainContext(domain="negociacion", final_phase=str(phase) if phase else None, finish_button_was_armed=armed)
+    evaluation_context = resolve_evaluation_context_from_session(state)
+    return DomainContext(
+        domain="negociacion",
+        flow_id=evaluation_context.flow_id,
+        context_id=evaluation_context.context_id,
+        context_version=evaluation_context.context_version,
+        final_phase=str(phase) if phase else None,
+        finish_button_was_armed=armed,
+    )
 
 
 def _build_derived_facts(turns: list[BundleTurn]) -> DerivedFacts:

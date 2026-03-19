@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-PROMPTS_DIR = Path(__file__).resolve().parents[1] / "prompts"
+from ..contexts import resolve_default_negotiation_context, resolve_negotiation_context
+
 PROMPT_FILES = {
     "memory": "summarizer_prompt.txt",
     "phase_classifier": "phase_classifier_prompt.txt",
@@ -11,10 +12,16 @@ PROMPT_FILES = {
 }
 
 
-def list_prompts() -> list[dict[str, str]]:
+def _prompts_dir_for_context(context_id: str | None = None) -> Path:
+    resolved = resolve_negotiation_context(context_id) if context_id else resolve_default_negotiation_context()
+    return resolved.prompts_dir
+
+
+def list_prompts(context_id: str | None = None) -> list[dict[str, str]]:
+    prompts_dir = _prompts_dir_for_context(context_id)
     prompts: list[dict[str, str]] = []
     for node, file_name in PROMPT_FILES.items():
-        path = PROMPTS_DIR / file_name
+        path = prompts_dir / file_name
         prompts.append(
             {
                 "node": node,

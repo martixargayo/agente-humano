@@ -47,17 +47,20 @@ class SandboxCloneRequest(BaseModel):
     source_user_id: str
     source_session_id: str
     source_conversation_id: str | None = None
+    context_id: str | None = None
 
 
 class NewConversationRequest(BaseModel):
     optimizer_session_id: str = "default"
     user_id: str
     session_id: str
+    context_id: str | None = None
 
 
 class BootstrapSessionRequest(BaseModel):
     user_id: str = "u_optimizador"
     session_id: str = "optimizador-main"
+    context_id: str | None = None
 
 
 class SaveCaseRequest(BaseModel):

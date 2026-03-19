@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from pydantic import field_validator
 
 from .shared_types import NegotiationPhase, ThreadMode
-from ..contexts import resolve_default_negotiation_context
+from ..contexts import resolve_default_negotiation_context, resolve_negotiation_context
 
 
 EMERGENCY_PERSONA_DEFAULTS: dict[str, dict[str, object]] = {
@@ -111,8 +111,8 @@ EMERGENCY_NEGOTIATION_BRIEF_DEFAULTS: dict[str, object] = {
 }
 
 
-def _load_persona_defaults() -> dict[str, dict[str, object]]:
-    path = resolve_default_negotiation_context().persona_path
+def _load_persona_defaults(context_id: str | None = None) -> dict[str, dict[str, object]]:
+    path = resolve_negotiation_context(context_id).persona_path if context_id else resolve_default_negotiation_context().persona_path
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
@@ -126,8 +126,8 @@ def _load_persona_defaults() -> dict[str, dict[str, object]]:
     return {"policy": policy, "expressive": expressive}
 
 
-def _load_negotiation_brief_defaults() -> dict[str, object]:
-    path = resolve_default_negotiation_context().negotiation_brief_path
+def _load_negotiation_brief_defaults(context_id: str | None = None) -> dict[str, object]:
+    path = resolve_negotiation_context(context_id).negotiation_brief_path if context_id else resolve_default_negotiation_context().negotiation_brief_path
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
@@ -385,10 +385,11 @@ def build_default_canonical_state(
     user_id: str | None = None,
     avatar_id: str | None = None,
     now_iso: str | None = None,
+    context_id: str | None = None,
 ) -> CanonicalState:
     timestamp = now_iso or datetime.now(timezone.utc).isoformat()
-    persona_defaults = _load_persona_defaults()
-    negotiation_brief_defaults = _load_negotiation_brief_defaults()
+    persona_defaults = _load_persona_defaults(context_id=context_id)
+    negotiation_brief_defaults = _load_negotiation_brief_defaults(context_id=context_id)
     return CanonicalState(
         session=SessionMeta(
             session_id=session_id,

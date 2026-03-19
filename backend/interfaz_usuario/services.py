@@ -4,15 +4,73 @@ from datetime import datetime, timezone
 from uuid import uuid4
 from typing import Any
 
+from fastapi import HTTPException
+
 from sessions.state import SESSIONS, SessionState, get_session_state
 
+from negociacion.contexts import (
+    NegotiationContextResolutionError,
+    PublicContextConflictError,
+    PublicSlugResolutionError,
+    ensure_session_context,
+    read_bound_context_from_session,
+    resolve_public_context_selection,
+)
 from negociacion.orchestration.flow_config import build_negotiation_pipeline_config
 from negociacion.orchestration.turn_contract import TurnEntryContract, execute_turn_with_contract
 from negociacion.optimizador.storage import resolve_traces
 
 
-def ensure_session(*, user_id: str, session_id: str) -> dict[str, Any]:
+def _resolve_bootstrap_context_id(*, context_id: str | None = None, public_slug: str | None = None) -> str:
+    try:
+        selection = resolve_public_context_selection(context_id=context_id, public_slug=public_slug)
+    except PublicContextConflictError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "bootstrap_context_input_conflict",
+                "context_id": (context_id or "").strip() or None,
+                "public_slug": (public_slug or "").strip() or None,
+            },
+        ) from exc
+    except PublicSlugResolutionError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "unsupported_public_slug",
+                "public_slug": (public_slug or "").strip() or None,
+            },
+        ) from exc
+    except NegotiationContextResolutionError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "unsupported_context_id",
+                "context_id": (context_id or "").strip() or None,
+            },
+        ) from exc
+    return selection.context_id
+
+
+def ensure_session(
+    *,
+    user_id: str,
+    session_id: str,
+    context_id: str | None = None,
+    public_slug: str | None = None,
+) -> dict[str, Any]:
     state = get_session_state(user_id=user_id, session_id=session_id)
+    existing_context = read_bound_context_from_session(state)
+
+    if existing_context is None:
+        resolved_context_id = _resolve_bootstrap_context_id(context_id=context_id, public_slug=public_slug)
+        ensure_session_context(state=state, requested_context_id=resolved_context_id)
+    elif public_slug is not None:
+        resolved_context_id = _resolve_bootstrap_context_id(context_id=context_id, public_slug=public_slug)
+        ensure_session_context(state=state, requested_context_id=resolved_context_id)
+    else:
+        ensure_session_context(state=state, requested_context_id=context_id)
+
     traces = resolve_traces(state)
     canonical = state.world_state.get("negotiation_canonical", {}) if isinstance(state.world_state, dict) else {}
     thread = canonical.get("openai_thread", {}) if isinstance(canonical, dict) else {}
@@ -27,11 +85,12 @@ def ensure_session(*, user_id: str, session_id: str) -> dict[str, Any]:
 
 
 def create_new_conversation(*, user_id: str, base_session_id: str) -> dict[str, Any]:
+    base_state = get_session_state(user_id=user_id, session_id=base_session_id)
+    bound_context = ensure_session_context(state=base_state)
+
     new_session_id = f"{base_session_id}__newconv__{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}_{uuid4().hex[:6]}"
     SESSIONS[(user_id, new_session_id)] = SessionState(user_id=user_id, session_id=new_session_id)
-    return ensure_session(user_id=user_id, session_id=new_session_id)
-
-
+    return ensure_session(user_id=user_id, session_id=new_session_id, context_id=bound_context.context_id)
 
 
 def _should_auto_reset_for_fresh_opener(*, state: SessionState, message: str) -> bool:
@@ -55,6 +114,7 @@ def _should_auto_reset_for_fresh_opener(*, state: SessionState, message: str) ->
     fresh_openers = ("hola", "buenas", "encantado", "buenos días", "buenas tardes")
     return normalized.startswith(fresh_openers)
 
+
 def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: bool = False) -> dict[str, Any]:
     resolved_session_id = session_id
     auto_reset_applied = False
@@ -63,13 +123,15 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
         resolved_session_id = payload["session_id"]
     else:
         base_state = get_session_state(user_id=user_id, session_id=session_id)
+        bound_context = ensure_session_context(state=base_state)
         if _should_auto_reset_for_fresh_opener(state=base_state, message=message):
             payload = create_new_conversation(user_id=user_id, base_session_id=session_id)
             resolved_session_id = payload["session_id"]
             auto_reset_applied = True
 
     state = get_session_state(user_id=user_id, session_id=resolved_session_id)
-    config = build_negotiation_pipeline_config()
+    bound_context = ensure_session_context(state=state)
+    config = build_negotiation_pipeline_config(context_id=bound_context.context_id)
     reply, _, meta = execute_turn_with_contract(
         state=state,
         user_message=message,
