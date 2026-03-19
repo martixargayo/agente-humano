@@ -9,7 +9,7 @@ from . import context_bridge, storage
 
 def list_sessions() -> list[dict[str, Any]]:
     sessions: list[dict[str, Any]] = []
-    for user_id, session_id, state in storage.iter_session_entries():
+    for user_id, session_id, state in storage.iter_optimizer_session_entries():
         traces = storage.resolve_traces(state)
         meta = state.world_state.get("optimizador_sandbox_meta", {}) if isinstance(state.world_state, dict) else {}
         context = context_bridge.ensure_optimizer_session_context(state=state)
@@ -30,7 +30,7 @@ def list_sessions() -> list[dict[str, Any]]:
 
 
 def list_conversations(user_id: str, session_id: str) -> list[dict[str, Any]]:
-    state = storage.get_state(user_id, session_id)
+    state = storage.get_optimizer_state(user_id, session_id)
     if state is None:
         return []
     grouped: dict[str, int] = defaultdict(int)
@@ -48,9 +48,9 @@ def duplicate_sandbox_session(
     source_conversation_id: str | None,
     context_id: str | None = None,
 ) -> dict[str, Any]:
-    source = storage.get_state(source_user_id, source_session_id)
+    source = storage.get_optimizer_state(source_user_id, source_session_id)
     if source is None:
-        raise ValueError("sesión origen no encontrada")
+        raise ValueError("sesión optimizer origen no encontrada")
 
     timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
     sandbox_session_id = f"{source_session_id}__sandbox__{timestamp}"

@@ -50,8 +50,16 @@ def get_guardrails(turn_id: str) -> dict:
 
 
 @router.get("/prompts")
-def list_prompts() -> dict:
-    return {"items": services.list_prompts()}
+def list_prompts(user_id: str | None = None, session_id: str | None = None, context_id: str | None = None) -> dict:
+    try:
+        return {"items": services.list_prompts(user_id=user_id, session_id=session_id, context_id=context_id)}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/contexts")
+def list_contexts() -> dict:
+    return {"items": services.list_contexts()}
 
 
 @router.get("/overrides/{optimizer_session_id}")

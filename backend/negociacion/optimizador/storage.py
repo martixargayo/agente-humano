@@ -4,6 +4,7 @@ from collections.abc import Iterable
 from typing import Any
 
 from sessions.state import SESSIONS, SessionState
+from sessions.surface_scope import is_surface_owned
 
 PREFERRED_TRACE_KEYS = ["negotiation_canonical_traces"]
 
@@ -16,6 +17,19 @@ def iter_session_entries() -> Iterable[tuple[str, str, SessionState]]:
 def get_state(user_id: str, session_id: str) -> SessionState | None:
     return SESSIONS.get((user_id, session_id))
 
+
+
+def iter_optimizer_session_entries() -> Iterable[tuple[str, str, SessionState]]:
+    for user_id, session_id, state in iter_session_entries():
+        if is_surface_owned(state=state, surface='optimizador'):
+            yield user_id, session_id, state
+
+
+def get_optimizer_state(user_id: str, session_id: str) -> SessionState | None:
+    state = get_state(user_id, session_id)
+    if state is None or not is_surface_owned(state=state, surface='optimizador'):
+        return None
+    return state
 
 def session_key(user_id: str, session_id: str) -> str:
     return f"{user_id}::{session_id}"

@@ -51,7 +51,7 @@ def list_turns(user_id: str, session_id: str, conversation_id: str | None = None
 
 
 def get_turn(turn_id: str) -> dict[str, Any] | None:
-    for user_id, session_id, _ in storage.iter_session_entries():
+    for user_id, session_id, _ in storage.iter_optimizer_session_entries():
         turn = _find_turn(user_id, session_id, turn_id)
         if turn:
             return turn
@@ -67,7 +67,7 @@ def get_dialogue(user_id: str, session_id: str) -> list[dict[str, Any]]:
 
 
 def _all_turns_for_session(user_id: str, session_id: str) -> list[dict[str, Any]]:
-    state = storage.get_state(user_id, session_id)
+    state = storage.get_optimizer_state(user_id, session_id)
     if state is None:
         return []
     turns = storage.resolve_traces(state)

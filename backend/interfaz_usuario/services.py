@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import HTTPException
 
 from sessions.state import SESSIONS, SessionState, get_session_state
+from sessions.surface_scope import ensure_session_surface
 
 from negociacion.contexts import (
     NegotiationContextResolutionError,
@@ -60,6 +61,7 @@ def ensure_session(
     public_slug: str | None = None,
 ) -> dict[str, Any]:
     state = get_session_state(user_id=user_id, session_id=session_id)
+    ensure_session_surface(state=state, surface='interfaz_usuario')
     existing_context = read_bound_context_from_session(state)
 
     if existing_context is None:
@@ -86,6 +88,7 @@ def ensure_session(
 
 def create_new_conversation(*, user_id: str, base_session_id: str) -> dict[str, Any]:
     base_state = get_session_state(user_id=user_id, session_id=base_session_id)
+    ensure_session_surface(state=base_state, surface='interfaz_usuario')
     bound_context = ensure_session_context(state=base_state)
 
     new_session_id = f"{base_session_id}__newconv__{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}_{uuid4().hex[:6]}"
@@ -123,6 +126,7 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
         resolved_session_id = payload["session_id"]
     else:
         base_state = get_session_state(user_id=user_id, session_id=session_id)
+        ensure_session_surface(state=base_state, surface='interfaz_usuario')
         bound_context = ensure_session_context(state=base_state)
         if _should_auto_reset_for_fresh_opener(state=base_state, message=message):
             payload = create_new_conversation(user_id=user_id, base_session_id=session_id)
@@ -130,6 +134,7 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
             auto_reset_applied = True
 
     state = get_session_state(user_id=user_id, session_id=resolved_session_id)
+    ensure_session_surface(state=state, surface='interfaz_usuario')
     bound_context = ensure_session_context(state=state)
     config = build_negotiation_pipeline_config(context_id=bound_context.context_id)
     reply, _, meta = execute_turn_with_contract(
