@@ -14,6 +14,8 @@ const EVAL_TOOLTIPS = {
 
 const state = {
   optimizerSessionId: "default",
+  contexts: [],
+  selectedContextId: "baseline_current",
   sessions: [], selectedSessionKey: "", selectedConversation: "",
   turns: [], selectedTurnId: "", turn: null,
   dialogue: [], prompts: [], cases: [], overrides: { mode: "mirror", entries: [], workspace_version: 1 },
@@ -22,7 +24,7 @@ const state = {
   draftEntries: [], evalOut: "", lastKnownTurnId: "", pollTimer: null,
   chatDraft: "", activeTab: "Chat",
   defaultUserId: "u_optimizador",
-  defaultSessionId: "optimizador-main",
+  defaultSessionIdBase: "optimizador-main",
   lastUiSnapshot: "",
 };
 
@@ -37,7 +39,30 @@ async function api(path, opts = {}) {
 
 const deepEqual = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const escapeHtml = (s) => String(s ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+
 const selectedSession = () => state.sessions.find((s) => s.session_key === state.selectedSessionKey) || null;
+const activeContext = () => state.contexts.find((c) => c.context_id === state.selectedContextId) || null;
+
+function buildDefaultSessionId(contextId = state.selectedContextId) {
+  return `${state.defaultSessionIdBase}-${contextId || 'baseline_current'}`;
+}
+
+async function ensureOptimizerSessionForContext(contextId, { forceNew = false } = {}) {
+  const normalizedContextId = contextId || state.selectedContextId || 'baseline_current';
+  let sessionId = buildDefaultSessionId(normalizedContextId);
+  if (forceNew) sessionId = `${sessionId}-${Date.now()}`;
+  const payload = await api('/sessions/bootstrap', { method: 'POST', body: JSON.stringify({ user_id: state.defaultUserId, session_id: sessionId, context_id: normalizedContextId }) });
+  state.selectedContextId = payload.base_context?.context_id || normalizedContextId;
+  state.selectedSessionKey = payload.session_key;
+  return payload;
+}
+
+async function loadContexts() {
+  state.contexts = (await api('/contexts')).items;
+  if (!state.contexts.some((ctx) => ctx.context_id === state.selectedContextId) && state.contexts[0]) {
+    state.selectedContextId = state.contexts[0].context_id;
+  }
+}
 
 function currentTurnOptionLabel() {
   const row = state.turns.find((x) => x.turn_id === state.selectedTurnId);
@@ -58,37 +83,43 @@ function showToast(text, type = "ok") {
 
 async function refresh({ autoSelect = false } = {}) {
   const prevSelected = state.selectedTurnId;
-  state.sessions = (await api("/sessions")).items;
+  await loadContexts();
+  state.sessions = (await api('/sessions')).items;
   if (!state.sessions.length) {
-    await api("/sessions/bootstrap", { method: "POST", body: JSON.stringify({ user_id: state.defaultUserId, session_id: state.defaultSessionId }) });
-    state.sessions = (await api("/sessions")).items;
+    await ensureOptimizerSessionForContext(state.selectedContextId);
+    state.sessions = (await api('/sessions')).items;
   }
   if (!state.selectedSessionKey && state.sessions[0]) state.selectedSessionKey = state.sessions[0].session_key;
-  const s = selectedSession();
+  let s = selectedSession();
+  if (!s) {
+    await ensureOptimizerSessionForContext(state.selectedContextId);
+    state.sessions = (await api('/sessions')).items;
+    s = selectedSession();
+  }
   if (!s) return;
+  state.selectedContextId = s.base_context?.context_id || state.selectedContextId;
   const base = `/sessions/${encodeURIComponent(s.user_id)}/${encodeURIComponent(s.session_id)}`;
-  state.turns = (await api(`${base}/turns${state.selectedConversation ? `?conversation_id=${encodeURIComponent(state.selectedConversation)}` : ""}`)).items;
-  const nextLast = state.turns[state.turns.length - 1]?.turn_id || "";
+  state.turns = (await api(`${base}/turns${state.selectedConversation ? `?conversation_id=${encodeURIComponent(state.selectedConversation)}` : ''}`)).items;
+  const nextLast = state.turns[state.turns.length - 1]?.turn_id || '';
   if (state.liveFollow || autoSelect || !state.selectedTurnId) state.selectedTurnId = nextLast;
   else if (prevSelected && state.turns.some((x) => x.turn_id === prevSelected)) state.selectedTurnId = prevSelected;
   else state.selectedTurnId = nextLast;
 
   state.turn = state.selectedTurnId ? await api(`/turns/${state.selectedTurnId}`) : null;
   state.dialogue = (await api(`${base}/dialogue`)).items;
-  state.cases = (await api("/cases")).items;
-  state.prompts = (await api("/prompts")).items;
+  state.cases = (await api('/cases')).items;
+  state.prompts = (await api(`/prompts?user_id=${encodeURIComponent(s.user_id)}&session_id=${encodeURIComponent(s.session_id)}`)).items;
   state.overrides = await api(`/overrides/${state.optimizerSessionId}`);
   if (!state.editing) state.draftEntries = structuredClone(state.overrides.entries || []);
 
-  const latest = state.turns[state.turns.length - 1]?.turn_id || "";
-  if (state.lastKnownTurnId && latest && latest !== state.lastKnownTurnId && !state.liveFollow) showToast("Nuevo turno disponible", "warn");
+  const latest = state.turns[state.turns.length - 1]?.turn_id || '';
+  if (state.lastKnownTurnId && latest && latest !== state.lastKnownTurnId && !state.liveFollow) showToast('Nuevo turno disponible', 'warn');
   state.lastKnownTurnId = latest;
   if (state.waitingReply && latest && latest !== prevSelected) {
     state.waitingReply = false;
-    showToast("Respuesta lista");
+    showToast('Respuesta lista');
   }
 }
-
 
 
 function buildUiSnapshot() {
@@ -146,17 +177,31 @@ function renderTabs() {
 function renderTopbar() {
   const disabledCopy = state.busy;
   const ws = state.overrides.workspace_version || 1;
-  byId("topbar").innerHTML = `
+  const s = selectedSession();
+  const ctx = activeContext();
+  byId('topbar').innerHTML = `
   <div class='top-left'>
+    <label>Contexto
+      <select id='contextSelector' title='Elige el contexto oficial del optimizer.'>
+        ${state.contexts.map((c) => `<option value='${c.context_id}' ${c.context_id === state.selectedContextId ? 'selected' : ''}>${c.context_id}</option>`).join('')}
+      </select>
+    </label>
+    <button id='applyContextBtn' title='Crear o abrir una sesión del optimizer enlazada al contexto seleccionado.'>Usar contexto</button>
     <select id='turnSelector' title='Elige el turno y versión para revisar las pestañas.'>
-      ${state.turns.map((t) => `<option value='${t.turn_id}' ${t.turn_id === state.selectedTurnId ? "selected" : ""}>Turno ${t.index} · v${t.version || 1}</option>`).join("")}
+      ${state.turns.map((t) => `<option value='${t.turn_id}' ${t.turn_id === state.selectedTurnId ? 'selected' : ''}>Turno ${t.index} · v${t.version || 1}</option>`).join('')}
     </select>
   </div>
-  <div class='top-mid'>Trabajando en versión v${ws} · selección: ${currentTurnOptionLabel()}</div>
+  <div class='top-mid'>
+    Contexto activo: <b>${escapeHtml(s?.base_context?.context_id || state.selectedContextId)}</b>
+    · versión contexto: ${escapeHtml(s?.base_context?.context_version || ctx?.context_version || '-')}
+    · sesión: ${escapeHtml(s?.session_id || '-')}
+    · workspace v${ws}
+    · selección: ${currentTurnOptionLabel()}
+  </div>
   <div class='top-right'>
-    <details class='copyMenu'><summary>Secciones copiar (${state.copyTabs.size})</summary>${COPYABLE_TABS.map((t) => `<label><input type='checkbox' data-copy='${t}' ${state.copyTabs.has(t) ? "checked" : ""}/> ${t}</label>`).join("")}</details>
-    <button id='copyBtn' ${disabledCopy ? "disabled" : ""}>Copiar</button>
-    <button id='editBtn' class='${state.editing ? "active" : ""}' title='Marca en naranja lo editable para preparar cambios.'>${state.editing ? "Salir edición" : "Editar"}</button>
+    <details class='copyMenu'><summary>Secciones copiar (${state.copyTabs.size})</summary>${COPYABLE_TABS.map((t) => `<label><input type='checkbox' data-copy='${t}' ${state.copyTabs.has(t) ? 'checked' : ''}/> ${t}</label>`).join('')}</details>
+    <button id='copyBtn' ${disabledCopy ? 'disabled' : ''}>Copiar</button>
+    <button id='editBtn' class='${state.editing ? 'active' : ''}' title='Marca en naranja lo editable para preparar cambios.'>${state.editing ? 'Salir edición' : 'Editar'}</button>
   </div>`;
 }
 
@@ -179,7 +224,7 @@ function renderTab() {
   const tab = state.activeTab;
   const t = state.turn || {};
   let html = toolbarHtml();
-  if (tab === "Chat") html += `<div class='panel'><div class='card' id='chatHistory'>${state.dialogue.map((d) => `<div class='msg ${d.role}'>${d.role === "user" ? "Usuario" : "IA"}: ${escapeHtml(d.text || "")}</div>`).join("")}${state.waitingReply ? "<div class='msg assistant pending'>IA: pensando...</div>" : ""}</div><div class='card'><textarea id='chatInput' placeholder='Escribe tu mensaje...'>${escapeHtml(state.chatDraft)}</textarea><div class='sendRow'><span class='hint'>El próximo mensaje se envía con versión v${state.overrides.workspace_version || 1}.</span><button id='sendBtn'>Enviar</button></div></div></div>`;
+  if (tab === "Chat") html += `<div class='panel'><div class='card' id='chatHistory'>${state.dialogue.map((d) => `<div class='msg ${d.role}'>${d.role === "user" ? "Usuario" : "IA"}: ${escapeHtml(d.text || "")}</div>`).join("")}${state.waitingReply ? "<div class='msg assistant pending'>IA: pensando...</div>" : ""}</div><div class='card'><textarea id='chatInput' placeholder='Escribe tu mensaje...'>${escapeHtml(state.chatDraft)}</textarea><div class='sendRow'><span class='hint'>El próximo mensaje se envía con contexto ${escapeHtml(selectedSession()?.base_context?.context_id || state.selectedContextId)} · versión v${state.overrides.workspace_version || 1}.</span><button id='sendBtn'>Enviar</button></div></div></div>`;
   if (tab === "Timeline") html += `<div class='card'>${(t.logs || []).map((l) => `<div class='timeline-item ${statusClass(l.source, l.status)}'><b>${l.node_name}</b> · ${l.status} · ${l.latency_ms}ms · ${l.source}</div>`).join("") || "Sin datos"}</div>`;
   if (tab === "Nodos") html += `<div class='grid2'>${Object.entries(t.nodes || {}).map(([k, v]) => `<div class='card'><h3>${k}</h3><pre>${escapeHtml(JSON.stringify(v, null, 2))}</pre></div>`).join("")}</div>`;
   if (tab === "Guardrails") html += `<div class='grid2'><div class='card'><h3>Input</h3><pre>${escapeHtml(JSON.stringify({decision:t.input_guardrail_decision,reasons:t.input_guardrail_reasons,triggered:t.input_guardrail_triggered,moderation:t.input_moderation_used},null,2))}</pre></div><div class='card'><h3>Output</h3><pre>${escapeHtml(JSON.stringify({decision:t.output_guardrail_decision,reasons:t.output_guardrail_reasons,triggered:t.output_guardrail_triggered,rewrite:t.output_guardrail_rewrite_applied,enforcement_mode:t.output_guardrail_enforcement_mode,enforcement_action:t.output_guardrail_enforcement_action,observed_not_applied_rules:t.output_guardrail_observed_not_applied_rules,enforced_rules:t.output_guardrail_enforced_rules,output_changed:t.output_guardrail_output_changed,moderation:t.output_moderation_used},null,2))}</pre></div></div>`;
@@ -209,7 +254,7 @@ function renderTab() {
     const found = (state.draftEntries || []).find((e) => e.category === "prompt" && e.key === p.node);
     const val = found ? found.value : p.base_text;
     const changed = (found?.value ?? p.base_text) !== p.base_text;
-    return `<div class='card ${state.editing ? "editable" : ""} ${changed ? "changed" : ""}'><h3>${p.node} · base editable</h3><textarea class='promptTextarea' data-node='${p.node}' ${state.editing ? "" : "disabled"}>${escapeHtml(val)}</textarea></div>`;
+    return `<div class='card ${state.editing ? "editable" : ""} ${changed ? "changed" : ""}'><h3>${p.node} · base editable · ${escapeHtml(selectedSession()?.base_context?.context_id || state.selectedContextId)}</h3><textarea class='promptTextarea' data-node='${p.node}' ${state.editing ? "" : "disabled"}>${escapeHtml(val)}</textarea></div>`;
   }).join("")}</div>`;
   if (tab === "Cambios") html += renderChanges();
   if (tab === "Diálogo") html += `<div class='card'>${state.dialogue.map((d) => `<div class='msg ${d.role}'><b>${d.role}:</b> ${escapeHtml(d.text || "")}</div>`).join("")}</div>`;
@@ -234,7 +279,7 @@ function renderChanges() {
   const changedConfig = (state.draftEntries || []).filter((e) => e.category === "config");
   const changedCtx = (state.draftEntries || []).filter((e) => e.category === "contextual");
   return `<div class='panel'>
-    <div class='card'>Estás trabajando sobre <b>v${state.overrides.workspace_version || 1}</b>. El próximo mensaje usará esta versión actual.</div>
+    <div class='card'>Estás trabajando sobre <b>v${state.overrides.workspace_version || 1}</b> en el contexto <b>${escapeHtml(selectedSession()?.base_context?.context_id || state.selectedContextId)}</b>. El próximo mensaje usará esta versión actual.</div>
     <div class='card'><h3>Base</h3><div>${base ? `Turno ${base.index} · v${base.version || 1}` : "Sin base detectada"}</div></div>
     <div class='card'><h3>Cambios de prompts</h3><pre>${escapeHtml(JSON.stringify(changedPrompts, null, 2))}</pre></div>
     <div class='card'><h3>Cambios de config</h3><pre>${escapeHtml(JSON.stringify(changedConfig, null, 2))}</pre></div>
@@ -276,6 +321,15 @@ function bindEvents() {
     renderTabs(); renderTopbar(); renderTab(); bindEvents();
   };
 
+  byId('contextSelector')?.addEventListener('change', (e) => { state.selectedContextId = e.target.value; renderTopbar(); bindEvents(); });
+
+  byId('applyContextBtn')?.addEventListener('click', async () => {
+    const current = selectedSession();
+    const requiresFresh = current?.base_context?.context_id && current.base_context.context_id !== state.selectedContextId;
+    await ensureOptimizerSessionForContext(state.selectedContextId, { forceNew: Boolean(requiresFresh) });
+    await refresh({ autoSelect: true }); renderTopbar(); renderTab(); bindEvents();
+  });
+
   byId("turnSelector")?.addEventListener("change", async (e) => {
     state.selectedTurnId = e.target.value;
     state.liveFollow = false;
@@ -293,7 +347,7 @@ function bindEvents() {
     if (state.overrides.mode === "mirror") {
       const s = selectedSession();
       if (!s) return;
-      await api("/sandbox/clone", { method: "POST", body: JSON.stringify({ optimizer_session_id: state.optimizerSessionId, source_user_id: s.user_id, source_session_id: s.session_id, source_conversation_id: state.selectedConversation || null }) });
+      await api('/sandbox/clone', { method: 'POST', body: JSON.stringify({ optimizer_session_id: state.optimizerSessionId, source_user_id: s.user_id, source_session_id: s.session_id, source_conversation_id: state.selectedConversation || null, context_id: s.base_context?.context_id || state.selectedContextId }) });
       await api(`/overrides/${state.optimizerSessionId}`, { method: "PUT", body: JSON.stringify({ mode: "sandbox", entries: state.overrides.entries || [] }) });
       state.editing = true;
     } else state.editing = !state.editing;
@@ -307,7 +361,7 @@ function bindEvents() {
   });
   byId("newConvBtn")?.addEventListener("click", async () => {
     const s = selectedSession(); if (!s) return;
-    await api("/sandbox/new_conversation", { method: "POST", body: JSON.stringify({ optimizer_session_id: state.optimizerSessionId, user_id: s.user_id, session_id: s.session_id }) });
+    await api('/sandbox/new_conversation', { method: 'POST', body: JSON.stringify({ optimizer_session_id: state.optimizerSessionId, user_id: s.user_id, session_id: s.session_id, context_id: s.base_context?.context_id || state.selectedContextId }) });
     await refresh({ autoSelect: true }); renderTopbar(); renderTab(); bindEvents();
   });
   byId("saveCaseBtn")?.addEventListener("click", async () => {
