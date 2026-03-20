@@ -4,7 +4,7 @@ from typing import Any
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sessions.state import get_session_state, SessionState
+from sessions.state import SessionState, get_session_state, get_session_store
 from sessions.surface_scope import ensure_session_surface
 
 from ..orchestration.flow_config import build_negotiation_pipeline_config
@@ -130,9 +130,8 @@ def new_conversation_session(*, optimizer_session_id: str, user_id: str, session
         "preferred_conversation_id": None,
         "base_context": base_context,
     }
-    from sessions.state import SESSIONS
     ensure_session_surface(state=new_state, surface='optimizador')
-    SESSIONS[(user_id, new_session_id)] = new_state
+    get_session_store().save(new_state)
     _ = state
     return {
         "session_key": storage.session_key(user_id, new_session_id),
