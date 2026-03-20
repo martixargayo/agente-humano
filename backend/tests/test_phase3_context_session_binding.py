@@ -40,13 +40,17 @@ class Phase3ContextSessionBindingTests(unittest.TestCase):
         )
 
     def test_existing_session_reuses_same_bound_context(self) -> None:
-        services.ensure_session(user_id="u_reuse", session_id="s_reuse")
+        first_payload = services.ensure_session(user_id="u_reuse", session_id="s_reuse")
 
         first = get_session_state(user_id="u_reuse", session_id="s_reuse").world_state[NEGOTIATION_CONTEXT_WORLD_STATE_KEY].copy()
-        services.ensure_session(user_id="u_reuse", session_id="s_reuse")
+        second_payload = services.ensure_session(user_id="u_reuse", session_id="s_reuse")
         second = get_session_state(user_id="u_reuse", session_id="s_reuse").world_state[NEGOTIATION_CONTEXT_WORLD_STATE_KEY].copy()
 
         self.assertEqual(first, second)
+        self.assertEqual(first_payload["session_bootstrap_state"], "new")
+        self.assertFalse(first_payload["existing_session"])
+        self.assertEqual(second_payload["session_bootstrap_state"], "rehydrated")
+        self.assertTrue(second_payload["existing_session"])
 
     def test_existing_session_rebootstrap_with_different_context_is_rejected_without_silent_mix(self) -> None:
         services.ensure_session(user_id="u_conflict", session_id="s_conflict")
@@ -116,7 +120,24 @@ class Phase3ContextSessionBindingTests(unittest.TestCase):
         self.assertEqual(payload["conversation_id"], "conv-observable")
         self.assertEqual(payload["previous_response_id"], "resp-observable")
         self.assertEqual(state.world_state["negotiation_canonical"], canonical)
-        self.assertEqual(set(payload.keys()), {"user_id", "session_id", "trace_count", "last_updated", "conversation_id", "previous_response_id", "context_id", "public_slug", "presentation_config"})
+        self.assertEqual(
+            set(payload.keys()),
+            {
+                "user_id",
+                "session_id",
+                "trace_count",
+                "last_updated",
+                "session_bootstrap_state",
+                "existing_session",
+                "conversation_id",
+                "previous_response_id",
+                "context_id",
+                "public_slug",
+                "presentation_config",
+            },
+        )
+        self.assertEqual(payload["session_bootstrap_state"], "rehydrated")
+        self.assertTrue(payload["existing_session"])
 
     def test_run_turn_backfills_and_reuses_session_context_without_changing_turn_contract_surface(self) -> None:
         state = get_session_state(user_id="u_turn", session_id="s_turn")

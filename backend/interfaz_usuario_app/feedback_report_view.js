@@ -133,6 +133,11 @@
     document.head.appendChild(style);
   }
 
+  function getFeedbackReportStyles() {
+    ensureStyles();
+    return document.getElementById('feedback-report-view-styles')?.textContent || '';
+  }
+
   function escapeHtml(value) {
     return String(value || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
   }
@@ -302,6 +307,127 @@
     tooltip.style.top = `${top}px`;
   }
 
+  function buildDetachedReportRoot(report) {
+    const root = document.createElement('div');
+    root.style.width = '1180px';
+    root.style.background = '#FFFFFF';
+    renderReport(root, report);
+    return root;
+  }
+
+  function serializeReportToHtml(report) {
+    if (!report) return '';
+    const detachedRoot = buildDetachedReportRoot(report);
+    const styles = getFeedbackReportStyles();
+    return `<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Evaluación de tu desempeño</title>
+    <style>${styles}</style>
+  </head>
+  <body>
+    ${detachedRoot.outerHTML}
+  </body>
+</html>`;
+  }
+
+  function serializeReportToJson(report) {
+    return JSON.stringify(report || {}, null, 2);
+  }
+
+  function triggerDownload(filename, blob, { targetWindow = window } = {}) {
+    const url = URL.createObjectURL(blob);
+    const link = targetWindow.document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    targetWindow.document.body.appendChild(link);
+    link.click();
+    link.remove();
+    targetWindow.setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
+  function downloadReportHtml(report, options = {}) {
+    const html = serializeReportToHtml(report);
+    triggerDownload(options.filename || 'evaluacion-desempeno.html', new Blob([html], { type: 'text/html;charset=utf-8' }), options);
+    return html;
+  }
+
+  function downloadReportJson(report, options = {}) {
+    const json = serializeReportToJson(report);
+    triggerDownload(options.filename || 'evaluacion-desempeno.json', new Blob([json], { type: 'application/json;charset=utf-8' }), options);
+    return json;
+  }
+
+  async function captureReportAsPng(report, options = {}) {
+    if (!report) throw new Error('No hay informe para exportar.');
+
+    const detachedRoot = buildDetachedReportRoot(report);
+    detachedRoot.style.margin = '0';
+    detachedRoot.style.padding = '0';
+    detachedRoot.style.position = 'fixed';
+    detachedRoot.style.left = '-100000px';
+    detachedRoot.style.top = '0';
+    detachedRoot.style.zIndex = '-1';
+    document.body.appendChild(detachedRoot);
+
+    try {
+      const rect = detachedRoot.getBoundingClientRect();
+      const width = Math.max(1180, Math.ceil(rect.width || detachedRoot.scrollWidth || 1180));
+      const height = Math.max(760, Math.ceil(rect.height || detachedRoot.scrollHeight || 760));
+      const svgMarkup = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+          <foreignObject width="100%" height="100%">
+            <div xmlns="http://www.w3.org/1999/xhtml">
+              <style>${getFeedbackReportStyles()}</style>
+              ${detachedRoot.outerHTML}
+            </div>
+          </foreignObject>
+        </svg>
+      `;
+      const svgBlob = new Blob([svgMarkup], { type: 'image/svg+xml;charset=utf-8' });
+      const svgUrl = URL.createObjectURL(svgBlob);
+
+      try {
+        const image = await new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = () => reject(new Error('No se pudo rasterizar el informe a PNG.'));
+          img.src = svgUrl;
+        });
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('Canvas 2D no disponible para exportar PNG.');
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(image, 0, 0, width, height);
+
+        const pngBlob = await new Promise((resolve, reject) => {
+          canvas.toBlob((blob) => {
+            if (blob) resolve(blob);
+            else reject(new Error('No se pudo generar el PNG del informe.'));
+          }, 'image/png');
+        });
+
+        return { blob: pngBlob, width, height };
+      } finally {
+        URL.revokeObjectURL(svgUrl);
+      }
+    } finally {
+      detachedRoot.remove();
+    }
+  }
+
+  async function downloadReportPng(report, options = {}) {
+    const png = await captureReportAsPng(report, options);
+    triggerDownload(options.filename || 'evaluacion-desempeno.png', png.blob, options);
+    return png;
+  }
+
   function renderReport(container, report, options = {}) {
     if (!container || !report) return;
     ensureStyles();
@@ -426,12 +552,22 @@
         if (stickyIndex === null) tooltip.classList.add('hidden');
       });
 
-      document.addEventListener('click', (ev) => {
-        if (!(ev.target instanceof Node) || !chartShell.contains(ev.target)) {
-          stickyIndex = null;
-          tooltip.classList.add('hidden');
+      if (container.isConnected) {
+        if (typeof container.__feedbackOutsideClickCleanup === 'function') {
+          container.__feedbackOutsideClickCleanup();
         }
-      });
+        const onDocumentClick = (ev) => {
+          if (!(ev.target instanceof Node) || !chartShell.contains(ev.target)) {
+            stickyIndex = null;
+            tooltip.classList.add('hidden');
+          }
+        };
+        document.addEventListener('click', onDocumentClick);
+        container.__feedbackOutsideClickCleanup = () => {
+          document.removeEventListener('click', onDocumentClick);
+          container.__feedbackOutsideClickCleanup = null;
+        };
+      }
     } else {
       chart.remove();
       tooltip.classList.remove('hidden');
@@ -446,5 +582,13 @@
     if (typeof options.onRendered === 'function') options.onRendered();
   }
 
-  global.FeedbackReportView = { renderReport };
+  global.FeedbackReportView = {
+    renderReport,
+    serializeReportToHtml,
+    serializeReportToJson,
+    downloadReportHtml,
+    downloadReportJson,
+    captureReportAsPng,
+    downloadReportPng,
+  };
 })(window);

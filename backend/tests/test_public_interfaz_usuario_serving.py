@@ -41,7 +41,11 @@ class PublicInterfazUsuarioServingTests(unittest.TestCase):
         self.assertIn('function bootstrapPayload()', app_js.text)
 
         self.assertEqual(feedback_js.status_code, 200)
-        self.assertIn('global.FeedbackReportView = { renderReport }', feedback_js.text)
+        self.assertIn('global.FeedbackReportView = {', feedback_js.text)
+        self.assertIn('renderReport,', feedback_js.text)
+        self.assertIn('serializeReportToHtml', feedback_js.text)
+        self.assertIn('downloadReportPng', feedback_js.text)
+        self.assertIn('captureReportAsPng', feedback_js.text)
 
         self.assertEqual(avatar_bootstrap_js.status_code, 200)
         self.assertIn('createAvatarRuntime', avatar_bootstrap_js.text)
@@ -56,3 +60,20 @@ class PublicInterfazUsuarioServingTests(unittest.TestCase):
         self.assertIn('/interfaz_usuario/app.js', body)
         self.assertIn('/interfaz_usuario/feedback_report_view.js', body)
         self.assertIn('/interfaz_usuario/avatar_runtime/bootstrap.js', body)
+
+    def test_report_screen_exposes_export_actions_and_embed_final_result_messages(self) -> None:
+        page = self.client.get('/interfaz_usuario/')
+        self.assertEqual(page.status_code, 200)
+        body = page.text
+        self.assertIn('id="feedbackDownloadHtmlBtn"', body)
+        self.assertIn('id="feedbackDownloadJsonBtn"', body)
+        self.assertIn('id="feedbackDownloadPngBtn"', body)
+        self.assertIn('id="feedbackBackBtn"', body)
+
+        app_js = self.client.get('/interfaz_usuario/app.js')
+        self.assertEqual(app_js.status_code, 200)
+        self.assertIn("emitEmbedMessage('final_result_available'", app_js.text)
+        self.assertIn("emitEmbedMessage('final_result', payload)", app_js.text)
+        self.assertIn('function downloadCurrentReport(format)', app_js.text)
+        self.assertIn('summary_html: serializedHtml', app_js.text)
+        self.assertIn('payloadjson: report', app_js.text)

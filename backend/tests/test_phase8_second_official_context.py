@@ -181,10 +181,12 @@ class Phase8SecondOfficialContextTests(unittest.TestCase):
             _run_pipeline_from_bundle(evaluation_id='eval-new', bundle=bundle)
 
         report = REPOSITORY.get_report(evaluation_id='eval-new')
+        resolved_context = resolve_negotiation_context(NEW_CONTEXT_ID)
         self.assertEqual(bundle.domain_context.context_id, NEW_CONTEXT_ID)
         self.assertIn(NEW_CONTEXT_ID, str(assets.core_prompt_path))
         self.assertIn(NEW_CONTEXT_ID, str(assets.trajectory_prompt_path))
-        self.assertIn('validación multi-context', rubric.metadata.case_title)
+        self.assertEqual(rubric.metadata.case_title, 'Negociación guiada por acuerdos sostenibles')
+        self.assertEqual(resolved_context.public_slug, NEW_PUBLIC_SLUG)
         self.assertEqual(report.provenance.context_id, NEW_CONTEXT_ID)
         self.assertEqual(report.provenance.flow_id, 'negociacion')
 

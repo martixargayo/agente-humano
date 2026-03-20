@@ -1,11 +1,69 @@
 const $ = (id) => document.getElementById(id);
 
+const SessionBootstrapState = {
+  NEW: 'new',
+  REHYDRATED: 'rehydrated',
+  UNKNOWN: 'unknown',
+};
+
+const PARENT_EMBED_ORIGIN = 'https://academia.gestionce.com';
+const EMBED_NAMESPACE = 'gestionce.simulator';
+const EMBED_MESSAGE_VERSION = 1;
+
+class ApiError extends Error {
+  constructor(message, options = {}) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = options.status ?? null;
+    this.errorCode = options.errorCode ?? null;
+    this.retryAfterSeconds = options.retryAfterSeconds ?? null;
+    this.detail = options.detail ?? null;
+    this.headers = options.headers ?? {};
+  }
+}
+
 async function api(path, opts = {}) {
   const r = await fetch(`/api/interfaz_usuario${path}`, {
     headers: { 'Content-Type': 'application/json' },
     ...opts,
   });
-  if (!r.ok) throw new Error(await r.text());
+  if (!r.ok) {
+    const contentType = r.headers.get('content-type') || '';
+    let bodyText = '';
+    let bodyJson = null;
+
+    try {
+      if (contentType.includes('application/json')) {
+        bodyJson = await r.json();
+      } else {
+        bodyText = await r.text();
+      }
+    } catch (_) {
+      bodyText = '';
+    }
+
+    const detail = bodyJson?.detail ?? bodyJson ?? bodyText;
+    const errorCode = typeof detail?.error === 'string'
+      ? detail.error
+      : (typeof bodyJson?.error === 'string' ? bodyJson.error : null);
+    const retryAfterHeader = r.headers.get('Retry-After');
+    const retryAfterSeconds = Number.isFinite(Number(detail?.retry_after_seconds))
+      ? Number(detail.retry_after_seconds)
+      : (Number.isFinite(Number(retryAfterHeader)) ? Number(retryAfterHeader) : null);
+    const message = typeof detail === 'string'
+      ? detail
+      : (typeof detail?.message === 'string' ? detail.message : `HTTP ${r.status}`);
+
+    throw new ApiError(message, {
+      status: r.status,
+      errorCode,
+      retryAfterSeconds,
+      detail,
+      headers: {
+        retry_after: retryAfterHeader,
+      },
+    });
+  }
   return r.json();
 }
 
@@ -23,12 +81,21 @@ function applyBootstrapIdentity(out) {
   if (typeof out.user_id === 'string') $('userId').value = out.user_id;
   if (typeof out.session_id === 'string') $('sessionId').value = out.session_id;
   if (out.user_id && out.session_id) lastSessionKey = `${out.user_id}::${out.session_id}`;
+  setBootstrapSessionState(out);
 }
 
 function readPublicSlugFromUrl() {
   const path = window.location.pathname.replace(/\/+$/, '');
   const match = path.match(/^\/interfaz_usuario\/([^/]+)$/);
   return match ? decodeURIComponent(match[1]) : null;
+}
+
+function readEmbedModeFromUrl() {
+  const url = new URL(window.location.href);
+  const raw = (url.searchParams.get('embed') || '').trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on', 'embed'].includes(raw)) return true;
+  if (['0', 'false', 'no', 'off'].includes(raw)) return false;
+  return null;
 }
 
 function bootstrapPayload() {
@@ -123,6 +190,7 @@ let orbLevel = 0;
 let finalizePopoverOpen = false;
 let feedbackPollingTimer = null;
 let feedbackEvaluationId = null;
+let feedbackReportSnapshot = null;
 let feedbackFloatingTimer = null;
 let feedbackQuadrantCursor = 0;
 let audioCtx = null;
@@ -160,6 +228,13 @@ let audioDevicePopoverPollTimer = null;
 let audioDeviceSwitchInFlight = false;
 let audioDeviceToastTimer = null;
 let currentPresentationConfig = null;
+let consolidatedSessionIdentity = null;
+let sessionBusyState = null;
+let sessionBusyTimer = null;
+let embedModeActive = false;
+let embedReadySessionKey = '';
+let embedHeightRaf = null;
+let lastEmbeddedHeight = 0;
 const LAST_DEVICE_STORAGE_KEY = 'interfaz_usuario:last_audio_input_device';
 
 const ui = {
@@ -248,6 +323,7 @@ function isMicActuallyRecording() {
 function updateReplyText(text) {
   ui.lastReply.textContent = text;
   ui.replyContainer.classList.toggle('hidden', !text);
+  scheduleEmbedHeightEmission('reply');
 }
 
 function getPresentationVoiceConfig() {
@@ -286,6 +362,276 @@ function initAvatarRuntimeOnce(presentationConfig) {
   return initRuntime({ presentationConfig, stageEl: $('stage') });
 }
 
+function normalizeBootstrapSessionState(raw) {
+  if (raw === SessionBootstrapState.NEW || raw === SessionBootstrapState.REHYDRATED) return raw;
+  return SessionBootstrapState.UNKNOWN;
+}
+
+function setBootstrapSessionState(out) {
+  if (!out || typeof out !== 'object') return;
+
+  const nextIdentity = {
+    user_id: typeof out.user_id === 'string' ? out.user_id : '',
+    session_id: typeof out.session_id === 'string' ? out.session_id : '',
+    trace_count: Number.isFinite(Number(out.trace_count)) ? Number(out.trace_count) : 0,
+    session_bootstrap_state: normalizeBootstrapSessionState(out.session_bootstrap_state),
+    existing_session: out.existing_session === true,
+    conversation_id: typeof out.conversation_id === 'string' && out.conversation_id.trim() ? out.conversation_id : null,
+    previous_response_id: typeof out.previous_response_id === 'string' && out.previous_response_id.trim() ? out.previous_response_id : null,
+    context_id: typeof out.context_id === 'string' ? out.context_id : null,
+    public_slug: typeof out.public_slug === 'string' ? out.public_slug : null,
+    last_updated: typeof out.last_updated === 'string' ? out.last_updated : null,
+    bootstrapped_at: new Date().toISOString(),
+  };
+
+  if (!nextIdentity.user_id || !nextIdentity.session_id) {
+    consolidatedSessionIdentity = null;
+    document.documentElement.dataset.sessionBootstrapState = SessionBootstrapState.UNKNOWN;
+    return;
+  }
+
+  consolidatedSessionIdentity = nextIdentity;
+  document.documentElement.dataset.sessionBootstrapState = nextIdentity.session_bootstrap_state;
+  document.documentElement.dataset.sessionReady = '1';
+}
+
+function resetBootstrapSessionState() {
+  consolidatedSessionIdentity = null;
+  document.documentElement.dataset.sessionBootstrapState = SessionBootstrapState.UNKNOWN;
+  document.documentElement.dataset.sessionReady = '0';
+}
+
+function hasConsolidatedSessionIdentity() {
+  return Boolean(consolidatedSessionIdentity?.user_id && consolidatedSessionIdentity?.session_id);
+}
+
+function getSessionCorrelationMeta() {
+  if (!hasConsolidatedSessionIdentity()) return null;
+  return { ...consolidatedSessionIdentity };
+}
+
+function formatBootstrapMeta(identity) {
+  if (!identity) return 'session=uninitialized';
+  const stateLabel = identity.session_bootstrap_state === SessionBootstrapState.REHYDRATED ? 'rehydrated' : 'new';
+  return [
+    `session=${identity.session_id}`,
+    `bootstrap=${stateLabel}`,
+    `existing=${identity.existing_session ? 'yes' : 'no'}`,
+    `traces=${identity.trace_count}`,
+    `conversation_id=${identity.conversation_id || '-'}`,
+    `context=${identity.context_id || '-'}`,
+  ].join(' ');
+}
+
+function updateBootstrapMeta(out = null) {
+  const meta = out ? getSessionCorrelationMeta() : consolidatedSessionIdentity;
+  $('meta').textContent = formatBootstrapMeta(meta);
+}
+
+function notifyBootstrapSessionReady() {
+  const detail = getSessionCorrelationMeta();
+  if (!detail) return;
+  window.dispatchEvent(new CustomEvent('interfaz-usuario-session-ready', { detail }));
+}
+
+function isEmbeddedRuntime() {
+  return window.parent && window.parent !== window;
+}
+
+function detectEmbedMode() {
+  const explicit = readEmbedModeFromUrl();
+  if (explicit !== null) return explicit;
+  return isEmbeddedRuntime();
+}
+
+function applyEmbedMode() {
+  embedModeActive = detectEmbedMode();
+  document.documentElement.dataset.embedMode = embedModeActive ? '1' : '0';
+  if (document.body) document.body.dataset.embedMode = embedModeActive ? '1' : '0';
+}
+
+function buildEmbedEnvelope(type, payload = {}) {
+  const correlation = getSessionCorrelationMeta();
+  const sessionId = correlation?.session_id || null;
+  const bootstrapCorrelation = correlation?.bootstrapped_at || 'no-bootstrap';
+  return {
+    v: EMBED_MESSAGE_VERSION,
+    ns: EMBED_NAMESPACE,
+    type,
+    event_id: `${type}:${Date.now()}:${Math.random().toString(16).slice(2, 10)}`,
+    correlation_id: sessionId ? `${sessionId}:${bootstrapCorrelation}` : bootstrapCorrelation,
+    session_id: sessionId,
+    conversation_id: correlation?.conversation_id || null,
+    context_id: correlation?.context_id || null,
+    public_slug: correlation?.public_slug || null,
+    payload,
+  };
+}
+
+function emitEmbedMessage(type, payload = {}) {
+  if (!embedModeActive || !isEmbeddedRuntime()) return;
+  try {
+    window.parent.postMessage(buildEmbedEnvelope(type, payload), PARENT_EMBED_ORIGIN);
+  } catch (err) {
+    console.warn('[embed] No se pudo emitir mensaje al padre', err);
+  }
+}
+
+function emitParentEmbedError(code, message, extra = {}) {
+  emitEmbedMessage('error', {
+    code,
+    message,
+    ...extra,
+  });
+}
+
+function isSessionBusyError(err) {
+  return err instanceof ApiError && err.status === 423 && err.errorCode === 'session_busy';
+}
+
+function clearSessionBusyTimer() {
+  if (!sessionBusyTimer) return;
+  window.clearTimeout(sessionBusyTimer);
+  sessionBusyTimer = null;
+}
+
+function getActiveSessionBusyState() {
+  if (!sessionBusyState) return null;
+  if (sessionBusyState.untilMs !== null && Date.now() >= sessionBusyState.untilMs) {
+    sessionBusyState = null;
+    clearSessionBusyTimer();
+    document.documentElement.dataset.sessionBusy = '0';
+    cleanupSessionBusyUx();
+    return null;
+  }
+  return sessionBusyState;
+}
+
+function clearSessionBusyState() {
+  const previousState = sessionBusyState;
+  sessionBusyState = null;
+  clearSessionBusyTimer();
+  document.documentElement.dataset.sessionBusy = '0';
+  cleanupSessionBusyUx(previousState);
+}
+
+function formatSessionBusyMessage(state) {
+  if (!state) return '';
+  const seconds = Number.isFinite(Number(state.retryAfterSeconds)) ? Number(state.retryAfterSeconds) : null;
+  const retryLabel = seconds && seconds > 0
+    ? ` Reintenta en ${seconds} s.`
+    : ' Espera unos segundos y reintenta.';
+  return `La sesión está ocupada en otra ejecución.${retryLabel}`;
+}
+
+function applySessionBusyUx(state, { source = 'runtime' } = {}) {
+  const message = formatSessionBusyMessage(state);
+  if (ui.entryError && isEntryOverlayVisible()) ui.entryError.textContent = message;
+  if (ui.statusText) ui.statusText.textContent = 'Sesión ocupada';
+  updateReplyText(message);
+
+  if (source === 'feedback' || !$('feedbackErrorScreen')?.classList.contains('hidden')) {
+    $('feedbackErrorMessage').textContent = message;
+    showFeedbackView('error');
+  }
+
+  $('meta').textContent = `${formatBootstrapMeta(getSessionCorrelationMeta())} session_busy=yes retry_after=${state.retryAfterSeconds ?? '-'}`;
+}
+
+function cleanupSessionBusyUx(previousState = null) {
+  const busyMessage = previousState ? formatSessionBusyMessage(previousState) : null;
+  if (busyMessage && ui.entryError?.textContent === busyMessage) ui.entryError.textContent = '';
+  if (ui.statusText?.textContent === 'Sesión ocupada') {
+    ui.statusText.textContent = currentInputMode === InputMode.TALK && isMicActuallyRecording() ? 'Escuchando…' : 'Listo';
+  }
+  if (busyMessage && ui.lastReply?.textContent === busyMessage) updateReplyText('');
+  if (busyMessage && $('feedbackErrorMessage')?.textContent === busyMessage) {
+    $('feedbackErrorMessage').textContent = 'Ha ocurrido un error durante el proceso.';
+  }
+  updateBootstrapMeta();
+}
+
+function setSessionBusyState(err, { source = 'runtime' } = {}) {
+  const retryAfterSeconds = Number.isFinite(Number(err?.retryAfterSeconds))
+    ? Math.max(1, Number(err.retryAfterSeconds))
+    : null;
+  const untilMs = retryAfterSeconds ? Date.now() + retryAfterSeconds * 1000 : null;
+  sessionBusyState = {
+    source,
+    retryAfterSeconds,
+    untilMs,
+    session_id: err?.detail?.session_id || getSessionCorrelationMeta()?.session_id || null,
+    lock_backend: err?.detail?.lock_backend || null,
+  };
+  document.documentElement.dataset.sessionBusy = '1';
+  clearSessionBusyTimer();
+  if (untilMs !== null) {
+    sessionBusyTimer = window.setTimeout(() => {
+      clearSessionBusyState();
+      updateBootstrapMeta();
+      updateUi();
+    }, Math.max(250, untilMs - Date.now()));
+  }
+  applySessionBusyUx(sessionBusyState, { source });
+  emitParentEmbedError('session_busy', formatSessionBusyMessage(sessionBusyState), {
+    retry_after_seconds: retryAfterSeconds,
+    lock_backend: sessionBusyState.lock_backend,
+    source,
+  });
+}
+
+function getVisibleSurfaceElements() {
+  return ['mainApp', 'feedbackLoadingScreen', 'feedbackReportScreen', 'feedbackErrorScreen']
+    .map((id) => $(id))
+    .filter((el) => el && !el.classList.contains('hidden'));
+}
+
+function measureEmbeddedHeight() {
+  const surfaces = getVisibleSurfaceElements();
+  const values = [];
+  surfaces.forEach((el) => {
+    values.push(el.scrollHeight || 0, el.offsetHeight || 0, Math.ceil(el.getBoundingClientRect().height || 0));
+  });
+  values.push(
+    document.body?.scrollHeight || 0,
+    document.documentElement?.scrollHeight || 0,
+    document.body?.offsetHeight || 0,
+    document.documentElement?.offsetHeight || 0,
+  );
+  return Math.max(0, ...values.map((value) => Number(value) || 0));
+}
+
+function scheduleEmbedHeightEmission(reason = 'layout') {
+  if (!embedModeActive) return;
+  if (embedHeightRaf) window.cancelAnimationFrame(embedHeightRaf);
+  embedHeightRaf = window.requestAnimationFrame(() => {
+    embedHeightRaf = null;
+    const heightPx = Math.max(320, Math.ceil(measureEmbeddedHeight()));
+    if (Math.abs(heightPx - lastEmbeddedHeight) < 4) return;
+    lastEmbeddedHeight = heightPx;
+    emitEmbedMessage('height', { height_px: heightPx, reason });
+  });
+}
+
+function maybeEmitEmbedReady(reason = 'runtime-ready') {
+  if (!embedModeActive) return;
+  if (!hasConsolidatedSessionIdentity()) return;
+  if (!scenarioReady) return;
+  const correlation = getSessionCorrelationMeta();
+  const sessionKey = `${correlation.session_id}:${correlation.bootstrapped_at || 'boot'}`;
+  if (embedReadySessionKey === sessionKey) return;
+  embedReadySessionKey = sessionKey;
+  emitEmbedMessage('ready', {
+    route: window.location.pathname,
+    reason,
+    session_bootstrap_state: correlation.session_bootstrap_state,
+    existing_session: correlation.existing_session,
+    trace_count: correlation.trace_count,
+    embed_mode: true,
+  });
+  scheduleEmbedHeightEmission('ready');
+}
+
 function showAudioDeviceToast(message, durationMs = 3200) {
   if (!ui.audioDeviceToast) return;
   ui.audioDeviceToast.textContent = message;
@@ -295,6 +641,7 @@ function showAudioDeviceToast(message, durationMs = 3200) {
     audioDeviceToastTimer = null;
     ui.audioDeviceToast.classList.remove('visible');
   }, durationMs);
+  scheduleEmbedHeightEmission('audio-toast');
 }
 
 function getOrCreateAudioContext() {
@@ -562,6 +909,7 @@ async function playTtsWithAvatar(replyText) {
 
 function setStatusText(text) {
   ui.statusText.textContent = text;
+  scheduleEmbedHeightEmission('status');
 }
 
 function setListeningGlowEnabled(enabled) {
@@ -639,16 +987,22 @@ function updateUi() {
   ui.talkMode.classList.toggle('hidden', currentInputMode !== InputMode.TALK);
   ui.writeMode.classList.toggle('hidden', currentInputMode !== InputMode.WRITE);
 
-  const isBusy = turnInFlight || voiceTurnInFlight;
+  const sessionBusy = getActiveSessionBusyState();
+  const isBusy = turnInFlight || voiceTurnInFlight || Boolean(sessionBusy);
   const canSendText = currentInputMode === InputMode.WRITE && !isBusy;
   ui.textInput.disabled = currentInputMode !== InputMode.WRITE || isBusy;
   ui.sendTextBtn.disabled = !canSendText;
   const micOn = isMicActuallyRecording();
   ui.finishTurnBtn.disabled = !(currentInputMode === InputMode.TALK && micOn && !isBusy && !audioDeviceSwitchInFlight);
+  ui.startBtn.disabled = entryInProgress || Boolean(sessionBusy);
+  ui.modeTalk.disabled = Boolean(sessionBusy);
+  ui.modeWrite.disabled = Boolean(sessionBusy);
+  ui.finishNegotiationBtn.disabled = Boolean(sessionBusy);
   ui.inputOrb.classList.toggle('inactive', !micOn);
   setListeningGlowEnabled(micOn);
   updateFinishNegotiationButton();
   renderAudioDeviceSelector();
+  scheduleEmbedHeightEmission('ui');
 }
 
 function setInputMode(mode) {
@@ -1566,23 +1920,91 @@ function showFeedbackView(mode) {
 
   if (mode === 'loading') startFeedbackFloatingPhrases();
   else stopFeedbackFloatingPhrases();
+  scheduleEmbedHeightEmission(`view:${mode}`);
 }
 
 function renderFinalReport(report) {
   const root = $('feedbackReportRoot');
   if (!root || !window.FeedbackReportView) return;
+  feedbackReportSnapshot = report;
   window.FeedbackReportView.renderReport(root, report);
+  scheduleEmbedHeightEmission('report-render');
+}
+
+function buildFinalResultPayload(report, extra = {}) {
+  if (!report) return null;
+  const header = report.header || {};
+  const serializedHtml = window.FeedbackReportView?.serializeReportToHtml?.(report) || null;
+  return {
+    evaluation_id: feedbackEvaluationId,
+    available_exports: ['html', 'json', 'png'],
+    score_global_100: Number(header.score_global_100 || 0),
+    stars_0_5: Number(header.stars_0_5 || 0),
+    activity_name: header.activity_name || null,
+    interaction_outcome: header.interaction_outcome || null,
+    summary_2_3_lines: header.summary_2_3_lines || null,
+    report,
+    report_html: serializedHtml,
+    summary_html: serializedHtml,
+    report_json: report,
+    payloadjson: report,
+    ...extra,
+  };
+}
+
+function emitFinalResultLifecycle(report, { reason = 'report-ready' } = {}) {
+  const payload = buildFinalResultPayload(report, { reason });
+  if (!payload) return;
+  emitEmbedMessage('final_result_available', {
+    evaluation_id: payload.evaluation_id,
+    available_exports: payload.available_exports,
+    score_global_100: payload.score_global_100,
+    stars_0_5: payload.stars_0_5,
+    interaction_outcome: payload.interaction_outcome,
+    reason,
+  });
+  emitEmbedMessage('final_result', payload);
+}
+
+async function downloadCurrentReport(format) {
+  const report = feedbackReportSnapshot;
+  if (!report || !window.FeedbackReportView) return;
+
+  const actions = {
+    html: () => window.FeedbackReportView.downloadReportHtml(report),
+    json: () => window.FeedbackReportView.downloadReportJson(report),
+    png: () => window.FeedbackReportView.downloadReportPng(report),
+  };
+
+  const action = actions[format];
+  if (!action) return;
+
+  try {
+    await action();
+    emitEmbedMessage('final_result_available', {
+      evaluation_id: feedbackEvaluationId,
+      available_exports: ['html', 'json', 'png'],
+      exported_format: format,
+      reason: 'user-download',
+    });
+  } catch (err) {
+    $('feedbackErrorMessage').textContent = `No se pudo exportar el informe en ${format.toUpperCase()}: ${String(err?.message || err)}`;
+    showFeedbackView('error');
+  }
 }
 
 async function fetchEvaluationReport(evaluationId) {
   const out = await api(`/feedback/evaluations/${evaluationId}/report`, { method: 'GET' });
+  feedbackEvaluationId = evaluationId;
   showFeedbackView('report');
   renderFinalReport(out.report);
+  emitFinalResultLifecycle(out.report, { reason: 'report-fetched' });
 }
 
 async function pollEvaluationStatus(evaluationId) {
   try {
     const status = await api(`/feedback/evaluations/${evaluationId}`, { method: 'GET' });
+    clearSessionBusyState();
     setFeedbackStageText(status.status);
 
     if (status.status === 'completed') {
@@ -1601,6 +2023,11 @@ async function pollEvaluationStatus(evaluationId) {
     feedbackPollingTimer = window.setTimeout(() => pollEvaluationStatus(evaluationId), 1700);
   } catch (err) {
     stopFeedbackPolling();
+    if (isSessionBusyError(err)) {
+      setSessionBusyState(err, { source: 'feedback' });
+      updateUi();
+      return;
+    }
     $('feedbackErrorMessage').textContent = `Error de red durante la evaluación: ${String(err)}`;
     showFeedbackView('error');
   }
@@ -1608,6 +2035,7 @@ async function pollEvaluationStatus(evaluationId) {
 
 async function startFeedbackEvaluation() {
   const out = await api('/feedback/evaluations', { method: 'POST', body: JSON.stringify(ids()) });
+  clearSessionBusyState();
   feedbackEvaluationId = out.evaluation_id;
   showFeedbackView('loading');
   setFeedbackStageText(out.status);
@@ -1617,7 +2045,7 @@ async function startFeedbackEvaluation() {
 
 async function runNegotiationTurnFromText(message, { allowWhileVoiceTurn = false } = {}) {
   syncSessionBoundaryReset();
-  if (!message || turnInFlight || (voiceTurnInFlight && !allowWhileVoiceTurn)) return;
+  if (!message || turnInFlight || (voiceTurnInFlight && !allowWhileVoiceTurn)) return false;
 
   turnInFlight = true;
   updateUi();
@@ -1628,6 +2056,7 @@ async function runNegotiationTurnFromText(message, { allowWhileVoiceTurn = false
     withAvatarRuntime((runtime) => { runtime.setMode('THINKING'); runtime.setTalkLevel(0); });
 
     const out = await api('/negociacion/turn', { method: 'POST', body: JSON.stringify(payload) });
+    clearSessionBusyState();
     updateReplyText(out.reply || '');
     armFinishButton(out.finish_button_armed);
     setLatestTraceCount(out.trace_count);
@@ -1660,6 +2089,15 @@ async function runNegotiationTurnFromText(message, { allowWhileVoiceTurn = false
     }
 
     syncAvatarMode();
+    return true;
+  } catch (err) {
+    if (isSessionBusyError(err)) {
+      setSessionBusyState(err, { source: 'turn' });
+      setStatusText('Sesión ocupada');
+      updateUi();
+      return false;
+    }
+    throw err;
   } finally {
     turnInFlight = false;
     updateUi();
@@ -1667,7 +2105,7 @@ async function runNegotiationTurnFromText(message, { allowWhileVoiceTurn = false
 }
 
 async function handleSend() {
-  if (turnInFlight || voiceTurnInFlight) return;
+  if (turnInFlight || voiceTurnInFlight || getActiveSessionBusyState()) return;
   const message = ui.textInput.value.trim();
   if (!message) return;
   await runNegotiationTurnFromText(message);
@@ -1676,21 +2114,31 @@ async function handleSend() {
 
 $('bootstrap').onclick = async () => {
   syncSessionBoundaryReset();
+  if (getActiveSessionBusyState()) return;
   const out = await api('/sessions/bootstrap', { method: 'POST', body: JSON.stringify(bootstrapPayload()) });
+  clearSessionBusyState();
   applyBootstrapIdentity(out);
   currentPresentationConfig = out.presentation_config || null;
-  $('meta').textContent = `session=${out.session_id} traces=${out.trace_count} conversation_id=${out.conversation_id || '-'} context=${out.context_id || '-'}`;
+  updateBootstrapMeta(out);
+  notifyBootstrapSessionReady();
+  maybeEmitEmbedReady('manual-bootstrap');
+  updateUi();
 };
 
 $('newConv').onclick = async () => {
+  if (getActiveSessionBusyState()) return;
   const payload = ids();
   const out = await api('/negociacion/new_conversation', { method: 'POST', body: JSON.stringify(payload) });
-  $('sessionId').value = out.session_id;
-  lastSessionKey = `${payload.user_id}::${out.session_id}`;
+  clearSessionBusyState();
+  applyBootstrapIdentity(out);
+  currentPresentationConfig = out.presentation_config || currentPresentationConfig;
   resetFinishButtonArmed();
   setLatestTraceCount(0);
-  $('meta').textContent = `nueva session=${out.session_id}`;
+  updateBootstrapMeta(out);
+  notifyBootstrapSessionReady();
+  maybeEmitEmbedReady('new-conversation');
   updateReplyText('');
+  updateUi();
 };
 
 ui.startBtn.addEventListener('click', () => {
@@ -1710,7 +2158,7 @@ ui.audioDeviceTrigger?.addEventListener('click', () => {
 });
 
 ui.modeTalk.addEventListener('click', async () => {
-  if (turnInFlight || voiceTurnInFlight) return;
+  if (turnInFlight || voiceTurnInFlight || getActiveSessionBusyState()) return;
 
   setInputMode(InputMode.TALK);
   if (!hasMicPermission) return;
@@ -1729,7 +2177,7 @@ ui.modeTalk.addEventListener('click', async () => {
   }
 });
 ui.modeWrite.addEventListener('click', () => {
-  if (turnInFlight) return;
+  if (turnInFlight || getActiveSessionBusyState()) return;
   if (isRecording) {
     discardRecording = true;
     void stopVoiceCapture().finally(() => teardownMic());
@@ -1739,7 +2187,7 @@ ui.modeWrite.addEventListener('click', () => {
 
 ui.sendTextBtn.addEventListener('click', handleSend);
 async function handleFinishTurn() {
-  if (turnInFlight || voiceTurnInFlight || ui.finishTurnBtn.disabled) return;
+  if (turnInFlight || voiceTurnInFlight || ui.finishTurnBtn.disabled || getActiveSessionBusyState()) return;
   voiceTurnInFlight = true;
   updateUi();
   setStatusText('Procesando…');
@@ -1753,8 +2201,8 @@ async function handleFinishTurn() {
     if (!blob || !blob.size) throw new Error('No se capturó audio.');
     const text = await transcribeAudio(blob);
     if (!text) throw new Error('Transcripción vacía.');
-    await runNegotiationTurnFromText(text, { allowWhileVoiceTurn: true });
-    if (currentInputMode === InputMode.TALK) {
+    const turnCompleted = await runNegotiationTurnFromText(text, { allowWhileVoiceTurn: true });
+    if (turnCompleted !== false && currentInputMode === InputMode.TALK) {
       setStatusText('Escuchando…');
       await startVoiceCapture();
       updateUi();
@@ -1762,6 +2210,12 @@ async function handleFinishTurn() {
     }
   } catch (err) {
     console.error('[voice] Error procesando turno hablado', err);
+    if (isSessionBusyError(err)) {
+      setSessionBusyState(err, { source: 'turn' });
+      setStatusText('Sesión ocupada');
+      updateUi();
+      return;
+    }
     setStatusText(err?.message || 'No se pudo procesar el audio.');
     if (currentInputMode === InputMode.TALK) {
       try {
@@ -1796,27 +2250,48 @@ ui.finishNegotiationBtn.onclick = () => {
 $('finishCancelBtn').onclick = closeFinalizePopover;
 
 $('finishConfirmBtn').onclick = async () => {
-  if (!canFinalizeConversation()) return;
+  if (!canFinalizeConversation() || getActiveSessionBusyState()) return;
   closeFinalizePopover();
   try {
     await startFeedbackEvaluation();
   } catch (err) {
+    if (isSessionBusyError(err)) {
+      setSessionBusyState(err, { source: 'feedback' });
+      updateUi();
+      return;
+    }
     $('feedbackErrorMessage').textContent = `No se pudo iniciar la evaluación: ${String(err)}`;
     showFeedbackView('error');
   }
 };
 
 $('feedbackRetryBtn').onclick = async () => {
+  if (getActiveSessionBusyState()) return;
   showFeedbackView('app');
   try {
     await startFeedbackEvaluation();
   } catch (err) {
+    if (isSessionBusyError(err)) {
+      setSessionBusyState(err, { source: 'feedback' });
+      updateUi();
+      return;
+    }
     $('feedbackErrorMessage').textContent = `No se pudo reiniciar la evaluación: ${String(err)}`;
     showFeedbackView('error');
   }
 };
 
 $('feedbackBackBtnSecondary').onclick = () => showFeedbackView('app');
+$('feedbackBackBtn').onclick = () => showFeedbackView('app');
+$('feedbackDownloadHtmlBtn').onclick = () => {
+  void downloadCurrentReport('html');
+};
+$('feedbackDownloadJsonBtn').onclick = () => {
+  void downloadCurrentReport('json');
+};
+$('feedbackDownloadPngBtn').onclick = () => {
+  void downloadCurrentReport('png');
+};
 
 document.addEventListener('click', (e) => {
   if (!ui.conversationMode) return;
@@ -1835,7 +2310,7 @@ window.addEventListener('keydown', (e) => {
     return;
   }
 
-  if (e.key !== 'Enter' || e.repeat || e.shiftKey || turnInFlight || voiceTurnInFlight) return;
+  if (e.key !== 'Enter' || e.repeat || e.shiftKey || turnInFlight || voiceTurnInFlight || getActiveSessionBusyState()) return;
   const target = e.target;
   if (target instanceof HTMLTextAreaElement && currentInputMode !== InputMode.WRITE) return;
 
@@ -1862,6 +2337,8 @@ window.addEventListener('click', (ev) => {
 window.addEventListener('avatar-runtime-ready', () => {
   scenarioReady = true;
   tryResolveEntryRequest();
+  maybeEmitEmbedReady('avatar-runtime-ready');
+  scheduleEmbedHeightEmission('avatar-runtime-ready');
 });
 
 window.addEventListener('avatar-runtime-error', () => {
@@ -1877,6 +2354,8 @@ function bindRuntimeReadiness() {
     runtime.onReady(() => {
       scenarioReady = true;
       tryResolveEntryRequest();
+      maybeEmitEmbedReady('runtime-onReady');
+      scheduleEmbedHeightEmission('runtime-onReady');
     });
   }
   if (typeof runtime.onError === 'function') {
@@ -1888,6 +2367,7 @@ function bindRuntimeReadiness() {
   }
   if (typeof runtime.isReady === 'function' && runtime.isReady()) {
     scenarioReady = true;
+    maybeEmitEmbedReady('runtime-isReady');
   }
 }
 
@@ -1914,18 +2394,29 @@ if (navigator.mediaDevices?.addEventListener) {
 
 window.addEventListener('focus', () => {
   scheduleEntryDeviceRefresh('focus', 120);
+  scheduleEmbedHeightEmission('focus');
 });
 
 window.addEventListener('pageshow', () => {
   scheduleEntryDeviceRefresh('pageshow', 120);
+  scheduleEmbedHeightEmission('pageshow');
+});
+
+window.addEventListener('resize', () => {
+  scheduleEmbedHeightEmission('resize');
 });
 
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') scheduleEntryDeviceRefresh('visibilitychange', 80);
+  if (document.visibilityState === 'visible') {
+    scheduleEntryDeviceRefresh('visibilitychange', 80);
+    scheduleEmbedHeightEmission('visibilitychange');
+  }
 });
 
 (async function initInterfazUsuarioSession() {
   syncSessionBoundaryReset();
+  applyEmbedMode();
+  resetBootstrapSessionState();
   try {
     const out = await api('/sessions/bootstrap', { method: 'POST', body: JSON.stringify(bootstrapPayload()) });
     applyBootstrapIdentity(out);
@@ -1935,9 +2426,12 @@ document.addEventListener('visibilitychange', () => {
     bindRuntimeReadiness();
     resetFinishButtonArmed();
     setLatestTraceCount(out.trace_count);
-    $('meta').textContent = `session=${out.session_id} traces=${out.trace_count} conversation_id=${out.conversation_id || '-'} context=${out.context_id || '-'}`;
+    updateBootstrapMeta(out);
+    notifyBootstrapSessionReady();
+    maybeEmitEmbedReady('initial-bootstrap');
   } catch (err) {
     scenarioReady = false;
+    resetBootstrapSessionState();
     if (ui.entryError) ui.entryError.textContent = 'No se pudo preparar la interfaz. Recarga para reintentar.';
     $('meta').textContent = `bootstrap_error=${String(err)}`;
   }

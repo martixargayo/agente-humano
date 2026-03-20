@@ -110,6 +110,7 @@ def ensure_session(
     canonical = state.world_state.get("negotiation_canonical", {}) if isinstance(state.world_state, dict) else {}
     thread = canonical.get("openai_thread", {}) if isinstance(canonical, dict) else {}
     ttl_scope = "bootstrap" if existing_state is None and len(traces) == 0 else "active"
+    session_bootstrap_state = "new" if existing_state is None and len(traces) == 0 else "rehydrated"
     ttl_seconds = apply_session_ttl(state, scope=ttl_scope, reason="interfaz_usuario_bootstrap")
     logger.info(
         "interfaz_usuario_session_ready session=%s context=%s traces=%s ttl_scope=%s ttl_seconds=%s existing=%s",
@@ -125,6 +126,8 @@ def ensure_session(
         "session_id": normalized_session_id,
         "trace_count": len(traces),
         "last_updated": state.last_updated.isoformat(),
+        "session_bootstrap_state": session_bootstrap_state,
+        "existing_session": existing_state is not None,
         "conversation_id": thread.get("conversation_id") if isinstance(thread, dict) else None,
         "previous_response_id": thread.get("previous_response_id") if isinstance(thread, dict) else None,
         "context_id": resolved_context.context_id,
