@@ -337,6 +337,39 @@
     return JSON.stringify(report || {}, null, 2);
   }
 
+  function blobToDataUrl(blob) {
+    return new Promise((resolve, reject) => {
+      if (!(blob instanceof Blob)) {
+        reject(new Error('Blob PNG inválido para serializar a Data URL.'));
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === 'string' && reader.result.startsWith('data:image/png;base64,')) {
+          resolve(reader.result);
+          return;
+        }
+        reject(new Error('No se pudo convertir el PNG del informe a Data URL.'));
+      };
+      reader.onerror = () => reject(reader.error || new Error('No se pudo leer el Blob PNG.'));
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  async function waitForStableReportCapture() {
+    if (document.fonts?.ready) {
+      try {
+        await document.fonts.ready;
+      } catch (_) {
+        // Continuamos con las fuentes de fallback disponibles en runtime.
+      }
+    }
+
+    await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+    await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+  }
+
   function triggerDownload(filename, blob, { targetWindow = window } = {}) {
     const url = URL.createObjectURL(blob);
     const link = targetWindow.document.createElement('a');
@@ -362,6 +395,8 @@
 
   async function captureReportAsPng(report, options = {}) {
     if (!report) throw new Error('No hay informe para exportar.');
+
+    await waitForStableReportCapture();
 
     const detachedRoot = buildDetachedReportRoot(report);
     detachedRoot.style.margin = '0';
@@ -426,6 +461,11 @@
     const png = await captureReportAsPng(report, options);
     triggerDownload(options.filename || 'evaluacion-desempeno.png', png.blob, options);
     return png;
+  }
+
+  async function captureReportPngDataUrl(report, options = {}) {
+    const png = await captureReportAsPng(report, options);
+    return blobToDataUrl(png.blob);
   }
 
   function renderReport(container, report, options = {}) {
@@ -589,6 +629,7 @@
     downloadReportHtml,
     downloadReportJson,
     captureReportAsPng,
+    captureReportPngDataUrl,
     downloadReportPng,
   };
 })(window);

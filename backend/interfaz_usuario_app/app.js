@@ -1954,13 +1954,48 @@ function renderFinalReport(report) {
   scheduleEmbedHeightEmission('report-render');
 }
 
-function buildFinalResultPayload(report, extra = {}) {
+function transparentFallbackPngDataUrl() {
+  return 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a8S0AAAAASUVORK5CYII=';
+}
+
+function deriveFinalResultTitle(report) {
+  const header = report?.header || {};
+  return header.report_title || header.activity_name || 'Resultado final del simulador';
+}
+
+function deriveFinalResultActivityId(report, correlation = null) {
+  const candidate = correlation?.public_slug
+    || correlation?.context_id
+    || report?.provenance?.context_id
+    || report?.provenance?.flow_id
+    || null;
+  return typeof candidate === 'string' && candidate.trim() ? candidate.trim() : 'simulador';
+}
+
+async function buildFinalResultPayload(report, extra = {}) {
   if (!report) return null;
   const header = report.header || {};
+  const correlation = getSessionCorrelationMeta();
   const serializedHtml = window.FeedbackReportView?.serializeReportToHtml?.(report) || null;
+  let snapshotPngDataUrl = transparentFallbackPngDataUrl();
+  try {
+    if (window.FeedbackReportView?.captureReportPngDataUrl) {
+      snapshotPngDataUrl = await window.FeedbackReportView.captureReportPngDataUrl(report);
+    }
+  } catch (err) {
+    console.warn('[embed] No se pudo serializar el PNG final del informe; se usará fallback transparente.', err);
+  }
   return {
     evaluation_id: feedbackEvaluationId,
     available_exports: ['html', 'json', 'png'],
+    title: deriveFinalResultTitle(report),
+    activityid: deriveFinalResultActivityId(report, correlation),
+    session_id: correlation?.session_id || null,
+    conversation_id: correlation?.conversation_id || null,
+    trace_count: Number.isFinite(Number(correlation?.trace_count)) ? Number(correlation.trace_count) : null,
+    context_id: correlation?.context_id || report?.provenance?.context_id || null,
+    public_slug: correlation?.public_slug || null,
+    generated_at: new Date().toISOString(),
     score_global_100: Number(header.score_global_100 || 0),
     stars_0_5: Number(header.stars_0_5 || 0),
     activity_name: header.activity_name || null,
@@ -1971,12 +2006,13 @@ function buildFinalResultPayload(report, extra = {}) {
     summary_html: serializedHtml,
     report_json: report,
     payloadjson: report,
+    snapshot_png_dataurl: snapshotPngDataUrl,
     ...extra,
   };
 }
 
-function emitFinalResultLifecycle(report, { reason = 'report-ready' } = {}) {
-  const payload = buildFinalResultPayload(report, { reason });
+async function emitFinalResultLifecycle(report, { reason = 'report-ready' } = {}) {
+  const payload = await buildFinalResultPayload(report, { reason });
   if (!payload) return;
   emitEmbedMessage('final_result_available', {
     evaluation_id: payload.evaluation_id,
@@ -2021,7 +2057,7 @@ async function fetchEvaluationReport(evaluationId) {
   feedbackEvaluationId = evaluationId;
   showFeedbackView('report');
   renderFinalReport(out.report);
-  emitFinalResultLifecycle(out.report, { reason: 'report-fetched' });
+  await emitFinalResultLifecycle(out.report, { reason: 'report-fetched' });
 }
 
 async function pollEvaluationStatus(evaluationId) {
