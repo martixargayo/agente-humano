@@ -33,6 +33,9 @@ class FakeRedis:
         self.store: dict[str, str] = {}
         self.ttl: dict[str, int] = {}
 
+    def ping(self):
+        return True
+
     def get(self, key: str):
         return self.store.get(key)
 
@@ -261,6 +264,37 @@ def test_configure_session_store_from_env_selects_redis_when_requested() -> None
         assert fake_redis.get("session:u_env:s_env") is not None
     finally:
         redis_store_module.build_redis_client_from_url = original_builder
+
+
+def test_build_redis_client_from_url_applies_fail_fast_timeouts(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeRedisFactory:
+        @staticmethod
+        def from_url(url: str, **kwargs):
+            captured["url"] = url
+            captured.update(kwargs)
+            return object()
+
+    import sessions.redis_store as redis_store_module
+
+    original_redis = redis_store_module.Redis
+    redis_store_module.Redis = FakeRedisFactory
+    monkeypatch.setenv("SESSION_REDIS_CONNECT_TIMEOUT_SECONDS", "1.5")
+    monkeypatch.setenv("SESSION_REDIS_SOCKET_TIMEOUT_SECONDS", "2.5")
+    monkeypatch.setenv("SESSION_REDIS_HEALTH_CHECK_INTERVAL_SECONDS", "45")
+    try:
+        client = redis_store_module.build_redis_client_from_url("redis://example")
+    finally:
+        redis_store_module.Redis = original_redis
+
+    assert client is not None
+    assert captured["url"] == "redis://example"
+    assert captured["decode_responses"] is False
+    assert captured["socket_connect_timeout"] == 1.5
+    assert captured["socket_timeout"] == 2.5
+    assert captured["health_check_interval"] == 45
+    assert captured["retry_on_timeout"] is False
 
 
 

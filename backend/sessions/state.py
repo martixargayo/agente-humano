@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+import logging
 import os
 from threading import RLock
 from typing import Any, Dict, Iterable, List, Literal, Mapping, Protocol, Tuple, TypedDict
@@ -214,6 +215,7 @@ class InMemorySessionStore:
 _DEFAULT_IN_MEMORY_STORE = InMemorySessionStore()
 SESSIONS = _DEFAULT_IN_MEMORY_STORE._sessions
 _ACTIVE_SESSION_STORE: SessionStore = _DEFAULT_IN_MEMORY_STORE
+logger = logging.getLogger(__name__)
 
 # Si algún día quieres leer estos valores desde env, puedes moverlos a agent.py.
 # Aquí solo documentamos que son "parámetros de diseño".
@@ -258,6 +260,7 @@ def configure_session_store_from_env(*, force: bool = False) -> SessionStore:
 
     if backend == "memory" or (backend == "auto" and not redis_url):
         if force or not isinstance(get_session_store(), InMemorySessionStore):
+            logger.info("Using in-memory session store (backend=%s, redis_configured=%s)", backend, bool(redis_url))
             reset_session_store()
         return get_session_store()
 
@@ -270,7 +273,12 @@ def configure_session_store_from_env(*, force: bool = False) -> SessionStore:
     if not force and current.__class__.__name__ == "RedisSessionStore":
         return current
 
-    set_session_store(RedisSessionStore(build_redis_client_from_url(redis_url)))
+    redis_host = redis_url.split("@", 1)[-1] if "@" in redis_url else redis_url
+    logger.info("Configuring Redis session store for host=%s", redis_host)
+    redis_client = build_redis_client_from_url(redis_url)
+    redis_client.ping()
+    logger.info("Redis session store connectivity check succeeded for host=%s", redis_host)
+    set_session_store(RedisSessionStore(redis_client))
     return get_session_store()
 
 def export_session_envelope(state: SessionState) -> SessionEnvelope:

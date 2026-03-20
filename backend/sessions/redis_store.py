@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import os
 from typing import Any, Iterable, Protocol
 
 try:
@@ -10,6 +12,7 @@ except Exception:  # pragma: no cover - dependency can be absent in local envs u
 from .state import SessionEnvelope, SessionState, export_session_envelope, hydrate_session_state
 
 SESSION_KEY_PREFIX = "session"
+logger = logging.getLogger(__name__)
 
 
 class RedisClientProtocol(Protocol):
@@ -85,4 +88,22 @@ class RedisSessionStore:
 def build_redis_client_from_url(redis_url: str):
     if Redis is None:
         raise RuntimeError("redis_dependency_missing")
-    return Redis.from_url(redis_url, decode_responses=False)
+    connect_timeout = float(os.getenv("SESSION_REDIS_CONNECT_TIMEOUT_SECONDS", "2"))
+    socket_timeout = float(os.getenv("SESSION_REDIS_SOCKET_TIMEOUT_SECONDS", "2"))
+    health_check_interval = int(os.getenv("SESSION_REDIS_HEALTH_CHECK_INTERVAL_SECONDS", "30"))
+
+    logger.info(
+        "Configuring Redis session client with connect_timeout=%ss socket_timeout=%ss health_check_interval=%ss",
+        connect_timeout,
+        socket_timeout,
+        health_check_interval,
+    )
+
+    return Redis.from_url(
+        redis_url,
+        decode_responses=False,
+        socket_connect_timeout=connect_timeout,
+        socket_timeout=socket_timeout,
+        health_check_interval=health_check_interval,
+        retry_on_timeout=False,
+    )
