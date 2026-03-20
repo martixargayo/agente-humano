@@ -4,9 +4,14 @@ from datetime import datetime, timezone
 from uuid import uuid4
 from typing import Any
 
+import logging
+import secrets
+
 from fastapi import HTTPException
 
-from sessions.state import SESSIONS, SessionState, get_session_state
+from sessions.lifecycle import apply_session_ttl, mark_session_finalized, touch_existing_session_if_present
+from sessions.session_lock import SessionBusyError, acquire_session_execution_lock
+from sessions.state import SessionState, get_session_state, get_session_store
 from sessions.surface_scope import ensure_session_surface
 
 from negociacion.contexts import (
@@ -23,6 +28,8 @@ from .presentation_resolver import resolve_presentation_config_for_context
 from negociacion.orchestration.flow_config import build_negotiation_pipeline_config
 from negociacion.orchestration.turn_contract import TurnEntryContract, execute_turn_with_contract
 from negociacion.optimizador.storage import resolve_traces
+
+logger = logging.getLogger(__name__)
 
 
 def _resolve_bootstrap_context_id(*, context_id: str | None = None, public_slug: str | None = None) -> str:
@@ -56,14 +63,33 @@ def _resolve_bootstrap_context_id(*, context_id: str | None = None, public_slug:
     return selection.context_id
 
 
+def _normalize_external_id(raw: str | None) -> str | None:
+    value = (raw or "").strip()
+    return value or None
+
+
+def _generate_public_session_identity() -> tuple[str, str]:
+    token = secrets.token_urlsafe(18)
+    return f"iu_{token}", f"sess_{token}"
+
+
 def ensure_session(
     *,
-    user_id: str,
-    session_id: str,
+    user_id: str | None,
+    session_id: str | None,
     context_id: str | None = None,
     public_slug: str | None = None,
 ) -> dict[str, Any]:
-    state = get_session_state(user_id=user_id, session_id=session_id)
+    normalized_user_id = _normalize_external_id(user_id)
+    normalized_session_id = _normalize_external_id(session_id)
+    if normalized_user_id is None or normalized_session_id is None:
+        generated_user_id, generated_session_id = _generate_public_session_identity()
+        normalized_user_id = normalized_user_id or generated_user_id
+        normalized_session_id = normalized_session_id or generated_session_id
+
+    store = get_session_store()
+    existing_state = store.get(user_id=normalized_user_id, session_id=normalized_session_id)
+    state = existing_state or get_session_state(user_id=normalized_user_id, session_id=normalized_session_id)
     ensure_session_surface(state=state, surface='interfaz_usuario')
     existing_context = read_bound_context_from_session(state)
 
@@ -83,9 +109,20 @@ def ensure_session(
     traces = resolve_traces(state)
     canonical = state.world_state.get("negotiation_canonical", {}) if isinstance(state.world_state, dict) else {}
     thread = canonical.get("openai_thread", {}) if isinstance(canonical, dict) else {}
+    ttl_scope = "bootstrap" if existing_state is None and len(traces) == 0 else "active"
+    ttl_seconds = apply_session_ttl(state, scope=ttl_scope, reason="interfaz_usuario_bootstrap")
+    logger.info(
+        "interfaz_usuario_session_ready session=%s context=%s traces=%s ttl_scope=%s ttl_seconds=%s existing=%s",
+        f"{normalized_user_id}:{normalized_session_id}",
+        resolved_context.context_id,
+        len(traces),
+        ttl_scope,
+        ttl_seconds,
+        existing_state is not None,
+    )
     return {
-        "user_id": user_id,
-        "session_id": session_id,
+        "user_id": normalized_user_id,
+        "session_id": normalized_session_id,
         "trace_count": len(traces),
         "last_updated": state.last_updated.isoformat(),
         "conversation_id": thread.get("conversation_id") if isinstance(thread, dict) else None,
@@ -102,8 +139,53 @@ def create_new_conversation(*, user_id: str, base_session_id: str) -> dict[str, 
     bound_context = ensure_session_context(state=base_state)
 
     new_session_id = f"{base_session_id}__newconv__{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}_{uuid4().hex[:6]}"
-    SESSIONS[(user_id, new_session_id)] = SessionState(user_id=user_id, session_id=new_session_id)
+    new_state = SessionState(user_id=user_id, session_id=new_session_id)
+    get_session_store().save(new_state)
+    apply_session_ttl(new_state, scope="active", reason="interfaz_usuario_new_conversation")
+    logger.info("interfaz_usuario_new_conversation_created source_session=%s new_session=%s", base_session_id, new_session_id)
     return ensure_session(user_id=user_id, session_id=new_session_id, context_id=bound_context.context_id)
+
+
+def finalize_session(*, user_id: str, session_id: str, reason: str | None = None) -> dict[str, Any]:
+    finalize_reason = (reason or "").strip() or "interfaz_usuario_finalize"
+    try:
+        with acquire_session_execution_lock(user_id=user_id, session_id=session_id):
+            state = get_session_store().get(user_id=user_id, session_id=session_id)
+            if state is None:
+                raise HTTPException(status_code=404, detail={"error": "session_not_found", "user_id": user_id, "session_id": session_id})
+            ensure_session_surface(state=state, surface='interfaz_usuario')
+            ttl_seconds = mark_session_finalized(state, reason=finalize_reason)
+            logger.info(
+                "interfaz_usuario_session_finalized session=%s ttl_seconds=%s reason=%s",
+                f"{user_id}:{session_id}",
+                ttl_seconds,
+                finalize_reason,
+            )
+            return {
+                "user_id": user_id,
+                "session_id": session_id,
+                "status": "finalized",
+                "ttl_seconds": ttl_seconds,
+                "last_updated": state.last_updated.isoformat(),
+            }
+    except SessionBusyError as exc:
+        logger.warning(
+            "interfaz_usuario_finalize_busy session=%s retry_after=%s backend=%s",
+            f"{exc.user_id}:{exc.session_id}",
+            exc.retry_after_seconds,
+            exc.lock_backend,
+        )
+        raise HTTPException(
+            status_code=423,
+            detail={
+                "error": "session_busy",
+                "user_id": exc.user_id,
+                "session_id": exc.session_id,
+                "retry_after_seconds": exc.retry_after_seconds,
+                "lock_backend": exc.lock_backend,
+            },
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
 
 
 def _should_auto_reset_for_fresh_opener(*, state: SessionState, message: str) -> bool:
@@ -129,37 +211,77 @@ def _should_auto_reset_for_fresh_opener(*, state: SessionState, message: str) ->
 
 
 def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: bool = False) -> dict[str, Any]:
-    resolved_session_id = session_id
-    auto_reset_applied = False
-    if new_conversation:
-        payload = create_new_conversation(user_id=user_id, base_session_id=session_id)
-        resolved_session_id = payload["session_id"]
-    else:
-        base_state = get_session_state(user_id=user_id, session_id=session_id)
-        ensure_session_surface(state=base_state, surface='interfaz_usuario')
-        bound_context = ensure_session_context(state=base_state)
-        if _should_auto_reset_for_fresh_opener(state=base_state, message=message):
-            payload = create_new_conversation(user_id=user_id, base_session_id=session_id)
-            resolved_session_id = payload["session_id"]
-            auto_reset_applied = True
+    try:
+        with acquire_session_execution_lock(user_id=user_id, session_id=session_id):
+            touch_ttl = touch_existing_session_if_present(
+                user_id=user_id,
+                session_id=session_id,
+                scope="active",
+                reason="interfaz_usuario_turn_lock_acquired",
+            )
+            logger.info(
+                "interfaz_usuario_turn_started session=%s new_conversation=%s ttl_seconds=%s",
+                f"{user_id}:{session_id}",
+                new_conversation,
+                touch_ttl,
+            )
+            resolved_session_id = session_id
+            auto_reset_applied = False
+            if new_conversation:
+                payload = create_new_conversation(user_id=user_id, base_session_id=session_id)
+                resolved_session_id = payload["session_id"]
+            else:
+                base_state = get_session_state(user_id=user_id, session_id=session_id)
+                ensure_session_surface(state=base_state, surface='interfaz_usuario')
+                ensure_session_context(state=base_state)
+                if _should_auto_reset_for_fresh_opener(state=base_state, message=message):
+                    payload = create_new_conversation(user_id=user_id, base_session_id=session_id)
+                    resolved_session_id = payload["session_id"]
+                    auto_reset_applied = True
 
-    state = get_session_state(user_id=user_id, session_id=resolved_session_id)
-    ensure_session_surface(state=state, surface='interfaz_usuario')
-    bound_context = ensure_session_context(state=state)
-    config = build_negotiation_pipeline_config(context_id=bound_context.context_id)
-    reply, _, meta = execute_turn_with_contract(
-        state=state,
-        user_message=message,
-        config=config,
-        contract=TurnEntryContract(
-            entry_surface="interfaz_usuario",
-            entrypoint="/api/interfaz_usuario/negociacion/turn",
-            overrides_applied=False,
-            optimizer_wrapper_used=False,
-            new_conversation=new_conversation,
-            clone_used=False,
-        ),
-    )
+            state = get_session_state(user_id=user_id, session_id=resolved_session_id)
+            ensure_session_surface(state=state, surface='interfaz_usuario')
+            bound_context = ensure_session_context(state=state)
+            apply_session_ttl(state, scope="active", reason="interfaz_usuario_turn_state_ready")
+            config = build_negotiation_pipeline_config(context_id=bound_context.context_id)
+            reply, _, meta = execute_turn_with_contract(
+                state=state,
+                user_message=message,
+                config=config,
+                contract=TurnEntryContract(
+                    entry_surface="interfaz_usuario",
+                    entrypoint="/api/interfaz_usuario/negociacion/turn",
+                    overrides_applied=False,
+                    optimizer_wrapper_used=False,
+                    new_conversation=new_conversation,
+                    clone_used=False,
+                ),
+            )
+            apply_session_ttl(state, scope="active", reason="interfaz_usuario_turn_completed")
+    except SessionBusyError as exc:
+        touch_existing_session_if_present(
+            user_id=exc.user_id,
+            session_id=exc.session_id,
+            scope="active",
+            reason="interfaz_usuario_turn_busy",
+        )
+        logger.warning(
+            "interfaz_usuario_turn_busy session=%s retry_after=%s backend=%s",
+            f"{exc.user_id}:{exc.session_id}",
+            exc.retry_after_seconds,
+            exc.lock_backend,
+        )
+        raise HTTPException(
+            status_code=423,
+            detail={
+                "error": "session_busy",
+                "user_id": exc.user_id,
+                "session_id": exc.session_id,
+                "retry_after_seconds": exc.retry_after_seconds,
+                "lock_backend": exc.lock_backend,
+            },
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
 
     canonical = state.world_state.get("negotiation_canonical", {}) if isinstance(state.world_state, dict) else {}
     ui_state = canonical.get("ui_state", {}) if isinstance(canonical, dict) else {}

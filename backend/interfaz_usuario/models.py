@@ -6,8 +6,8 @@ from .presentation_models import PresentationConfig
 
 
 class SessionBootstrapRequest(BaseModel):
-    user_id: str = "u_interfaz"
-    session_id: str = "interfaz-main"
+    user_id: str | None = None
+    session_id: str | None = None
     context_id: str | None = None
     public_slug: str | None = None
 
@@ -22,6 +22,22 @@ class SessionBootstrapResponse(BaseModel):
     context_id: str
     public_slug: str
     presentation_config: PresentationConfig
+
+
+class SessionFinalizeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    user_id: str
+    session_id: str
+    reason: str | None = None
+
+
+class SessionFinalizeResponse(BaseModel):
+    user_id: str
+    session_id: str
+    status: str
+    ttl_seconds: int
+    last_updated: str
 
 
 class NegotiationTurnRequest(BaseModel):
