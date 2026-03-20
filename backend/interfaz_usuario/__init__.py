@@ -4,7 +4,7 @@ from fastapi import APIRouter
 
 from . import services
 from evaluacion.api import router as feedback_router
-from .models import NegotiationTurnRequest, NegotiationTurnResponse, SessionBootstrapRequest
+from .models import NegotiationTurnRequest, NegotiationTurnResponse, SessionBootstrapRequest, SessionBootstrapResponse
 
 # Parity-safe surface for negotiation turns.
 # This router is intentionally independent from avatar_app legacy mode switching
@@ -13,14 +13,14 @@ router = APIRouter(prefix="/api/interfaz_usuario", tags=["interfaz_usuario"])
 router.include_router(feedback_router)
 
 
-@router.post("/sessions/bootstrap")
-def bootstrap_session(payload: SessionBootstrapRequest) -> dict:
-    return services.ensure_session(
+@router.post("/sessions/bootstrap", response_model=SessionBootstrapResponse)
+def bootstrap_session(payload: SessionBootstrapRequest) -> SessionBootstrapResponse:
+    return SessionBootstrapResponse(**services.ensure_session(
         user_id=payload.user_id,
         session_id=payload.session_id,
         context_id=payload.context_id,
         public_slug=payload.public_slug,
-    )
+    ))
 
 
 @router.post("/negociacion/new_conversation")

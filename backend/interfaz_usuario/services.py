@@ -16,7 +16,10 @@ from negociacion.contexts import (
     ensure_session_context,
     read_bound_context_from_session,
     resolve_public_context_selection,
+    resolve_negotiation_context,
 )
+
+from .presentation_resolver import resolve_presentation_config_for_context
 from negociacion.orchestration.flow_config import build_negotiation_pipeline_config
 from negociacion.orchestration.turn_contract import TurnEntryContract, execute_turn_with_contract
 from negociacion.optimizador.storage import resolve_traces
@@ -73,6 +76,10 @@ def ensure_session(
     else:
         ensure_session_context(state=state, requested_context_id=context_id)
 
+    bound_context = ensure_session_context(state=state)
+    resolved_context = resolve_negotiation_context(bound_context.context_id)
+    presentation_config = resolve_presentation_config_for_context(bound_context.context_id)
+
     traces = resolve_traces(state)
     canonical = state.world_state.get("negotiation_canonical", {}) if isinstance(state.world_state, dict) else {}
     thread = canonical.get("openai_thread", {}) if isinstance(canonical, dict) else {}
@@ -83,6 +90,9 @@ def ensure_session(
         "last_updated": state.last_updated.isoformat(),
         "conversation_id": thread.get("conversation_id") if isinstance(thread, dict) else None,
         "previous_response_id": thread.get("previous_response_id") if isinstance(thread, dict) else None,
+        "context_id": resolved_context.context_id,
+        "public_slug": resolved_context.public_slug,
+        "presentation_config": presentation_config.model_dump(mode="json"),
     }
 
 

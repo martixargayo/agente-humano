@@ -147,6 +147,7 @@ let audioDevicePopoverOpen = false;
 let audioDevicePopoverPollTimer = null;
 let audioDeviceSwitchInFlight = false;
 let audioDeviceToastTimer = null;
+let currentPresentationConfig = null;
 const LAST_DEVICE_STORAGE_KEY = 'interfaz_usuario:last_audio_input_device';
 
 const ui = {
@@ -237,6 +238,42 @@ function updateReplyText(text) {
   ui.replyContainer.classList.toggle('hidden', !text);
 }
 
+function getPresentationVoiceConfig() {
+  const voice = currentPresentationConfig?.voice;
+  if (!voice || typeof voice !== 'object') return null;
+  return {
+    voice_id: typeof voice.voice_id === 'string' && voice.voice_id.trim() ? voice.voice_id.trim() : null,
+    speaking_rate: Number.isFinite(Number(voice.speaking_rate)) ? Number(voice.speaking_rate) : null,
+  };
+}
+
+function applyPresentationConfigToDom(presentationConfig) {
+  currentPresentationConfig = presentationConfig || null;
+  const root = document.documentElement;
+  const background = presentationConfig?.background || null;
+  const theme = presentationConfig?.theme || null;
+  const themeName = typeof theme?.shell_theme === 'string' && theme.shell_theme.trim() ? theme.shell_theme.trim() : 'realistic';
+  root.setAttribute('data-avatar-theme', themeName);
+
+  const hasBackground = Boolean(background && background.type === 'image' && typeof background.url === 'string' && background.url.trim());
+  root.setAttribute('data-avatar-background-enabled', hasBackground ? '1' : '0');
+  root.style.setProperty('--avatar-bg-image', hasBackground ? `url("${background.url}")` : 'none');
+
+  const bgEl = $('bg');
+  if (bgEl && background && typeof background === 'object') {
+    bgEl.style.backgroundSize = typeof background.size === 'string' && background.size.trim() ? background.size : 'contain';
+    bgEl.style.backgroundPosition = typeof background.position === 'string' && background.position.trim() ? background.position : 'center center';
+  }
+}
+
+function initAvatarRuntimeOnce(presentationConfig) {
+  const initRuntime = window.__initAvatarRuntime;
+  if (typeof initRuntime !== 'function') {
+    throw new Error('avatar_runtime_init_unavailable');
+  }
+  return initRuntime({ presentationConfig, stageEl: $('stage') });
+}
+
 function showAudioDeviceToast(message, durationMs = 3200) {
   if (!ui.audioDeviceToast) return;
   ui.audioDeviceToast.textContent = message;
@@ -283,11 +320,14 @@ function base64ToAudioData(b64, mimeType = 'audio/wav') {
   };
 }
 
-async function requestTTS(text) {
+async function requestTTS(text, voiceConfig = null) {
+  const payload = { text };
+  if (voiceConfig?.voice_id) payload.voice = voiceConfig.voice_id;
+  if (Number.isFinite(Number(voiceConfig?.speaking_rate))) payload.speaking_rate = Number(voiceConfig.speaking_rate);
   const response = await fetch('/tts', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify(payload),
   });
   if (!response.ok) throw new Error(await response.text());
   const data = await response.json();
@@ -297,7 +337,7 @@ async function requestTTS(text) {
 async function warmupFrontendTts() {
   if (ttsWarmedUp) return;
   try {
-    const audioData = await requestTTS('Calibración de audio.');
+    const audioData = await requestTTS('Calibración de audio.', getPresentationVoiceConfig());
     const ctx = getOrCreateAudioContext();
     const audioBuffer = await ctx.decodeAudioData(audioData.arrayBuffer.slice(0));
     const gain = ctx.createGain();
@@ -479,7 +519,7 @@ async function transcribeAudio(blob) {
 }
 
 async function playTtsWithAvatar(replyText) {
-  const audioData = await requestTTS(replyText);
+  const audioData = await requestTTS(replyText, getPresentationVoiceConfig());
   const ctx = getOrCreateAudioContext();
   const decoded = await ctx.decodeAudioData(audioData.arrayBuffer.slice(0));
   const analyser = ctx.createAnalyser();
@@ -1631,7 +1671,8 @@ async function handleSend() {
 $('bootstrap').onclick = async () => {
   syncSessionBoundaryReset();
   const out = await api('/sessions/bootstrap', { method: 'POST', body: JSON.stringify(bootstrapPayload()) });
-  $('meta').textContent = `session=${out.session_id} traces=${out.trace_count} conversation_id=${out.conversation_id || '-'}`;
+  currentPresentationConfig = out.presentation_config || null;
+  $('meta').textContent = `session=${out.session_id} traces=${out.trace_count} conversation_id=${out.conversation_id || '-'} context=${out.context_id || '-'}`;
 };
 
 $('newConv').onclick = async () => {
@@ -1881,16 +1922,21 @@ document.addEventListener('visibilitychange', () => {
   syncSessionBoundaryReset();
   try {
     const out = await api('/sessions/bootstrap', { method: 'POST', body: JSON.stringify(bootstrapPayload()) });
+    currentPresentationConfig = out.presentation_config || null;
+    applyPresentationConfigToDom(currentPresentationConfig);
+    initAvatarRuntimeOnce(currentPresentationConfig);
+    bindRuntimeReadiness();
     lastSessionKey = `${out.user_id}::${out.session_id}`;
     resetFinishButtonArmed();
     setLatestTraceCount(out.trace_count);
-    $('meta').textContent = `session=${out.session_id} traces=${out.trace_count} conversation_id=${out.conversation_id || '-'}`;
+    $('meta').textContent = `session=${out.session_id} traces=${out.trace_count} conversation_id=${out.conversation_id || '-'} context=${out.context_id || '-'}`;
   } catch (err) {
+    scenarioReady = false;
+    if (ui.entryError) ui.entryError.textContent = 'No se pudo preparar la interfaz. Recarga para reintentar.';
     $('meta').textContent = `bootstrap_error=${String(err)}`;
   }
 
   if (!entryResolvedInputMode) setInputMode(InputMode.WRITE);
-  bindRuntimeReadiness();
   startEntryDevicePolling();
   await bootstrapEntryDeviceBackground();
   setEntryMode(InputMode.TALK);
