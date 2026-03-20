@@ -47,6 +47,34 @@
         color: #fff;
       }
 
+      html[data-embed-mode="1"],
+      html[data-embed-mode="1"] body {
+        height: auto;
+        min-height: 100%;
+        overflow-x: hidden;
+        overflow-y: auto;
+      }
+
+      html[data-embed-mode="1"] body {
+        background-color: #fff;
+      }
+
+      html[data-embed-mode="1"] body::before {
+        position: absolute;
+      }
+
+      html[data-embed-mode="1"] #mainApp {
+        position: relative;
+        min-height: 100vh;
+        padding-bottom: 220px;
+      }
+
+      html[data-embed-mode="1"] #stage {
+        position: absolute;
+        inset: 0;
+        min-height: 100%;
+      }
+
       #stage {
         position: fixed;
         inset: 0;
@@ -923,6 +951,10 @@
         pointer-events: none;
       }
 
+      html[data-embed-mode="1"] .reply-container {
+        width: min(720px, calc(100% - 24px));
+      }
+
       .audio-device-toast {
         position: fixed;
         left: 50%;
@@ -954,6 +986,15 @@
         transform: translateX(-50%);
         width: min(820px, 94vw);
         z-index: 4;
+      }
+
+      html[data-embed-mode="1"] .bottom-bar {
+        position: sticky;
+        left: auto;
+        bottom: 16px;
+        transform: none;
+        width: min(920px, calc(100% - 24px));
+        margin: 0 auto;
       }
 
       .bar-inner {
@@ -1432,6 +1473,10 @@
         transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
       }
 
+      html[data-embed-mode="1"] .finish-negotiation-button {
+        position: absolute;
+      }
+
       .finish-negotiation-button.is-armed {
         background: #f9fafb;
         border-color: rgba(96, 165, 250, 0.7);
@@ -1461,6 +1506,10 @@
         box-shadow:
           0 14px 34px rgba(15, 23, 42, 0.14),
           0 2px 6px rgba(15, 23, 42, 0.08);
+      }
+
+      html[data-embed-mode="1"] .finish-confirm-popover {
+        position: absolute;
       }
       .finish-confirm-popover.visible { display: block; }
       .finish-confirm-popover p { margin: 0 0 12px; font-size: 13px; line-height: 1.4; color: rgba(15, 23, 42, 0.82); }
@@ -1497,6 +1546,13 @@
         z-index: 11;
         overflow: hidden;
         background: #FFFFFF;
+      }
+
+      html[data-embed-mode="1"] .feedback-screen {
+        position: relative;
+        inset: auto;
+        overflow: visible;
+        min-height: 100vh;
       }
       .feedback-screen.hidden { display: none; }
       .feedback-card {
@@ -1586,6 +1642,11 @@
         overflow: hidden;
         isolation: isolate;
       }
+
+      html[data-embed-mode="1"] .feedback-loading-layout {
+        min-height: 100vh;
+        overflow: visible;
+      }
       .feedback-loading-layout::before {
         content: '';
         position: absolute;
@@ -1662,8 +1723,17 @@
         overflow: auto;
       }
 
+      html[data-embed-mode="1"] #feedbackReportScreen {
+        overflow: visible;
+      }
+
       #feedbackReportRoot {
         min-height: 100vh;
+      }
+
+      html[data-embed-mode="1"] #feedbackReportRoot {
+        min-height: auto;
+        padding-bottom: 24px;
       }
 
       @keyframes feedbackTitleShimmer {
@@ -1951,6 +2021,12 @@
 
     <section id="feedbackReportScreen" class="feedback-screen hidden" aria-live="polite">
       <div id="feedbackReportRoot"></div>
+      <div class="report-actions">
+        <button id="feedbackDownloadHtmlBtn" class="feedback-btn" type="button">Descargar HTML</button>
+        <button id="feedbackDownloadJsonBtn" class="feedback-btn" type="button">Descargar JSON</button>
+        <button id="feedbackDownloadPngBtn" class="feedback-btn" type="button">Descargar PNG</button>
+        <button id="feedbackBackBtn" class="feedback-btn" type="button">Volver</button>
+      </div>
     </section>
 
     <section id="feedbackErrorScreen" class="feedback-screen hidden" aria-live="polite">

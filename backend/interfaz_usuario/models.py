@@ -17,6 +17,8 @@ class SessionBootstrapResponse(BaseModel):
     session_id: str
     trace_count: int = 0
     last_updated: str
+    session_bootstrap_state: str
+    existing_session: bool = False
     conversation_id: str | None = None
     previous_response_id: str | None = None
     context_id: str

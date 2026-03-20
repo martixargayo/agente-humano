@@ -110,6 +110,16 @@ class Phase8SecondOfficialContextE2EHttpTests(unittest.TestCase):
                 json={'user_id': 'u_http', 'session_id': 's_http', 'public_slug': TARGET_PUBLIC_SLUG},
             )
             self.assertEqual(boot.status_code, 200)
+            self.assertEqual(boot.json()['session_bootstrap_state'], 'new')
+            self.assertFalse(boot.json()['existing_session'])
+
+            boot_rehydrated = self.client.post(
+                '/api/interfaz_usuario/sessions/bootstrap',
+                json={'user_id': 'u_http', 'session_id': 's_http', 'public_slug': TARGET_PUBLIC_SLUG},
+            )
+            self.assertEqual(boot_rehydrated.status_code, 200)
+            self.assertEqual(boot_rehydrated.json()['session_bootstrap_state'], 'rehydrated')
+            self.assertTrue(boot_rehydrated.json()['existing_session'])
 
             turns = []
             for message in [
@@ -162,9 +172,14 @@ class Phase8SecondOfficialContextE2EHttpTests(unittest.TestCase):
                 time.sleep(0.05)
             self.assertIsNotNone(report)
             self.assertEqual(report.status_code, 200)
-            provenance = report.json()['report']['provenance']
+            report_payload = report.json()['report']
+            provenance = report_payload['provenance']
             self.assertEqual(provenance['context_id'], TARGET_CONTEXT_ID)
             self.assertEqual(provenance['flow_id'], 'negociacion')
+            self.assertEqual(report_payload['schema_version'], 'ui_feedback_report.v1')
+            self.assertEqual(report_payload['header']['interaction_outcome'], 'partial_progress')
+            self.assertEqual(len(report_payload['block_cards']), 4)
+            self.assertEqual(len(report_payload['trajectory_chart']), 3)
 
             opt_boot = self.client.post('/api/optimizador/sessions/bootstrap', json={'user_id': 'u_opt_http', 'session_id': 's_opt_http', 'context_id': TARGET_CONTEXT_ID})
             self.assertEqual(opt_boot.status_code, 200)

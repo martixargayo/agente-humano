@@ -158,9 +158,7 @@ class Phase5ContextTracesTests(unittest.TestCase):
 
     def test_optimizer_trace_keeps_base_context_metadata(self) -> None:
         state = get_session_state(user_id='u_opt_trace', session_id='s_opt_trace')
-        from interfaz_usuario.services import ensure_session
-
-        ensure_session(user_id='u_opt_trace', session_id='s_opt_trace')
+        optimizer_services.ensure_session(user_id='u_opt_trace', session_id='s_opt_trace')
         state.world_state['optimizador_sandbox_meta'] = {'clone_strategy': 'new_conversation_clean_start'}
         state.world_state['negotiation_canonical_traces'] = [{'turn_id': 'turn-opt', 'context_meta': {'flow_id': 'negociacion', 'context_id': 'baseline_current', 'context_version': '1.0.0'}}]
 
@@ -193,6 +191,7 @@ class Phase5ContextTracesTests(unittest.TestCase):
 
     def test_trace_reader_exposes_context_summary_when_present(self) -> None:
         state = get_session_state(user_id='u_reader', session_id='s_reader')
+        optimizer_services.ensure_session(user_id='u_reader', session_id='s_reader')
         state.world_state['negotiation_canonical_traces'] = [
             {
                 'turn_id': 'turn-reader',
