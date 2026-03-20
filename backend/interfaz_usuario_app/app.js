@@ -2305,16 +2305,6 @@ $('feedbackRetryBtn').onclick = async () => {
 };
 
 $('feedbackBackBtnSecondary').onclick = () => showFeedbackView('app');
-$('feedbackBackBtn').onclick = () => showFeedbackView('app');
-$('feedbackDownloadHtmlBtn').onclick = () => {
-  void downloadCurrentReport('html');
-};
-$('feedbackDownloadJsonBtn').onclick = () => {
-  void downloadCurrentReport('json');
-};
-$('feedbackDownloadPngBtn').onclick = () => {
-  void downloadCurrentReport('png');
-};
 
 document.addEventListener('click', (e) => {
   if (!ui.conversationMode) return;

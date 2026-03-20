@@ -61,14 +61,14 @@ class PublicInterfazUsuarioServingTests(unittest.TestCase):
         self.assertIn('/interfaz_usuario/feedback_report_view.js', body)
         self.assertIn('/interfaz_usuario/avatar_runtime/bootstrap.js', body)
 
-    def test_report_screen_exposes_export_actions_and_embed_final_result_messages(self) -> None:
+    def test_report_screen_hides_export_actions_and_keeps_embed_final_result_messages(self) -> None:
         page = self.client.get('/interfaz_usuario/')
         self.assertEqual(page.status_code, 200)
         body = page.text
-        self.assertIn('id="feedbackDownloadHtmlBtn"', body)
-        self.assertIn('id="feedbackDownloadJsonBtn"', body)
-        self.assertIn('id="feedbackDownloadPngBtn"', body)
-        self.assertIn('id="feedbackBackBtn"', body)
+        self.assertNotIn('id="feedbackDownloadHtmlBtn"', body)
+        self.assertNotIn('id="feedbackDownloadJsonBtn"', body)
+        self.assertNotIn('id="feedbackDownloadPngBtn"', body)
+        self.assertNotIn('id="feedbackBackBtn"', body)
 
         app_js = self.client.get('/interfaz_usuario/app.js')
         self.assertEqual(app_js.status_code, 200)
