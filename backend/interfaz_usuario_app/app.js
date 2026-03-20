@@ -1832,6 +1832,28 @@ function nextFeedbackQuadrant(isMobile) {
   return { quadrant, anchor };
 }
 
+function constrainFeedbackFloatingPhrase(el) {
+  if (!el || !ui.feedbackFloatingLayer) return;
+
+  const containerRect = ui.feedbackFloatingLayer.getBoundingClientRect();
+  if (!containerRect.width || !containerRect.height) return;
+
+  const maxWidth = Math.max(160, Math.min(containerRect.width * 0.34, 520, containerRect.width - 24));
+  const maxHeight = Math.max(56, Math.min(containerRect.height * 0.22, 180, containerRect.height - 24));
+  el.style.maxWidth = `${Math.round(maxWidth)}px`;
+  el.style.maxHeight = `${Math.round(maxHeight)}px`;
+
+  const safeInset = Math.max(12, Math.min(containerRect.width, containerRect.height) * 0.03);
+  const lineRect = el.getBoundingClientRect();
+  const maxLeft = Math.max(safeInset, containerRect.width - lineRect.width - safeInset);
+  const maxTop = Math.max(safeInset, containerRect.height - lineRect.height - safeInset);
+  const left = Math.min(Math.max(lineRect.left - containerRect.left, safeInset), maxLeft);
+  const top = Math.min(Math.max(lineRect.top - containerRect.top, safeInset), maxTop);
+
+  el.style.left = `${left}px`;
+  el.style.top = `${top}px`;
+}
+
 function spawnFeedbackFloatingPhrase() {
   if (!$('feedbackLoadingScreen') || $('feedbackLoadingScreen').classList.contains('hidden')) return;
   if (!ui.feedbackFloatingLayer) return;
@@ -1860,6 +1882,7 @@ function spawnFeedbackFloatingPhrase() {
   el.style.setProperty('--line-duration', `${durationMs}ms`);
   el.innerHTML = renderFeedbackPhraseMarkup(phrase);
   ui.feedbackFloatingLayer.appendChild(el);
+  constrainFeedbackFloatingPhrase(el);
 
   if (reducedMotion) {
     el.style.opacity = String(opacity);
