@@ -1667,6 +1667,7 @@
       .feedback-floating-layer {
         position: absolute;
         inset: 0;
+        padding: clamp(16px, 3vw, 36px);
         pointer-events: none;
         z-index: 2;
         overflow: hidden;
@@ -1674,7 +1675,12 @@
       .feedback-floating-line {
         position: absolute;
         max-width: min(34vw, 520px);
-        white-space: nowrap;
+        max-height: min(22vh, 180px);
+        padding: 0.3em 0.5em;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        overflow: auto;
+        scrollbar-width: none;
         font-family: 'JetBrains Mono', 'SFMono-Regular', ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, monospace;
         font-size: clamp(22px, 2vw, 28px);
         line-height: 1.4;
@@ -1684,6 +1690,9 @@
         transform: translate3d(0, 12px, 0) scale(var(--line-scale, 1));
         will-change: transform, opacity;
         animation: feedbackLineOrbit var(--line-duration, 9.8s) ease-in-out forwards;
+      }
+      .feedback-floating-line::-webkit-scrollbar {
+        display: none;
       }
       .feedback-floating-line::before {
         content: '';
@@ -1697,7 +1706,9 @@
       .feedback-floating-line code {
         display: inline-flex;
         align-items: center;
+        flex-wrap: wrap;
         gap: 0.18em;
+        max-width: 100%;
         padding: 0.05em 0.1em;
         background: transparent;
       }
