@@ -340,11 +340,13 @@ def hydrate_session_state(envelope: SessionEnvelope | Mapping[str, Any]) -> Sess
     canonical = state.world_state.get("negotiation_canonical")
     if isinstance(canonical, dict):
         thread = canonical.get("openai_thread")
-        if isinstance(thread, dict):
-            if parsed.continuity.thread_mode:
-                thread["thread_mode"] = parsed.continuity.thread_mode
-            thread["conversation_id"] = parsed.continuity.conversation_id
-            thread["previous_response_id"] = parsed.continuity.previous_response_id
+        if not isinstance(thread, dict):
+            thread = {}
+            canonical["openai_thread"] = thread
+        if parsed.continuity.thread_mode:
+            thread["thread_mode"] = parsed.continuity.thread_mode
+        thread["conversation_id"] = parsed.continuity.conversation_id
+        thread["previous_response_id"] = parsed.continuity.previous_response_id
 
     return _normalize_loaded_state(state)
 
@@ -430,6 +432,7 @@ def save_session_state(state: SessionState) -> None:
     """
     Guarda/actualiza el estado en el store activo.
     """
+    state.last_updated = datetime.now(timezone.utc)
     get_session_store().save(state)
 
 

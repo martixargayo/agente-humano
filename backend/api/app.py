@@ -37,6 +37,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from sessions.state import configure_session_store_from_env, get_session_state
+from sessions.lifecycle import active_session_ttl_seconds, bootstrap_session_ttl_seconds, finalized_session_ttl_seconds
 from agent import run_agent
 
 configure_session_store_from_env()
@@ -89,6 +90,35 @@ if ENABLE_OPTIMIZADOR_APP and OPTIMIZADOR_DIR.exists():
 
 app.include_router(optimizador_router)
 app.include_router(interfaz_usuario_router)
+
+
+@app.get("/api/health/session-runtime")
+def session_runtime_health() -> dict[str, Any]:
+    store = configure_session_store_from_env()
+    payload: dict[str, Any] = {
+        "status": "ok",
+        "store_class": store.__class__.__name__,
+        "session_store_backend": os.getenv("SESSION_STORE_BACKEND", "auto").strip().lower() or "auto",
+        "ttl_seconds": {
+            "bootstrap": bootstrap_session_ttl_seconds(),
+            "active": active_session_ttl_seconds(),
+            "finalized": finalized_session_ttl_seconds(),
+        },
+        "lock_seconds": {
+            "ttl": int(os.getenv("SESSION_EXECUTION_LOCK_TTL_SECONDS", "180")),
+            "refresh": int(os.getenv("SESSION_EXECUTION_LOCK_REFRESH_SECONDS", "30")),
+            "retry_after": int(os.getenv("SESSION_EXECUTION_LOCK_RETRY_AFTER_SECONDS", "2")),
+        },
+    }
+    client = getattr(store, "client", None)
+    if client is not None and hasattr(client, "ping"):
+        try:
+            client.ping()
+            payload["redis_ping"] = "ok"
+        except Exception as exc:
+            payload["status"] = "degraded"
+            payload["redis_ping"] = f"error:{exc}"
+    return payload
 
 
 INTERFAZ_USUARIO_DIR = BACKEND_DIR / "interfaz_usuario_app"

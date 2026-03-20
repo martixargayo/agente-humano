@@ -24,6 +24,22 @@ class SessionBootstrapResponse(BaseModel):
     presentation_config: PresentationConfig
 
 
+class SessionFinalizeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    user_id: str
+    session_id: str
+    reason: str | None = None
+
+
+class SessionFinalizeResponse(BaseModel):
+    user_id: str
+    session_id: str
+    status: str
+    ttl_seconds: int
+    last_updated: str
+
+
 class NegotiationTurnRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

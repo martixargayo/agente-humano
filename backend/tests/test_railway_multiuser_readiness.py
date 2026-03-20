@@ -39,8 +39,12 @@ class FakeRedis:
     def get(self, key: str):
         return self.store.get(key)
 
-    def set(self, key: str, value: str):
+    def set(self, key: str, value: str, *, nx: bool | None = None, ex: int | None = None):
+        if nx and key in self.store:
+            return False
         self.store[key] = value
+        if ex is not None:
+            self.ttl[key] = ex
         return True
 
     def delete(self, key: str):
@@ -59,6 +63,21 @@ class FakeRedis:
         for key in sorted(self.store):
             if key.startswith(prefix):
                 yield key
+
+    def eval(self, script: str, numkeys: int, *keys_and_args):
+        assert numkeys == 1
+        key = str(keys_and_args[0])
+        token = str(keys_and_args[1])
+        if "expire" in script:
+            ttl = int(keys_and_args[2])
+            if self.store.get(key) == token:
+                self.ttl[key] = ttl
+                return 1
+            return 0
+        if self.store.get(key) == token:
+            self.delete(key)
+            return 1
+        return 0
 
 
 client = TestClient(app)

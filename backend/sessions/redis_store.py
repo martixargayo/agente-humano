@@ -32,16 +32,25 @@ class RedisSessionStore:
         self._client = client
         self._key_prefix = key_prefix.strip() or SESSION_KEY_PREFIX
 
+    @property
+    def client(self) -> RedisClientProtocol:
+        return self._client
+
     def _session_key(self, *, user_id: str, session_id: str) -> str:
         return f"{self._key_prefix}:{user_id}:{session_id}"
 
     def get(self, *, user_id: str, session_id: str) -> SessionState | None:
-        raw = self._client.get(self._session_key(user_id=user_id, session_id=session_id))
+        session_key = self._session_key(user_id=user_id, session_id=session_id)
+        raw = self._client.get(session_key)
         if raw is None:
             return None
         if isinstance(raw, bytes):
             raw = raw.decode("utf-8")
-        envelope = SessionEnvelope.model_validate_json(raw)
+        try:
+            envelope = SessionEnvelope.model_validate_json(raw)
+        except Exception as exc:
+            logger.error("redis_session_envelope_decode_error key=%s error=%s", session_key, exc)
+            raise
         return hydrate_session_state(envelope)
 
     def get_or_create(self, *, user_id: str, session_id: str) -> SessionState:

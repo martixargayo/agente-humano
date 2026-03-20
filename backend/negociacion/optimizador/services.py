@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from fastapi import HTTPException
+
+from sessions.lifecycle import apply_session_ttl, touch_existing_session_if_present
+from sessions.session_lock import SessionBusyError, acquire_session_execution_lock
 from sessions.state import SessionState, get_session_state, get_session_store
 from sessions.surface_scope import ensure_session_surface
 
@@ -15,6 +20,8 @@ from ..traces.context_meta import build_trace_context_meta
 from . import context_bridge, datasets_bridge, evals_bridge, experiments_bridge, guardrails_bridge, session_bridge, storage, trace_reader
 from .prompts_bridge import list_prompts as _list_prompts
 from ..contexts import list_official_negotiation_contexts
+
+logger = logging.getLogger(__name__)
 
 def _apply_contextual_state_overrides(state: Any, config: Any, entries: list[dict[str, Any]]) -> None:
     persona_entry = next((entry for entry in entries if entry.get("category") == "contextual" and entry.get("key") == "persona"), None)
@@ -56,11 +63,24 @@ def list_sessions() -> list[dict[str, Any]]:
 
 
 def ensure_session(*, user_id: str, session_id: str, context_id: str | None = None) -> dict[str, Any]:
-    state = get_session_state(user_id=user_id, session_id=session_id)
+    store = get_session_store()
+    existing_state = store.get(user_id=user_id, session_id=session_id)
+    state = existing_state or get_session_state(user_id=user_id, session_id=session_id)
     ensure_session_surface(state=state, surface='optimizador')
     base_context = context_bridge.ensure_optimizer_session_context(state=state, requested_context_id=context_id)
     traces = storage.resolve_traces(state)
     meta = state.world_state.get("optimizador_sandbox_meta", {}) if isinstance(state.world_state, dict) else {}
+    ttl_scope = "bootstrap" if existing_state is None and len(traces) == 0 else "active"
+    ttl_seconds = apply_session_ttl(state, scope=ttl_scope, reason="optimizador_bootstrap")
+    logger.info(
+        "optimizador_session_ready session=%s context=%s traces=%s ttl_scope=%s ttl_seconds=%s existing=%s",
+        f"{user_id}:{session_id}",
+        base_context["context_id"],
+        len(traces),
+        ttl_scope,
+        ttl_seconds,
+        existing_state is not None,
+    )
     return {
         "session_key": storage.session_key(user_id, session_id),
         "user_id": user_id,
@@ -132,6 +152,8 @@ def new_conversation_session(*, optimizer_session_id: str, user_id: str, session
     }
     ensure_session_surface(state=new_state, surface='optimizador')
     get_session_store().save(new_state)
+    apply_session_ttl(new_state, scope="active", reason="optimizador_new_conversation")
+    logger.info("optimizador_new_conversation_created source_session=%s new_session=%s", session_id, new_session_id)
     _ = state
     return {
         "session_key": storage.session_key(user_id, new_session_id),
@@ -152,35 +174,75 @@ def run_sandbox_turn(
     scope_turn_id: str | None,
     repeat_from_turn_id: str | None,
 ) -> dict[str, Any]:
-    state = get_session_state(user_id=user_id, session_id=session_id)
-    ensure_session_surface(state=state, surface='optimizador')
-    base_context = context_bridge.ensure_optimizer_session_context(state=state)
-    base_config = build_negotiation_pipeline_config(context_id=base_context["context_id"])
-    resolved_entries = experiments_bridge.resolve_entries(
-        optimizer_session_id=optimizer_session_id,
-        conversation_id=conversation_id,
-        turn_id=scope_turn_id,
-    )
-    config, tempdir = experiments_bridge.apply_overrides(base_config, resolved_entries, context_id=base_context["context_id"])
-    _apply_contextual_state_overrides(state, config, resolved_entries)
-    clone_used, new_conversation = _resolve_optimizer_contract_flags(state)
     try:
-        reply, _, meta = execute_turn_with_contract(
-            state=state,
-            user_message=message,
-            config=config,
-            contract=TurnEntryContract(
-                entry_surface="optimizador",
-                entrypoint="/api/optimizador/sandbox/turn",
-                overrides_applied=bool(resolved_entries),
-                optimizer_wrapper_used=True,
-                new_conversation=new_conversation,
-                clone_used=clone_used,
-            ),
+        with acquire_session_execution_lock(user_id=user_id, session_id=session_id):
+            touch_ttl = touch_existing_session_if_present(
+                user_id=user_id,
+                session_id=session_id,
+                scope="active",
+                reason="optimizador_turn_lock_acquired",
+            )
+            logger.info(
+                "optimizador_turn_started session=%s optimizer_session_id=%s ttl_seconds=%s",
+                f"{user_id}:{session_id}",
+                optimizer_session_id,
+                touch_ttl,
+            )
+            state = get_session_state(user_id=user_id, session_id=session_id)
+            ensure_session_surface(state=state, surface='optimizador')
+            base_context = context_bridge.ensure_optimizer_session_context(state=state)
+            apply_session_ttl(state, scope="active", reason="optimizador_turn_state_ready")
+            base_config = build_negotiation_pipeline_config(context_id=base_context["context_id"])
+            resolved_entries = experiments_bridge.resolve_entries(
+                optimizer_session_id=optimizer_session_id,
+                conversation_id=conversation_id,
+                turn_id=scope_turn_id,
+            )
+            config, tempdir = experiments_bridge.apply_overrides(base_config, resolved_entries, context_id=base_context["context_id"])
+            _apply_contextual_state_overrides(state, config, resolved_entries)
+            clone_used, new_conversation = _resolve_optimizer_contract_flags(state)
+            try:
+                reply, _, meta = execute_turn_with_contract(
+                    state=state,
+                    user_message=message,
+                    config=config,
+                    contract=TurnEntryContract(
+                        entry_surface="optimizador",
+                        entrypoint="/api/optimizador/sandbox/turn",
+                        overrides_applied=bool(resolved_entries),
+                        optimizer_wrapper_used=True,
+                        new_conversation=new_conversation,
+                        clone_used=clone_used,
+                    ),
+                )
+            finally:
+                if tempdir is not None:
+                    tempdir.cleanup()
+            apply_session_ttl(state, scope="active", reason="optimizador_turn_completed")
+    except SessionBusyError as exc:
+        touch_existing_session_if_present(
+            user_id=exc.user_id,
+            session_id=exc.session_id,
+            scope="active",
+            reason="optimizador_turn_busy",
         )
-    finally:
-        if tempdir is not None:
-            tempdir.cleanup()
+        logger.warning(
+            "optimizador_turn_busy session=%s retry_after=%s backend=%s",
+            f"{exc.user_id}:{exc.session_id}",
+            exc.retry_after_seconds,
+            exc.lock_backend,
+        )
+        raise HTTPException(
+            status_code=423,
+            detail={
+                "error": "session_busy",
+                "user_id": exc.user_id,
+                "session_id": exc.session_id,
+                "retry_after_seconds": exc.retry_after_seconds,
+                "lock_backend": exc.lock_backend,
+            },
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
 
     traces = storage.resolve_traces(state)
     latest = traces[-1] if traces else None
