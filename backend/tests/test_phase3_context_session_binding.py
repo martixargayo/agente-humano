@@ -116,7 +116,7 @@ class Phase3ContextSessionBindingTests(unittest.TestCase):
         self.assertEqual(payload["conversation_id"], "conv-observable")
         self.assertEqual(payload["previous_response_id"], "resp-observable")
         self.assertEqual(state.world_state["negotiation_canonical"], canonical)
-        self.assertEqual(set(payload.keys()), {"user_id", "session_id", "trace_count", "last_updated", "conversation_id", "previous_response_id"})
+        self.assertEqual(set(payload.keys()), {"user_id", "session_id", "trace_count", "last_updated", "conversation_id", "previous_response_id", "context_id", "public_slug", "presentation_config"})
 
     def test_run_turn_backfills_and_reuses_session_context_without_changing_turn_contract_surface(self) -> None:
         state = get_session_state(user_id="u_turn", session_id="s_turn")

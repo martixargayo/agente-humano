@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 from . import services
 from evaluacion.api import router as feedback_router
@@ -25,6 +25,8 @@ def bootstrap_session(payload: SessionBootstrapRequest) -> SessionBootstrapRespo
 
 @router.post("/negociacion/new_conversation")
 def new_conversation(payload: SessionBootstrapRequest) -> dict:
+    if not payload.user_id or not payload.session_id:
+        raise HTTPException(status_code=400, detail="session_identity_required")
     return services.create_new_conversation(user_id=payload.user_id, base_session_id=payload.session_id)
 
 

@@ -78,9 +78,7 @@ def duplicate_sandbox_session(
         "base_context": context,
     }
 
-    from sessions.state import SESSIONS
-
-    SESSIONS[(sandbox_user_id, sandbox_session_id)] = cloned
+    get_session_store().save(cloned)
     return {
         "session_key": storage.session_key(sandbox_user_id, sandbox_session_id),
         "user_id": sandbox_user_id,

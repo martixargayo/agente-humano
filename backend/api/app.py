@@ -36,8 +36,10 @@ BACKEND_DIR = BASE_DIR.parent
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from sessions.state import get_session_state
+from sessions.state import configure_session_store_from_env, get_session_state
 from agent import run_agent
+
+configure_session_store_from_env()
 from negociacion import run_negotiation_agent
 from negociacion.orchestration.flow_config import set_tts_prefetch_hook
 from negociacion.optimizador import router as optimizador_router
