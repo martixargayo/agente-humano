@@ -4,9 +4,11 @@ from datetime import datetime, timezone
 from uuid import uuid4
 from typing import Any
 
+import secrets
+
 from fastapi import HTTPException
 
-from sessions.state import SESSIONS, SessionState, get_session_state
+from sessions.state import SessionState, get_session_state, get_session_store
 from sessions.surface_scope import ensure_session_surface
 
 from negociacion.contexts import (
@@ -56,14 +58,31 @@ def _resolve_bootstrap_context_id(*, context_id: str | None = None, public_slug:
     return selection.context_id
 
 
+def _normalize_external_id(raw: str | None) -> str | None:
+    value = (raw or "").strip()
+    return value or None
+
+
+def _generate_public_session_identity() -> tuple[str, str]:
+    token = secrets.token_urlsafe(18)
+    return f"iu_{token}", f"sess_{token}"
+
+
 def ensure_session(
     *,
-    user_id: str,
-    session_id: str,
+    user_id: str | None,
+    session_id: str | None,
     context_id: str | None = None,
     public_slug: str | None = None,
 ) -> dict[str, Any]:
-    state = get_session_state(user_id=user_id, session_id=session_id)
+    normalized_user_id = _normalize_external_id(user_id)
+    normalized_session_id = _normalize_external_id(session_id)
+    if normalized_user_id is None or normalized_session_id is None:
+        generated_user_id, generated_session_id = _generate_public_session_identity()
+        normalized_user_id = normalized_user_id or generated_user_id
+        normalized_session_id = normalized_session_id or generated_session_id
+
+    state = get_session_state(user_id=normalized_user_id, session_id=normalized_session_id)
     ensure_session_surface(state=state, surface='interfaz_usuario')
     existing_context = read_bound_context_from_session(state)
 
@@ -84,8 +103,8 @@ def ensure_session(
     canonical = state.world_state.get("negotiation_canonical", {}) if isinstance(state.world_state, dict) else {}
     thread = canonical.get("openai_thread", {}) if isinstance(canonical, dict) else {}
     return {
-        "user_id": user_id,
-        "session_id": session_id,
+        "user_id": normalized_user_id,
+        "session_id": normalized_session_id,
         "trace_count": len(traces),
         "last_updated": state.last_updated.isoformat(),
         "conversation_id": thread.get("conversation_id") if isinstance(thread, dict) else None,
@@ -102,7 +121,8 @@ def create_new_conversation(*, user_id: str, base_session_id: str) -> dict[str, 
     bound_context = ensure_session_context(state=base_state)
 
     new_session_id = f"{base_session_id}__newconv__{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}_{uuid4().hex[:6]}"
-    SESSIONS[(user_id, new_session_id)] = SessionState(user_id=user_id, session_id=new_session_id)
+    new_state = SessionState(user_id=user_id, session_id=new_session_id)
+    get_session_store().save(new_state)
     return ensure_session(user_id=user_id, session_id=new_session_id, context_id=bound_context.context_id)
 
 
@@ -137,7 +157,7 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
     else:
         base_state = get_session_state(user_id=user_id, session_id=session_id)
         ensure_session_surface(state=base_state, surface='interfaz_usuario')
-        bound_context = ensure_session_context(state=base_state)
+        ensure_session_context(state=base_state)
         if _should_auto_reset_for_fresh_opener(state=base_state, message=message):
             payload = create_new_conversation(user_id=user_id, base_session_id=session_id)
             resolved_session_id = payload["session_id"]

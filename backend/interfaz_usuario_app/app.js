@@ -10,7 +10,19 @@ async function api(path, opts = {}) {
 }
 
 function ids() {
-  return { user_id: $('userId').value.trim(), session_id: $('sessionId').value.trim() };
+  const userId = $('userId').value.trim();
+  const sessionId = $('sessionId').value.trim();
+  return {
+    ...(userId ? { user_id: userId } : {}),
+    ...(sessionId ? { session_id: sessionId } : {}),
+  };
+}
+
+function applyBootstrapIdentity(out) {
+  if (!out || typeof out !== 'object') return;
+  if (typeof out.user_id === 'string') $('userId').value = out.user_id;
+  if (typeof out.session_id === 'string') $('sessionId').value = out.session_id;
+  if (out.user_id && out.session_id) lastSessionKey = `${out.user_id}::${out.session_id}`;
 }
 
 function readPublicSlugFromUrl() {
@@ -1603,12 +1615,6 @@ async function startFeedbackEvaluation() {
   feedbackPollingTimer = window.setTimeout(() => pollEvaluationStatus(feedbackEvaluationId), 200);
 }
 
-function _seedDefaultIds() {
-  const suffix = `${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
-  $('userId').value = `u_interfaz_${suffix}`;
-  $('sessionId').value = `interfaz-main__${suffix}`;
-}
-
 async function runNegotiationTurnFromText(message, { allowWhileVoiceTurn = false } = {}) {
   syncSessionBoundaryReset();
   if (!message || turnInFlight || (voiceTurnInFlight && !allowWhileVoiceTurn)) return;
@@ -1671,6 +1677,7 @@ async function handleSend() {
 $('bootstrap').onclick = async () => {
   syncSessionBoundaryReset();
   const out = await api('/sessions/bootstrap', { method: 'POST', body: JSON.stringify(bootstrapPayload()) });
+  applyBootstrapIdentity(out);
   currentPresentationConfig = out.presentation_config || null;
   $('meta').textContent = `session=${out.session_id} traces=${out.trace_count} conversation_id=${out.conversation_id || '-'} context=${out.context_id || '-'}`;
 };
@@ -1918,15 +1925,14 @@ document.addEventListener('visibilitychange', () => {
 });
 
 (async function initInterfazUsuarioSession() {
-  _seedDefaultIds();
   syncSessionBoundaryReset();
   try {
     const out = await api('/sessions/bootstrap', { method: 'POST', body: JSON.stringify(bootstrapPayload()) });
+    applyBootstrapIdentity(out);
     currentPresentationConfig = out.presentation_config || null;
     applyPresentationConfigToDom(currentPresentationConfig);
     initAvatarRuntimeOnce(currentPresentationConfig);
     bindRuntimeReadiness();
-    lastSessionKey = `${out.user_id}::${out.session_id}`;
     resetFinishButtonArmed();
     setLatestTraceCount(out.trace_count);
     $('meta').textContent = `session=${out.session_id} traces=${out.trace_count} conversation_id=${out.conversation_id || '-'} context=${out.context_id || '-'}`;

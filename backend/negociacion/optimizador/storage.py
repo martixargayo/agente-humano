@@ -3,19 +3,18 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
-from sessions.state import SESSIONS, SessionState
+from sessions.state import SessionState, get_session_state, get_session_store
 from sessions.surface_scope import is_surface_owned
 
 PREFERRED_TRACE_KEYS = ["negotiation_canonical_traces"]
 
 
 def iter_session_entries() -> Iterable[tuple[str, str, SessionState]]:
-    for (user_id, session_id), state in SESSIONS.items():
-        yield user_id, session_id, state
+    yield from get_session_store().iter_entries()
 
 
 def get_state(user_id: str, session_id: str) -> SessionState | None:
-    return SESSIONS.get((user_id, session_id))
+    return get_session_store().get(user_id=user_id, session_id=session_id)
 
 
 
