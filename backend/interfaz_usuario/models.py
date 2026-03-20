@@ -2,12 +2,26 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
 
+from .presentation_models import PresentationConfig
+
 
 class SessionBootstrapRequest(BaseModel):
     user_id: str = "u_interfaz"
     session_id: str = "interfaz-main"
     context_id: str | None = None
     public_slug: str | None = None
+
+
+class SessionBootstrapResponse(BaseModel):
+    user_id: str
+    session_id: str
+    trace_count: int = 0
+    last_updated: str
+    conversation_id: str | None = None
+    previous_response_id: str | None = None
+    context_id: str
+    public_slug: str
+    presentation_config: PresentationConfig
 
 
 class NegotiationTurnRequest(BaseModel):

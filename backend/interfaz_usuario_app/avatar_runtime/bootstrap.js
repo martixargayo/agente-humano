@@ -1,24 +1,21 @@
-import { AVATAR_RUNTIME_CONFIG } from './config.js';
+import { buildAvatarRuntimeConfigFromPresentation } from './config.js';
 import { createAvatarRuntime } from './runtime.js';
 
-function initAvatarRuntime() {
-  const stageEl = document.getElementById('stage');
-  if (!stageEl) {
-    console.warn('[avatar-runtime] No se encontró #stage para montar el avatar.');
-    return null;
+export function initAvatarRuntime({ stageEl, presentationConfig } = {}) {
+  if (window.__avatarRuntime) return window.__avatarRuntime;
+
+  const resolvedStageEl = stageEl || document.getElementById('stage');
+  if (!resolvedStageEl) {
+    throw new Error('avatar_runtime_stage_missing');
   }
 
   const runtime = createAvatarRuntime({
-    stageEl,
-    config: AVATAR_RUNTIME_CONFIG,
+    stageEl: resolvedStageEl,
+    config: buildAvatarRuntimeConfigFromPresentation(presentationConfig),
   });
 
   window.__avatarRuntime = runtime;
   return runtime;
 }
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initAvatarRuntime, { once: true });
-} else {
-  initAvatarRuntime();
-}
+window.__initAvatarRuntime = initAvatarRuntime;

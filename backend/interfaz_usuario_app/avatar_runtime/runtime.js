@@ -15,6 +15,26 @@ function smoothstepJS(edge0, edge1, x) {
   return t * t * (3.0 - 2.0 * t);
 }
 
+function deepMerge(base, override) {
+  if (!override || typeof override !== 'object' || Array.isArray(override)) {
+    return Array.isArray(base) ? [...base] : { ...base };
+  }
+  const out = Array.isArray(base) ? [...base] : { ...base };
+  Object.entries(override).forEach(([key, value]) => {
+    if (typeof value === 'undefined') return;
+    if (Array.isArray(value)) {
+      out[key] = [...value];
+      return;
+    }
+    if (value && typeof value === 'object' && !Array.isArray(value) && out[key] && typeof out[key] === 'object' && !Array.isArray(out[key])) {
+      out[key] = deepMerge(out[key], value);
+      return;
+    }
+    out[key] = value;
+  });
+  return out;
+}
+
 const realisticSurfaceVertexShader = /* glsl */ `
 precision highp float;
 uniform float uTime;
@@ -309,39 +329,165 @@ export function createAvatarRuntime({ stageEl, config }) {
   }
   const clock = new THREE.Clock();
 
-  const MouthTuning = { centerY: 0.16, centerX: -0.045, width: 0.18, height: 0.14, curve: 0.0 };
-  const NeckTuning = {
-    centerX: -0.05540768292619062,
-    width: 0.3289615614114691,
-    topY: -0.3029435623085454,
-    bottomY: -0.5299623850146092,
-    curve: -0.18449820086885416,
-    neckPivotY: -0.5299623850146092,
-    bodyPivotY: -0.6499623850146092,
-  };
-  const EyeBlinkTuning = {
-    left: { centerX: -0.21262084897756595, centerY: 0.49398826434773013, halfWidth: 0.06927066702311041, rotation: -0.07747718419813834, upper: { offset: 0.015333409431849491, curve: -0.01375947353731123 }, lower: { offset: -0.012817365534143615, curve: 0.004398359546727952 } },
-    right: { centerX: 0.09769628198016435, centerY: 0.48632749262174674, halfWidth: 0.07165083081892201, rotation: 0.05966598604243294, upper: { offset: 0.009755191469550624, curve: -0.013990511698837487 }, lower: { offset: -0.018494072161187834, curve: 0.0027252480420008746 } },
-  };
-  const MouthRenderTuning = {
-    rimA: 0.26, rimB: 0.46, rimC: 0.68, rimD: 0.84, innerA: 0.70, innerB: 0.82, innerGain: 0.22,
-    innerCoreA: 0.52, innerCoreB: 0.56, innerCoreGain: 0.90, maskMin: 0.08,
-    upsampleMinPoints: 260, upsampleAmpMin: 0.0007, upsampleAmpMax: 0.0015, rimResampleFactor: 50,
-    pointsAlpha: 0.50,
-    pointsAlphaClip: 0.012, pointsSizeNear: 3.0 * window.devicePixelRatio, pointsSizeFar: 2.3 * window.devicePixelRatio,
-    pointsColorMul: 0.95, pointsLumaFloor: 0.12, pointsLumaStrength: 1.0, pointsLumaPreserveHue: 1.0, pointsLumaDebug: false,
-    pointsCullBack: true, pointsDebugBackOnly: false,
-    meshFade: 0.42, meshFeather: 0.12, meshAlphaMin: 0.01, meshFadeGamma: 3.0, meshFadeGain: 2.2,
-    useDiamondFade: true, fadeDiamondCX: -0.045, fadeDiamondCY: 0.16, fadeDiamondRX: 0.11, fadeDiamondRY: 0.07, fadeDiamondRot: 0.0,
-    alwaysPointsMode: true, pointsOn: 0.050, pointsOff: 0.032, mouthAttack: 26.0, mouthRelease: 12.0,
-  };
+  function requiredFiniteNumber(value, fieldName) {
+    if (!Number.isFinite(Number(value))) {
+      throw new Error(`avatar_runtime_missing_${fieldName}`);
+    }
+    return Number(value);
+  }
 
+  function normalizeCalibration(nextCalibration) {
+    return {
+      mouth: {
+        centerX: requiredFiniteNumber(nextCalibration?.mouth?.center_x, 'calibration_mouth_center_x'),
+        centerY: requiredFiniteNumber(nextCalibration?.mouth?.center_y, 'calibration_mouth_center_y'),
+        width: requiredFiniteNumber(nextCalibration?.mouth?.width, 'calibration_mouth_width'),
+        height: requiredFiniteNumber(nextCalibration?.mouth?.height, 'calibration_mouth_height'),
+        curve: requiredFiniteNumber(nextCalibration?.mouth?.curve, 'calibration_mouth_curve'),
+      },
+      neck: {
+        centerX: requiredFiniteNumber(nextCalibration?.neck?.center_x, 'calibration_neck_center_x'),
+        width: requiredFiniteNumber(nextCalibration?.neck?.width, 'calibration_neck_width'),
+        topY: requiredFiniteNumber(nextCalibration?.neck?.top_y, 'calibration_neck_top_y'),
+        bottomY: requiredFiniteNumber(nextCalibration?.neck?.bottom_y, 'calibration_neck_bottom_y'),
+        curve: requiredFiniteNumber(nextCalibration?.neck?.curve, 'calibration_neck_curve'),
+        neckPivotY: requiredFiniteNumber(nextCalibration?.neck?.neck_pivot_y, 'calibration_neck_neck_pivot_y'),
+        bodyPivotY: requiredFiniteNumber(nextCalibration?.neck?.body_pivot_y, 'calibration_neck_body_pivot_y'),
+      },
+      eyes: {
+        left: {
+          centerX: requiredFiniteNumber(nextCalibration?.eyes?.left_eye?.center_x, 'calibration_eyes_left_center_x'),
+          centerY: requiredFiniteNumber(nextCalibration?.eyes?.left_eye?.center_y, 'calibration_eyes_left_center_y'),
+          halfWidth: requiredFiniteNumber(nextCalibration?.eyes?.left_eye?.half_width, 'calibration_eyes_left_half_width'),
+          rotation: requiredFiniteNumber(nextCalibration?.eyes?.left_eye?.rotation, 'calibration_eyes_left_rotation'),
+          upper: {
+            offset: requiredFiniteNumber(nextCalibration?.eyes?.left_eye?.upper?.offset, 'calibration_eyes_left_upper_offset'),
+            curve: requiredFiniteNumber(nextCalibration?.eyes?.left_eye?.upper?.curve, 'calibration_eyes_left_upper_curve'),
+          },
+          lower: {
+            offset: requiredFiniteNumber(nextCalibration?.eyes?.left_eye?.lower?.offset, 'calibration_eyes_left_lower_offset'),
+            curve: requiredFiniteNumber(nextCalibration?.eyes?.left_eye?.lower?.curve, 'calibration_eyes_left_lower_curve'),
+          },
+        },
+        right: {
+          centerX: requiredFiniteNumber(nextCalibration?.eyes?.right_eye?.center_x, 'calibration_eyes_right_center_x'),
+          centerY: requiredFiniteNumber(nextCalibration?.eyes?.right_eye?.center_y, 'calibration_eyes_right_center_y'),
+          halfWidth: requiredFiniteNumber(nextCalibration?.eyes?.right_eye?.half_width, 'calibration_eyes_right_half_width'),
+          rotation: requiredFiniteNumber(nextCalibration?.eyes?.right_eye?.rotation, 'calibration_eyes_right_rotation'),
+          upper: {
+            offset: requiredFiniteNumber(nextCalibration?.eyes?.right_eye?.upper?.offset, 'calibration_eyes_right_upper_offset'),
+            curve: requiredFiniteNumber(nextCalibration?.eyes?.right_eye?.upper?.curve, 'calibration_eyes_right_upper_curve'),
+          },
+          lower: {
+            offset: requiredFiniteNumber(nextCalibration?.eyes?.right_eye?.lower?.offset, 'calibration_eyes_right_lower_offset'),
+            curve: requiredFiniteNumber(nextCalibration?.eyes?.right_eye?.lower?.curve, 'calibration_eyes_right_lower_curve'),
+          },
+        },
+      },
+      mouthRender: {
+        rimA: requiredFiniteNumber(nextCalibration?.mouth_render?.rim_a, 'calibration_mouth_render_rim_a'),
+        rimB: requiredFiniteNumber(nextCalibration?.mouth_render?.rim_b, 'calibration_mouth_render_rim_b'),
+        rimC: requiredFiniteNumber(nextCalibration?.mouth_render?.rim_c, 'calibration_mouth_render_rim_c'),
+        rimD: requiredFiniteNumber(nextCalibration?.mouth_render?.rim_d, 'calibration_mouth_render_rim_d'),
+        innerA: requiredFiniteNumber(nextCalibration?.mouth_render?.inner_a, 'calibration_mouth_render_inner_a'),
+        innerB: requiredFiniteNumber(nextCalibration?.mouth_render?.inner_b, 'calibration_mouth_render_inner_b'),
+        innerGain: requiredFiniteNumber(nextCalibration?.mouth_render?.inner_gain, 'calibration_mouth_render_inner_gain'),
+        innerCoreA: requiredFiniteNumber(nextCalibration?.mouth_render?.inner_core_a, 'calibration_mouth_render_inner_core_a'),
+        innerCoreB: requiredFiniteNumber(nextCalibration?.mouth_render?.inner_core_b, 'calibration_mouth_render_inner_core_b'),
+        innerCoreGain: requiredFiniteNumber(nextCalibration?.mouth_render?.inner_core_gain, 'calibration_mouth_render_inner_core_gain'),
+        maskMin: requiredFiniteNumber(nextCalibration?.mouth_render?.mask_min, 'calibration_mouth_render_mask_min'),
+        upsampleMinPoints: requiredFiniteNumber(nextCalibration?.mouth_render?.upsample_min_points, 'calibration_mouth_render_upsample_min_points'),
+        upsampleAmpMin: requiredFiniteNumber(nextCalibration?.mouth_render?.upsample_amp_min, 'calibration_mouth_render_upsample_amp_min'),
+        upsampleAmpMax: requiredFiniteNumber(nextCalibration?.mouth_render?.upsample_amp_max, 'calibration_mouth_render_upsample_amp_max'),
+        rimResampleFactor: requiredFiniteNumber(nextCalibration?.mouth_render?.rim_resample_factor, 'calibration_mouth_render_rim_resample_factor'),
+        pointsAlpha: requiredFiniteNumber(nextCalibration?.mouth_render?.points_alpha, 'calibration_mouth_render_points_alpha'),
+        pointsAlphaClip: requiredFiniteNumber(nextCalibration?.mouth_render?.points_alpha_clip, 'calibration_mouth_render_points_alpha_clip'),
+        pointsSizeNear: requiredFiniteNumber(nextCalibration?.mouth_render?.points_size_near, 'calibration_mouth_render_points_size_near') * window.devicePixelRatio,
+        pointsSizeFar: requiredFiniteNumber(nextCalibration?.mouth_render?.points_size_far, 'calibration_mouth_render_points_size_far') * window.devicePixelRatio,
+        pointsColorMul: requiredFiniteNumber(nextCalibration?.mouth_render?.points_color_mul, 'calibration_mouth_render_points_color_mul'),
+        pointsLumaFloor: requiredFiniteNumber(nextCalibration?.mouth_render?.points_luma_floor, 'calibration_mouth_render_points_luma_floor'),
+        pointsLumaStrength: requiredFiniteNumber(nextCalibration?.mouth_render?.points_luma_strength, 'calibration_mouth_render_points_luma_strength'),
+        pointsLumaPreserveHue: requiredFiniteNumber(nextCalibration?.mouth_render?.points_luma_preserve_hue, 'calibration_mouth_render_points_luma_preserve_hue'),
+        pointsLumaDebug: Boolean(nextCalibration?.mouth_render?.points_luma_debug),
+        pointsCullBack: Boolean(nextCalibration?.mouth_render?.points_cull_back),
+        pointsDebugBackOnly: Boolean(nextCalibration?.mouth_render?.points_debug_back_only),
+        meshFade: requiredFiniteNumber(nextCalibration?.mouth_render?.mesh_fade, 'calibration_mouth_render_mesh_fade'),
+        meshFeather: requiredFiniteNumber(nextCalibration?.mouth_render?.mesh_feather, 'calibration_mouth_render_mesh_feather'),
+        meshAlphaMin: requiredFiniteNumber(nextCalibration?.mouth_render?.mesh_alpha_min, 'calibration_mouth_render_mesh_alpha_min'),
+        meshFadeGamma: requiredFiniteNumber(nextCalibration?.mouth_render?.mesh_fade_gamma, 'calibration_mouth_render_mesh_fade_gamma'),
+        meshFadeGain: requiredFiniteNumber(nextCalibration?.mouth_render?.mesh_fade_gain, 'calibration_mouth_render_mesh_fade_gain'),
+        useDiamondFade: Boolean(nextCalibration?.mouth_render?.use_diamond_fade),
+        fadeDiamondCX: requiredFiniteNumber(nextCalibration?.mouth_render?.fade_diamond_cx, 'calibration_mouth_render_fade_diamond_cx'),
+        fadeDiamondCY: requiredFiniteNumber(nextCalibration?.mouth_render?.fade_diamond_cy, 'calibration_mouth_render_fade_diamond_cy'),
+        fadeDiamondRX: requiredFiniteNumber(nextCalibration?.mouth_render?.fade_diamond_rx, 'calibration_mouth_render_fade_diamond_rx'),
+        fadeDiamondRY: requiredFiniteNumber(nextCalibration?.mouth_render?.fade_diamond_ry, 'calibration_mouth_render_fade_diamond_ry'),
+        fadeDiamondRot: requiredFiniteNumber(nextCalibration?.mouth_render?.fade_diamond_rot, 'calibration_mouth_render_fade_diamond_rot'),
+        alwaysPointsMode: Boolean(nextCalibration?.mouth_render?.always_points_mode),
+        pointsOn: requiredFiniteNumber(nextCalibration?.mouth_render?.points_on, 'calibration_mouth_render_points_on'),
+        pointsOff: requiredFiniteNumber(nextCalibration?.mouth_render?.points_off, 'calibration_mouth_render_points_off'),
+      },
+      lipsync: {
+        talkAmpTop: requiredFiniteNumber(nextCalibration?.lipsync?.talk_amp_top, 'calibration_lipsync_talk_amp_top'),
+        talkAmpBot: requiredFiniteNumber(nextCalibration?.lipsync?.talk_amp_bottom, 'calibration_lipsync_talk_amp_bottom'),
+        talkFreq: requiredFiniteNumber(nextCalibration?.lipsync?.talk_freq, 'calibration_lipsync_talk_freq'),
+        lipDepthAmp: requiredFiniteNumber(nextCalibration?.lipsync?.lip_depth_amp, 'calibration_lipsync_lip_depth_amp'),
+        restOpen: requiredFiniteNumber(nextCalibration?.lipsync?.rest_open, 'calibration_lipsync_rest_open'),
+        attack: requiredFiniteNumber(nextCalibration?.lipsync?.attack, 'calibration_lipsync_attack'),
+        release: requiredFiniteNumber(nextCalibration?.lipsync?.release, 'calibration_lipsync_release'),
+      },
+    };
+  }
+
+  function normalizeMotion(nextMotion = {}) {
+    return {
+      head: {
+        ampYaw: requiredFiniteNumber(nextMotion?.head?.amp_yaw, 'motion_head_amp_yaw'),
+        ampPitch: requiredFiniteNumber(nextMotion?.head?.amp_pitch, 'motion_head_amp_pitch'),
+        ampRoll: requiredFiniteNumber(nextMotion?.head?.amp_roll, 'motion_head_amp_roll'),
+        holdMin: requiredFiniteNumber(nextMotion?.head?.hold_min, 'motion_head_hold_min'),
+        holdMax: requiredFiniteNumber(nextMotion?.head?.hold_max, 'motion_head_hold_max'),
+        smooth: requiredFiniteNumber(nextMotion?.head?.smooth, 'motion_head_smooth'),
+        rampDur: requiredFiniteNumber(nextMotion?.head?.ramp_dur, 'motion_head_ramp_dur'),
+      },
+      body: {
+        ampYaw: requiredFiniteNumber(nextMotion?.body?.amp_yaw, 'motion_body_amp_yaw'),
+        ampPitch: requiredFiniteNumber(nextMotion?.body?.amp_pitch, 'motion_body_amp_pitch'),
+        ampRoll: requiredFiniteNumber(nextMotion?.body?.amp_roll, 'motion_body_amp_roll'),
+        holdMin: requiredFiniteNumber(nextMotion?.body?.hold_min, 'motion_body_hold_min'),
+        holdMax: requiredFiniteNumber(nextMotion?.body?.hold_max, 'motion_body_hold_max'),
+        smooth: requiredFiniteNumber(nextMotion?.body?.smooth, 'motion_body_smooth'),
+        rampDur: requiredFiniteNumber(nextMotion?.body?.ramp_dur, 'motion_body_ramp_dur'),
+      },
+      micro: {
+        yaw: requiredFiniteNumber(nextMotion?.micro?.yaw, 'motion_micro_yaw'),
+        pitch: requiredFiniteNumber(nextMotion?.micro?.pitch, 'motion_micro_pitch'),
+        roll: requiredFiniteNumber(nextMotion?.micro?.roll, 'motion_micro_roll'),
+      },
+      nod: {
+        listenProbability: requiredFiniteNumber(nextMotion?.nod?.listen_probability, 'motion_nod_listen_probability'),
+        durMin: requiredFiniteNumber(nextMotion?.nod?.dur_min, 'motion_nod_dur_min'),
+        durMax: requiredFiniteNumber(nextMotion?.nod?.dur_max, 'motion_nod_dur_max'),
+        ampMin: requiredFiniteNumber(nextMotion?.nod?.amp_min, 'motion_nod_amp_min'),
+        ampMax: requiredFiniteNumber(nextMotion?.nod?.amp_max, 'motion_nod_amp_max'),
+      },
+      bodyBob: {
+        ampPrimary: requiredFiniteNumber(nextMotion?.body_bob?.amp_primary, 'motion_body_bob_amp_primary'),
+        freqPrimary: requiredFiniteNumber(nextMotion?.body_bob?.freq_primary, 'motion_body_bob_freq_primary'),
+        ampSecondary: requiredFiniteNumber(nextMotion?.body_bob?.amp_secondary, 'motion_body_bob_amp_secondary'),
+        freqSecondary: requiredFiniteNumber(nextMotion?.body_bob?.freq_secondary, 'motion_body_bob_freq_secondary'),
+      },
+    };
+  }
+
+  const Calibration = normalizeCalibration(config.calibration);
+  const MouthTuning = Calibration.mouth;
+  const NeckTuning = Calibration.neck;
+  const EyeBlinkTuning = Calibration.eyes;
+  const MouthRenderTuning = Calibration.mouthRender;
+  const LipsyncTuning = Calibration.lipsync;
+
+  const MotionConfig = normalizeMotion(config.motion);
   const EyelidMotionState = { value: 0, phase: 'idle', timer: 0, duration: 0.12, nextBlinkAt: 2.2, pendingDouble: false, initialized: false };
-  const MotionConfig = {
-    head: { ampYaw: 0.040, ampPitch: 0.036, ampRoll: 0.022, holdMin: 1.3, holdMax: 3.8, smooth: 8.0, rampDur: 0.32 },
-    body: { ampYaw: 0.010, ampPitch: 0.008, ampRoll: 0.008, holdMin: 1.6, holdMax: 4.2, smooth: 5.0, rampDur: 0.40 },
-    micro: { yaw: 0.0045, pitch: 0.0030, roll: 0.0026 },
-  };
   const MotionState = {
     seed: Math.random() * 1000,
     head: { current: new THREE.Vector3(), target: new THREE.Vector3(), targetFrom: new THREE.Vector3(), targetTo: new THREE.Vector3(), nextSwitch: 0, targetT0: 0 },
@@ -619,7 +765,7 @@ export function createAvatarRuntime({ stageEl, config }) {
     ch.current.lerp(ch.target, 1 - Math.exp(-dt * cfg.smooth));
   }
   function updateNod(t, dt) {
-    if (!MotionState.nod.active && state.mode === 'LISTENING' && Math.random() < 0.18 * dt) { MotionState.nod.active = true; MotionState.nod.t0 = t; MotionState.nod.dur = randRange(0.28, 0.40); MotionState.nod.amp = randRange(0.010, 0.014); }
+    if (!MotionState.nod.active && state.mode === 'LISTENING' && Math.random() < MotionConfig.nod.listenProbability * dt) { MotionState.nod.active = true; MotionState.nod.t0 = t; MotionState.nod.dur = randRange(MotionConfig.nod.durMin, MotionConfig.nod.durMax); MotionState.nod.amp = randRange(MotionConfig.nod.ampMin, MotionConfig.nod.ampMax); }
     if (!MotionState.nod.active) return 0;
     const u = (t - MotionState.nod.t0) / MotionState.nod.dur;
     if (u >= 1) { MotionState.nod.active = false; return 0; }
@@ -674,8 +820,8 @@ export function createAvatarRuntime({ stageEl, config }) {
       transparent: true,
       uniforms: {
         uTime: { value: 0 }, uGlobalAmp: { value: 1.5 }, uClusterAmp: { value: 1.5 }, uNoiseAmp: { value: 1.6 },
-        uTalk: { value: 0 }, uTalkAmpTop: { value: 0.024 }, uTalkAmpBot: { value: 0.075 }, uTalkFreq: { value: 24.0 },
-        uLipDepthAmp: { value: 0.1 }, uRestOpen: { value: 0.03 }, uBreathAmp: { value: 1.0 }, uBreathFreq: { value: 0.6 },
+        uTalk: { value: 0 }, uTalkAmpTop: { value: LipsyncTuning.talkAmpTop }, uTalkAmpBot: { value: LipsyncTuning.talkAmpBot }, uTalkFreq: { value: LipsyncTuning.talkFreq },
+        uLipDepthAmp: { value: LipsyncTuning.lipDepthAmp }, uRestOpen: { value: LipsyncTuning.restOpen }, uBreathAmp: { value: 1.0 }, uBreathFreq: { value: 0.6 },
         uHeadRot: { value: new THREE.Vector3() }, uBodyRot: { value: new THREE.Vector3() }, uBodyOffset: { value: new THREE.Vector3() },
         uNeckPivot: { value: new THREE.Vector3(0, NeckTuning.neckPivotY, 0) }, uBodyPivot: { value: new THREE.Vector3(0, NeckTuning.bodyPivotY, 0) },
         uDissolveStart: { value: 0.9 }, uDissolveEnd: { value: 1.0 }, uDissolveMotionAmp: { value: 1.0 },
@@ -706,8 +852,8 @@ export function createAvatarRuntime({ stageEl, config }) {
         transparent: true,
         depthWrite: false,
         uniforms: {
-          uTime: { value: 0 }, uTalk: { value: 0 }, uTalkAmpTop: { value: 0.024 }, uTalkAmpBot: { value: 0.075 }, uTalkFreq: { value: 24.0 },
-          uLipDepthAmp: { value: 0.1 }, uRestOpen: { value: 0.03 }, uPointSizeNear: { value: MouthRenderTuning.pointsSizeNear },
+          uTime: { value: 0 }, uTalk: { value: 0 }, uTalkAmpTop: { value: LipsyncTuning.talkAmpTop }, uTalkAmpBot: { value: LipsyncTuning.talkAmpBot }, uTalkFreq: { value: LipsyncTuning.talkFreq },
+          uLipDepthAmp: { value: LipsyncTuning.lipDepthAmp }, uRestOpen: { value: LipsyncTuning.restOpen }, uPointSizeNear: { value: MouthRenderTuning.pointsSizeNear },
           uPointSizeFar: { value: MouthRenderTuning.pointsSizeFar }, uHeadRot: { value: new THREE.Vector3() }, uBodyRot: { value: new THREE.Vector3() },
           uBodyOffset: { value: new THREE.Vector3() }, uNeckPivot: { value: new THREE.Vector3(0, NeckTuning.neckPivotY, 0) },
           uBodyPivot: { value: new THREE.Vector3(0, NeckTuning.bodyPivotY, 0) }, uColorMap: { value: colorMap }, uUseMap: { value: colorMap ? 1.0 : 0.0 },
@@ -760,7 +906,7 @@ export function createAvatarRuntime({ stageEl, config }) {
     const microPitch = Math.sin(elapsed * 1.8 + MotionState.seed * 0.7) * MotionConfig.micro.pitch + Math.sin(elapsed * 3.2 + MotionState.seed * 0.2) * MotionConfig.micro.pitch * 0.45;
     const microRoll = Math.sin(elapsed * 1.5 + MotionState.seed * 1.3) * MotionConfig.micro.roll + Math.sin(elapsed * 2.9 + MotionState.seed * 0.4) * MotionConfig.micro.roll * 0.45;
     const nodPitch = updateNod(elapsed, dtMotion);
-    const offY = 0.01 * Math.sin(elapsed * 0.9) + 0.005 * Math.sin(elapsed * 0.37);
+    const offY = MotionConfig.bodyBob.ampPrimary * Math.sin(elapsed * MotionConfig.bodyBob.freqPrimary) + MotionConfig.bodyBob.ampSecondary * Math.sin(elapsed * MotionConfig.bodyBob.freqSecondary);
     const head = MotionState.head.current;
     const body = MotionState.body.current;
     const headRot = new THREE.Vector3(head.x + microPitch + nodPitch, head.y + microYaw, head.z + microRoll).multiplyScalar(1.35);
@@ -768,7 +914,7 @@ export function createAvatarRuntime({ stageEl, config }) {
 
     state.talkLevel = clamp01(Math.max(state.manualTalkLevel, getTalkLevelFromAnalyser()));
     const mouthTarget = clamp01(state.talkLevel);
-    const mouthSpeed = mouthTarget > mouthOpenVisual ? MouthRenderTuning.mouthAttack : MouthRenderTuning.mouthRelease;
+    const mouthSpeed = mouthTarget > mouthOpenVisual ? LipsyncTuning.attack : LipsyncTuning.release;
     mouthOpenVisual += (mouthTarget - mouthOpenVisual) * (1 - Math.exp(-Math.max(0.0001, deltaRaw || 1 / 60) * mouthSpeed));
     if (!mouthPointsVisibleLatched && mouthOpenVisual >= MouthRenderTuning.pointsOn) mouthPointsVisibleLatched = true;
     if (mouthPointsVisibleLatched && mouthOpenVisual <= MouthRenderTuning.pointsOff) mouthPointsVisibleLatched = false;

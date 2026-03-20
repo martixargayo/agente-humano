@@ -21,6 +21,7 @@ class ResolvedNegotiationContext(BaseModel):
     context_version: str
     public_slug: str
     context_dir: Path
+    presentation_dir: Path
     prompts_dir: Path
     persona_path: Path
     negotiation_brief_path: Path
