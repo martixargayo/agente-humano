@@ -138,6 +138,18 @@
     return document.getElementById('feedback-report-view-styles')?.textContent || '';
   }
 
+  function getXmlSafeCaptureStyles() {
+    const captureFontStack = `Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif`;
+    const styles = getFeedbackReportStyles();
+    if (!styles) return '';
+    return styles
+      .replace(/^\s*@import\s+url\(([^)]+)\);\s*/gm, '')
+      .replace(
+        /font-family:\s*Inter,\s*ui-sans-serif,\s*system-ui,\s*-apple-system,\s*Segoe UI,\s*Roboto,\s*Helvetica,\s*Arial,\s*sans-serif;/g,
+        `font-family: ${captureFontStack};`
+      );
+  }
+
   function escapeHtml(value) {
     return String(value || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
   }
@@ -529,7 +541,7 @@
       <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
         <foreignObject width="100%" height="100%">
           <div xmlns="http://www.w3.org/1999/xhtml">
-            <style>${getFeedbackReportStyles()}</style>
+            <style>${getXmlSafeCaptureStyles()}</style>
             ${clonedRoot.outerHTML}
           </div>
         </foreignObject>
