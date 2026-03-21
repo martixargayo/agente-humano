@@ -182,6 +182,8 @@ const FloatingPhraseQuadrantOrder = ['topLeft', 'topRight', 'bottomLeft', 'botto
 let currentInputMode = InputMode.TALK;
 let currentAgentMode = AgentMode.CHAT;
 let finishButtonArmed = false;
+let finishButtonHighlightTimer = null;
+let finishButtonAttentionActive = false;
 let latestTraceCount = 0;
 let lastSessionKey = '';
 const MIN_TURNS_BEFORE_FINALIZE = 1;
@@ -957,17 +959,43 @@ function setLatestTraceCount(nextCount) {
   renderFinalizePopoverState();
 }
 
+function clearFinishButtonAttentionTimer() {
+  if (!finishButtonHighlightTimer) return;
+  window.clearTimeout(finishButtonHighlightTimer);
+  finishButtonHighlightTimer = null;
+}
+
+function setFinishButtonAttentionActive(active) {
+  finishButtonAttentionActive = Boolean(active);
+  ui.finishNegotiationBtn.classList.toggle('is-attention-active', finishButtonAttentionActive);
+}
+
+function startFinishButtonAttentionPulse() {
+  clearFinishButtonAttentionTimer();
+  setFinishButtonAttentionActive(false);
+  void ui.finishNegotiationBtn.offsetWidth;
+  setFinishButtonAttentionActive(true);
+  finishButtonHighlightTimer = window.setTimeout(() => {
+    finishButtonHighlightTimer = null;
+    setFinishButtonAttentionActive(false);
+  }, 5000);
+}
+
 function updateFinishNegotiationButton() {
-  ui.finishNegotiationBtn.classList.toggle('is-armed', finishButtonArmed);
+  ui.finishNegotiationBtn.classList.toggle('is-highlighted', finishButtonArmed);
+  if (!finishButtonArmed) setFinishButtonAttentionActive(false);
 }
 
 function armFinishButton(nextArmed) {
+  const wasArmed = finishButtonArmed;
   finishButtonArmed = finishButtonArmed || Boolean(nextArmed);
   updateFinishNegotiationButton();
+  if (!wasArmed && finishButtonArmed) startFinishButtonAttentionPulse();
 }
 
 function resetFinishButtonArmed() {
   finishButtonArmed = false;
+  clearFinishButtonAttentionTimer();
   updateFinishNegotiationButton();
 }
 
