@@ -365,6 +365,13 @@
     return new Promise((resolve) => window.setTimeout(resolve, ms));
   }
 
+  function nowMs() {
+    if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+      return performance.now();
+    }
+    return Date.now();
+  }
+
   function getCaptureRootMetrics(root) {
     if (!root) {
       return { width: 0, height: 0, scrollWidth: 0, scrollHeight: 0 };
@@ -412,7 +419,6 @@
     for (let attempt = 1; attempt <= 6; attempt += 1) {
       await waitForNextAnimationFrame();
       const metrics = getCaptureRootMetrics(root);
-      console.info('[feedback-capture] Métricas de estabilización', { attempt, metrics });
       if (requireVisible && metrics.width <= 0 && metrics.height <= 0) {
         stableReads = 0;
       } else if (metricsAreStable(metrics, previousMetrics)) {
@@ -425,6 +431,222 @@
     }
 
     return previousMetrics || getCaptureRootMetrics(root);
+  }
+
+  async function waitForReportImages(root) {
+    if (!root || typeof root.querySelectorAll !== 'function') return { total: 0, decoded: 0, pending: 0 };
+    const images = Array.from(root.querySelectorAll('img'));
+    if (images.length === 0) return { total: 0, decoded: 0, pending: 0 };
+
+    let decoded = 0;
+    await Promise.all(images.map(async (img) => {
+      try {
+        if (!img.complete) {
+          await new Promise((resolve) => {
+            img.addEventListener('load', resolve, { once: true });
+            img.addEventListener('error', resolve, { once: true });
+          });
+        }
+        if (typeof img.decode === 'function') {
+          try {
+            await img.decode();
+          } catch (_) {
+            // Seguimos incluso si el decode falla; el objetivo es estabilizar al máximo.
+          }
+        }
+        decoded += 1;
+      } catch (_) {
+        // Ignoramos errores individuales para no bloquear toda la captura.
+      }
+    }));
+    return {
+      total: images.length,
+      decoded,
+      pending: Math.max(0, images.length - decoded),
+    };
+  }
+
+  function createCaptureSandboxRoot(report) {
+    const sandboxRoot = buildDetachedReportRoot(report);
+    sandboxRoot.style.margin = '0';
+    sandboxRoot.style.padding = '0';
+    sandboxRoot.style.position = 'fixed';
+    sandboxRoot.style.left = '0';
+    sandboxRoot.style.top = '0';
+    sandboxRoot.style.opacity = '0';
+    sandboxRoot.style.pointerEvents = 'none';
+    sandboxRoot.style.zIndex = '-1';
+    sandboxRoot.style.width = '1180px';
+    sandboxRoot.setAttribute('data-capture-sandbox', '1');
+    document.body.appendChild(sandboxRoot);
+    return sandboxRoot;
+  }
+
+  function resolveCaptureRoot(report, options = {}) {
+    const liveRoot = options.rootElement || null;
+    if (liveRoot && liveRoot.isConnected) {
+      return {
+        liveRoot,
+        captureRoot: liveRoot,
+        sandboxRoot: null,
+        source: 'live-root',
+      };
+    }
+
+    const sandboxRoot = createCaptureSandboxRoot(report);
+    return {
+      liveRoot,
+      captureRoot: sandboxRoot,
+      sandboxRoot,
+      source: 'sandbox-root',
+    };
+  }
+
+  async function runCapturePreflight(captureRoot, options = {}) {
+    const startedAt = nowMs();
+    const stableMetrics = await waitForStableReportCapture(captureRoot, options);
+    const imageStatus = await waitForReportImages(captureRoot);
+    await waitForNextAnimationFrame();
+    const measured = getCaptureRootMetrics(captureRoot);
+    const durationMs = Math.round(nowMs() - startedAt);
+    return {
+      stableMetrics,
+      measured,
+      imageStatus,
+      durationMs,
+    };
+  }
+
+  function deriveCaptureDimensions(stableMetrics, measured) {
+    return {
+      width: Math.max(1180, stableMetrics.width || measured.width || stableMetrics.scrollWidth || measured.scrollWidth || 1180),
+      height: Math.max(760, stableMetrics.height || measured.height || stableMetrics.scrollHeight || measured.scrollHeight || 760),
+    };
+  }
+
+  function buildDomCaptureSvgMarkup(clonedRoot, width, height) {
+    return `
+      <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+        <foreignObject width="100%" height="100%">
+          <div xmlns="http://www.w3.org/1999/xhtml">
+            <style>${getFeedbackReportStyles()}</style>
+            ${clonedRoot.outerHTML}
+          </div>
+        </foreignObject>
+      </svg>
+    `;
+  }
+
+  function validateSvgMarkup(svgMarkup) {
+    const doc = new DOMParser().parseFromString(svgMarkup, 'image/svg+xml');
+    const parserError = doc.querySelector('parsererror');
+    return {
+      ok: !parserError,
+      errorText: parserError ? parserError.textContent || 'SVG inválido para XML.' : null,
+    };
+  }
+
+  function svgMarkupToDataUrl(svgMarkup) {
+    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgMarkup)}`;
+  }
+
+  async function loadImageFromUrl(src) {
+    const img = new Image();
+    img.decoding = 'sync';
+    const loadPromise = new Promise((resolve, reject) => {
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('No se pudo rasterizar el informe a PNG.'));
+    });
+    img.src = src;
+    if (typeof img.decode === 'function') {
+      try {
+        await img.decode();
+        return img;
+      } catch (_) {
+        // Fallback al modelo tradicional de eventos si decode falla o no aplica.
+      }
+    }
+    return loadPromise;
+  }
+
+  async function rasterizeLoadedImageToPng(image, { width, height, emptySampleMessage = null, smallBlobMessage = null, report = null } = {}) {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas 2D no disponible para exportar PNG.');
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(image, 0, 0, width, height);
+    const sample = sampleCanvasContent(canvas, ctx);
+    console.info('[feedback-capture] Validación de rasterización', sample);
+    if (!sample.hasVisibleContent) {
+      if (emptySampleMessage) console.warn('[feedback-capture] ' + emptySampleMessage);
+      if (report) return renderReportFromDataAsPng(report, { width });
+      throw new Error('La rasterización del informe quedó vacía.');
+    }
+
+    const pngBlob = await new Promise((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error('No se pudo generar el PNG del informe.'));
+      }, 'image/png');
+    });
+
+    if (pngBlob.size < 2048) {
+      if (smallBlobMessage) console.warn('[feedback-capture] ' + smallBlobMessage, { blobSize: pngBlob.size });
+      if (report) return renderReportFromDataAsPng(report, { width });
+      throw new Error('Blob PNG demasiado pequeño.');
+    }
+
+    return { blob: pngBlob, width, height };
+  }
+
+  async function captureReportAsPngPrimary(report, captureRoot, context = {}) {
+    const { width, height } = context.dimensions || {};
+    const effectiveWidth = Math.max(1180, Number(width) || 1180);
+    const effectiveHeight = Math.max(760, Number(height) || 760);
+    const clonedRoot = captureRoot.cloneNode(true);
+    clonedRoot.style.margin = '0';
+    clonedRoot.style.width = `${effectiveWidth}px`;
+    clonedRoot.style.minHeight = `${effectiveHeight}px`;
+    clonedRoot.querySelectorAll('.fb-turn-tooltip').forEach((tooltip) => tooltip.remove());
+
+    const svgMarkup = buildDomCaptureSvgMarkup(clonedRoot, effectiveWidth, effectiveHeight);
+    const validation = validateSvgMarkup(svgMarkup);
+    if (!validation.ok) {
+      throw new Error(`SVG de captura inválido: ${validation.errorText || 'parsererror'}`);
+    }
+
+    const svgDataUrl = svgMarkupToDataUrl(svgMarkup);
+    const image = await loadImageFromUrl(svgDataUrl);
+    const png = await rasterizeLoadedImageToPng(image, {
+      width: effectiveWidth,
+      height: effectiveHeight,
+      emptySampleMessage: 'La rasterización del motor principal salió vacía.',
+      smallBlobMessage: 'Blob PNG demasiado pequeño en el motor principal.',
+    });
+    return {
+      ...png,
+      strategy: 'dom-data-url',
+    };
+  }
+
+  async function captureReportAsPngFallback(report, context = {}) {
+    const { width } = context.dimensions || {};
+    const effectiveWidth = Math.max(1180, Number(width) || 1180);
+    const fallbackPng = await renderReportFromDataAsPng(report, { width: effectiveWidth });
+    return {
+      ...fallbackPng,
+      strategy: 'svg-data-fallback',
+    };
+  }
+
+  function summarizeCaptureFailures(failures = []) {
+    return failures.map((entry) => ({
+      engine: entry.engine,
+      error: entry.error,
+    }));
   }
 
   function triggerDownload(filename, blob, { targetWindow = window } = {}) {
@@ -452,105 +674,85 @@
 
   async function captureReportAsPng(report, options = {}) {
     if (!report) throw new Error('No hay informe para exportar.');
-    const liveRoot = options.rootElement || null;
-    let captureRoot = liveRoot && liveRoot.isConnected ? liveRoot : null;
-    let sandboxRoot = null;
-
-    if (!captureRoot) {
-      sandboxRoot = buildDetachedReportRoot(report);
-      sandboxRoot.style.margin = '0';
-      sandboxRoot.style.padding = '0';
-      sandboxRoot.style.position = 'fixed';
-      sandboxRoot.style.left = '0';
-      sandboxRoot.style.top = '0';
-      sandboxRoot.style.opacity = '0';
-      sandboxRoot.style.pointerEvents = 'none';
-      sandboxRoot.style.zIndex = '-1';
-      sandboxRoot.style.width = '1180px';
-      sandboxRoot.setAttribute('data-capture-sandbox', '1');
-      document.body.appendChild(sandboxRoot);
-      captureRoot = sandboxRoot;
-    }
+    const resolved = resolveCaptureRoot(report, options);
+    const { liveRoot, captureRoot, sandboxRoot, source } = resolved;
 
     try {
-      const stableMetrics = await waitForStableReportCapture(captureRoot, {
+      const preflight = await runCapturePreflight(captureRoot, {
         requireVisible: captureRoot === liveRoot,
       });
-      const measured = getCaptureRootMetrics(captureRoot);
-      const width = Math.max(1180, stableMetrics.width || measured.width || stableMetrics.scrollWidth || measured.scrollWidth || 1180);
-      const height = Math.max(760, stableMetrics.height || measured.height || stableMetrics.scrollHeight || measured.scrollHeight || 760);
+      const dimensions = deriveCaptureDimensions(preflight.stableMetrics, preflight.measured);
+      const { width, height } = dimensions;
       console.info('[feedback-capture] Preparando captura', {
-        source: captureRoot === liveRoot ? 'live-root' : 'sandbox-root',
+        source,
         width,
         height,
-        stableMetrics,
-        measured,
+        stableMetrics: preflight.stableMetrics,
+        measured: preflight.measured,
+        preflightMs: preflight.durationMs,
+        images: preflight.imageStatus,
+        engine: 'dom-data-url',
       });
       if (width <= 0 || height <= 0) {
         throw new Error(`Root de captura inválido (${width}x${height}).`);
       }
 
-      const clonedRoot = captureRoot.cloneNode(true);
-      clonedRoot.style.margin = '0';
-      clonedRoot.style.width = `${width}px`;
-      clonedRoot.style.minHeight = `${height}px`;
-      clonedRoot.querySelectorAll('.fb-turn-tooltip').forEach((tooltip) => tooltip.remove());
-      const svgMarkup = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
-          <foreignObject width="100%" height="100%">
-            <div xmlns="http://www.w3.org/1999/xhtml">
-              <style>${getFeedbackReportStyles()}</style>
-              ${clonedRoot.outerHTML}
-            </div>
-          </foreignObject>
-        </svg>
-      `;
-      const svgBlob = new Blob([svgMarkup], { type: 'image/svg+xml;charset=utf-8' });
-      const svgUrl = URL.createObjectURL(svgBlob);
+      const engines = [
+        {
+          name: 'dom-data-url',
+          run: () => captureReportAsPngPrimary(report, captureRoot, {
+            dimensions,
+            source,
+            preflight,
+          }),
+        },
+        {
+          name: 'svg-data-fallback',
+          run: () => captureReportAsPngFallback(report, {
+            dimensions,
+            source,
+            preflight,
+            failedEngine: 'dom-data-url',
+          }),
+        },
+      ];
+      const failures = [];
 
-      try {
-        const image = await new Promise((resolve, reject) => {
-          const img = new Image();
-          img.onload = () => resolve(img);
-          img.onerror = () => reject(new Error('No se pudo rasterizar el informe a PNG.'));
-          img.src = svgUrl;
-        });
-
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) throw new Error('Canvas 2D no disponible para exportar PNG.');
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillRect(0, 0, width, height);
-        ctx.drawImage(image, 0, 0, width, height);
-        const sample = sampleCanvasContent(canvas, ctx);
-        console.info('[feedback-capture] Validación de rasterización', sample);
-        if (!sample.hasVisibleContent) {
-          console.warn('[feedback-capture] La rasterización basada en foreignObject salió vacía; se usará el renderer SVG de respaldo.');
-          return renderReportFromDataAsPng(report, { width });
+      for (const engine of engines) {
+        try {
+          const snapshot = await engine.run();
+          const failureSummary = summarizeCaptureFailures(failures);
+          console.info('[feedback-capture] Snapshot generado', {
+            engine: engine.name,
+            source,
+            width: snapshot.width,
+            height: snapshot.height,
+            blobSize: snapshot.blob?.size || null,
+            recoveredFrom: failureSummary,
+            preflightMs: preflight.durationMs,
+          });
+          return {
+            ...snapshot,
+            source,
+            preflightMs: preflight.durationMs,
+            images: preflight.imageStatus,
+            recoveredFrom: failureSummary.length ? failureSummary : null,
+          };
+        } catch (error) {
+          const failure = {
+            engine: engine.name,
+            error: String(error?.message || error),
+          };
+          failures.push(failure);
+          console.warn('[feedback-capture] Error en motor de captura; se intentará el siguiente motor disponible.', {
+            source,
+            engine: failure.engine,
+            error: failure.error,
+          });
         }
-
-        const pngBlob = await new Promise((resolve, reject) => {
-          canvas.toBlob((blob) => {
-            if (blob) resolve(blob);
-            else reject(new Error('No se pudo generar el PNG del informe.'));
-          }, 'image/png');
-        });
-        console.info('[feedback-capture] PNG generado desde DOM', {
-          width,
-          height,
-          blobSize: pngBlob.size,
-        });
-        if (pngBlob.size < 2048) {
-          console.warn('[feedback-capture] Blob PNG demasiado pequeño; se usará el renderer SVG de respaldo.', { blobSize: pngBlob.size });
-          return renderReportFromDataAsPng(report, { width });
-        }
-
-        return { blob: pngBlob, width, height };
-      } finally {
-        URL.revokeObjectURL(svgUrl);
       }
+
+      throw new Error(`No se pudo capturar el snapshot del informe con ningún motor disponible. ${JSON.stringify(summarizeCaptureFailures(failures))}`);
     } finally {
       if (sandboxRoot) sandboxRoot.remove();
     }

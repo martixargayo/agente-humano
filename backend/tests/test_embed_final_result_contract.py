@@ -71,8 +71,9 @@ class EmbedFinalResultContractTests(unittest.TestCase):
 
     def _run_node_contract_harness(self) -> dict:
         functions = [
-            'transparentFallbackPngDataUrl',
             'deriveFinalResultTitle',
+            'wrapPlaceholderText',
+            'buildSnapshotFailurePlaceholderPngDataUrl',
             'deriveFinalResultActivityId',
             'buildEmbedEnvelope',
             'isAllowedParentOrigin',
@@ -146,6 +147,30 @@ class EmbedFinalResultContractTests(unittest.TestCase):
             function $(id) {{
               return {{ id }};
             }}
+            const document = {{
+              createElement(tag) {{
+                if (tag === 'canvas') {{
+                  return {{
+                    width: 0,
+                    height: 0,
+                    getContext() {{
+                      return {{
+                        fillStyle: '#FFFFFF',
+                        strokeStyle: '#D0D5DD',
+                        lineWidth: 1,
+                        font: '16px sans-serif',
+                        fillRect() {{}},
+                        strokeRect() {{}},
+                        fillText() {{}},
+                        measureText(text) {{ return {{ width: String(text || '').length * 8 }}; }},
+                      }};
+                    }},
+                    toDataURL() {{ return 'data:image/png;base64,cGxhY2Vob2xkZXI='; }},
+                  }};
+                }}
+                return {{ tagName: String(tag || '').toUpperCase() }};
+              }},
+            }};
             function scheduleEmbedHeightEmission() {{}}
             const console = {{
               info() {{}},
@@ -420,7 +445,9 @@ class EmbedFinalResultContractTests(unittest.TestCase):
         self.assertIn("options.filename || 'evaluacion-desempeno.html'", feedback_js.text)
         self.assertIn("options.filename || 'evaluacion-desempeno.json'", feedback_js.text)
         self.assertIn("options.filename || 'evaluacion-desempeno.png'", feedback_js.text)
-        self.assertIn('La rasterización basada en foreignObject salió vacía; se usará el renderer SVG de respaldo.', feedback_js.text)
+        self.assertIn("name: 'dom-data-url'", feedback_js.text)
+        self.assertIn("name: 'svg-data-fallback'", feedback_js.text)
+        self.assertNotIn('captureReportAsPngLegacy', feedback_js.text)
         self.assertIn('async function renderReportFromDataAsPng(report, options = {})', feedback_js.text)
 
 

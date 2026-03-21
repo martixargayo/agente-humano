@@ -2184,13 +2184,83 @@ function renderFinalReport(report) {
   scheduleEmbedHeightEmission('report-render');
 }
 
-function transparentFallbackPngDataUrl() {
-  return 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a8S0AAAAASUVORK5CYII=';
-}
-
 function deriveFinalResultTitle(report) {
   const header = report?.header || {};
   return header.report_title || header.activity_name || 'Resultado final del simulador';
+}
+
+function wrapPlaceholderText(ctx, text, maxWidth) {
+  const words = String(text || '').trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+  const lines = [];
+  let current = '';
+  words.forEach((word) => {
+    const candidate = current ? `${current} ${word}` : word;
+    if (!current || ctx.measureText(candidate).width <= maxWidth) {
+      current = candidate;
+      return;
+    }
+    lines.push(current);
+    current = word;
+  });
+  if (current) lines.push(current);
+  return lines;
+}
+
+function buildSnapshotFailurePlaceholderPngDataUrl(report, options = {}) {
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1180;
+    canvas.height = 620;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    const errorMessage = String(options.captureError || 'capture_failed');
+    const title = deriveFinalResultTitle(report);
+    const activityName = report?.header?.activity_name || title;
+
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.strokeStyle = '#D0D5DD';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(24, 24, canvas.width - 48, canvas.height - 48);
+
+    ctx.fillStyle = '#101828';
+    ctx.font = '700 42px Inter, Arial, sans-serif';
+    ctx.fillText('Vista previa no disponible', 72, 120);
+
+    ctx.fillStyle = '#344054';
+    ctx.font = '600 26px Inter, Arial, sans-serif';
+    ctx.fillText(activityName.slice(0, 72), 72, 172);
+
+    ctx.fillStyle = '#475467';
+    ctx.font = '500 24px Inter, Arial, sans-serif';
+    const bodyLines = wrapPlaceholderText(
+      ctx,
+      'No se pudo generar automáticamente la miniatura del informe final. El resultado estructurado y el HTML del informe siguen disponibles.',
+      canvas.width - 144,
+    ).slice(0, 3);
+    bodyLines.forEach((line, idx) => {
+      ctx.fillText(line, 72, 240 + idx * 36);
+    });
+
+    ctx.fillStyle = '#667085';
+    ctx.font = '500 20px Inter, Arial, sans-serif';
+    const reasonLines = wrapPlaceholderText(ctx, `Motivo técnico: ${errorMessage}`, canvas.width - 144).slice(0, 3);
+    reasonLines.forEach((line, idx) => {
+      ctx.fillText(line, 72, 392 + idx * 30);
+    });
+
+    ctx.fillStyle = '#98A2B3';
+    ctx.font = '500 18px Inter, Arial, sans-serif';
+    ctx.fillText('El intento se ha guardado sin miniatura raster válida.', 72, canvas.height - 72);
+
+    return canvas.toDataURL('image/png');
+  } catch (err) {
+    console.warn('[embed] No se pudo generar placeholder PNG explícito para snapshot fallido.', err);
+    return null;
+  }
 }
 
 function deriveFinalResultActivityId(report, correlation = null) {
@@ -2207,14 +2277,33 @@ async function buildFinalResultPayload(report, extra = {}) {
   const header = report.header || {};
   const correlation = getSessionCorrelationMeta();
   const serializedHtml = window.FeedbackReportView?.serializeReportToHtml?.(report) || null;
-  let snapshotPngDataUrl = transparentFallbackPngDataUrl();
+  let snapshotPngDataUrl = null;
+  let snapshotCaptureError = null;
   const captureRoot = $('feedbackReportRoot');
   try {
     if (window.FeedbackReportView?.captureReportPngDataUrl) {
       snapshotPngDataUrl = await window.FeedbackReportView.captureReportPngDataUrl(report, { rootElement: captureRoot });
+    } else {
+      snapshotCaptureError = 'capture_api_missing';
+      console.warn('[embed] No hay API pública de captura PNG; se generará placeholder explícito.');
     }
   } catch (err) {
-    console.warn('[embed] No se pudo serializar el PNG final del informe; se usará fallback transparente.', err);
+    snapshotCaptureError = String(err?.message || err || 'capture_failed');
+    console.warn('[embed] No se pudo serializar el PNG final del informe; se generará placeholder explícito.', err);
+  }
+  if (!snapshotPngDataUrl) {
+    snapshotPngDataUrl = buildSnapshotFailurePlaceholderPngDataUrl(report, {
+      captureError: snapshotCaptureError || 'capture_failed_without_error',
+    });
+    if (snapshotPngDataUrl) {
+      console.warn('[embed] Se adjuntará un placeholder PNG explícito en snapshot_png_dataurl.', {
+        reason: snapshotCaptureError || 'capture_failed_without_error',
+      });
+    } else {
+      console.warn('[embed] No se pudo generar placeholder explícito; snapshot_png_dataurl se enviará como null.', {
+        reason: snapshotCaptureError || 'capture_failed_without_error',
+      });
+    }
   }
   const basePayload = {
     evaluation_id: feedbackEvaluationId,
