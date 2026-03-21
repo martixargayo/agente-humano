@@ -581,6 +581,24 @@
     return loadPromise;
   }
 
+
+  function canvasToBlob(canvas) {
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error('No se pudo generar el PNG del informe.'));
+      }, 'image/png');
+    });
+  }
+  function notifyCaptureDebug(stage, payload) {
+    try {
+      const hook = typeof window !== 'undefined' ? window.__feedbackCaptureDebugHook : null;
+      if (typeof hook === 'function') hook({ stage, ...payload });
+    } catch (_) {
+      // Instrumentación defensiva; nunca debe romper la captura.
+    }
+  }
+
   async function rasterizeLoadedImageToPng(image, { width, height, emptySampleMessage = null, smallBlobMessage = null, report = null } = {}) {
     const canvas = document.createElement('canvas');
     canvas.width = width;
@@ -591,19 +609,25 @@
     ctx.fillRect(0, 0, width, height);
     ctx.drawImage(image, 0, 0, width, height);
     const sample = sampleCanvasContent(canvas, ctx);
-    console.info('[feedback-capture] Validación de rasterización', sample);
+    const debugBlob = await canvasToBlob(canvas);
+    const debugInfo = {
+      width,
+      height,
+      blobSize: debugBlob.size,
+      sample,
+    };
+    console.info('[feedback-capture] Validación de rasterización', debugInfo);
+    notifyCaptureDebug('post-rasterize', {
+      ...debugInfo,
+      blob: debugBlob,
+    });
     if (!sample.hasVisibleContent) {
-      if (emptySampleMessage) console.warn('[feedback-capture] ' + emptySampleMessage);
+      if (emptySampleMessage) console.warn('[feedback-capture] ' + emptySampleMessage, debugInfo);
       if (report) return renderReportFromDataAsPng(report, { width });
       throw new Error('La rasterización del informe quedó vacía.');
     }
 
-    const pngBlob = await new Promise((resolve, reject) => {
-      canvas.toBlob((blob) => {
-        if (blob) resolve(blob);
-        else reject(new Error('No se pudo generar el PNG del informe.'));
-      }, 'image/png');
-    });
+    const pngBlob = debugBlob;
 
     if (pngBlob.size < 2048) {
       if (smallBlobMessage) console.warn('[feedback-capture] ' + smallBlobMessage, { blobSize: pngBlob.size });
@@ -771,22 +795,53 @@
   }
 
   function sampleCanvasContent(canvas, ctx) {
-    const sampleWidth = Math.max(1, Math.min(canvas.width, 32));
-    const sampleHeight = Math.max(1, Math.min(canvas.height, 32));
-    const source = ctx.getImageData(0, 0, sampleWidth, sampleHeight).data;
-    let nonWhitePixels = 0;
-    let opaquePixels = 0;
-    for (let idx = 0; idx < source.length; idx += 4) {
-      const alpha = source[idx + 3];
-      if (alpha > 0) opaquePixels += 1;
-      if (alpha > 8 && (source[idx] < 248 || source[idx + 1] < 248 || source[idx + 2] < 248)) nonWhitePixels += 1;
-    }
+    const sampleWidth = Math.max(16, Math.min(canvas.width, 64));
+    const sampleHeight = Math.max(16, Math.min(canvas.height, canvas.height > canvas.width ? 96 : 64));
+    const maxX = Math.max(0, canvas.width - sampleWidth);
+    const maxY = Math.max(0, canvas.height - sampleHeight);
+    const anchorFractions = [
+      { name: 'top-left', x: 0, y: 0 },
+      { name: 'top-center', x: 0.5, y: 0 },
+      { name: 'middle-center', x: 0.5, y: 0.5 },
+      { name: 'lower-center', x: 0.5, y: 0.72 },
+      { name: 'bottom-left', x: 0, y: 1 },
+      { name: 'bottom-center', x: 0.5, y: 1 },
+    ];
+    const regions = anchorFractions.map((anchor) => {
+      const sx = Math.round(maxX * anchor.x);
+      const sy = Math.round(maxY * anchor.y);
+      const source = ctx.getImageData(sx, sy, sampleWidth, sampleHeight).data;
+      let nonWhitePixels = 0;
+      let opaquePixels = 0;
+      for (let idx = 0; idx < source.length; idx += 4) {
+        const alpha = source[idx + 3];
+        if (alpha > 0) opaquePixels += 1;
+        if (alpha > 8 && (source[idx] < 248 || source[idx + 1] < 248 || source[idx + 2] < 248)) nonWhitePixels += 1;
+      }
+      return {
+        name: anchor.name,
+        sx,
+        sy,
+        sampleWidth,
+        sampleHeight,
+        opaquePixels,
+        nonWhitePixels,
+      };
+    });
+    const opaquePixels = regions.reduce((sum, region) => sum + region.opaquePixels, 0);
+    const nonWhitePixels = regions.reduce((sum, region) => sum + region.nonWhitePixels, 0);
+    const richestRegion = regions.reduce((best, region) => (region.nonWhitePixels > (best?.nonWhitePixels || -1) ? region : best), null);
+    const contentRegions = regions.filter((region) => region.nonWhitePixels > 12).length;
     return {
       sampleWidth,
       sampleHeight,
+      sampledRegions: regions.length,
       opaquePixels,
       nonWhitePixels,
-      hasVisibleContent: nonWhitePixels > 12,
+      contentRegions,
+      richestRegion,
+      regions,
+      hasVisibleContent: contentRegions >= 1 || nonWhitePixels > 24,
     };
   }
 

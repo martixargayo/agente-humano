@@ -172,6 +172,10 @@ class FakeCanvasContext2D {
   }
 
   drawImage(image, dx, dy, dw, dh) {
+    if (image && typeof image.paint === 'function') {
+      image.paint(this, dx, dy, dw, dh);
+      return;
+    }
     const color = image && image.mockColor ? image.mockColor : '#4F46E5';
     this._paintRect(dx, dy, dw, dh, color);
   }
@@ -488,6 +492,94 @@ function runResolveCaptureRootScenario() {
   };
 }
 
+
+function sampleTopLeft32Stats(canvas) {
+  const ctx = canvas.getContext('2d');
+  const sw = Math.max(1, Math.min(canvas.width, 32));
+  const sh = Math.max(1, Math.min(canvas.height, 32));
+  const rgba = ctx.getImageData(0, 0, sw, sh).data;
+  let opaquePixels = 0;
+  let nonWhitePixels = 0;
+  for (let idx = 0; idx < rgba.length; idx += 4) {
+    const alpha = rgba[idx + 3];
+    if (alpha > 0) opaquePixels += 1;
+    if (alpha > 8 && (rgba[idx] < 248 || rgba[idx + 1] < 248 || rgba[idx + 2] < 248)) nonWhitePixels += 1;
+  }
+  return {
+    sampleWidth: sw,
+    sampleHeight: sh,
+    opaquePixels,
+    nonWhitePixels,
+    hasVisibleContent: nonWhitePixels > 12,
+  };
+}
+
+async function runRasterValidationScenario() {
+  const feedbackSource = fs.readFileSync(FEEDBACK_JS, 'utf8');
+  const functions = [
+    'canvasToBlob',
+    'notifyCaptureDebug',
+    'rasterizeLoadedImageToPng',
+    'sampleCanvasContent',
+  ];
+  const extracted = functions.map((name) => extractFunctionSource(feedbackSource, name)).join('\n\n');
+  const debugEvents = [];
+  const canvases = [];
+  const context = {
+    Blob,
+    document: {
+      createElement(tag) {
+        if (tag !== 'canvas') throw new Error(`Unsupported tag ${tag}`);
+        const canvas = new FakeCanvas();
+        canvases.push(canvas);
+        return canvas;
+      },
+    },
+    window: {
+      __feedbackCaptureDebugHook(payload) {
+        debugEvents.push(payload);
+      },
+    },
+    console: { info() {}, warn() {}, error() {} },
+  };
+  vm.createContext(context);
+  vm.runInContext(`${extracted}
+globalThis.__exports = { rasterizeLoadedImageToPng, sampleCanvasContent };`, context);
+  const tallImage = {
+    paint(ctx, dx, dy, dw, dh) {
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(dx, dy, dw, dh);
+      ctx.fillStyle = '#E5E7EB';
+      ctx.fillRect(dx + 120, dy + 620, dw - 240, 240);
+      ctx.fillStyle = '#111827';
+      ctx.font = '28px sans-serif';
+      ctx.fillText('Informe real visible abajo', dx + 140, dy + 720);
+      ctx.fillRect(dx + 140, dy + 770, 520, 18);
+      ctx.fillRect(dx + 140, dy + 810, 460, 18);
+    },
+  };
+  const result = await context.__exports.rasterizeLoadedImageToPng(tallImage, { width: 1180, height: 1000 });
+  const canvas = canvases[0];
+  const artifact = path.join(ARTIFACT_DIR, 'primary_engine_pre_rejection_probe.png');
+  fs.writeFileSync(artifact, Buffer.from(await result.blob.arrayBuffer()));
+  return {
+    width: result.width,
+    height: result.height,
+    blobSize: result.blob.size,
+    legacyTopLeft32: sampleTopLeft32Stats(canvas),
+    multiRegion: context.__exports.sampleCanvasContent(canvas, canvas.getContext('2d')),
+    debugEvent: {
+      stage: debugEvents[0]?.stage || null,
+      width: debugEvents[0]?.width || null,
+      height: debugEvents[0]?.height || null,
+      blobSize: debugEvents[0]?.blobSize || null,
+      sample: debugEvents[0]?.sample || null,
+      previewPrefix: debugEvents[0]?.blob ? `data:${debugEvents[0].blob.type || 'application/octet-stream'};base64,` : null,
+    },
+    artifact,
+  };
+}
+
 async function runWaitForReportImagesScenario() {
   const feedbackSource = fs.readFileSync(FEEDBACK_JS, 'utf8');
   const extracted = extractFunctionSource(feedbackSource, 'waitForReportImages');
@@ -522,6 +614,7 @@ async function runWaitForReportImagesScenario() {
 
   results.feedback.resolveCaptureRoot = runResolveCaptureRootScenario();
   results.feedback.waitForReportImages = await runWaitForReportImagesScenario();
+  results.feedback.rasterValidation = await runRasterValidationScenario();
   results.feedback.primarySuccess = await runFeedbackOrchestrationScenario('primary-success');
   results.feedback.longPrimarySuccess = await runFeedbackOrchestrationScenario('long');
   results.feedback.sandboxFallback = await runFeedbackOrchestrationScenario('sandbox-fallback');

@@ -34,6 +34,16 @@ class SnapshotPipelineValidationTests(unittest.TestCase):
         self.assertEqual(feedback['waitForReportImages']['decoded'], 3)
         self.assertEqual(feedback['waitForReportImages']['pending'], 0)
 
+        raster = feedback['rasterValidation']
+        self.assertEqual(raster['width'], 1180)
+        self.assertEqual(raster['height'], 1000)
+        self.assertGreater(raster['blobSize'], 5000)
+        self.assertFalse(raster['legacyTopLeft32']['hasVisibleContent'])
+        self.assertTrue(raster['multiRegion']['hasVisibleContent'])
+        self.assertGreaterEqual(raster['multiRegion']['contentRegions'], 1)
+        self.assertEqual(raster['debugEvent']['stage'], 'post-rasterize')
+        self.assertEqual(raster['debugEvent']['previewPrefix'], 'data:image/png;base64,')
+
         self.assertTrue(feedback['primarySuccess']['ok'])
         self.assertEqual(feedback['primarySuccess']['result']['strategy'], 'dom-data-url')
         self.assertEqual(feedback['primarySuccess']['result']['source'], 'live-root')
@@ -77,6 +87,10 @@ class SnapshotPipelineValidationTests(unittest.TestCase):
             artifact = Path(app[key]['artifact'])
             self.assertTrue(artifact.exists(), f'No existe artefacto {artifact}')
             self.assertGreater(artifact.stat().st_size, 200, f'Artefacto demasiado pequeño: {artifact}')
+
+        raster_artifact = Path(self.results['feedback']['rasterValidation']['artifact'])
+        self.assertTrue(raster_artifact.exists(), f'No existe artefacto {raster_artifact}')
+        self.assertGreater(raster_artifact.stat().st_size, 1000, f'Artefacto demasiado pequeño: {raster_artifact}')
 
 
 if __name__ == '__main__':
