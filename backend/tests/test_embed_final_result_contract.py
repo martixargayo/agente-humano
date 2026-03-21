@@ -75,14 +75,40 @@ class EmbedFinalResultContractTests(unittest.TestCase):
             'deriveFinalResultTitle',
             'deriveFinalResultActivityId',
             'buildEmbedEnvelope',
+            'isAllowedParentOrigin',
+            'normalizeComparableId',
+            'stableStringifyForHash',
+            'simpleHashString',
+            'deriveFinalResultPayloadHash',
+            'buildFinalResultCorrelationId',
+            'registerPendingEmbeddedFinalResultAck',
+            'readAckComparableIds',
+            'buildAckSignature',
+            'handleEmbeddedSaveAck',
             'buildFinalResultPayload',
+            'emitEmbedMessage',
+            'emitFinalResultLifecycle',
         ]
         extracted = '\n\n'.join(self._extract_function_source(self.app_source, name) for name in functions)
         script = textwrap.dedent(
             f"""
             const EMBED_MESSAGE_VERSION = 1;
             const EMBED_NAMESPACE = 'gestionce.simulator';
+            const PARENT_EMBED_ORIGIN = 'https://academia.gestionce.com';
             let feedbackEvaluationId = 'eval-123';
+            let pendingEmbeddedFinalResultAck = null;
+            let embedModeActive = true;
+            const ui = {{
+              finalSaveToast: {{
+                textContent: '',
+                classList: {{
+                  add() {{}},
+                  remove() {{}},
+                }},
+              }},
+            }};
+            let shownToasts = 0;
+            const sentEnvelopes = [];
             const correlation = {{
               session_id: 'sess-001',
               conversation_id: 'conv-001',
@@ -99,11 +125,37 @@ class EmbedFinalResultContractTests(unittest.TestCase):
                 serializeReportToHtml(report) {{
                   return `<html><body><h1>${{report.header.report_title}}</h1></body></html>`;
                 }},
-                async captureReportPngDataUrl() {{
+                async captureReportPngDataUrl(report, options) {{
+                  if (!options || !options.rootElement || options.rootElement.id !== 'feedbackReportRoot') {{
+                    throw new Error('captureReportPngDataUrl debe recibir el root visible del informe');
+                  }}
                   return 'data:image/png;base64,ZmFrZS1wbmc=';
                 }},
               }},
+              clearTimeout() {{}},
+              setTimeout() {{ return 1; }},
+              parent: {{
+                postMessage(envelope) {{
+                  sentEnvelopes.push(envelope);
+                }},
+              }},
             }};
+            function isEmbeddedRuntime() {{
+              return true;
+            }}
+            function $(id) {{
+              return {{ id }};
+            }}
+            function scheduleEmbedHeightEmission() {{}}
+            const console = {{
+              info() {{}},
+              warn() {{}},
+              log(value) {{ process.stdout.write(String(value) + '\\n'); }},
+            }};
+            function showFinalSaveToast(message) {{
+              shownToasts += 1;
+              ui.finalSaveToast.textContent = message;
+            }}
             {extracted}
             const report = {{
               schema_version: 'ui_feedback_report.v1',
@@ -142,8 +194,139 @@ class EmbedFinalResultContractTests(unittest.TestCase):
             }};
             (async () => {{
               const payload = await buildFinalResultPayload(report, {{ reason: 'report-fetched' }});
-              const envelope = buildEmbedEnvelope('final_result', payload);
-              console.log(JSON.stringify({{ payload, envelope }}));
+              await emitFinalResultLifecycle(report, {{ reason: 'report-fetched' }});
+              const envelope = sentEnvelopes[sentEnvelopes.length - 1];
+              const pendingAfterEmit = pendingEmbeddedFinalResultAck;
+              const ackAccepted = handleEmbeddedSaveAck({{
+                ns: EMBED_NAMESPACE,
+                v: EMBED_MESSAGE_VERSION,
+                type: 'final_result_saved',
+                payload: {{
+                  status: 'ok',
+                  session_id: payload.session_id,
+                  activityid: payload.activityid,
+                  evaluation_id: payload.evaluation_id,
+                  payload_hash: payload.payload_hash,
+                  correlation_id: envelope.correlation_id,
+                  entryid: '278',
+                  version: '1',
+                }},
+              }}, {{ origin: PARENT_EMBED_ORIGIN }});
+              const duplicateAckAccepted = handleEmbeddedSaveAck({{
+                ns: EMBED_NAMESPACE,
+                v: EMBED_MESSAGE_VERSION,
+                type: 'final_result_saved',
+                payload: {{
+                  status: 'ok',
+                  session_id: payload.session_id,
+                  activityid: payload.activityid,
+                  evaluation_id: payload.evaluation_id,
+                  payload_hash: payload.payload_hash,
+                  correlation_id: envelope.correlation_id,
+                }},
+              }}, {{ origin: PARENT_EMBED_ORIGIN }});
+              pendingEmbeddedFinalResultAck = null;
+              const noPendingAccepted = handleEmbeddedSaveAck({{
+                ns: EMBED_NAMESPACE,
+                v: EMBED_MESSAGE_VERSION,
+                type: 'final_result_saved',
+                payload: {{
+                  status: 'ok',
+                  session_id: payload.session_id,
+                  activityid: payload.activityid,
+                  evaluation_id: payload.evaluation_id,
+                }},
+              }}, {{ origin: PARENT_EMBED_ORIGIN }});
+
+              await emitFinalResultLifecycle(report, {{ reason: 'report-fetched' }});
+              const secondEnvelope = sentEnvelopes[sentEnvelopes.length - 1];
+              const secondPending = pendingEmbeddedFinalResultAck;
+
+              const wrongSessionAccepted = handleEmbeddedSaveAck({{
+                ns: EMBED_NAMESPACE,
+                v: EMBED_MESSAGE_VERSION,
+                type: 'final_result_saved',
+                payload: {{
+                  status: 'ok',
+                  session_id: 'sess-999',
+                  activityid: payload.activityid,
+                  evaluation_id: payload.evaluation_id,
+                }},
+              }}, {{ origin: PARENT_EMBED_ORIGIN }});
+              const wrongActivityAccepted = handleEmbeddedSaveAck({{
+                ns: EMBED_NAMESPACE,
+                v: EMBED_MESSAGE_VERSION,
+                type: 'final_result_saved',
+                payload: {{
+                  status: 'ok',
+                  session_id: payload.session_id,
+                  activityid: 'otra-actividad',
+                  evaluation_id: payload.evaluation_id,
+                }},
+              }}, {{ origin: PARENT_EMBED_ORIGIN }});
+              const wrongStrongAccepted = handleEmbeddedSaveAck({{
+                ns: EMBED_NAMESPACE,
+                v: EMBED_MESSAGE_VERSION,
+                type: 'final_result_saved',
+                payload: {{
+                  status: 'ok',
+                  session_id: payload.session_id,
+                  activityid: payload.activityid,
+                  payload_hash: 'fnv1a:deadbeef',
+                  correlation_id: 'corr-incorrecta',
+                }},
+              }}, {{ origin: PARENT_EMBED_ORIGIN }});
+
+              feedbackEvaluationId = 'eval-456';
+              const reportRetry = JSON.parse(JSON.stringify(report));
+              reportRetry.evaluation_id = 'eval-456';
+              reportRetry.header.summary_2_3_lines = 'Resumen del reintento.';
+              reportRetry.provenance.evaluation_id = 'eval-456';
+              await emitFinalResultLifecycle(reportRetry, {{ reason: 'report-fetched' }});
+              const thirdEnvelope = sentEnvelopes[sentEnvelopes.length - 1];
+              const thirdPending = pendingEmbeddedFinalResultAck;
+              const staleOldAckAccepted = handleEmbeddedSaveAck({{
+                ns: EMBED_NAMESPACE,
+                v: EMBED_MESSAGE_VERSION,
+                type: 'final_result_saved',
+                payload: {{
+                  status: 'ok',
+                  session_id: payload.session_id,
+                  activityid: payload.activityid,
+                  evaluation_id: secondPending.evaluation_id,
+                  payload_hash: secondPending.payload_hash,
+                  correlation_id: secondEnvelope.correlation_id,
+                }},
+              }}, {{ origin: PARENT_EMBED_ORIGIN }});
+              const latestAckAccepted = handleEmbeddedSaveAck({{
+                ns: EMBED_NAMESPACE,
+                v: EMBED_MESSAGE_VERSION,
+                type: 'final_result_saved',
+                payload: {{
+                  status: 'ok',
+                  session_id: payload.session_id,
+                  activityid: payload.activityid,
+                  evaluation_id: thirdPending.evaluation_id,
+                  payload_hash: thirdPending.payload_hash,
+                  correlation_id: thirdEnvelope.correlation_id,
+                }},
+              }}, {{ origin: PARENT_EMBED_ORIGIN }});
+              console.log(JSON.stringify({{
+                payload,
+                envelope,
+                pendingAfterEmit,
+                ackAccepted,
+                duplicateAckAccepted,
+                noPendingAccepted,
+                wrongSessionAccepted,
+                wrongActivityAccepted,
+                wrongStrongAccepted,
+                staleOldAckAccepted,
+                latestAckAccepted,
+                shownToasts,
+                toastText: ui.finalSaveToast.textContent,
+                lastAckMeta: pendingEmbeddedFinalResultAck?.last_ack_meta || null
+              }}));
             }})().catch((err) => {{
               console.error(err);
               process.exit(1);
@@ -179,6 +362,25 @@ class EmbedFinalResultContractTests(unittest.TestCase):
         self.assertEqual(payload['reason'], 'report-fetched')
         self.assertEqual(payload['available_exports'], ['html', 'json', 'png'])
         self.assertRegex(payload['generated_at'], r'^\d{4}-\d{2}-\d{2}T')
+        self.assertEqual(payload['payload_hash'][:6], 'fnv1a:')
+        self.assertEqual(output['pendingAfterEmit']['session_id'], 'sess-001')
+        self.assertEqual(output['pendingAfterEmit']['activityid'], 'negociacion')
+        self.assertEqual(output['pendingAfterEmit']['evaluation_id'], 'eval-123')
+        self.assertEqual(output['pendingAfterEmit']['payload_hash'], payload['payload_hash'])
+        self.assertEqual(output['pendingAfterEmit']['correlation_id'], output['envelope']['correlation_id'])
+        self.assertTrue(output['ackAccepted'])
+        self.assertFalse(output['duplicateAckAccepted'])
+        self.assertFalse(output['noPendingAccepted'])
+        self.assertFalse(output['wrongSessionAccepted'])
+        self.assertFalse(output['wrongActivityAccepted'])
+        self.assertFalse(output['wrongStrongAccepted'])
+        self.assertFalse(output['staleOldAckAccepted'])
+        self.assertTrue(output['latestAckAccepted'])
+        self.assertEqual(output['shownToasts'], 2)
+        self.assertEqual(output['toastText'], 'Resultados guardados')
+        self.assertEqual(output['lastAckMeta']['entryid'], None)
+        self.assertEqual(output['lastAckMeta']['version'], None)
+        self.assertIn(payload['payload_hash'], output['envelope']['correlation_id'])
 
         self.assertEqual(envelope['ns'], 'gestionce.simulator')
         self.assertEqual(envelope['v'], 1)
@@ -200,10 +402,16 @@ class EmbedFinalResultContractTests(unittest.TestCase):
         self.assertIn("session_id: correlation?.session_id || null", app_js.text)
         self.assertIn("snapshot_png_dataurl: snapshotPngDataUrl", app_js.text)
         self.assertIn("generated_at: new Date().toISOString()", app_js.text)
-        self.assertIn("window.parent.postMessage(buildEmbedEnvelope(type, payload), PARENT_EMBED_ORIGIN)", app_js.text)
+        self.assertIn("window.parent.postMessage(envelope, PARENT_EMBED_ORIGIN)", app_js.text)
         self.assertNotIn("postMessage(buildEmbedEnvelope(type, payload), '*')", app_js.text)
         self.assertIn("emitEmbedMessage('final_result_available'", app_js.text)
-        self.assertIn("emitEmbedMessage('final_result', payload)", app_js.text)
+        self.assertIn("const finalEnvelope = emitEmbedMessage('final_result', payload, {", app_js.text)
+        self.assertIn("captureReportPngDataUrl(report, { rootElement: captureRoot })", app_js.text)
+        self.assertIn("ACK rechazado por falta de correlación fuerte", app_js.text)
+        self.assertIn("ACK repetido ignorado", app_js.text)
+        self.assertIn("buildFinalResultCorrelationId(payload)", app_js.text)
+        self.assertIn("payload_hash: deriveFinalResultPayloadHash(basePayload)", app_js.text)
+        self.assertIn("showFinalSaveToast('Resultados guardados')", app_js.text)
 
         self.assertEqual(feedback_js.status_code, 200)
         self.assertIn('async function captureReportPngDataUrl(report, options = {})', feedback_js.text)
@@ -212,6 +420,8 @@ class EmbedFinalResultContractTests(unittest.TestCase):
         self.assertIn("options.filename || 'evaluacion-desempeno.html'", feedback_js.text)
         self.assertIn("options.filename || 'evaluacion-desempeno.json'", feedback_js.text)
         self.assertIn("options.filename || 'evaluacion-desempeno.png'", feedback_js.text)
+        self.assertIn('La rasterización basada en foreignObject salió vacía; se usará el renderer SVG de respaldo.', feedback_js.text)
+        self.assertIn('async function renderReportFromDataAsPng(report, options = {})', feedback_js.text)
 
 
 if __name__ == '__main__':

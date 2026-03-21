@@ -235,6 +235,8 @@ let embedModeActive = false;
 let embedReadySessionKey = '';
 let embedHeightRaf = null;
 let lastEmbeddedHeight = 0;
+let finalSaveToastTimer = null;
+let pendingEmbeddedFinalResultAck = null;
 const LAST_DEVICE_STORAGE_KEY = 'interfaz_usuario:last_audio_input_device';
 
 const ui = {
@@ -279,6 +281,7 @@ const ui = {
   audioDeviceOtherList: $('audioDeviceOtherList'),
   audioDevicePopoverDivider: $('audioDevicePopoverDivider'),
   feedbackFloatingLayer: $('feedbackFloatingLayer'),
+  finalSaveToast: $('finalSaveToast'),
 };
 
 // Hard guard: if any stale HTML/version still injects the old Chat/Negociación selector,
@@ -450,16 +453,19 @@ function applyEmbedMode() {
   if (document.body) document.body.dataset.embedMode = embedModeActive ? '1' : '0';
 }
 
-function buildEmbedEnvelope(type, payload = {}) {
+function buildEmbedEnvelope(type, payload = {}, options = {}) {
   const correlation = getSessionCorrelationMeta();
   const sessionId = correlation?.session_id || null;
   const bootstrapCorrelation = correlation?.bootstrapped_at || 'no-bootstrap';
+  const correlationId = typeof options.correlationId === 'string' && options.correlationId.trim()
+    ? options.correlationId.trim()
+    : (sessionId ? `${sessionId}:${bootstrapCorrelation}` : bootstrapCorrelation);
   return {
     v: EMBED_MESSAGE_VERSION,
     ns: EMBED_NAMESPACE,
     type,
     event_id: `${type}:${Date.now()}:${Math.random().toString(16).slice(2, 10)}`,
-    correlation_id: sessionId ? `${sessionId}:${bootstrapCorrelation}` : bootstrapCorrelation,
+    correlation_id: correlationId,
     session_id: sessionId,
     conversation_id: correlation?.conversation_id || null,
     context_id: correlation?.context_id || null,
@@ -468,13 +474,208 @@ function buildEmbedEnvelope(type, payload = {}) {
   };
 }
 
-function emitEmbedMessage(type, payload = {}) {
+function emitEmbedMessage(type, payload = {}, options = {}) {
   if (!embedModeActive || !isEmbeddedRuntime()) return;
   try {
-    window.parent.postMessage(buildEmbedEnvelope(type, payload), PARENT_EMBED_ORIGIN);
+    const envelope = buildEmbedEnvelope(type, payload, options);
+    window.parent.postMessage(envelope, PARENT_EMBED_ORIGIN);
+    return envelope;
   } catch (err) {
     console.warn('[embed] No se pudo emitir mensaje al padre', err);
   }
+}
+
+function isAllowedParentOrigin(origin) {
+  return origin === PARENT_EMBED_ORIGIN;
+}
+
+function hideFinalSaveToast() {
+  if (!ui.finalSaveToast) return;
+  ui.finalSaveToast.classList.remove('visible');
+  if (finalSaveToastTimer) {
+    window.clearTimeout(finalSaveToastTimer);
+    finalSaveToastTimer = null;
+  }
+}
+
+function showFinalSaveToast(message = 'Resultados guardados', durationMs = 4200) {
+  if (!ui.finalSaveToast) return;
+  ui.finalSaveToast.textContent = message;
+  ui.finalSaveToast.classList.add('visible');
+  if (finalSaveToastTimer) window.clearTimeout(finalSaveToastTimer);
+  finalSaveToastTimer = window.setTimeout(() => {
+    finalSaveToastTimer = null;
+    ui.finalSaveToast.classList.remove('visible');
+  }, durationMs);
+  console.info('[embed] Toast de guardado mostrado', { message });
+  scheduleEmbedHeightEmission('final-save-toast');
+}
+
+function normalizeComparableId(value) {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function stableStringifyForHash(value) {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map((item) => stableStringifyForHash(item)).join(',')}]`;
+  const keys = Object.keys(value).sort();
+  return `{${keys.map((key) => `${JSON.stringify(key)}:${stableStringifyForHash(value[key])}`).join(',')}}`;
+}
+
+function simpleHashString(value) {
+  let hash = 2166136261;
+  for (let idx = 0; idx < value.length; idx += 1) {
+    hash ^= value.charCodeAt(idx);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `fnv1a:${(hash >>> 0).toString(16).padStart(8, '0')}`;
+}
+
+function deriveFinalResultPayloadHash(payload) {
+  if (!payload || typeof payload !== 'object') return null;
+  const hashInput = stableStringifyForHash({
+    evaluation_id: payload.evaluation_id || null,
+    activityid: payload.activityid || null,
+    session_id: payload.session_id || null,
+    interaction_outcome: payload.interaction_outcome || null,
+    summary_2_3_lines: payload.summary_2_3_lines || null,
+    score_global_100: payload.score_global_100 || null,
+    report: payload.report || null,
+  });
+  return simpleHashString(hashInput);
+}
+
+function buildFinalResultCorrelationId(payload) {
+  const sessionId = normalizeComparableId(payload?.session_id) || 'no-session';
+  const evaluationId = normalizeComparableId(payload?.evaluation_id) || 'no-evaluation';
+  const payloadHash = normalizeComparableId(payload?.payload_hash) || 'no-hash';
+  return `${sessionId}:final:${evaluationId}:${payloadHash}`;
+}
+
+function registerPendingEmbeddedFinalResultAck(payload, envelope) {
+  pendingEmbeddedFinalResultAck = {
+    session_id: normalizeComparableId(payload?.session_id),
+    activityid: normalizeComparableId(payload?.activityid),
+    evaluation_id: normalizeComparableId(payload?.evaluation_id),
+    payload_hash: normalizeComparableId(payload?.payload_hash),
+    correlation_id: normalizeComparableId(envelope?.correlation_id),
+    emitted_at_ms: Date.now(),
+    emitted_at_iso: new Date().toISOString(),
+    pending_ack: true,
+    ack_confirmed: false,
+    last_ack_signature: null,
+    last_ack_meta: null,
+    event_id: normalizeComparableId(envelope?.event_id),
+  };
+  console.info('[embed] final_result emitido; ACK pendiente registrado', pendingEmbeddedFinalResultAck);
+}
+
+function readAckComparableIds(message) {
+  const payload = message?.payload && typeof message.payload === 'object' ? message.payload : {};
+  return {
+    session_id: normalizeComparableId(payload.session_id || message?.session_id),
+    activityid: normalizeComparableId(payload.activityid || message?.activityid),
+    evaluation_id: normalizeComparableId(payload.evaluation_id || message?.evaluation_id),
+    payload_hash: normalizeComparableId(payload.payload_hash || message?.payload_hash),
+    correlation_id: normalizeComparableId(payload.correlation_id || message?.correlation_id),
+    entryid: normalizeComparableId(payload.entryid || message?.entryid),
+    version: normalizeComparableId(payload.version || message?.version),
+  };
+}
+
+function buildAckSignature(ackIds) {
+  return stableStringifyForHash({
+    session_id: ackIds.session_id,
+    activityid: ackIds.activityid,
+    evaluation_id: ackIds.evaluation_id,
+    payload_hash: ackIds.payload_hash,
+    correlation_id: ackIds.correlation_id,
+    entryid: ackIds.entryid,
+    version: ackIds.version,
+  });
+}
+
+function handleEmbeddedSaveAck(message, options = {}) {
+  const origin = normalizeComparableId(options.origin);
+  console.info('[embed] ACK final_result_saved recibido', {
+    origin,
+    type: message?.type || null,
+    ns: message?.ns || null,
+    v: message?.v ?? null,
+  });
+  if (origin && !isAllowedParentOrigin(origin)) {
+    console.info('[embed] ACK rechazado por origin no permitido', { origin });
+    return false;
+  }
+  if (!message || typeof message !== 'object') return false;
+  if (message.ns !== EMBED_NAMESPACE || message.v !== EMBED_MESSAGE_VERSION) return false;
+  if (message.type !== 'final_result_saved') return false;
+  const savedOk = message.payload?.status === 'ok' || message.payload?.saved === true;
+  if (!savedOk) {
+    console.info('[embed] ACK rechazado porque no confirma guardado exitoso', { payload: message.payload || null });
+    return false;
+  }
+  if (!pendingEmbeddedFinalResultAck || pendingEmbeddedFinalResultAck.pending_ack !== true) {
+    console.info('[embed] ACK ignorado: no hay final_result pendiente');
+    return false;
+  }
+  const ackIds = readAckComparableIds(message);
+  if (ackIds.session_id !== pendingEmbeddedFinalResultAck.session_id) {
+    console.info('[embed] ACK rechazado por session_id', { expected: pendingEmbeddedFinalResultAck.session_id, received: ackIds.session_id });
+    return false;
+  }
+  if (ackIds.activityid !== pendingEmbeddedFinalResultAck.activityid) {
+    console.info('[embed] ACK rechazado por activityid', { expected: pendingEmbeddedFinalResultAck.activityid, received: ackIds.activityid });
+    return false;
+  }
+  const strongCorrelationMatched = [
+    ['evaluation_id', pendingEmbeddedFinalResultAck.evaluation_id, ackIds.evaluation_id],
+    ['payload_hash', pendingEmbeddedFinalResultAck.payload_hash, ackIds.payload_hash],
+    ['correlation_id', pendingEmbeddedFinalResultAck.correlation_id, ackIds.correlation_id],
+  ].filter(([, expected, received]) => expected && received && expected === received);
+  if (strongCorrelationMatched.length === 0) {
+    console.info('[embed] ACK rechazado por falta de correlación fuerte', {
+      expected: pendingEmbeddedFinalResultAck,
+      received: ackIds,
+    });
+    return false;
+  }
+  const ackSignature = buildAckSignature(ackIds);
+  if (pendingEmbeddedFinalResultAck.ack_confirmed && pendingEmbeddedFinalResultAck.last_ack_signature === ackSignature) {
+    console.info('[embed] ACK repetido ignorado', { ackIds });
+    return false;
+  }
+  if (pendingEmbeddedFinalResultAck.ack_confirmed) {
+    console.info('[embed] ACK ignorado: el final_result pendiente actual ya había sido confirmado', { ackIds });
+    return false;
+  }
+  pendingEmbeddedFinalResultAck.pending_ack = false;
+  pendingEmbeddedFinalResultAck.ack_confirmed = true;
+  pendingEmbeddedFinalResultAck.last_ack_signature = ackSignature;
+  pendingEmbeddedFinalResultAck.last_ack_meta = {
+    entryid: ackIds.entryid,
+    version: ackIds.version,
+    acknowledged_at_iso: new Date().toISOString(),
+    strong_match_keys: strongCorrelationMatched.map(([key]) => key),
+  };
+  console.info('[embed] ACK aceptado', {
+    ackIds,
+    strong_match_keys: pendingEmbeddedFinalResultAck.last_ack_meta.strong_match_keys,
+  });
+  showFinalSaveToast('Resultados guardados');
+  return true;
+}
+
+function installEmbedMessageListener() {
+  window.addEventListener('message', (event) => {
+    if (!embedModeActive || !isEmbeddedRuntime()) return;
+    try {
+      const accepted = handleEmbeddedSaveAck(event.data, { origin: event.origin });
+      if (accepted) console.info('[embed] Confirmación de guardado final correlacionada con el último final_result', event.data?.payload || null);
+    } catch (err) {
+      console.warn('[embed] Error procesando ACK del guardado final', err);
+    }
+  });
 }
 
 function emitParentEmbedError(code, message, extra = {}) {
@@ -1950,6 +2151,7 @@ function renderFinalReport(report) {
   const root = $('feedbackReportRoot');
   if (!root || !window.FeedbackReportView) return;
   feedbackReportSnapshot = report;
+  hideFinalSaveToast();
   window.FeedbackReportView.renderReport(root, report);
   scheduleEmbedHeightEmission('report-render');
 }
@@ -1978,14 +2180,15 @@ async function buildFinalResultPayload(report, extra = {}) {
   const correlation = getSessionCorrelationMeta();
   const serializedHtml = window.FeedbackReportView?.serializeReportToHtml?.(report) || null;
   let snapshotPngDataUrl = transparentFallbackPngDataUrl();
+  const captureRoot = $('feedbackReportRoot');
   try {
     if (window.FeedbackReportView?.captureReportPngDataUrl) {
-      snapshotPngDataUrl = await window.FeedbackReportView.captureReportPngDataUrl(report);
+      snapshotPngDataUrl = await window.FeedbackReportView.captureReportPngDataUrl(report, { rootElement: captureRoot });
     }
   } catch (err) {
     console.warn('[embed] No se pudo serializar el PNG final del informe; se usará fallback transparente.', err);
   }
-  return {
+  const basePayload = {
     evaluation_id: feedbackEvaluationId,
     available_exports: ['html', 'json', 'png'],
     title: deriveFinalResultTitle(report),
@@ -2009,6 +2212,10 @@ async function buildFinalResultPayload(report, extra = {}) {
     snapshot_png_dataurl: snapshotPngDataUrl,
     ...extra,
   };
+  return {
+    ...basePayload,
+    payload_hash: deriveFinalResultPayloadHash(basePayload),
+  };
 }
 
 async function emitFinalResultLifecycle(report, { reason = 'report-ready' } = {}) {
@@ -2022,7 +2229,10 @@ async function emitFinalResultLifecycle(report, { reason = 'report-ready' } = {}
     interaction_outcome: payload.interaction_outcome,
     reason,
   });
-  emitEmbedMessage('final_result', payload);
+  const finalEnvelope = emitEmbedMessage('final_result', payload, {
+    correlationId: buildFinalResultCorrelationId(payload),
+  });
+  if (finalEnvelope) registerPendingEmbeddedFinalResultAck(payload, finalEnvelope);
 }
 
 async function downloadCurrentReport(format) {
@@ -2465,6 +2675,7 @@ document.addEventListener('visibilitychange', () => {
 (async function initInterfazUsuarioSession() {
   syncSessionBoundaryReset();
   applyEmbedMode();
+  installEmbedMessageListener();
   resetBootstrapSessionState();
   try {
     const out = await api('/sessions/bootstrap', { method: 'POST', body: JSON.stringify(bootstrapPayload()) });
