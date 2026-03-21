@@ -357,7 +357,43 @@
     });
   }
 
-  async function waitForStableReportCapture() {
+  function waitForNextAnimationFrame() {
+    return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+  }
+
+  function waitForTimeout(ms) {
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
+  }
+
+  function getCaptureRootMetrics(root) {
+    if (!root) {
+      return { width: 0, height: 0, scrollWidth: 0, scrollHeight: 0 };
+    }
+    const rect = typeof root.getBoundingClientRect === 'function'
+      ? root.getBoundingClientRect()
+      : { width: 0, height: 0 };
+    return {
+      width: Math.ceil(Number(rect.width) || Number(root.offsetWidth) || 0),
+      height: Math.ceil(Number(rect.height) || Number(root.offsetHeight) || 0),
+      scrollWidth: Math.ceil(Number(root.scrollWidth) || 0),
+      scrollHeight: Math.ceil(Number(root.scrollHeight) || 0),
+    };
+  }
+
+  function metricsAreStable(current, previous) {
+    if (!previous) return false;
+    return Math.abs(current.width - previous.width) <= 1
+      && Math.abs(current.height - previous.height) <= 1
+      && Math.abs(current.scrollWidth - previous.scrollWidth) <= 1
+      && Math.abs(current.scrollHeight - previous.scrollHeight) <= 1;
+  }
+
+  async function waitForStableReportCapture(root, options = {}) {
+    const {
+      extraAnimationFrames = 3,
+      settleDelayMs = 60,
+      requireVisible = true,
+    } = options;
     if (document.fonts?.ready) {
       try {
         await document.fonts.ready;
@@ -366,8 +402,29 @@
       }
     }
 
-    await new Promise((resolve) => requestAnimationFrame(() => resolve()));
-    await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+    for (let idx = 0; idx < extraAnimationFrames; idx += 1) {
+      await waitForNextAnimationFrame();
+    }
+    await waitForTimeout(settleDelayMs);
+
+    let previousMetrics = null;
+    let stableReads = 0;
+    for (let attempt = 1; attempt <= 6; attempt += 1) {
+      await waitForNextAnimationFrame();
+      const metrics = getCaptureRootMetrics(root);
+      console.info('[feedback-capture] Métricas de estabilización', { attempt, metrics });
+      if (requireVisible && metrics.width <= 0 && metrics.height <= 0) {
+        stableReads = 0;
+      } else if (metricsAreStable(metrics, previousMetrics)) {
+        stableReads += 1;
+        if (stableReads >= 2) return metrics;
+      } else {
+        stableReads = 0;
+      }
+      previousMetrics = metrics;
+    }
+
+    return previousMetrics || getCaptureRootMetrics(root);
   }
 
   function triggerDownload(filename, blob, { targetWindow = window } = {}) {
@@ -395,28 +452,55 @@
 
   async function captureReportAsPng(report, options = {}) {
     if (!report) throw new Error('No hay informe para exportar.');
+    const liveRoot = options.rootElement || null;
+    let captureRoot = liveRoot && liveRoot.isConnected ? liveRoot : null;
+    let sandboxRoot = null;
 
-    await waitForStableReportCapture();
-
-    const detachedRoot = buildDetachedReportRoot(report);
-    detachedRoot.style.margin = '0';
-    detachedRoot.style.padding = '0';
-    detachedRoot.style.position = 'fixed';
-    detachedRoot.style.left = '-100000px';
-    detachedRoot.style.top = '0';
-    detachedRoot.style.zIndex = '-1';
-    document.body.appendChild(detachedRoot);
+    if (!captureRoot) {
+      sandboxRoot = buildDetachedReportRoot(report);
+      sandboxRoot.style.margin = '0';
+      sandboxRoot.style.padding = '0';
+      sandboxRoot.style.position = 'fixed';
+      sandboxRoot.style.left = '0';
+      sandboxRoot.style.top = '0';
+      sandboxRoot.style.opacity = '0';
+      sandboxRoot.style.pointerEvents = 'none';
+      sandboxRoot.style.zIndex = '-1';
+      sandboxRoot.style.width = '1180px';
+      sandboxRoot.setAttribute('data-capture-sandbox', '1');
+      document.body.appendChild(sandboxRoot);
+      captureRoot = sandboxRoot;
+    }
 
     try {
-      const rect = detachedRoot.getBoundingClientRect();
-      const width = Math.max(1180, Math.ceil(rect.width || detachedRoot.scrollWidth || 1180));
-      const height = Math.max(760, Math.ceil(rect.height || detachedRoot.scrollHeight || 760));
+      const stableMetrics = await waitForStableReportCapture(captureRoot, {
+        requireVisible: captureRoot === liveRoot,
+      });
+      const measured = getCaptureRootMetrics(captureRoot);
+      const width = Math.max(1180, stableMetrics.width || measured.width || stableMetrics.scrollWidth || measured.scrollWidth || 1180);
+      const height = Math.max(760, stableMetrics.height || measured.height || stableMetrics.scrollHeight || measured.scrollHeight || 760);
+      console.info('[feedback-capture] Preparando captura', {
+        source: captureRoot === liveRoot ? 'live-root' : 'sandbox-root',
+        width,
+        height,
+        stableMetrics,
+        measured,
+      });
+      if (width <= 0 || height <= 0) {
+        throw new Error(`Root de captura inválido (${width}x${height}).`);
+      }
+
+      const clonedRoot = captureRoot.cloneNode(true);
+      clonedRoot.style.margin = '0';
+      clonedRoot.style.width = `${width}px`;
+      clonedRoot.style.minHeight = `${height}px`;
+      clonedRoot.querySelectorAll('.fb-turn-tooltip').forEach((tooltip) => tooltip.remove());
       const svgMarkup = `
         <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
           <foreignObject width="100%" height="100%">
             <div xmlns="http://www.w3.org/1999/xhtml">
               <style>${getFeedbackReportStyles()}</style>
-              ${detachedRoot.outerHTML}
+              ${clonedRoot.outerHTML}
             </div>
           </foreignObject>
         </svg>
@@ -440,6 +524,12 @@
         ctx.fillStyle = '#FFFFFF';
         ctx.fillRect(0, 0, width, height);
         ctx.drawImage(image, 0, 0, width, height);
+        const sample = sampleCanvasContent(canvas, ctx);
+        console.info('[feedback-capture] Validación de rasterización', sample);
+        if (!sample.hasVisibleContent) {
+          console.warn('[feedback-capture] La rasterización basada en foreignObject salió vacía; se usará el renderer SVG de respaldo.');
+          return renderReportFromDataAsPng(report, { width });
+        }
 
         const pngBlob = await new Promise((resolve, reject) => {
           canvas.toBlob((blob) => {
@@ -447,13 +537,153 @@
             else reject(new Error('No se pudo generar el PNG del informe.'));
           }, 'image/png');
         });
+        console.info('[feedback-capture] PNG generado desde DOM', {
+          width,
+          height,
+          blobSize: pngBlob.size,
+        });
+        if (pngBlob.size < 2048) {
+          console.warn('[feedback-capture] Blob PNG demasiado pequeño; se usará el renderer SVG de respaldo.', { blobSize: pngBlob.size });
+          return renderReportFromDataAsPng(report, { width });
+        }
 
         return { blob: pngBlob, width, height };
       } finally {
         URL.revokeObjectURL(svgUrl);
       }
     } finally {
-      detachedRoot.remove();
+      if (sandboxRoot) sandboxRoot.remove();
+    }
+  }
+
+  function sampleCanvasContent(canvas, ctx) {
+    const sampleWidth = Math.max(1, Math.min(canvas.width, 32));
+    const sampleHeight = Math.max(1, Math.min(canvas.height, 32));
+    const source = ctx.getImageData(0, 0, sampleWidth, sampleHeight).data;
+    let nonWhitePixels = 0;
+    let opaquePixels = 0;
+    for (let idx = 0; idx < source.length; idx += 4) {
+      const alpha = source[idx + 3];
+      if (alpha > 0) opaquePixels += 1;
+      if (alpha > 8 && (source[idx] < 248 || source[idx + 1] < 248 || source[idx + 2] < 248)) nonWhitePixels += 1;
+    }
+    return {
+      sampleWidth,
+      sampleHeight,
+      opaquePixels,
+      nonWhitePixels,
+      hasVisibleContent: nonWhitePixels > 12,
+    };
+  }
+
+  function escapeXml(value) {
+    return String(value || '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&apos;');
+  }
+
+  function wrapTextLines(text, maxChars) {
+    const words = String(text || '').trim().split(/\s+/).filter(Boolean);
+    if (words.length === 0) return [];
+    const lines = [];
+    let current = '';
+    words.forEach((word) => {
+      const candidate = current ? `${current} ${word}` : word;
+      if (candidate.length <= maxChars || !current) current = candidate;
+      else {
+        lines.push(current);
+        current = word;
+      }
+    });
+    if (current) lines.push(current);
+    return lines;
+  }
+
+  function renderReportSvgMarkup(report, options = {}) {
+    const width = Math.max(1180, Number(options.width) || 1180);
+    const blocks = orderBlocks(report.block_cards || []).slice(0, 4);
+    const recs = (report.recommendations?.items || []).slice(0, 4);
+    const header = report.header || {};
+    const summaryLines = wrapTextLines(buildResultSummary(header.interaction_outcome, header.summary_2_3_lines), 94);
+    const headerTitle = escapeXml(header.activity_name || 'Actividad');
+    const recommendationsStartY = 610;
+    const recommendationLines = recs.flatMap((item, idx) => {
+      const title = `${idx + 1}. ${item.title || recommendationTitle(item.description)}`;
+      const bodyLines = wrapTextLines(item.description || '', 84).slice(0, 3);
+      return [
+        `<text x="72" y="${recommendationsStartY + idx * 110}" font-size="24" font-weight="600" fill="#101828">${escapeXml(title)}</text>`,
+        ...bodyLines.map((line, lineIdx) => `<text x="72" y="${recommendationsStartY + 36 + idx * 110 + lineIdx * 28}" font-size="20" fill="#475467">${escapeXml(line)}</text>`),
+      ];
+    });
+    const blockMarkup = blocks.map((block, idx) => {
+      const column = idx % 2;
+      const row = Math.floor(idx / 2);
+      const x = 72 + column * 522;
+      const y = 254 + row * 150;
+      const status = normalizeStatus(block.status_visual);
+      const stroke = status === 'ok' ? '#16A34A' : (status === 'warn' ? '#D97706' : '#DC2626');
+      const lines = getCardChecks(block.checks).slice(0, 3);
+      return `
+        <rect x="${x}" y="${y}" width="486" height="124" rx="18" fill="#FFFFFF" stroke="${stroke}" stroke-width="3" />
+        <text x="${x + 24}" y="${y + 34}" font-size="24" font-weight="600" fill="#101828">${escapeXml(BLOCK_LABELS[block.block_id] || block.title || '')}</text>
+        <text x="${x + 24}" y="${y + 68}" font-size="18" font-weight="600" fill="${stroke}">${escapeXml(block.status_visual || '')}</text>
+        ${lines.map((line, lineIdx) => `<text x="${x + 24}" y="${y + 96 + lineIdx * 22}" font-size="18" fill="#475467">• ${escapeXml(line.micro_explanation || '')}</text>`).join('')}
+      `;
+    }).join('');
+    const svgHeight = Math.max(980, recommendationsStartY + Math.max(1, recs.length) * 110 + 60);
+    return `
+      <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${svgHeight}" viewBox="0 0 ${width} ${svgHeight}">
+        <rect width="100%" height="100%" fill="#FFFFFF" />
+        <rect x="48" y="40" width="${width - 96}" height="120" rx="22" fill="#FFFFFF" stroke="#E4E7EC" />
+        <text x="72" y="86" font-size="36" font-weight="700" fill="#101828">Evaluación de tu desempeño</text>
+        <text x="72" y="124" font-size="24" font-weight="600" fill="#344054">${headerTitle}</text>
+        <text x="${width - 248}" y="98" font-size="28" font-weight="700" fill="#101828">${escapeXml(`${Number(header.score_global_100 || 0)} / 100`)}</text>
+        <rect x="48" y="182" width="${width - 96}" height="94" rx="20" fill="#FFFFFF" stroke="#E4E7EC" />
+        <text x="72" y="220" font-size="28" font-weight="700" fill="#101828">Resultado</text>
+        ${summaryLines.map((line, idx) => `<text x="72" y="${248 + idx * 24}" font-size="20" fill="#475467">${escapeXml(line)}</text>`).join('')}
+        ${blockMarkup}
+        <rect x="48" y="${recommendationsStartY - 48}" width="${width - 96}" height="${svgHeight - recommendationsStartY + 32}" rx="20" fill="#FFFFFF" stroke="#E4E7EC" />
+        <text x="72" y="${recommendationsStartY - 12}" font-size="28" font-weight="700" fill="#101828">Recomendaciones generales</text>
+        ${recommendationLines.join('') || `<text x="72" y="${recommendationsStartY + 36}" font-size="20" fill="#475467">No hay recomendaciones relevantes que añadir en este caso.</text>`}
+      </svg>
+    `;
+  }
+
+  async function renderReportFromDataAsPng(report, options = {}) {
+    const svgMarkup = renderReportSvgMarkup(report, options);
+    const width = Math.max(1180, Number(options.width) || 1180);
+    const heightMatch = svgMarkup.match(/height="(\d+)"/);
+    const height = heightMatch ? Number(heightMatch[1]) : 980;
+    const svgBlob = new Blob([svgMarkup], { type: 'image/svg+xml;charset=utf-8' });
+    const svgUrl = URL.createObjectURL(svgBlob);
+    try {
+      const image = await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error('No se pudo rasterizar el SVG de respaldo del informe.'));
+        img.src = svgUrl;
+      });
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Canvas 2D no disponible para respaldo SVG.');
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(image, 0, 0, width, height);
+      const blob = await new Promise((resolve, reject) => {
+        canvas.toBlob((pngBlob) => {
+          if (pngBlob) resolve(pngBlob);
+          else reject(new Error('No se pudo generar el PNG de respaldo del informe.'));
+        }, 'image/png');
+      });
+      console.info('[feedback-capture] PNG generado desde renderer SVG de respaldo', { width, height, blobSize: blob.size });
+      return { blob, width, height, strategy: 'svg-data-fallback' };
+    } finally {
+      URL.revokeObjectURL(svgUrl);
     }
   }
 
