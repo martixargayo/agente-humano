@@ -32,6 +32,7 @@
         --atlas-cobalt: rgba(29, 78, 216, 0.55);
         --atlas-black: #000;
         --glow-width: min(25vw, 240px);
+        --finish-button-safe-offset: 40px;
       }
 
       * { box-sizing: border-box; }
@@ -1128,6 +1129,21 @@
         100% { transform: scale(1); }
       }
 
+      @keyframes finishNegotiationPulse {
+        0%, 100% {
+          transform: scale(1);
+        }
+        25% {
+          transform: scale(1.028);
+        }
+        55% {
+          transform: scale(0.992);
+        }
+        78% {
+          transform: scale(1.02);
+        }
+      }
+
       .write-area {
         flex: 1;
         display: flex;
@@ -1458,11 +1474,23 @@
         box-shadow: 0 0 0 1px rgba(147, 197, 253, 0.35), 0 12px 28px rgba(59, 130, 246, 0.22);
       }
 
-      .finish-negotiation-button {
+      .finish-negotiation-button-wrap {
         position: fixed;
-        right: 24px;
-        bottom: 24px;
+        right: max(24px, env(safe-area-inset-right, 0px), var(--finish-button-safe-offset));
+        bottom: max(24px, env(safe-area-inset-bottom, 0px), var(--finish-button-safe-offset));
         z-index: 9;
+        pointer-events: none;
+      }
+
+      html[data-embed-mode="1"] .finish-negotiation-button-wrap {
+        position: absolute;
+      }
+
+      .finish-negotiation-button {
+        --finish-glow-opacity: 0;
+        --finish-glow-scale: 1;
+        position: relative;
+        pointer-events: auto;
         border: 1px solid rgba(15, 23, 42, 0.12);
         background: #f9fafb;
         color: #111827;
@@ -1474,31 +1502,61 @@
         opacity: 1;
         box-shadow: 0 8px 20px rgba(15, 23, 42, 0.18);
         transform: scale(1);
-        transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+        transition: transform 0.22s ease, background 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease, opacity 0.22s ease;
+        isolation: isolate;
       }
 
-      html[data-embed-mode="1"] .finish-negotiation-button {
+      .finish-negotiation-button::before {
+        content: "";
         position: absolute;
+        inset: -14px;
+        border-radius: 28px;
+        background:
+          radial-gradient(circle at 50% 50%, rgba(59, 130, 246, 0.36) 0%, rgba(59, 130, 246, 0.2) 36%, rgba(59, 130, 246, 0.08) 58%, rgba(59, 130, 246, 0) 76%);
+        filter: blur(16px);
+        opacity: var(--finish-glow-opacity);
+        transform: scale(var(--finish-glow-scale));
+        transition: opacity 0.22s ease, transform 0.22s ease;
+        pointer-events: none;
+        z-index: -1;
       }
 
-      .finish-negotiation-button.is-armed {
+      .finish-negotiation-button.is-highlighted {
         background: #f9fafb;
-        border-color: rgba(96, 165, 250, 0.7);
+        border-color: rgba(96, 165, 250, 0.72);
         color: #111827;
-        transform: scale(1.03);
-        box-shadow: 0 0 0 1px rgba(147, 197, 253, 0.35), 0 12px 28px rgba(59, 130, 246, 0.22);
+        box-shadow: 0 0 0 1px rgba(147, 197, 253, 0.32), 0 12px 28px rgba(59, 130, 246, 0.22);
+        --finish-glow-opacity: 1;
+        --finish-glow-scale: 1;
+      }
+
+      .finish-negotiation-button.is-attention-active {
+        animation: finishNegotiationPulse 1s ease-in-out 5;
       }
 
       .finish-negotiation-button:focus-visible {
         transform: scale(1.03);
-        border-color: rgba(96, 165, 250, 0.7);
-        box-shadow: 0 0 0 1px rgba(147, 197, 253, 0.35), 0 12px 28px rgba(59, 130, 246, 0.22);
+        border-color: rgba(96, 165, 250, 0.72);
+        box-shadow: 0 0 0 1px rgba(147, 197, 253, 0.32), 0 12px 28px rgba(59, 130, 246, 0.22);
+        --finish-glow-opacity: 1;
+        --finish-glow-scale: 1.02;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .finish-negotiation-button,
+        .finish-negotiation-button::before {
+          transition: none;
+        }
+
+        .finish-negotiation-button.is-attention-active {
+          animation: none;
+        }
       }
 
       .finish-confirm-popover {
         position: fixed;
-        right: 24px;
-        bottom: 74px;
+        right: max(24px, env(safe-area-inset-right, 0px), var(--finish-button-safe-offset));
+        bottom: calc(max(24px, env(safe-area-inset-bottom, 0px), var(--finish-button-safe-offset)) + 50px);
         width: min(340px, calc(100vw - 24px));
         border: 1px solid rgba(15, 23, 42, 0.08);
         background: #ffffff;
@@ -1857,7 +1915,15 @@
         .finish-button { width: 100%; justify-content: center; }
         .write-area { width: 100%; }
         .send-btn { align-self: flex-end; }
-        .finish-negotiation-button { right: 12px; bottom: 12px; }
+        .finish-negotiation-button-wrap {
+          right: max(12px, env(safe-area-inset-right, 0px), 24px);
+          bottom: max(12px, env(safe-area-inset-bottom, 0px), 24px);
+        }
+
+        .finish-confirm-popover {
+          right: max(12px, env(safe-area-inset-right, 0px), 24px);
+          bottom: calc(max(12px, env(safe-area-inset-bottom, 0px), 24px) + 50px);
+        }
       }
     </style>
   </head>
@@ -2004,9 +2070,11 @@
         </div>
       </div>
 
-      <button id="finishNegotiationBtn" class="finish-negotiation-button" type="button" aria-label="Finalizar conversación">
-        Finalizar conversación
-      </button>
+      <div class="finish-negotiation-button-wrap">
+        <button id="finishNegotiationBtn" class="finish-negotiation-button" type="button" aria-label="Finalizar conversación">
+          Finalizar conversación
+        </button>
+      </div>
       <section id="finishConfirmPopover" class="finish-confirm-popover" aria-live="polite" aria-label="Confirmar finalización">
         <p id="finishConfirmMessage">¿Seguro que quieres finalizar la conversación?</p>
         <p id="finishConfirmHint" class="finish-popover-note hidden"></p>
