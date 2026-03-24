@@ -45,6 +45,7 @@ from negociacion import run_negotiation_agent
 from negociacion.orchestration.flow_config import set_tts_prefetch_hook
 from negociacion.optimizador import router as optimizador_router
 from interfaz_usuario import router as interfaz_usuario_router
+from comunicacion import router as comunicacion_router
 
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -90,6 +91,7 @@ if ENABLE_OPTIMIZADOR_APP and OPTIMIZADOR_DIR.exists():
 
 app.include_router(optimizador_router)
 app.include_router(interfaz_usuario_router)
+app.include_router(comunicacion_router)
 
 
 @app.get("/api/health/session-runtime")
@@ -122,6 +124,22 @@ def session_runtime_health() -> dict[str, Any]:
 
 
 INTERFAZ_USUARIO_DIR = BACKEND_DIR / "interfaz_usuario_app"
+
+COMUNICACION_DIR = BACKEND_DIR / "comunicacion_app"
+
+
+def _comunicacion_index_response() -> FileResponse:
+    index_path = COMUNICACION_DIR / "index.html"
+    if not index_path.exists():
+        raise HTTPException(status_code=404, detail="comunicacion_index_missing")
+    return FileResponse(index_path)
+
+
+def _comunicacion_asset_response(*relative_parts: str) -> FileResponse:
+    asset_path = COMUNICACION_DIR.joinpath(*relative_parts)
+    if not asset_path.exists() or not asset_path.is_file():
+        raise HTTPException(status_code=404, detail="comunicacion_asset_missing")
+    return FileResponse(asset_path)
 
 
 def _interfaz_usuario_index_response() -> FileResponse:
@@ -191,6 +209,45 @@ if INTERFAZ_USUARIO_DIR.exists():
         "/interfaz_usuario",
         StaticFiles(directory=str(INTERFAZ_USUARIO_DIR), html=True),
         name="interfaz_usuario",
+    )
+
+
+
+if COMUNICACION_DIR.exists():
+    @app.get("/comunicacion/app.js", include_in_schema=False)
+    def comunicacion_app_js() -> FileResponse:
+        return _comunicacion_asset_response("app.js")
+
+
+    @app.get("/comunicacion/report_view.js", include_in_schema=False)
+    def comunicacion_report_view_js() -> FileResponse:
+        return _comunicacion_asset_response("report_view.js")
+
+
+    @app.get("/comunicacion/styles.css", include_in_schema=False)
+    def comunicacion_styles_css() -> FileResponse:
+        return _comunicacion_asset_response("styles.css")
+
+
+    @app.get("/comunicacion/{public_slug}", include_in_schema=False)
+    def comunicacion_public_context(public_slug: str) -> FileResponse:
+        from comunicacion.contexts import resolve_public_slug_to_context_id
+
+        resolve_public_slug_to_context_id(public_slug)
+        return _comunicacion_index_response()
+
+
+    @app.get("/comunicacion/{public_slug}/", include_in_schema=False)
+    def comunicacion_public_context_slash(public_slug: str) -> FileResponse:
+        from comunicacion.contexts import resolve_public_slug_to_context_id
+
+        resolve_public_slug_to_context_id(public_slug)
+        return _comunicacion_index_response()
+
+    app.mount(
+        "/comunicacion",
+        StaticFiles(directory=str(COMUNICACION_DIR), html=True),
+        name="comunicacion",
     )
 
 
