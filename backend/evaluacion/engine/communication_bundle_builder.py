@@ -10,6 +10,7 @@ from evaluacion.contracts.communication_models import (
 )
 from evaluacion.contracts.models import SessionRef
 from evaluacion.domains.communication import (
+    build_real_audio_features,
     build_placeholder_audio_features,
     build_placeholder_transcript,
     build_real_transcript,
@@ -51,6 +52,11 @@ def build_communication_feedback_input_bundle(
         transcript = build_real_transcript(recording=recording, provider=stt_provider)
     except HTTPException:
         transcript = build_placeholder_transcript(recording=recording)
+    transcript_words = len([token for token in (transcript.full_text or '').split() if token])
+    try:
+        audio_features = build_real_audio_features(recording=recording, transcript_words=transcript_words)
+    except HTTPException:
+        audio_features = build_placeholder_audio_features(recording=recording)
 
     return CommunicationFeedbackInputBundleV1(
         evaluation_id=evaluation_id,
@@ -59,6 +65,6 @@ def build_communication_feedback_input_bundle(
         domain_context=domain_context,
         recording=recording_meta,
         transcript=transcript,
-        audio_features=build_placeholder_audio_features(recording=recording),
+        audio_features=audio_features,
         visual_features=build_placeholder_visual_features(recording=recording),
     )

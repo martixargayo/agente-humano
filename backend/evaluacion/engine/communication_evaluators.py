@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from evaluacion.contracts.communication_models import CommunicationFeedbackInputBundleV1
 from evaluacion.engine.communication_content_evaluator import evaluate_content_from_transcript
+from evaluacion.engine.communication_delivery_evaluator import evaluate_delivery_from_audio_metrics
 
 
 def evaluate_communication_content(bundle: CommunicationFeedbackInputBundleV1) -> dict[str, object]:
@@ -9,18 +10,22 @@ def evaluate_communication_content(bundle: CommunicationFeedbackInputBundleV1) -
 
 
 def evaluate_communication_delivery(bundle: CommunicationFeedbackInputBundleV1) -> dict[str, object]:
-    speech_rate = bundle.audio_features.speech_rate_wpm
+    transcript_excerpt = bundle.transcript.segments[0].text if bundle.transcript.segments else ''
+    evaluated = evaluate_delivery_from_audio_metrics(audio_features=bundle.audio_features, transcript_excerpt=transcript_excerpt)
+    status_visual = 'mejorable'
+    if evaluated.score_0_100 >= 75:
+        status_visual = 'correcto'
+    elif evaluated.score_0_100 < 45:
+        status_visual = 'placeholder' if getattr(bundle.audio_features, 'status', None) == 'placeholder' else 'mejorable'
     return {
         'block_id': 'delivery',
         'title': 'Delivery',
-        'status_visual': 'mejorable',
-        'score_0_100': 52,
-        'summary': 'El delivery se basa en métricas sintéticas mínimas; no representa todavía una evaluación acústica real.',
-        'details': [
-            f'Speech rate placeholder: {speech_rate} wpm.' if speech_rate is not None else 'Speech rate placeholder no disponible.',
-            f'Pause segments placeholder: {len(bundle.audio_features.pause_segments)}.',
-            bundle.audio_features.explanation,
-        ],
+        'status_visual': status_visual,
+        'score_0_100': evaluated.score_0_100,
+        'summary': 'Evaluación de delivery basada en métricas acústicas reales.' if getattr(bundle.audio_features, 'status', None) == 'ready' else 'Evaluación de delivery degradada por disponibilidad/calidad de audio.',
+        'details': evaluated.evidence_metrics + evaluated.observations,
+        'subscores': evaluated.subscores,
+        'recommendations': evaluated.recommendations,
     }
 
 

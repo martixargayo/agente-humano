@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from comunicacion.storage.models import RecordingRecord
 from evaluacion.contracts.communication_models import (
+    CommunicationAudioFeaturesRealV1,
     CommunicationAudioFeaturesPlaceholder,
     CommunicationPauseSegment,
     CommunicationTranscriptPlaceholder,
@@ -9,6 +10,7 @@ from evaluacion.contracts.communication_models import (
     CommunicationTranscriptRealV1,
     CommunicationVisualFeaturesPlaceholder,
 )
+from evaluacion.engine.communication_audio_metrics import build_audio_features_real
 from evaluacion.engine.communication_media_processing import extract_audio_track, resolve_recording_media_source
 from evaluacion.engine.communication_stt import CommunicationSttProvider, transcribe_audio
 
@@ -37,6 +39,30 @@ def build_real_transcript(*, recording: RecordingRecord, provider: Communication
     audio_track = extract_audio_track(media_source=media_source, recording=recording)
     transcript_artifact = transcribe_audio(audio_path=audio_track.audio_path, language_hint='es', provider=provider)
     return transcript_artifact.transcript
+
+
+def build_real_audio_features(*, recording: RecordingRecord, transcript_words: int) -> CommunicationAudioFeaturesRealV1:
+    media_source = resolve_recording_media_source(recording=recording)
+    audio_track = extract_audio_track(media_source=media_source, recording=recording)
+    raw_metrics, interpreted_metrics, quality_flags = build_audio_features_real(
+        audio_path=audio_track.audio_path,
+        transcript_words=transcript_words,
+        provider_meta={'extractor': 'communication_audio_metrics', 'audio_ref': str(audio_track.source_ref)},
+    )
+    status = 'ready'
+    explanation = 'Métricas acústicas reales calculadas desde señal de audio.'
+    if not raw_metrics.speaking_time_ms:
+        status = 'unavailable'
+        quality_flags = list(quality_flags) + ['speaking_time_unavailable']
+        explanation = 'No se pudo calcular speaking_time utilizable; se degrada evaluación de delivery.'
+    return CommunicationAudioFeaturesRealV1(
+        status=status,
+        raw_metrics=raw_metrics,
+        interpreted_metrics=interpreted_metrics,
+        quality_flags=quality_flags,
+        provider_meta={'audio_path': str(audio_track.audio_path), 'mime_type': audio_track.mime_type},
+        explanation=explanation,
+    )
 
 
 def build_placeholder_audio_features(*, recording: RecordingRecord) -> CommunicationAudioFeaturesPlaceholder:

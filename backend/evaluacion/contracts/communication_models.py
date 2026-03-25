@@ -14,7 +14,9 @@ CommunicationJobStage = Literal[
     'transcription_started',
     'transcript_ready',
     'content_analysis_ready',
+    'audio_metrics_started',
     'audio_features_ready',
+    'delivery_analysis_ready',
     'visual_placeholder_ready',
     'assembling_report',
     'completed',
@@ -102,6 +104,71 @@ class CommunicationAudioFeaturesPlaceholder(BaseModel):
     metrics: dict[str, object] = Field(default_factory=dict)
 
 
+class CommunicationAudioPauseEvent(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    start_ms: int
+    end_ms: int
+    duration_ms: int
+
+
+class CommunicationAudioPitchStats(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    mean_hz: float | None = None
+    median_hz: float | None = None
+    std_hz: float | None = None
+    min_hz: float | None = None
+    max_hz: float | None = None
+    range_hz: float | None = None
+
+
+class CommunicationAudioEnergyStats(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    rms_mean: float
+    rms_std: float
+    rms_min: float
+    rms_max: float
+
+
+class CommunicationAudioRawMetricsV1(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    pause_events: list[CommunicationAudioPauseEvent] = Field(default_factory=list)
+    speech_rate_wpm: float | None = None
+    speaking_time_ms: int
+    pause_time_ms: int
+    pause_ratio: float
+    pause_mean_ms: float | None = None
+    pause_max_ms: int | None = None
+    long_pauses_count: int = 0
+    pitch_stats: CommunicationAudioPitchStats
+    energy_stats: CommunicationAudioEnergyStats
+    voiced_ratio: float | None = None
+
+
+class CommunicationAudioInterpretedMetricsV1(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    fluency_1_5: int | None = None
+    pause_control_1_5: int | None = None
+    expressiveness_1_5: int | None = None
+    stability_1_5: int | None = None
+
+
+class CommunicationAudioFeaturesRealV1(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    schema_version: Literal['communication_audio_features_real.v1'] = 'communication_audio_features_real.v1'
+    status: Literal['ready', 'unavailable'] = 'ready'
+    raw_metrics: CommunicationAudioRawMetricsV1
+    interpreted_metrics: CommunicationAudioInterpretedMetricsV1 = Field(default_factory=CommunicationAudioInterpretedMetricsV1)
+    quality_flags: list[str] = Field(default_factory=list)
+    provider_meta: dict[str, object] = Field(default_factory=dict)
+    explanation: str | None = None
+
+
 class CommunicationVisualFeaturesPlaceholder(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
@@ -122,7 +189,7 @@ class CommunicationFeedbackInputBundleV1(BaseModel):
     domain_context: CommunicationDomainContext
     recording: CommunicationRecordingMetadata
     transcript: CommunicationTranscriptPlaceholder | CommunicationTranscriptRealV1
-    audio_features: CommunicationAudioFeaturesPlaceholder
+    audio_features: CommunicationAudioFeaturesPlaceholder | CommunicationAudioFeaturesRealV1
     visual_features: CommunicationVisualFeaturesPlaceholder
 
 
@@ -141,8 +208,19 @@ class CommunicationDeliveryEvaluatorInput(BaseModel):
 
     schema_version: Literal['communication_delivery_evaluator_input.v1'] = 'communication_delivery_evaluator_input.v1'
     evaluation_id: str
-    audio_features: CommunicationAudioFeaturesPlaceholder
+    audio_features: CommunicationAudioFeaturesPlaceholder | CommunicationAudioFeaturesRealV1
     transcript_segments: list[CommunicationTranscriptSegment] = Field(default_factory=list)
+
+
+class CommunicationDeliveryEvaluationV1(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    schema_version: Literal['communication_delivery_evaluation.v1'] = 'communication_delivery_evaluation.v1'
+    score_0_100: int
+    subscores: dict[str, int] = Field(default_factory=dict)
+    evidence_metrics: list[str] = Field(default_factory=list)
+    observations: list[str] = Field(default_factory=list)
+    recommendations: list[str] = Field(default_factory=list)
 
 
 class CommunicationVisualEvaluatorInput(BaseModel):

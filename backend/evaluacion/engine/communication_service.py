@@ -31,7 +31,9 @@ _STAGE_SEQUENCE = [
     'transcription_started',
     'transcript_ready',
     'content_analysis_ready',
+    'audio_metrics_started',
     'audio_features_ready',
+    'delivery_analysis_ready',
     'visual_placeholder_ready',
     'assembling_report',
     'completed',
@@ -110,10 +112,14 @@ def _run_communication_evaluation_job(*, evaluation_id: str, attempt_id: str) ->
             persist_transcript_artifact(evaluation_id=evaluation_id, bundle=bundle)
         content_result = evaluate_communication_content(bundle)
         _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='running', stage='content_analysis_ready')
+        _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='running', stage='audio_metrics_started')
+        if getattr(bundle.audio_features, 'status', None) == 'ready':
+            persist_audio_metrics_artifact(evaluation_id=evaluation_id, bundle=bundle)
         _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='running', stage='audio_features_ready')
+        delivery_result = evaluate_communication_delivery(bundle)
+        _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='running', stage='delivery_analysis_ready')
         visual_result = evaluate_communication_visual_placeholder(bundle)
         _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='running', stage='visual_placeholder_ready')
-        delivery_result = evaluate_communication_delivery(bundle)
         _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='running', stage='assembling_report')
 
         report = assemble_communication_report(
@@ -153,6 +159,27 @@ def persist_transcript_artifact(*, evaluation_id: str, bundle: object) -> None:
             recording_id=getattr(attempt_ref, 'recording_id'),
             kind='transcript_real',
             version=getattr(transcript, 'schema_version', 'communication_transcript_real.v1'),
+            storage_ref=storage_ref,
+            content_hash=None,
+            created_at=_utcnow(),
+        )
+    )
+
+
+def persist_audio_metrics_artifact(*, evaluation_id: str, bundle: object) -> None:
+    audio_features = getattr(bundle, 'audio_features', None)
+    attempt_ref = getattr(bundle, 'attempt_ref', None)
+    if audio_features is None or attempt_ref is None:
+        return
+    if getattr(audio_features, 'status', None) != 'ready':
+        return
+    storage_ref = f'memory://communication/audio_metrics/{evaluation_id}/{getattr(attempt_ref, "recording_id", "unknown")}.json'
+    REPOSITORY.save_artifact(
+        DerivedArtifactRecord(
+            artifact_id=_generate_artifact_id(),
+            recording_id=getattr(attempt_ref, 'recording_id'),
+            kind='audio_metrics_real',
+            version=getattr(audio_features, 'schema_version', 'communication_audio_features_real.v1'),
             storage_ref=storage_ref,
             content_hash=None,
             created_at=_utcnow(),
