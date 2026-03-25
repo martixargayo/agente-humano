@@ -58,19 +58,55 @@ class OpenAiWhisperSttProvider:
             raise HTTPException(status_code=500, detail={'error': 'openai_sdk_not_available_for_stt'}) from exc
 
         client = OpenAI(api_key=api_key)
-        with audio_path.open('rb') as stream:
-            response = client.audio.transcriptions.create(
-                model=self._model,
-                file=stream,
-                language=language_hint,
-                response_format='verbose_json',
-            )
+        try:
+            with audio_path.open('rb') as stream:
+                response = client.audio.transcriptions.create(
+                    model=self._model,
+                    file=stream,
+                    language=language_hint,
+                    response_format='verbose_json',
+                )
+        except Exception as exc:
+            if _is_unsupported_verbose_json_error(exc):
+                try:
+                    with audio_path.open('rb') as stream:
+                        response = client.audio.transcriptions.create(
+                            model=self._model,
+                            file=stream,
+                            language=language_hint,
+                            response_format='json',
+                        )
+                except Exception as retry_exc:
+                    raise _map_openai_stt_error(retry_exc, provider=self.provider_name, model=self._model) from retry_exc
+            else:
+                raise _map_openai_stt_error(exc, provider=self.provider_name, model=self._model) from exc
 
         payload = response.model_dump() if hasattr(response, 'model_dump') else dict(response)  # type: ignore[arg-type]
-        return normalize_openai_verbose_transcript(payload, provider=self.provider_name, language_hint=language_hint)
+        return normalize_openai_transcript(payload, provider=self.provider_name, language_hint=language_hint)
 
 
-def normalize_openai_verbose_transcript(payload: dict[str, Any], *, provider: str, language_hint: str = 'es') -> CommunicationTranscriptRealV1:
+def _is_unsupported_verbose_json_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return (
+        'response_format' in message
+        and 'verbose_json' in message
+        and ('unsupported_value' in message or 'not compatible' in message)
+    )
+
+
+def _map_openai_stt_error(exc: Exception, *, provider: str, model: str) -> HTTPException:
+    return HTTPException(
+        status_code=502,
+        detail={
+            'error': 'stt_provider_request_failed',
+            'provider': provider,
+            'model': model,
+            'reason': str(exc),
+        },
+    )
+
+
+def normalize_openai_transcript(payload: dict[str, Any], *, provider: str, language_hint: str = 'es') -> CommunicationTranscriptRealV1:
     text = str(payload.get('text') or '').strip()
     language = str(payload.get('language') or language_hint or 'es')
     segments_raw = payload.get('segments')
@@ -110,6 +146,10 @@ def normalize_openai_verbose_transcript(payload: dict[str, Any], *, provider: st
         quality_flags=quality_flags,
         explanation='Transcripción obtenida desde proveedor STT real.',
     )
+
+
+def normalize_openai_verbose_transcript(payload: dict[str, Any], *, provider: str, language_hint: str = 'es') -> CommunicationTranscriptRealV1:
+    return normalize_openai_transcript(payload, provider=provider, language_hint=language_hint)
 
 
 def resolve_stt_provider() -> CommunicationSttProvider:

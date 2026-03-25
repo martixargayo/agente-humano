@@ -2,15 +2,19 @@ from __future__ import annotations
 
 import unittest
 from datetime import datetime, timezone
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 from unittest.mock import patch
 
+from fastapi import HTTPException
 from comunicacion.storage import AttemptRecord, REPOSITORY, RecordingRecord
 from evaluacion.contracts.communication_models import CommunicationTranscriptRealV1, CommunicationTranscriptSegment
 from evaluacion.engine.communication_bundle_builder import build_communication_feedback_input_bundle
 from evaluacion.engine.communication_content_evaluator import evaluate_content_from_transcript
 from evaluacion.engine.communication_media_processing import resolve_recording_media_source
 from evaluacion.engine.communication_service import persist_transcript_artifact
-from evaluacion.engine.communication_stt import normalize_openai_verbose_transcript
+from evaluacion.engine.communication_stt import OpenAiWhisperSttProvider, normalize_openai_transcript, normalize_openai_verbose_transcript
 
 
 class CommunicationPhase1SttAndContentTests(unittest.TestCase):
@@ -68,6 +72,77 @@ class CommunicationPhase1SttAndContentTests(unittest.TestCase):
         self.assertEqual(out.segments[0].start_ms, 0)
         self.assertEqual(out.segments[1].end_ms, 2000)
 
+    def test_openai_json_transcript_normalization_builds_minimum_segment_when_segments_absent(self) -> None:
+        payload = {
+            'text': 'Hola mundo desde json simple',
+            'language': 'es',
+        }
+        out = normalize_openai_transcript(payload, provider='openai_whisper_api', language_hint='es')
+        self.assertEqual(out.status, 'ready')
+        self.assertEqual(out.full_text, 'Hola mundo desde json simple')
+        self.assertEqual(len(out.segments), 1)
+        self.assertEqual(out.segments[0].start_ms, 0)
+        self.assertEqual(out.segments[0].end_ms, 1000)
+
+    def test_stt_provider_retries_with_json_when_verbose_json_is_rejected(self) -> None:
+        class _FakeResponse:
+            def __init__(self, payload: dict[str, object]) -> None:
+                self._payload = payload
+
+            def model_dump(self) -> dict[str, object]:
+                return self._payload
+
+        class _FakeBadRequestError(Exception):
+            pass
+
+        class _FakeTranscriptions:
+            def __init__(self) -> None:
+                self.calls: list[str] = []
+
+            def create(self, **kwargs):  # type: ignore[no-untyped-def]
+                response_format = kwargs.get('response_format')
+                self.calls.append(str(response_format))
+                if response_format == 'verbose_json':
+                    raise _FakeBadRequestError(
+                        "response_format 'verbose_json' is not compatible with model 'gpt-4o-mini-transcribe-api-ev3'. code=unsupported_value"
+                    )
+                return _FakeResponse({'text': 'texto desde fallback json', 'language': 'es'})
+
+        fake_transcriptions = _FakeTranscriptions()
+        fake_client = SimpleNamespace(audio=SimpleNamespace(transcriptions=fake_transcriptions))
+        fake_openai_module = SimpleNamespace(OpenAI=lambda api_key: fake_client)
+
+        with TemporaryDirectory() as tmpdir:
+            audio_path = Path(tmpdir) / 'sample.wav'
+            audio_path.write_bytes(b'RIFFxxxxWAVEfmt ')
+            provider = OpenAiWhisperSttProvider(model='gpt-4o-mini-transcribe')
+            with patch.dict('sys.modules', {'openai': fake_openai_module}), patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
+                out = provider.transcribe(audio_path=audio_path, language_hint='es')
+
+        self.assertEqual(fake_transcriptions.calls, ['verbose_json', 'json'])
+        self.assertEqual(out.status, 'ready')
+        self.assertEqual(out.full_text, 'texto desde fallback json')
+        self.assertEqual(len(out.segments), 1)
+
+    def test_stt_provider_maps_provider_error_to_http_exception(self) -> None:
+        class _FakeTranscriptions:
+            def create(self, **kwargs):  # type: ignore[no-untyped-def]
+                raise RuntimeError('network timeout')
+
+        fake_client = SimpleNamespace(audio=SimpleNamespace(transcriptions=_FakeTranscriptions()))
+        fake_openai_module = SimpleNamespace(OpenAI=lambda api_key: fake_client)
+
+        with TemporaryDirectory() as tmpdir:
+            audio_path = Path(tmpdir) / 'sample.wav'
+            audio_path.write_bytes(b'RIFFxxxxWAVEfmt ')
+            provider = OpenAiWhisperSttProvider(model='gpt-4o-mini-transcribe')
+            with patch.dict('sys.modules', {'openai': fake_openai_module}), patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
+                with self.assertRaises(Exception) as exc:
+                    provider.transcribe(audio_path=audio_path, language_hint='es')
+
+        self.assertEqual(getattr(exc.exception, 'status_code', None), 502)
+        self.assertEqual(exc.exception.detail['error'], 'stt_provider_request_failed')
+
     def test_bundle_uses_real_transcript_when_extractor_returns_ready_transcript(self) -> None:
         self._seed_attempt_and_recording()
         transcript_real = CommunicationTranscriptRealV1(
@@ -89,6 +164,16 @@ class CommunicationPhase1SttAndContentTests(unittest.TestCase):
         self.assertEqual(content['block_id'], 'contenido')
         self.assertIn('transcripción real', content['summary'].lower())
         self.assertGreaterEqual(content['score_0_100'], 55)
+
+    def test_bundle_degrades_to_placeholder_when_stt_provider_fails(self) -> None:
+        self._seed_attempt_and_recording()
+        with patch(
+            'evaluacion.engine.communication_bundle_builder.build_real_transcript',
+            side_effect=HTTPException(status_code=502, detail={'error': 'stt_provider_request_failed'}),
+        ):
+            bundle = build_communication_feedback_input_bundle(evaluation_id='eval_phase1', attempt_id='att_phase1')
+        self.assertEqual(bundle.transcript.status, 'placeholder')
+        self.assertTrue(bundle.transcript.explanation)
 
     def test_persist_transcript_artifact_registers_transcript_real_kind(self) -> None:
         transcript_real = CommunicationTranscriptRealV1(
