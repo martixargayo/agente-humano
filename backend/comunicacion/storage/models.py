@@ -6,7 +6,15 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 AttemptStatus = Literal['draft', 'uploaded', 'submitted', 'completed', 'failed']
-ArtifactKind = Literal['poster_frame', 'transcript', 'audio_features', 'visual_summary', 'bundle_snapshot']
+ArtifactKind = Literal[
+    'poster_frame',
+    'transcript',
+    'transcript_real',
+    'audio_track',
+    'audio_features',
+    'visual_summary',
+    'bundle_snapshot',
+]
 
 
 class AttemptRecord(BaseModel):

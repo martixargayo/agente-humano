@@ -12,12 +12,16 @@ from evaluacion.contracts.models import SessionRef
 from evaluacion.domains.communication import (
     build_placeholder_audio_features,
     build_placeholder_transcript,
+    build_real_transcript,
     build_placeholder_visual_features,
     resolve_communication_evaluation_context_from_attempt,
 )
+from evaluacion.engine.communication_stt import CommunicationSttProvider
 
 
-def build_communication_feedback_input_bundle(*, evaluation_id: str, attempt_id: str) -> CommunicationFeedbackInputBundleV1:
+def build_communication_feedback_input_bundle(
+    *, evaluation_id: str, attempt_id: str, stt_provider: CommunicationSttProvider | None = None
+) -> CommunicationFeedbackInputBundleV1:
     attempt = REPOSITORY.get_attempt(attempt_id)
     if attempt is None:
         raise HTTPException(status_code=404, detail={'error': 'attempt_not_found', 'attempt_id': attempt_id})
@@ -43,13 +47,18 @@ def build_communication_feedback_input_bundle(*, evaluation_id: str, attempt_id:
         capture_meta=recording.capture_meta,
     )
 
+    try:
+        transcript = build_real_transcript(recording=recording, provider=stt_provider)
+    except HTTPException:
+        transcript = build_placeholder_transcript(recording=recording)
+
     return CommunicationFeedbackInputBundleV1(
         evaluation_id=evaluation_id,
         session_ref=SessionRef(user_id=attempt.user_id, session_id=attempt.session_id),
         attempt_ref=CommunicationAttemptRef(attempt_id=attempt.attempt_id, recording_id=recording.recording_id),
         domain_context=domain_context,
         recording=recording_meta,
-        transcript=build_placeholder_transcript(recording=recording),
+        transcript=transcript,
         audio_features=build_placeholder_audio_features(recording=recording),
         visual_features=build_placeholder_visual_features(recording=recording),
     )

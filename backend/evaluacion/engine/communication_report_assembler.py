@@ -77,16 +77,17 @@ def _build_block(output: dict[str, Any]) -> CommunicationReportBlock:
 def _build_timeline(bundle: CommunicationFeedbackInputBundleV1, block_cards: list[CommunicationReportBlock]) -> CommunicationTimeline:
     segments: list[CommunicationTimelineSegment] = []
     default_score = next((block.score_0_100 for block in block_cards if block.score_0_100 is not None), 60)
+    transcript_is_real = getattr(bundle.transcript, 'status', None) == 'ready'
     for segment in bundle.transcript.segments:
         segments.append(
             CommunicationTimelineSegment(
                 segment_id=f'seg_{segment.segment_index}',
-                label='Segmento placeholder' if segment.segment_index == 1 else f'Segmento {segment.segment_index}',
+                label=('Segmento transcrito' if transcript_is_real else 'Segmento placeholder') if segment.segment_index == 1 else f'Segmento {segment.segment_index}',
                 start_ms=segment.start_ms,
                 end_ms=segment.end_ms,
                 score_0_100=default_score,
-                summary=segment.text or 'Sin texto transcrito real todavía.',
-                signals=['transcript_placeholder', 'fase_5_report'],
+                summary=segment.text or ('Sin texto transcrito real todavía.' if not transcript_is_real else 'Sin texto disponible en segmento transcrito.'),
+                signals=['transcript_real', 'fase_1_multimodal'] if transcript_is_real else ['transcript_placeholder', 'fase_5_report'],
             )
         )
     if not segments:

@@ -6,8 +6,11 @@ from evaluacion.contracts.communication_models import (
     CommunicationPauseSegment,
     CommunicationTranscriptPlaceholder,
     CommunicationTranscriptSegment,
+    CommunicationTranscriptRealV1,
     CommunicationVisualFeaturesPlaceholder,
 )
+from evaluacion.engine.communication_media_processing import extract_audio_track, resolve_recording_media_source
+from evaluacion.engine.communication_stt import CommunicationSttProvider, transcribe_audio
 
 
 def build_placeholder_transcript(*, recording: RecordingRecord) -> CommunicationTranscriptPlaceholder:
@@ -27,6 +30,13 @@ def build_placeholder_transcript(*, recording: RecordingRecord) -> Communication
         explanation=media_note,
         segments=[segment],
     )
+
+
+def build_real_transcript(*, recording: RecordingRecord, provider: CommunicationSttProvider | None = None) -> CommunicationTranscriptRealV1:
+    media_source = resolve_recording_media_source(recording=recording)
+    audio_track = extract_audio_track(media_source=media_source, recording=recording)
+    transcript_artifact = transcribe_audio(audio_path=audio_track.audio_path, language_hint='es', provider=provider)
+    return transcript_artifact.transcript
 
 
 def build_placeholder_audio_features(*, recording: RecordingRecord) -> CommunicationAudioFeaturesPlaceholder:

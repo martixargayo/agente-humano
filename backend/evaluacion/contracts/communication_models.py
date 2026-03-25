@@ -10,7 +10,10 @@ CommunicationJobStatus = Literal['queued', 'running', 'completed', 'failed']
 CommunicationJobStage = Literal[
     'queued',
     'extracting',
+    'extracting_media',
+    'transcription_started',
     'transcript_ready',
+    'content_analysis_ready',
     'audio_features_ready',
     'visual_placeholder_ready',
     'assembling_report',
@@ -65,6 +68,20 @@ class CommunicationTranscriptPlaceholder(BaseModel):
     segments: list[CommunicationTranscriptSegment] = Field(default_factory=list)
 
 
+class CommunicationTranscriptRealV1(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    schema_version: Literal['communication_transcript_real.v1'] = 'communication_transcript_real.v1'
+    status: Literal['ready'] = 'ready'
+    provider: str
+    language: str
+    full_text: str
+    segments: list[CommunicationTranscriptSegment] = Field(default_factory=list)
+    confidence_global: float | None = None
+    quality_flags: list[str] = Field(default_factory=list)
+    explanation: str | None = None
+
+
 class CommunicationPauseSegment(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
@@ -104,7 +121,7 @@ class CommunicationFeedbackInputBundleV1(BaseModel):
     attempt_ref: CommunicationAttemptRef
     domain_context: CommunicationDomainContext
     recording: CommunicationRecordingMetadata
-    transcript: CommunicationTranscriptPlaceholder
+    transcript: CommunicationTranscriptPlaceholder | CommunicationTranscriptRealV1
     audio_features: CommunicationAudioFeaturesPlaceholder
     visual_features: CommunicationVisualFeaturesPlaceholder
 

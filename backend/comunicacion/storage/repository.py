@@ -58,5 +58,16 @@ class InMemoryCommunicationRepository:
         with self._lock:
             return list(self._artifacts.get(recording_id, []))
 
+    def list_artifacts_for_recording_and_kind(self, recording_id: str, kind: str) -> list[DerivedArtifactRecord]:
+        with self._lock:
+            return [artifact for artifact in self._artifacts.get(recording_id, []) if artifact.kind == kind]
+
+    def get_latest_artifact_for_recording_and_kind(self, recording_id: str, kind: str) -> DerivedArtifactRecord | None:
+        with self._lock:
+            matches = [artifact for artifact in self._artifacts.get(recording_id, []) if artifact.kind == kind]
+            if not matches:
+                return None
+            return matches[-1]
+
 
 REPOSITORY = InMemoryCommunicationRepository()

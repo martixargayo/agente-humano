@@ -1,22 +1,11 @@
 from __future__ import annotations
 
 from evaluacion.contracts.communication_models import CommunicationFeedbackInputBundleV1
+from evaluacion.engine.communication_content_evaluator import evaluate_content_from_transcript
 
 
 def evaluate_communication_content(bundle: CommunicationFeedbackInputBundleV1) -> dict[str, object]:
-    transcript_segment = bundle.transcript.segments[0].text if bundle.transcript.segments else 'Sin segmentos todavía.'
-    return {
-        'block_id': 'contenido',
-        'title': 'Contenido',
-        'status_visual': 'mejorable',
-        'score_0_100': 55,
-        'summary': 'El contenido todavía se resume a partir de metadata y un transcript placeholder; sirve para cerrar el circuito submit -> report.',
-        'details': [
-            f'Contexto activo: {bundle.domain_context.context_id} ({bundle.domain_context.context_version}).',
-            f'Segmento placeholder disponible: {transcript_segment}',
-            bundle.transcript.explanation,
-        ],
-    }
+    return evaluate_content_from_transcript(bundle=bundle)
 
 
 def evaluate_communication_delivery(bundle: CommunicationFeedbackInputBundleV1) -> dict[str, object]:

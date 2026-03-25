@@ -55,7 +55,21 @@ class CommunicationStatusApiTests(unittest.TestCase):
         payload = response.json()
         self.assertEqual(payload['evaluation_id'], evaluation_id)
         self.assertIn(payload['status'], ['running', 'completed'])
-        self.assertIn(payload['stage'], ['queued', 'extracting', 'transcript_ready', 'audio_features_ready', 'visual_placeholder_ready', 'assembling_report', 'completed'])
+        self.assertIn(
+            payload['stage'],
+            [
+                'queued',
+                'extracting',
+                'extracting_media',
+                'transcription_started',
+                'transcript_ready',
+                'content_analysis_ready',
+                'audio_features_ready',
+                'visual_placeholder_ready',
+                'assembling_report',
+                'completed',
+            ],
+        )
         self.assertTrue(payload['report_available'])
         self.assertIsNone(payload['error'])
 
