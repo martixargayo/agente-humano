@@ -123,6 +123,72 @@ class CommunicationParallelPipelineTests(unittest.TestCase):
         self.assertEqual(content_block.status_visual, 'placeholder')
         self.assertIn('degradada', content_block.summary.lower())
 
+    def test_delivery_and_visual_failures_are_degraded(self) -> None:
+        def _delivery(bundle):  # type: ignore[no-untyped-def]
+            raise RuntimeError('delivery exploded')
+
+        def _visual(bundle):  # type: ignore[no-untyped-def]
+            raise RuntimeError('visual exploded')
+
+        with (
+            patch('evaluacion.engine.communication_service.evaluate_communication_delivery', side_effect=_delivery),
+            patch('evaluacion.engine.communication_service.evaluate_communication_visual', side_effect=_visual),
+        ):
+            run_communication_evaluation_job_inline_for_tests(evaluation_id='eval_parallel_3', attempt_id='att_parallel')
+
+        report = get_communication_evaluation_report(evaluation_id='eval_parallel_3')
+        delivery_block = next(block for block in report.block_cards if block.block_id == 'delivery')
+        visual_block = next(block for block in report.block_cards if block.block_id == 'visual')
+        self.assertEqual(delivery_block.status_visual, 'placeholder')
+        self.assertEqual(visual_block.status_visual, 'placeholder')
+
+    def test_timeout_in_branch_degrades_that_branch(self) -> None:
+        def _visual(bundle):  # type: ignore[no-untyped-def]
+            time.sleep(0.2)
+            return {'block_id': 'visual', 'title': 'Visual', 'status_visual': 'correcto', 'score_0_100': 75, 'summary': 'ok', 'details': [], 'recommendations': [], 'evidence_frames': []}
+
+        with (
+            patch('evaluacion.engine.communication_service.evaluate_communication_visual', side_effect=_visual),
+            patch('evaluacion.engine.communication_service._PARALLEL_ANALYSIS_TIMEOUT_SECONDS', 0.05),
+        ):
+            run_communication_evaluation_job_inline_for_tests(evaluation_id='eval_parallel_4', attempt_id='att_parallel')
+
+        report = get_communication_evaluation_report(evaluation_id='eval_parallel_4')
+        visual_block = next(block for block in report.block_cards if block.block_id == 'visual')
+        self.assertEqual(visual_block.status_visual, 'placeholder')
+        self.assertIn('degradada', visual_block.summary.lower())
+
+    def test_assembler_runs_after_synthesis(self) -> None:
+        timestamps: dict[str, float] = {}
+
+        def _synthesis(**kwargs):  # type: ignore[no-untyped-def]
+            timestamps['synthesis_start'] = time.perf_counter()
+            time.sleep(0.03)
+            timestamps['synthesis_end'] = time.perf_counter()
+            return {
+                'schema_version': 'communication_global_synthesis_output.v1',
+                'global_score_0_100': 70,
+                'global_diagnosis': 'ok',
+                'top_strengths': [],
+                'priority_improvements': [],
+                'action_plan': [],
+                'friendly_summary': 'ok',
+                'consistency_notes': [],
+            }
+
+        def _assemble(**kwargs):  # type: ignore[no-untyped-def]
+            timestamps['assembler_start'] = time.perf_counter()
+            self.assertGreaterEqual(timestamps['assembler_start'], timestamps['synthesis_end'])
+            from evaluacion.engine.communication_report_assembler import assemble_communication_report
+
+            return assemble_communication_report(**kwargs)
+
+        with (
+            patch('evaluacion.engine.communication_service.evaluate_communication_synthesis', side_effect=_synthesis),
+            patch('evaluacion.engine.communication_service.assemble_communication_report', side_effect=_assemble),
+        ):
+            run_communication_evaluation_job_inline_for_tests(evaluation_id='eval_parallel_5', attempt_id='att_parallel')
+
 
 if __name__ == '__main__':
     unittest.main()
