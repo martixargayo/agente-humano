@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Comunicación</title>
+    <link rel="stylesheet" href="/comunicacion/styles.css" />
+  </head>
+  <body>
+    <main class="communication-shell">
+      <section class="communication-card communication-card--shell">
+        <header class="communication-header">
+          <p class="eyebrow">Comunicación · Captura</p>
+          <h1 id="activityTitle">Presentación breve grabada</h1>
+          <p id="activitySubtitle" class="communication-subtitle">
+            Fase 4: bootstrap, captura, review, submit, processing y report placeholder.
+          </p>
+        </header>
+
+        <div id="communicationStatusBanner" class="communication-banner hidden" aria-live="polite"></div>
+        <div id="communicationErrorBanner" class="communication-banner communication-banner--error hidden" aria-live="assertive"></div>
+
+        <section id="screenIntro" class="communication-panel" data-screen="intro">
+          <div class="panel-copy">
+            <h2>Antes de empezar</h2>
+            <p id="introContextSummary">Vamos a preparar tu sesión y a comprobar permisos de cámara y micrófono.</p>
+          </div>
+          <div class="panel-actions">
+            <button id="startFlowBtn" class="btn btn-primary" type="button">Empezar</button>
+          </div>
+        </section>
+
+        <section id="screenPermissions" class="communication-panel hidden" data-screen="permissions">
+          <div class="panel-copy">
+            <h2>Permisos y dispositivos</h2>
+            <p>Necesitamos cámara y micrófono para abrir la vista previa y permitir la grabación local.</p>
+          </div>
+          <div class="permissions-grid">
+            <div class="field-group">
+              <label for="videoDeviceSelect">Cámara</label>
+              <select id="videoDeviceSelect"></select>
+            </div>
+            <div class="field-group">
+              <label for="audioDeviceSelect">Micrófono</label>
+              <select id="audioDeviceSelect"></select>
+            </div>
+          </div>
+          <div class="panel-actions">
+            <button id="grantPermissionsBtn" class="btn btn-primary" type="button">Conceder permisos</button>
+            <button id="openPreviewBtn" class="btn btn-secondary" type="button">Abrir preview</button>
+          </div>
+        </section>
+
+        <section id="screenPreview" class="communication-panel hidden" data-screen="preview">
+          <div class="panel-copy">
+            <h2>Preview</h2>
+            <p>Comprueba encuadre y sonido antes de empezar a grabar.</p>
+          </div>
+          <div class="video-shell">
+            <video id="previewVideo" class="video-frame" autoplay playsinline muted></video>
+          </div>
+          <div class="panel-actions">
+            <button id="refreshDevicesBtn" class="btn btn-secondary" type="button">Actualizar dispositivos</button>
+            <button id="startRecordingBtn" class="btn btn-primary" type="button">Grabar</button>
+          </div>
+        </section>
+
+        <section id="screenRecording" class="communication-panel hidden" data-screen="recording">
+          <div class="panel-copy panel-copy--row">
+            <div>
+              <h2>Grabando</h2>
+              <p>Tu grabación se está guardando localmente en este navegador.</p>
+            </div>
+            <div id="recordingIndicator" class="recording-indicator">● 00:00</div>
+          </div>
+          <div class="video-shell">
+            <video id="recordingVideo" class="video-frame" autoplay playsinline muted></video>
+          </div>
+          <div class="panel-actions">
+            <button id="stopRecordingBtn" class="btn btn-danger" type="button">Detener</button>
+          </div>
+        </section>
+
+        <section id="screenReview" class="communication-panel hidden" data-screen="review">
+          <div class="panel-copy">
+            <h2>Review</h2>
+            <p>Revisa tu grabación local. Si te convence, registra su metadata y envíala a la evaluación mínima de Fase 4.</p>
+          </div>
+          <div class="video-shell">
+            <video id="reviewVideo" class="video-frame" controls playsinline></video>
+          </div>
+          <dl class="meta-grid">
+            <div>
+              <dt>Duración</dt>
+              <dd id="reviewDuration">-</dd>
+            </div>
+            <div>
+              <dt>MIME</dt>
+              <dd id="reviewMimeType">-</dd>
+            </div>
+            <div>
+              <dt>Tamaño</dt>
+              <dd id="reviewBlobSize">-</dd>
+            </div>
+            <div>
+              <dt>Referencia provisional</dt>
+              <dd id="reviewVideoRef">-</dd>
+            </div>
+          </dl>
+          <div class="panel-actions">
+            <button id="rerecordBtn" class="btn btn-secondary" type="button">Volver a grabar</button>
+            <button id="registerRecordingBtn" class="btn btn-primary" type="button">Registrar grabación</button>
+            <button id="submitEvaluationBtn" class="btn btn-secondary" type="button">Enviar a evaluar</button>
+          </div>
+        </section>
+
+        <section id="screenUploading" class="communication-panel hidden" data-screen="uploading">
+          <div class="panel-copy">
+            <h2>Registrando metadata</h2>
+            <p id="uploadStatusText">Estamos creando el attempt y enviando la referencia provisional de la grabación.</p>
+          </div>
+        </section>
+
+        <section id="screenProcessing" class="communication-panel hidden" data-screen="processing">
+          <div class="panel-copy">
+            <h2>Procesando evaluación</h2>
+            <p id="processingStatusText">Estamos esperando el resultado del pipeline mínimo y el report placeholder.</p>
+          </div>
+        </section>
+
+        <section id="screenReport" class="communication-panel hidden" data-screen="report">
+          <div class="panel-actions">
+            <button id="exportReportJsonBtn" class="btn btn-secondary" type="button">Exportar JSON</button>
+            <button id="exportReportHtmlBtn" class="btn btn-secondary" type="button">Exportar HTML</button>
+            <button id="exportReportPngBtn" class="btn btn-secondary" type="button">Exportar PNG</button>
+            <button id="emitFinalResultBtn" class="btn btn-primary" type="button">Entregar resultado final</button>
+          </div>
+          <div id="finalResultStatusPanel" class="communication-final-status" aria-live="polite"></div>
+          <div id="reportPlaceholderRoot"></div>
+        </section>
+      </section>
+    </main>
+
+    <script src="/comunicacion/report_view.js"></script>
+    <script src="/comunicacion/app.js"></script>
+  </body>
+</html>

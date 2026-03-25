@@ -1,0 +1,8 @@
+{
+  "min_duration_ms": 30000,
+  "max_duration_ms": 180000,
+  "allow_rerecord": true,
+  "audio_required": true,
+  "video_required": true,
+  "accepted_mime_types": ["video/webm", "video/mp4"]
+}

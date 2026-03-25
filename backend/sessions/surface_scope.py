@@ -6,14 +6,14 @@ from fastapi import HTTPException
 
 from sessions.state import SessionState
 
-SessionSurface = Literal['optimizador', 'interfaz_usuario']
+SessionSurface = Literal['optimizador', 'interfaz_usuario', 'comunicacion']
 SESSION_SURFACE_WORLD_STATE_KEY = '_session_surface'
 
 
 def read_session_surface(state: SessionState) -> SessionSurface | None:
     world_state = state.world_state if isinstance(state.world_state, dict) else {}
     value = world_state.get(SESSION_SURFACE_WORLD_STATE_KEY)
-    if value in {'optimizador', 'interfaz_usuario'}:
+    if value in {'optimizador', 'interfaz_usuario', 'comunicacion'}:
         return value
     return None
 
