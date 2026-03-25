@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
+from tempfile import gettempdir
 from typing import Any
 from uuid import uuid4
 
@@ -22,6 +24,30 @@ def _utcnow() -> datetime:
 
 def _generate_recording_id() -> str:
     return f'rec_{uuid4().hex[:12]}'
+
+
+_MEDIA_UPLOAD_DIR = Path(gettempdir()) / 'comunicacion_uploads'
+
+
+def persist_uploaded_video_blob(
+    *,
+    attempt_id: str,
+    original_filename: str | None,
+    payload: bytes,
+    mime_type_hint: str | None = None,
+) -> str:
+    if not payload:
+        raise HTTPException(status_code=400, detail={'error': 'recording_media_payload_empty'})
+
+    extension = 'webm'
+    lower_name = (original_filename or '').lower()
+    if lower_name.endswith('.mp4') or (mime_type_hint or '').lower().startswith('video/mp4'):
+        extension = 'mp4'
+
+    _MEDIA_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    file_path = _MEDIA_UPLOAD_DIR / f'{attempt_id}_{uuid4().hex[:10]}.{extension}'
+    file_path.write_bytes(payload)
+    return f'file://{file_path.resolve()}'
 
 
 def attach_recording_to_attempt(

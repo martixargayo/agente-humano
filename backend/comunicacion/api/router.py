@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Query
+import json
+from typing import Any
+
+from fastapi import APIRouter, HTTPException, Query, Request
 
 from comunicacion.models import (
     CommunicationEvaluationReportResponse,
@@ -24,9 +27,22 @@ from comunicacion.services import (
     read_evaluation_status,
     submit_attempt_for_evaluation,
 )
+from comunicacion.services.recording_service import persist_uploaded_video_blob
 from comunicacion.storage import REPOSITORY
 
 router = APIRouter(prefix='/api/comunicacion', tags=['comunicacion'])
+
+
+def _parse_capture_meta(value: str | None) -> dict[str, Any]:
+    if not value:
+        return {}
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail={'error': 'invalid_capture_meta_json'}) from exc
+    if not isinstance(parsed, dict):
+        raise HTTPException(status_code=400, detail={'error': 'invalid_capture_meta_json'})
+    return parsed
 
 
 @router.post('/sessions/bootstrap', response_model=CommunicationSessionBootstrapResponse)
@@ -75,7 +91,48 @@ def get_attempt_endpoint(
 
 
 @router.post('/attempts/{attempt_id}/upload', response_model=UploadRecordingResponse)
-def attach_recording_endpoint(attempt_id: str, payload: UploadRecordingRequest) -> UploadRecordingResponse:
+async def attach_recording_endpoint(attempt_id: str, request: Request) -> UploadRecordingResponse:
+    content_type = (request.headers.get('content-type') or '').lower()
+    if 'multipart/form-data' in content_type:
+        form = await request.form()
+        user_id = str(form.get('user_id') or '').strip()
+        session_id = str(form.get('session_id') or '').strip()
+        mime_type = str(form.get('mime_type') or '').strip() or 'video/webm'
+        try:
+            duration_ms = int(str(form.get('duration_ms') or '0'))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail={'error': 'invalid_recording_metadata', 'field': 'duration_ms'}) from exc
+        poster_frame_ref = str(form.get('poster_frame_ref') or '').strip() or None
+        capture_meta = _parse_capture_meta(str(form.get('capture_meta') or '').strip() or None)
+
+        upload_file = form.get('video_file')
+        if upload_file is None:
+            raise HTTPException(status_code=400, detail={'error': 'recording_media_file_missing'})
+        media_bytes = await upload_file.read()
+        video_ref = persist_uploaded_video_blob(
+            attempt_id=attempt_id,
+            original_filename=getattr(upload_file, 'filename', None),
+            payload=media_bytes,
+            mime_type_hint=getattr(upload_file, 'content_type', None) or mime_type,
+        )
+        capture_meta = dict(capture_meta)
+        capture_meta.update({
+            'blob_size_bytes': len(media_bytes),
+            'uploaded_binary': True,
+            'upload_transport': 'multipart_form_data',
+        })
+        payload = UploadRecordingRequest(
+            user_id=user_id,
+            session_id=session_id,
+            mime_type=mime_type,
+            duration_ms=duration_ms,
+            video_ref=video_ref,
+            poster_frame_ref=poster_frame_ref,
+            capture_meta=capture_meta,
+        )
+    else:
+        payload = UploadRecordingRequest.model_validate(await request.json())
+
     recording = attach_recording_to_attempt(
         user_id=payload.user_id,
         session_id=payload.session_id,
