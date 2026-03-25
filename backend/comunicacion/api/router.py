@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import FileResponse
 
 from comunicacion.models import (
     CommunicationEvaluationReportResponse,
@@ -27,7 +28,11 @@ from comunicacion.services import (
     read_evaluation_status,
     submit_attempt_for_evaluation,
 )
-from comunicacion.services.recording_service import persist_uploaded_video_blob
+from comunicacion.services.recording_service import (
+    build_recording_playback_url,
+    persist_uploaded_video_blob,
+    resolve_recording_playback_path,
+)
 from comunicacion.storage import REPOSITORY
 
 router = APIRouter(prefix='/api/comunicacion', tags=['comunicacion'])
@@ -150,8 +155,19 @@ async def attach_recording_endpoint(attempt_id: str, request: Request) -> Upload
         recording_id=recording.recording_id,
         status=status,
         video_ref=recording.video_ref,
+        playback_url=build_recording_playback_url(recording_id=recording.recording_id, video_ref=recording.video_ref),
         poster_frame_ref=recording.poster_frame_ref,
     )
+
+
+@router.get('/recordings/{recording_id}/video')
+def stream_recording_video_endpoint(recording_id: str) -> FileResponse:
+    recording = REPOSITORY.get_recording(recording_id)
+    if recording is None:
+        raise HTTPException(status_code=404, detail={'error': 'recording_not_found', 'recording_id': recording_id})
+    parsed_path = resolve_recording_playback_path(video_ref=recording.video_ref)
+    extension = 'mp4' if (recording.mime_type or '').lower().startswith('video/mp4') else 'webm'
+    return FileResponse(path=parsed_path, media_type=recording.mime_type, filename=f'{recording_id}.{extension}')
 
 
 @router.post('/attempts/{attempt_id}/submit', response_model=SubmitAttemptResponse)

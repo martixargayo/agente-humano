@@ -99,6 +99,7 @@ class UploadRecordingResponse(BaseModel):
     recording_id: str
     status: AttemptStatus
     video_ref: str
+    playback_url: str | None = None
     poster_frame_ref: str | None = None
 
 

@@ -54,6 +54,7 @@ class CommunicationRecordingMetadata(BaseModel):
     duration_ms: int
     mime_type: str
     video_ref: str
+    playback_url: str | None = None
     poster_frame_ref: str | None = None
     capture_meta: dict[str, object] = Field(default_factory=dict)
 
@@ -371,6 +372,7 @@ class CommunicationReportMediaBlock(BaseModel):
 
     recording_id: str
     video_ref: str
+    playback_url: str | None = None
     poster_frame_ref: str | None = None
     duration_ms: int
     mime_type: str

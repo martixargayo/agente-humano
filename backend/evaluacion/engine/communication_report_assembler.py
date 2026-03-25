@@ -36,6 +36,7 @@ def build_report_media_block(bundle: CommunicationFeedbackInputBundleV1) -> Comm
     return CommunicationReportMediaBlock(
         recording_id=bundle.attempt_ref.recording_id,
         video_ref=bundle.recording.video_ref,
+        playback_url=bundle.recording.playback_url,
         poster_frame_ref=bundle.recording.poster_frame_ref,
         duration_ms=bundle.recording.duration_ms,
         mime_type=bundle.recording.mime_type,
@@ -151,6 +152,7 @@ def _build_recommendations(bundle: CommunicationFeedbackInputBundleV1, synthesis
 
 
 def _serialize_report_markup(*, header: CommunicationReportHeader, media: CommunicationReportMediaBlock, video_panel: CommunicationVideoPanel, block_cards: list[CommunicationReportBlock], timeline: CommunicationTimeline, recommendations: CommunicationRecommendations) -> str:
+    resolved_video_src = media.playback_url or media.video_ref
     block_markup = ''.join(
         f"<article class='comm-report-card'><h3>{html.escape(block.title)}</h3><p>{html.escape(block.summary)}</p><ul>" + ''.join(f"<li>{html.escape(detail)}</li>" for detail in block.details) + '</ul></article>'
         for block in block_cards
@@ -178,7 +180,7 @@ def _serialize_report_markup(*, header: CommunicationReportHeader, media: Commun
         <div>
           <h2>{html.escape(video_panel.title)}</h2>
           <p>{html.escape(video_panel.help_text)}</p>
-          <video controls preload="metadata"{poster_attr}><source src="{html.escape(media.video_ref)}" type="{html.escape(media.mime_type)}"></video>
+          <video controls preload="metadata"{poster_attr}><source src="{html.escape(resolved_video_src)}" type="{html.escape(media.mime_type)}"></video>
         </div>
       </section>
       <section><h2>Bloques</h2>{block_markup}</section>

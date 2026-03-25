@@ -51,6 +51,7 @@ class CommunicationReportApiTests(unittest.TestCase):
         payload = response.json()
         self.assertEqual(payload['evaluation_id'], evaluation_id)
         self.assertEqual(payload['media']['recording_id'], payload['recording_id'])
+        self.assertEqual(payload['media']['playback_url'], f"/api/comunicacion/recordings/{payload['recording_id']}/video")
         self.assertGreaterEqual(payload['header']['score_global_100'], 0)
         self.assertTrue(len(payload['block_cards']) >= 3)
         self.assertTrue(len(payload['timeline']['segments']) >= 1)

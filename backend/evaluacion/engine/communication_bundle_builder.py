@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import HTTPException
 
 from comunicacion.storage import REPOSITORY
+from comunicacion.services.recording_service import build_recording_playback_url
 from evaluacion.contracts.communication_models import (
     CommunicationAttemptRef,
     CommunicationFeedbackInputBundleV1,
@@ -49,6 +50,7 @@ def build_communication_feedback_input_bundle(
         duration_ms=recording.duration_ms,
         mime_type=recording.mime_type,
         video_ref=recording.video_ref,
+        playback_url=build_recording_playback_url(recording_id=recording.recording_id, video_ref=recording.video_ref),
         poster_frame_ref=recording.poster_frame_ref,
         capture_meta=recording.capture_meta,
     )

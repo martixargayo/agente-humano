@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import gettempdir
 from typing import Any
+from urllib.parse import urlparse
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -27,6 +28,27 @@ def _generate_recording_id() -> str:
 
 
 _MEDIA_UPLOAD_DIR = Path(gettempdir()) / 'comunicacion_uploads'
+
+
+def build_recording_playback_url(*, recording_id: str, video_ref: str) -> str | None:
+    normalized_ref = (video_ref or '').strip()
+    if not normalized_ref:
+        return None
+    parsed = urlparse(normalized_ref)
+    if parsed.scheme in {'http', 'https'}:
+        return normalized_ref
+    return f'/api/comunicacion/recordings/{recording_id}/video'
+
+
+def resolve_recording_playback_path(*, video_ref: str) -> Path:
+    normalized_ref = (video_ref or '').strip()
+    parsed = urlparse(normalized_ref)
+    if parsed.scheme not in {'', 'file'}:
+        raise HTTPException(status_code=409, detail={'error': 'recording_playback_scheme_not_supported', 'video_ref': normalized_ref})
+    path = Path(parsed.path if parsed.scheme == 'file' else normalized_ref).expanduser()
+    if not path.exists() or not path.is_file():
+        raise HTTPException(status_code=404, detail={'error': 'recording_playback_not_found'})
+    return path.resolve()
 
 
 def persist_uploaded_video_blob(
