@@ -514,19 +514,44 @@
     setBusy(true);
     try {
       await createAttempt();
-      const out = await api(`/api/comunicacion/attempts/${state.attempt.attempt_id}/upload`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: state.session.user_id,
-          session_id: state.session.session_id,
-          mime_type: state.capture.mime_type || 'video/webm',
-          duration_ms: state.capture.duration_ms || 1,
-          video_ref: deriveTemporaryVideoRef(),
-          poster_frame_ref: null,
-          capture_meta: { blob_size_bytes: state.capture.blob_size_bytes, provisional_client_ref: true },
-        }),
-      });
+      let out = null;
+      try {
+        const form = new FormData();
+        form.append('user_id', state.session.user_id || '');
+        form.append('session_id', state.session.session_id || '');
+        form.append('mime_type', state.capture.mime_type || 'video/webm');
+        form.append('duration_ms', String(state.capture.duration_ms || 1));
+        form.append('poster_frame_ref', '');
+        form.append('capture_meta', JSON.stringify({
+          blob_size_bytes: state.capture.blob_size_bytes,
+          provisional_client_ref: false,
+          client_transport: 'multipart_form_data',
+        }));
+        form.append('video_file', state.capture.recorded_blob, `capture-${Date.now()}.webm`);
+        out = await api(`/api/comunicacion/attempts/${state.attempt.attempt_id}/upload`, {
+          method: 'POST',
+          body: form,
+        });
+      } catch (uploadError) {
+        out = await api(`/api/comunicacion/attempts/${state.attempt.attempt_id}/upload`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: state.session.user_id,
+            session_id: state.session.session_id,
+            mime_type: state.capture.mime_type || 'video/webm',
+            duration_ms: state.capture.duration_ms || 1,
+            video_ref: deriveTemporaryVideoRef(),
+            poster_frame_ref: null,
+            capture_meta: {
+              blob_size_bytes: state.capture.blob_size_bytes,
+              provisional_client_ref: true,
+              upload_binary_failed: true,
+              upload_binary_error: uploadError && uploadError.message ? uploadError.message : 'unknown_upload_error',
+            },
+          }),
+        });
+      }
       state.upload.recording_id = out.recording_id;
       state.upload.video_ref = out.video_ref;
       state.upload.poster_frame_ref = out.poster_frame_ref;
