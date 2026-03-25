@@ -4,12 +4,15 @@ from comunicacion.storage.models import RecordingRecord
 from evaluacion.contracts.communication_models import (
     CommunicationAudioFeaturesRealV1,
     CommunicationAudioFeaturesPlaceholder,
+    CommunicationFrameManifestV1,
     CommunicationPauseSegment,
     CommunicationTranscriptPlaceholder,
     CommunicationTranscriptSegment,
     CommunicationTranscriptRealV1,
+    CommunicationVisualFeaturesRealV1,
     CommunicationVisualFeaturesPlaceholder,
 )
+from evaluacion.engine.communication_frame_extractor import extract_video_frames
 from evaluacion.engine.communication_audio_metrics import build_audio_features_real
 from evaluacion.engine.communication_media_processing import extract_audio_track, resolve_recording_media_source
 from evaluacion.engine.communication_stt import CommunicationSttProvider, transcribe_audio
@@ -94,4 +97,37 @@ def build_placeholder_visual_features(*, recording: RecordingRecord) -> Communic
         summary='La analítica visual avanzada no forma parte del MVP actual.',
         explanation='Se conserva un bloque visual explícito para que el pipeline y el report no finjan capacidades inexistentes.',
         notable_windows=[],
+    )
+
+
+def build_real_visual_features(*, recording: RecordingRecord) -> CommunicationVisualFeaturesRealV1:
+    media_source = resolve_recording_media_source(recording=recording)
+    manifest = extract_video_frames(
+        media_source=media_source,
+        recording=recording,
+        sample_every_ms=1500,
+        max_frames=12,
+        window_size=4,
+    )
+    expected_frames = max(1, min(12, int((recording.duration_ms / 1500) + 0.999)))
+    coverage_ratio = min(len(manifest.frames) / expected_frames, 1.0)
+    quality_flags: list[str] = []
+    if any(frame.quality == 'low_detail' for frame in manifest.frames):
+        quality_flags.append('low_detail_frames_detected')
+    status = 'ready'
+    explanation = 'Frame manifest real extraído desde video para evaluación visual estructurada.'
+    if not manifest.frames:
+        status = 'unavailable'
+        quality_flags.append('no_frames_extracted')
+        explanation = 'No fue posible extraer frames utilizables del video.'
+    return CommunicationVisualFeaturesRealV1(
+        status=status,
+        frame_manifest=manifest if manifest.frames else CommunicationFrameManifestV1(source_ref=recording.video_ref),
+        coverage_stats={
+            'expected_frames': expected_frames,
+            'extracted_frames': len(manifest.frames),
+            'coverage_ratio': round(coverage_ratio, 4),
+        },
+        quality_flags=quality_flags,
+        explanation=explanation,
     )

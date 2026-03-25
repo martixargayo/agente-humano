@@ -17,7 +17,7 @@ from evaluacion.engine.communication_bundle_builder import build_communication_f
 from evaluacion.engine.communication_evaluators import (
     evaluate_communication_content,
     evaluate_communication_delivery,
-    evaluate_communication_visual_placeholder,
+    evaluate_communication_visual,
 )
 from evaluacion.engine.communication_report_assembler import assemble_communication_report
 
@@ -34,7 +34,10 @@ _STAGE_SEQUENCE = [
     'audio_metrics_started',
     'audio_features_ready',
     'delivery_analysis_ready',
-    'visual_placeholder_ready',
+    'frame_extraction_started',
+    'frames_ready',
+    'visual_analysis_started',
+    'visual_analysis_ready',
     'assembling_report',
     'completed',
 ]
@@ -118,8 +121,14 @@ def _run_communication_evaluation_job(*, evaluation_id: str, attempt_id: str) ->
         _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='running', stage='audio_features_ready')
         delivery_result = evaluate_communication_delivery(bundle)
         _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='running', stage='delivery_analysis_ready')
-        visual_result = evaluate_communication_visual_placeholder(bundle)
-        _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='running', stage='visual_placeholder_ready')
+        _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='running', stage='frame_extraction_started')
+        if getattr(bundle.visual_features, 'status', None) == 'ready':
+            persist_frame_manifest_artifact(evaluation_id=evaluation_id, bundle=bundle)
+        _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='running', stage='frames_ready')
+        _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='running', stage='visual_analysis_started')
+        visual_result = evaluate_communication_visual(bundle)
+        persist_visual_evaluation_artifact(evaluation_id=evaluation_id, bundle=bundle)
+        _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='running', stage='visual_analysis_ready')
         _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='running', stage='assembling_report')
 
         report = assemble_communication_report(
@@ -180,6 +189,45 @@ def persist_audio_metrics_artifact(*, evaluation_id: str, bundle: object) -> Non
             recording_id=getattr(attempt_ref, 'recording_id'),
             kind='audio_metrics_real',
             version=getattr(audio_features, 'schema_version', 'communication_audio_features_real.v1'),
+            storage_ref=storage_ref,
+            content_hash=None,
+            created_at=_utcnow(),
+        )
+    )
+
+
+def persist_frame_manifest_artifact(*, evaluation_id: str, bundle: object) -> None:
+    visual_features = getattr(bundle, 'visual_features', None)
+    attempt_ref = getattr(bundle, 'attempt_ref', None)
+    if visual_features is None or attempt_ref is None:
+        return
+    if getattr(visual_features, 'status', None) != 'ready':
+        return
+    storage_ref = f'memory://communication/frames/{evaluation_id}/{getattr(attempt_ref, "recording_id", "unknown")}.json'
+    REPOSITORY.save_artifact(
+        DerivedArtifactRecord(
+            artifact_id=_generate_artifact_id(),
+            recording_id=getattr(attempt_ref, 'recording_id'),
+            kind='frame_manifest',
+            version=getattr(getattr(visual_features, 'frame_manifest', None), 'schema_version', 'communication_frame_manifest.v1'),
+            storage_ref=storage_ref,
+            content_hash=None,
+            created_at=_utcnow(),
+        )
+    )
+
+
+def persist_visual_evaluation_artifact(*, evaluation_id: str, bundle: object) -> None:
+    attempt_ref = getattr(bundle, 'attempt_ref', None)
+    if attempt_ref is None:
+        return
+    storage_ref = f'memory://communication/visual_evaluation/{evaluation_id}/{getattr(attempt_ref, "recording_id", "unknown")}.json'
+    REPOSITORY.save_artifact(
+        DerivedArtifactRecord(
+            artifact_id=_generate_artifact_id(),
+            recording_id=getattr(attempt_ref, 'recording_id'),
+            kind='visual_evaluation',
+            version='communication_visual_evaluation.v1',
             storage_ref=storage_ref,
             content_hash=None,
             created_at=_utcnow(),

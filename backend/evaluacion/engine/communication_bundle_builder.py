@@ -14,6 +14,7 @@ from evaluacion.domains.communication import (
     build_placeholder_audio_features,
     build_placeholder_transcript,
     build_real_transcript,
+    build_real_visual_features,
     build_placeholder_visual_features,
     resolve_communication_evaluation_context_from_attempt,
 )
@@ -57,6 +58,10 @@ def build_communication_feedback_input_bundle(
         audio_features = build_real_audio_features(recording=recording, transcript_words=transcript_words)
     except HTTPException:
         audio_features = build_placeholder_audio_features(recording=recording)
+    try:
+        visual_features = build_real_visual_features(recording=recording)
+    except HTTPException:
+        visual_features = build_placeholder_visual_features(recording=recording)
 
     return CommunicationFeedbackInputBundleV1(
         evaluation_id=evaluation_id,
@@ -66,5 +71,5 @@ def build_communication_feedback_input_bundle(
         recording=recording_meta,
         transcript=transcript,
         audio_features=audio_features,
-        visual_features=build_placeholder_visual_features(recording=recording),
+        visual_features=visual_features,
     )

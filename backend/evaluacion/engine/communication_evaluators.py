@@ -3,6 +3,7 @@ from __future__ import annotations
 from evaluacion.contracts.communication_models import CommunicationFeedbackInputBundleV1
 from evaluacion.engine.communication_content_evaluator import evaluate_content_from_transcript
 from evaluacion.engine.communication_delivery_evaluator import evaluate_delivery_from_audio_metrics
+from evaluacion.engine.communication_visual_evaluator import evaluate_visual_from_features
 
 
 def evaluate_communication_content(bundle: CommunicationFeedbackInputBundleV1) -> dict[str, object]:
@@ -29,12 +30,21 @@ def evaluate_communication_delivery(bundle: CommunicationFeedbackInputBundleV1) 
     }
 
 
-def evaluate_communication_visual_placeholder(bundle: CommunicationFeedbackInputBundleV1) -> dict[str, object]:
+def evaluate_communication_visual(bundle: CommunicationFeedbackInputBundleV1) -> dict[str, object]:
+    evaluated = evaluate_visual_from_features(visual_features=bundle.visual_features)
+    status_visual = 'mejorable'
+    if evaluated.score_0_100 >= 75:
+        status_visual = 'correcto'
+    elif getattr(bundle.visual_features, 'status', None) == 'placeholder':
+        status_visual = 'placeholder'
     return {
         'block_id': 'visual',
-        'title': 'Visual placeholder',
-        'status_visual': 'placeholder',
-        'score_0_100': None,
-        'summary': bundle.visual_features.summary,
-        'details': [bundle.visual_features.explanation],
+        'title': 'Visual',
+        'status_visual': status_visual,
+        'score_0_100': evaluated.score_0_100,
+        'summary': 'Evaluación visual real basada en frames extraídos.' if getattr(bundle.visual_features, 'status', None) == 'ready' else 'Evaluación visual degradada por indisponibilidad de frames.',
+        'details': evaluated.observations + [finding.finding for finding in evaluated.temporal_findings],
+        'subscores': evaluated.subscores,
+        'recommendations': evaluated.recommendations,
+        'evidence_frames': evaluated.evidence_frames,
     }

@@ -17,7 +17,10 @@ CommunicationJobStage = Literal[
     'audio_metrics_started',
     'audio_features_ready',
     'delivery_analysis_ready',
-    'visual_placeholder_ready',
+    'frame_extraction_started',
+    'frames_ready',
+    'visual_analysis_started',
+    'visual_analysis_ready',
     'assembling_report',
     'completed',
     'failed',
@@ -179,6 +182,48 @@ class CommunicationVisualFeaturesPlaceholder(BaseModel):
     notable_windows: list[dict[str, object]] = Field(default_factory=list)
 
 
+class CommunicationFrameSample(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    frame_id: str
+    timestamp_ms: int
+    frame_ref: str
+    width: int | None = None
+    height: int | None = None
+    byte_size: int | None = None
+    quality: Literal['ok', 'low_detail', 'unknown'] = 'unknown'
+
+
+class CommunicationFrameWindow(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    window_id: str
+    start_ms: int
+    end_ms: int
+    frame_ids: list[str] = Field(default_factory=list)
+
+
+class CommunicationFrameManifestV1(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    schema_version: Literal['communication_frame_manifest.v1'] = 'communication_frame_manifest.v1'
+    source_ref: str
+    sampling_policy: dict[str, object] = Field(default_factory=dict)
+    frames: list[CommunicationFrameSample] = Field(default_factory=list)
+    windows: list[CommunicationFrameWindow] = Field(default_factory=list)
+
+
+class CommunicationVisualFeaturesRealV1(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    schema_version: Literal['communication_visual_features_real.v1'] = 'communication_visual_features_real.v1'
+    status: Literal['ready', 'unavailable'] = 'ready'
+    frame_manifest: CommunicationFrameManifestV1
+    coverage_stats: dict[str, float | int] = Field(default_factory=dict)
+    quality_flags: list[str] = Field(default_factory=list)
+    explanation: str | None = None
+
+
 class CommunicationFeedbackInputBundleV1(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
@@ -190,7 +235,7 @@ class CommunicationFeedbackInputBundleV1(BaseModel):
     recording: CommunicationRecordingMetadata
     transcript: CommunicationTranscriptPlaceholder | CommunicationTranscriptRealV1
     audio_features: CommunicationAudioFeaturesPlaceholder | CommunicationAudioFeaturesRealV1
-    visual_features: CommunicationVisualFeaturesPlaceholder
+    visual_features: CommunicationVisualFeaturesPlaceholder | CommunicationVisualFeaturesRealV1
 
 
 class CommunicationCoreEvaluatorInput(BaseModel):
@@ -228,8 +273,30 @@ class CommunicationVisualEvaluatorInput(BaseModel):
 
     schema_version: Literal['communication_visual_evaluator_input.v1'] = 'communication_visual_evaluator_input.v1'
     evaluation_id: str
-    visual_features: CommunicationVisualFeaturesPlaceholder
+    visual_features: CommunicationVisualFeaturesPlaceholder | CommunicationVisualFeaturesRealV1
     recording_meta: CommunicationRecordingMetadata
+
+
+class CommunicationVisualTemporalFinding(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    window_id: str
+    start_ms: int
+    end_ms: int
+    finding: str
+    evidence_frame_ids: list[str] = Field(default_factory=list)
+
+
+class CommunicationVisualEvaluationV1(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    schema_version: Literal['communication_visual_evaluation.v1'] = 'communication_visual_evaluation.v1'
+    score_0_100: int
+    subscores: dict[str, int] = Field(default_factory=dict)
+    temporal_findings: list[CommunicationVisualTemporalFinding] = Field(default_factory=list)
+    observations: list[str] = Field(default_factory=list)
+    recommendations: list[str] = Field(default_factory=list)
+    evidence_frames: list[str] = Field(default_factory=list)
 
 
 class CommunicationReportCheck(BaseModel):

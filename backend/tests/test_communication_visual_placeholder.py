@@ -4,7 +4,7 @@ import unittest
 
 from comunicacion.storage import AttemptRecord, REPOSITORY, RecordingRecord
 from evaluacion.engine.communication_bundle_builder import build_communication_feedback_input_bundle
-from evaluacion.engine.communication_evaluators import evaluate_communication_visual_placeholder
+from evaluacion.engine.communication_evaluators import evaluate_communication_visual
 
 from datetime import datetime, timezone
 
@@ -43,9 +43,9 @@ class CommunicationVisualPlaceholderTests(unittest.TestCase):
         ))
 
         bundle = build_communication_feedback_input_bundle(evaluation_id='eval_visual', attempt_id='att_visual')
-        visual = evaluate_communication_visual_placeholder(bundle)
+        visual = evaluate_communication_visual(bundle)
 
         self.assertEqual(bundle.visual_features.status, 'placeholder')
         self.assertIsNone(bundle.visual_features.score_visual_0_100)
         self.assertEqual(visual['status_visual'], 'placeholder')
-        self.assertIn('analítica visual avanzada no forma parte del MVP actual', visual['summary'])
+        self.assertIn('Evaluación visual degradada', visual['summary'])
