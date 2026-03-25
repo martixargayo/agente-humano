@@ -61,6 +61,7 @@ class CommunicationPublicUploadRealVideoTests(unittest.TestCase):
         upload = self._upload_dummy_binary(attempt['attempt_id'])
 
         self.assertTrue(upload['video_ref'].startswith('file://'))
+        self.assertEqual(upload['playback_url'], f"/api/comunicacion/recordings/{upload['recording_id']}/video")
         stored_path = Path(upload['video_ref'].replace('file://', ''))
         self.assertTrue(stored_path.exists())
 
@@ -68,6 +69,15 @@ class CommunicationPublicUploadRealVideoTests(unittest.TestCase):
         self.assertIsNotNone(recording)
         source = resolve_recording_media_source(recording=recording)
         self.assertEqual(source.local_path, stored_path)
+
+    def test_recording_playback_endpoint_serves_http_video_url(self) -> None:
+        attempt = self.client.post('/api/comunicacion/attempts', json={'user_id': 'iu_public_real', 'session_id': 'sess_public_real'}).json()
+        upload = self._upload_dummy_binary(attempt['attempt_id'])
+
+        response = self.client.get(upload['playback_url'])
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers.get('content-type'), 'video/webm')
+        self.assertGreater(len(response.content), 0)
 
     def test_pipeline_nominal_path_after_real_upload_uses_real_bundle_builders(self) -> None:
         attempt = self.client.post('/api/comunicacion/attempts', json={'user_id': 'iu_public_real', 'session_id': 'sess_public_real'}).json()

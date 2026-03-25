@@ -9,9 +9,11 @@ class CommunicationReportRendererSourceTests(unittest.TestCase):
         for marker in [
             'function renderCommunicationReport(root, report, options = {})',
             'function renderCommunicationVideoPanel(media, panel, options = {})',
+            'function resolveCommunicationVideoSrc(media)',
             'function serializeCommunicationReportToHtml(report)',
             'async function captureCommunicationReportPngDataUrl(report, options = {})',
             'class="comm-report__video-panel"',
             '<video class="comm-report__video" controls',
+            "if (fallback.startsWith('file://')) return '';",
         ]:
             self.assertIn(marker, source)

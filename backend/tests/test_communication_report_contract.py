@@ -56,6 +56,7 @@ class CommunicationReportContractTests(unittest.TestCase):
         self.assertIn('header', payload)
         self.assertIn('media', payload)
         self.assertEqual(payload['media']['player_hint']['placement'], 'top_right')
+        self.assertEqual(payload['media']['playback_url'], f"/api/comunicacion/recordings/{payload['recording_id']}/video")
         self.assertIn('video_panel', payload)
         self.assertEqual(payload['video_panel']['default_mode'], 'embedded_small_player')
         self.assertIn('block_cards', payload)

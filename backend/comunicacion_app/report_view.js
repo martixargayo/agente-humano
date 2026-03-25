@@ -55,20 +55,30 @@
 
   function renderCommunicationVideoPanel(media, panel, options = {}) {
     const poster = media.poster_frame_ref ? ` poster="${escapeHtml(media.poster_frame_ref)}"` : '';
-    const showSource = options.disableVideo !== true && media.video_ref;
+    const resolvedVideoSrc = resolveCommunicationVideoSrc(media);
+    const showSource = options.disableVideo !== true && resolvedVideoSrc;
     return `
       <aside class="comm-report__video-panel">
         <h3>${escapeHtml(panel.title || 'Tu grabación')}</h3>
         <p>${escapeHtml(panel.help_text || 'Reproduce tu vídeo mientras lees la evaluación para contrastar cada observación.')}</p>
         <video class="comm-report__video" controls preload="metadata" playsinline${poster}>
-          ${showSource ? `<source src="${escapeHtml(media.video_ref)}" type="${escapeHtml(media.mime_type || 'video/webm')}" />` : ''}
+          ${showSource ? `<source src="${escapeHtml(resolvedVideoSrc)}" type="${escapeHtml(media.mime_type || 'video/webm')}" />` : ''}
         </video>
         <dl class="comm-report__video-meta">
           <div><dt>recording_id</dt><dd>${escapeHtml(media.recording_id || '-')}</dd></div>
           <div><dt>video_ref</dt><dd>${escapeHtml(media.video_ref || '-')}</dd></div>
+          <div><dt>playback_url</dt><dd>${escapeHtml(media.playback_url || '-')}</dd></div>
         </dl>
       </aside>
     `;
+  }
+
+  function resolveCommunicationVideoSrc(media) {
+    const playback = String(media && media.playback_url ? media.playback_url : '').trim();
+    if (playback) return playback;
+    const fallback = String(media && media.video_ref ? media.video_ref : '').trim();
+    if (fallback.startsWith('file://')) return '';
+    return fallback;
   }
 
   function renderBlockCard(block) {
