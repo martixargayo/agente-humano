@@ -96,6 +96,10 @@ class CommunicationReportExportsIntegrityTests(unittest.TestCase):
               recording_id: 'rec-200',
               evaluation_id: 'eval-200',
               header: {{ report_title: 'Informe final' }},
+              global_synthesis: {{
+                global_score_0_100: 78,
+                friendly_summary: 'Resumen global amigable',
+              }},
               exports: {{ report_json: exportedJson }},
               media: {{
                 video_ref: 'gs://bucket/media-video.mp4',
@@ -136,6 +140,7 @@ class CommunicationReportExportsIntegrityTests(unittest.TestCase):
         self.assertEqual(payload['recording_id'], 'rec-200')
         self.assertEqual(payload['attempt_id'], 'attempt-200')
         self.assertEqual(payload['evaluation_id'], 'eval-200')
+        self.assertIn('summary_html', payload)
 
     def test_source_still_exposes_export_helpers_used_by_final_result(self) -> None:
         for marker in [

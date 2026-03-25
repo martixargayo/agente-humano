@@ -14,6 +14,7 @@ ArtifactKind = Literal[
     'audio_metrics_real',
     'frame_manifest',
     'visual_evaluation',
+    'global_synthesis',
     'audio_features',
     'visual_summary',
     'bundle_snapshot',

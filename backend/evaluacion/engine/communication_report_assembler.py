@@ -7,6 +7,7 @@ import textwrap
 from typing import Any
 
 from evaluacion.contracts.communication_models import (
+    CommunicationGlobalSynthesisOutputV1,
     CommunicationFeedbackInputBundleV1,
     CommunicationKeyMoment,
     CommunicationKeyMoments,
@@ -41,8 +42,13 @@ def build_report_media_block(bundle: CommunicationFeedbackInputBundleV1) -> Comm
     )
 
 
-def _build_header(*, score_global_100: int, content_output: dict[str, Any], delivery_output: dict[str, Any]) -> CommunicationReportHeader:
-    summary = str(content_output.get('summary') or delivery_output.get('summary') or 'La evaluación ya es legible y reutilizable.')
+def _build_header(*, score_global_100: int, content_output: dict[str, Any], delivery_output: dict[str, Any], synthesis_output: CommunicationGlobalSynthesisOutputV1 | None = None) -> CommunicationReportHeader:
+    summary = str(
+        (synthesis_output.friendly_summary if synthesis_output is not None else None)
+        or content_output.get('summary')
+        or delivery_output.get('summary')
+        or 'La evaluación ya es legible y reutilizable.'
+    )
     return CommunicationReportHeader(
         report_title='Evaluación de tu comunicación oral',
         activity_name='Presentación breve grabada',
@@ -116,7 +122,16 @@ def _build_key_moments(timeline: CommunicationTimeline) -> CommunicationKeyMomen
     )
 
 
-def _build_recommendations(bundle: CommunicationFeedbackInputBundleV1) -> CommunicationRecommendations:
+def _build_recommendations(bundle: CommunicationFeedbackInputBundleV1, synthesis_output: CommunicationGlobalSynthesisOutputV1 | None = None) -> CommunicationRecommendations:
+    if synthesis_output is not None and synthesis_output.action_plan:
+        return CommunicationRecommendations(items=[
+            CommunicationRecommendationItem(
+                title=f'Prioridad {idx + 1}',
+                description=plan_item,
+                example=None,
+            )
+            for idx, plan_item in enumerate(synthesis_output.action_plan[:3])
+        ])
     first_excerpt = bundle.transcript.segments[0].text if bundle.transcript.segments else 'Mensaje inicial placeholder.'
     return CommunicationRecommendations(items=[
         CommunicationRecommendationItem(
@@ -184,11 +199,13 @@ def assemble_communication_report(
     content_output: dict[str, Any],
     delivery_output: dict[str, Any],
     visual_output: dict[str, Any],
+    synthesis_output: dict[str, Any] | None = None,
 ) -> UiCommunicationReportV1:
+    synthesis = CommunicationGlobalSynthesisOutputV1.model_validate(synthesis_output) if synthesis_output is not None else None
     block_cards = [_build_block(content_output), _build_block(delivery_output), _build_block(visual_output)]
     scored = [block.score_0_100 for block in block_cards if block.score_0_100 is not None]
-    score_global_100 = int(round(sum(scored) / len(scored))) if scored else 60
-    header = _build_header(score_global_100=score_global_100, content_output=content_output, delivery_output=delivery_output)
+    score_global_100 = synthesis.global_score_0_100 if synthesis is not None else (int(round(sum(scored) / len(scored))) if scored else 60)
+    header = _build_header(score_global_100=score_global_100, content_output=content_output, delivery_output=delivery_output, synthesis_output=synthesis)
     media = build_report_media_block(bundle)
     video_panel = CommunicationVideoPanel(
         title='Tu grabación',
@@ -197,7 +214,7 @@ def assemble_communication_report(
     )
     timeline = _build_timeline(bundle, block_cards)
     key_moments = _build_key_moments(timeline)
-    recommendations = _build_recommendations(bundle)
+    recommendations = _build_recommendations(bundle, synthesis_output=synthesis)
     markup = _serialize_report_markup(
         header=header,
         media=media,
@@ -228,6 +245,7 @@ def assemble_communication_report(
         timeline=timeline,
         key_moments=key_moments,
         recommendations=recommendations,
+        global_synthesis=synthesis,
         provenance=provenance,
         exports=CommunicationReportExports(
             report_json={},

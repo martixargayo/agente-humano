@@ -3,6 +3,10 @@ from __future__ import annotations
 from evaluacion.contracts.communication_models import CommunicationFeedbackInputBundleV1
 from evaluacion.engine.communication_content_evaluator import evaluate_content_from_transcript
 from evaluacion.engine.communication_delivery_evaluator import evaluate_delivery_from_audio_metrics
+from evaluacion.engine.communication_synthesis import (
+    build_global_synthesis_input,
+    synthesize_global_communication_feedback,
+)
 from evaluacion.engine.communication_visual_evaluator import evaluate_visual_from_features
 
 
@@ -48,3 +52,20 @@ def evaluate_communication_visual(bundle: CommunicationFeedbackInputBundleV1) ->
         'recommendations': evaluated.recommendations,
         'evidence_frames': evaluated.evidence_frames,
     }
+
+
+def evaluate_communication_synthesis(
+    *,
+    bundle: CommunicationFeedbackInputBundleV1,
+    content_output: dict[str, object],
+    delivery_output: dict[str, object],
+    visual_output: dict[str, object],
+) -> dict[str, object]:
+    synthesis_input = build_global_synthesis_input(
+        evaluation_id=bundle.evaluation_id,
+        content_output=content_output,
+        delivery_output=delivery_output,
+        visual_output=visual_output,
+    )
+    synthesized = synthesize_global_communication_feedback(synthesis_input=synthesis_input)
+    return synthesized.model_dump(mode='json')

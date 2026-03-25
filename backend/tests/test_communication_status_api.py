@@ -71,6 +71,8 @@ class CommunicationStatusApiTests(unittest.TestCase):
                 'frames_ready',
                 'visual_analysis_started',
                 'visual_analysis_ready',
+                'synthesis_started',
+                'synthesis_ready',
                 'assembling_report',
                 'completed',
             ],

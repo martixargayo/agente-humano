@@ -21,6 +21,8 @@ CommunicationJobStage = Literal[
     'frames_ready',
     'visual_analysis_started',
     'visual_analysis_ready',
+    'synthesis_started',
+    'synthesis_ready',
     'assembling_report',
     'completed',
     'failed',
@@ -299,6 +301,30 @@ class CommunicationVisualEvaluationV1(BaseModel):
     evidence_frames: list[str] = Field(default_factory=list)
 
 
+class CommunicationGlobalSynthesisInputV1(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    schema_version: Literal['communication_global_synthesis_input.v1'] = 'communication_global_synthesis_input.v1'
+    evaluation_id: str
+    content_evaluation: dict[str, object] = Field(default_factory=dict)
+    delivery_evaluation: dict[str, object] = Field(default_factory=dict)
+    visual_evaluation: dict[str, object] = Field(default_factory=dict)
+    evidence_summary: list[str] = Field(default_factory=list)
+
+
+class CommunicationGlobalSynthesisOutputV1(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    schema_version: Literal['communication_global_synthesis_output.v1'] = 'communication_global_synthesis_output.v1'
+    global_score_0_100: int
+    global_diagnosis: str
+    top_strengths: list[str] = Field(default_factory=list)
+    priority_improvements: list[str] = Field(default_factory=list)
+    action_plan: list[str] = Field(default_factory=list)
+    friendly_summary: str
+    consistency_notes: list[str] = Field(default_factory=list)
+
+
 class CommunicationReportCheck(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
@@ -450,6 +476,7 @@ class UiCommunicationReportV1(BaseModel):
     timeline: CommunicationTimeline
     key_moments: CommunicationKeyMoments
     recommendations: CommunicationRecommendations
+    global_synthesis: CommunicationGlobalSynthesisOutputV1 | None = None
     provenance: CommunicationReportProvenance
     exports: CommunicationReportExports
     placeholders: dict[str, str] = Field(default_factory=dict)

@@ -17,6 +17,7 @@ from evaluacion.engine.communication_bundle_builder import build_communication_f
 from evaluacion.engine.communication_evaluators import (
     evaluate_communication_content,
     evaluate_communication_delivery,
+    evaluate_communication_synthesis,
     evaluate_communication_visual,
 )
 from evaluacion.engine.communication_report_assembler import assemble_communication_report
@@ -38,6 +39,8 @@ _STAGE_SEQUENCE = [
     'frames_ready',
     'visual_analysis_started',
     'visual_analysis_ready',
+    'synthesis_started',
+    'synthesis_ready',
     'assembling_report',
     'completed',
 ]
@@ -129,6 +132,15 @@ def _run_communication_evaluation_job(*, evaluation_id: str, attempt_id: str) ->
         visual_result = evaluate_communication_visual(bundle)
         persist_visual_evaluation_artifact(evaluation_id=evaluation_id, bundle=bundle)
         _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='running', stage='visual_analysis_ready')
+        _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='running', stage='synthesis_started')
+        synthesis_result = evaluate_communication_synthesis(
+            bundle=bundle,
+            content_output=content_result,
+            delivery_output=delivery_result,
+            visual_output=visual_result,
+        )
+        persist_global_synthesis_artifact(evaluation_id=evaluation_id, bundle=bundle)
+        _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='running', stage='synthesis_ready')
         _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='running', stage='assembling_report')
 
         report = assemble_communication_report(
@@ -136,6 +148,7 @@ def _run_communication_evaluation_job(*, evaluation_id: str, attempt_id: str) ->
             content_output=content_result,
             delivery_output=delivery_result,
             visual_output=visual_result,
+            synthesis_output=synthesis_result,
         )
         _reports_block()[evaluation_id] = report
         _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='completed', stage='completed')
@@ -228,6 +241,24 @@ def persist_visual_evaluation_artifact(*, evaluation_id: str, bundle: object) ->
             recording_id=getattr(attempt_ref, 'recording_id'),
             kind='visual_evaluation',
             version='communication_visual_evaluation.v1',
+            storage_ref=storage_ref,
+            content_hash=None,
+            created_at=_utcnow(),
+        )
+    )
+
+
+def persist_global_synthesis_artifact(*, evaluation_id: str, bundle: object) -> None:
+    attempt_ref = getattr(bundle, 'attempt_ref', None)
+    if attempt_ref is None:
+        return
+    storage_ref = f'memory://communication/global_synthesis/{evaluation_id}/{getattr(attempt_ref, "recording_id", "unknown")}.json'
+    REPOSITORY.save_artifact(
+        DerivedArtifactRecord(
+            artifact_id=_generate_artifact_id(),
+            recording_id=getattr(attempt_ref, 'recording_id'),
+            kind='global_synthesis',
+            version='communication_global_synthesis_output.v1',
             storage_ref=storage_ref,
             content_hash=None,
             created_at=_utcnow(),
