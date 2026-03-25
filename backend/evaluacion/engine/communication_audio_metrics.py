@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import math
+import struct
 import wave
 from pathlib import Path
-from typing import Iterable
-
-import numpy as np
+from statistics import fmean, median, pstdev
+from typing import Sequence
 
 from evaluacion.contracts.communication_models import (
     CommunicationAudioEnergyStats,
@@ -15,7 +16,7 @@ from evaluacion.contracts.communication_models import (
 )
 
 
-def _load_wav_samples(audio_path: Path) -> tuple[np.ndarray, int]:
+def _load_wav_samples(audio_path: Path) -> tuple[list[float], int]:
     with wave.open(str(audio_path), 'rb') as wav_file:
         sample_rate = wav_file.getframerate()
         channels = wav_file.getnchannels()
@@ -24,37 +25,49 @@ def _load_wav_samples(audio_path: Path) -> tuple[np.ndarray, int]:
         raw = wav_file.readframes(frame_count)
 
     if sample_width == 2:
-        dtype = np.int16
+        fmt = '<h'
         scale = 32768.0
     elif sample_width == 4:
-        dtype = np.int32
+        fmt = '<i'
         scale = 2147483648.0
     else:
         raise ValueError(f'unsupported_sample_width:{sample_width}')
 
-    samples = np.frombuffer(raw, dtype=dtype).astype(np.float32)
+    values = [float(sample[0]) / scale for sample in struct.iter_unpack(fmt, raw)]
+    samples = values
     if channels > 1:
-        samples = samples.reshape(-1, channels).mean(axis=1)
-    samples = samples / scale
+        mono: list[float] = []
+        for idx in range(0, len(values), channels):
+            chunk = values[idx:idx + channels]
+            if not chunk:
+                continue
+            mono.append(sum(chunk) / len(chunk))
+        samples = mono
     return samples, sample_rate
 
 
-def _frame_rms(samples: np.ndarray, frame_size: int) -> np.ndarray:
-    if samples.size == 0:
-        return np.zeros(0, dtype=np.float32)
-    usable = (samples.size // frame_size) * frame_size
+def _frame_rms(samples: Sequence[float], frame_size: int) -> list[float]:
+    if not samples:
+        return []
+    usable = (len(samples) // frame_size) * frame_size
     if usable <= 0:
-        return np.zeros(0, dtype=np.float32)
-    framed = samples[:usable].reshape(-1, frame_size)
-    return np.sqrt(np.mean(np.square(framed), axis=1))
+        return []
+    rms_values: list[float] = []
+    for idx in range(0, usable, frame_size):
+        frame = samples[idx:idx + frame_size]
+        if not frame:
+            continue
+        mean_square = sum(sample * sample for sample in frame) / len(frame)
+        rms_values.append(math.sqrt(mean_square))
+    return rms_values
 
 
-def extract_pause_metrics(*, rms_values: np.ndarray, frame_ms: int, long_pause_ms: int = 1200) -> tuple[list[CommunicationAudioPauseEvent], int, int]:
-    if rms_values.size == 0:
+def extract_pause_metrics(*, rms_values: Sequence[float], frame_ms: int, long_pause_ms: int = 1200) -> tuple[list[CommunicationAudioPauseEvent], int, int]:
+    if not rms_values:
         return [], 0, 0
 
-    threshold = max(float(np.max(rms_values)) * 0.1, 0.005)
-    pause_mask = rms_values <= threshold
+    threshold = max(max(rms_values) * 0.1, 0.005)
+    pause_mask = [value <= threshold for value in rms_values]
     events: list[CommunicationAudioPauseEvent] = []
     start_idx: int | None = None
     for idx, is_pause in enumerate(pause_mask):
@@ -98,54 +111,62 @@ def extract_speaking_rate(*, transcript_words: int, speaking_time_ms: int) -> fl
     return round(transcript_words / minutes, 2)
 
 
-def _estimate_pitch_for_frame(frame: np.ndarray, sample_rate: int) -> float | None:
-    if frame.size < 2:
+def _estimate_pitch_for_frame(frame: Sequence[float], sample_rate: int) -> float | None:
+    if len(frame) < 2:
         return None
-    frame = frame - np.mean(frame)
-    energy = float(np.sqrt(np.mean(np.square(frame))))
+    frame_mean = fmean(frame)
+    centered = [sample - frame_mean for sample in frame]
+    energy = math.sqrt(sum(sample * sample for sample in centered) / len(centered))
     if energy < 0.01:
         return None
-    corr = np.correlate(frame, frame, mode='full')[frame.size - 1:]
     min_lag = int(sample_rate / 300)
     max_lag = int(sample_rate / 70)
-    if max_lag <= min_lag or max_lag >= corr.size:
+    if max_lag <= min_lag or max_lag >= len(centered):
         return None
-    window = corr[min_lag:max_lag]
-    if window.size == 0:
+    best_lag: int | None = None
+    best_value: float | None = None
+    for lag in range(min_lag, max_lag):
+        corr = 0.0
+        for idx in range(0, len(centered) - lag):
+            corr += centered[idx] * centered[idx + lag]
+        if best_value is None or corr > best_value:
+            best_value = corr
+            best_lag = lag
+    if best_lag is None or best_lag <= 0:
         return None
-    lag = int(np.argmax(window)) + min_lag
-    if lag <= 0:
-        return None
-    return float(sample_rate / lag)
+    return float(sample_rate / best_lag)
 
 
-def extract_pitch_metrics(*, samples: np.ndarray, sample_rate: int, frame_size: int) -> CommunicationAudioPitchStats:
-    usable = (samples.size // frame_size) * frame_size
+def extract_pitch_metrics(*, samples: Sequence[float], sample_rate: int, frame_size: int) -> CommunicationAudioPitchStats:
+    usable = (len(samples) // frame_size) * frame_size
     if usable <= 0:
         return CommunicationAudioPitchStats()
-    framed = samples[:usable].reshape(-1, frame_size)
-    pitches = [pitch for pitch in (_estimate_pitch_for_frame(frame, sample_rate) for frame in framed) if pitch is not None]
+    pitches: list[float] = []
+    for idx in range(0, usable, frame_size):
+        frame = samples[idx:idx + frame_size]
+        pitch = _estimate_pitch_for_frame(frame, sample_rate)
+        if pitch is not None:
+            pitches.append(pitch)
     if not pitches:
         return CommunicationAudioPitchStats()
-    arr = np.array(pitches, dtype=np.float32)
     return CommunicationAudioPitchStats(
-        mean_hz=float(np.mean(arr)),
-        median_hz=float(np.median(arr)),
-        std_hz=float(np.std(arr)),
-        min_hz=float(np.min(arr)),
-        max_hz=float(np.max(arr)),
-        range_hz=float(np.max(arr) - np.min(arr)),
+        mean_hz=float(fmean(pitches)),
+        median_hz=float(median(pitches)),
+        std_hz=float(pstdev(pitches)),
+        min_hz=float(min(pitches)),
+        max_hz=float(max(pitches)),
+        range_hz=float(max(pitches) - min(pitches)),
     )
 
 
-def extract_energy_metrics(*, rms_values: np.ndarray) -> CommunicationAudioEnergyStats:
-    if rms_values.size == 0:
+def extract_energy_metrics(*, rms_values: Sequence[float]) -> CommunicationAudioEnergyStats:
+    if not rms_values:
         return CommunicationAudioEnergyStats(rms_mean=0.0, rms_std=0.0, rms_min=0.0, rms_max=0.0)
     return CommunicationAudioEnergyStats(
-        rms_mean=float(np.mean(rms_values)),
-        rms_std=float(np.std(rms_values)),
-        rms_min=float(np.min(rms_values)),
-        rms_max=float(np.max(rms_values)),
+        rms_mean=float(fmean(rms_values)),
+        rms_std=float(pstdev(rms_values)),
+        rms_min=float(min(rms_values)),
+        rms_max=float(max(rms_values)),
     )
 
 
@@ -187,14 +208,16 @@ def build_audio_features_real(*, audio_path: Path, transcript_words: int, provid
     frame_size = max(int(sample_rate * (frame_ms / 1000.0)), 1)
     rms_values = _frame_rms(samples, frame_size)
     events, pause_time_ms, long_pauses = extract_pause_metrics(rms_values=rms_values, frame_ms=frame_ms)
-    total_time_ms = int((samples.size / max(sample_rate, 1)) * 1000)
+    total_time_ms = int((len(samples) / max(sample_rate, 1)) * 1000)
     speaking_time_ms = max(total_time_ms - pause_time_ms, 0)
     speech_rate = extract_speaking_rate(transcript_words=transcript_words, speaking_time_ms=speaking_time_ms)
     pitch_stats = extract_pitch_metrics(samples=samples, sample_rate=sample_rate, frame_size=frame_size)
     energy_stats = extract_energy_metrics(rms_values=rms_values)
     voiced_ratio = None
-    if rms_values.size > 0:
-        voiced_ratio = round(float(np.sum(rms_values > max(float(np.max(rms_values)) * 0.1, 0.005)) / rms_values.size), 4)
+    if rms_values:
+        voiced_threshold = max(max(rms_values) * 0.1, 0.005)
+        voiced_count = sum(1 for sample in rms_values if sample > voiced_threshold)
+        voiced_ratio = round(float(voiced_count / len(rms_values)), 4)
 
     pause_mean = None if not events else round(sum(event.duration_ms for event in events) / len(events), 2)
     pause_max = None if not events else max(event.duration_ms for event in events)
@@ -215,7 +238,7 @@ def build_audio_features_real(*, audio_path: Path, transcript_words: int, provid
     )
     interpreted = derive_interpreted_delivery_scales(raw)
     quality_flags: list[str] = []
-    clipping_ratio = float(np.mean(np.abs(samples) >= 0.99)) if samples.size > 0 else 0.0
+    clipping_ratio = (sum(1 for sample in samples if abs(sample) >= 0.99) / len(samples)) if samples else 0.0
     if clipping_ratio > 0.02:
         quality_flags.append('possible_clipping')
     if raw.voiced_ratio is not None and raw.voiced_ratio < 0.35:

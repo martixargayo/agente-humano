@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+import math
 import tempfile
 import unittest
 import wave
+from array import array
 from pathlib import Path
-
-import numpy as np
 
 from comunicacion.storage import REPOSITORY
 from evaluacion.contracts.communication_models import (
@@ -28,14 +28,26 @@ from evaluacion.engine.communication_service import persist_audio_metrics_artifa
 
 
 def _write_test_wave(path: Path, *, sample_rate: int = 16000) -> None:
-    duration_s = 4.0
-    t = np.linspace(0, duration_s, int(sample_rate * duration_s), endpoint=False)
-    tone_a = 0.4 * np.sin(2 * np.pi * 190 * t[: sample_rate])
-    silence = np.zeros(sample_rate // 2)
-    tone_b = 0.35 * np.sin(2 * np.pi * 220 * t[: sample_rate])
-    tone_c = 0.3 * np.sin(2 * np.pi * 180 * t[: sample_rate])
-    signal = np.concatenate([tone_a, silence, tone_b, silence, tone_c]).astype(np.float32)
-    pcm = np.clip(signal * 32767, -32768, 32767).astype(np.int16)
+    one_second = sample_rate
+    half_second = sample_rate // 2
+    signal: list[float] = []
+
+    def append_tone(*, hz: float, amplitude: float, sample_count: int) -> None:
+        for idx in range(sample_count):
+            t = idx / sample_rate
+            signal.append(amplitude * math.sin(2.0 * math.pi * hz * t))
+
+    append_tone(hz=190.0, amplitude=0.4, sample_count=one_second)
+    signal.extend([0.0] * half_second)
+    append_tone(hz=220.0, amplitude=0.35, sample_count=one_second)
+    signal.extend([0.0] * half_second)
+    append_tone(hz=180.0, amplitude=0.3, sample_count=one_second)
+
+    pcm = array('h')
+    for sample in signal:
+        scaled = int(max(-32768, min(32767, round(sample * 32767))))
+        pcm.append(scaled)
+
     with wave.open(str(path), 'wb') as wav_file:
         wav_file.setnchannels(1)
         wav_file.setsampwidth(2)
@@ -54,7 +66,7 @@ class CommunicationPhase2AudioMetricsAndDeliveryTests(unittest.TestCase):
             REPOSITORY._communication_eval_reports.clear()
 
     def test_extract_pause_metrics_detects_pause_windows(self) -> None:
-        rms = np.array([0.2, 0.21, 0.01, 0.009, 0.008, 0.2, 0.2, 0.006, 0.005, 0.2], dtype=np.float32)
+        rms = [0.2, 0.21, 0.01, 0.009, 0.008, 0.2, 0.2, 0.006, 0.005, 0.2]
         events, pause_time_ms, long_pauses = extract_pause_metrics(rms_values=rms, frame_ms=100, long_pause_ms=250)
         self.assertGreaterEqual(len(events), 2)
         self.assertGreater(pause_time_ms, 0)
