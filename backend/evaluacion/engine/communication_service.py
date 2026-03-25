@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import threading
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError, as_completed
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -31,7 +31,9 @@ _STAGE_SEQUENCE = [
     'extracting_media',
     'transcription_started',
     'transcript_ready',
+    'content_analysis_started',
     'content_analysis_ready',
+    'delivery_analysis_started',
     'audio_metrics_started',
     'audio_features_ready',
     'delivery_analysis_ready',
@@ -44,6 +46,7 @@ _STAGE_SEQUENCE = [
     'assembling_report',
     'completed',
 ]
+_PARALLEL_ANALYSIS_TIMEOUT_SECONDS = 45.0
 
 
 def _utcnow() -> datetime:
@@ -116,22 +119,29 @@ def _run_communication_evaluation_job(*, evaluation_id: str, attempt_id: str) ->
         _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='running', stage='transcript_ready')
         if getattr(bundle.transcript, 'status', None) == 'ready':
             persist_transcript_artifact(evaluation_id=evaluation_id, bundle=bundle)
-        content_result = evaluate_communication_content(bundle)
-        _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='running', stage='content_analysis_ready')
         _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='running', stage='audio_metrics_started')
         if getattr(bundle.audio_features, 'status', None) == 'ready':
             persist_audio_metrics_artifact(evaluation_id=evaluation_id, bundle=bundle)
         _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='running', stage='audio_features_ready')
-        delivery_result = evaluate_communication_delivery(bundle)
-        _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='running', stage='delivery_analysis_ready')
         _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='running', stage='frame_extraction_started')
         if getattr(bundle.visual_features, 'status', None) == 'ready':
             persist_frame_manifest_artifact(evaluation_id=evaluation_id, bundle=bundle)
         _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='running', stage='frames_ready')
-        _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='running', stage='visual_analysis_started')
-        visual_result = evaluate_communication_visual(bundle)
+        content_result, delivery_result, visual_result, branch_errors = _run_parallel_communication_analyses(
+            evaluation_id=evaluation_id,
+            attempt_id=attempt_id,
+            bundle=bundle,
+        )
+        if branch_errors:
+            merged_error = ';'.join(f'{name}:{error}' for name, error in sorted(branch_errors.items()))
+            _set_job(
+                evaluation_id=evaluation_id,
+                attempt_id=attempt_id,
+                status='running',
+                stage='visual_analysis_ready',
+                error=f'partial_failures:{merged_error}',
+            )
         persist_visual_evaluation_artifact(evaluation_id=evaluation_id, bundle=bundle)
-        _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='running', stage='visual_analysis_ready')
         _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='running', stage='synthesis_started')
         synthesis_result = evaluate_communication_synthesis(
             bundle=bundle,
@@ -164,6 +174,76 @@ def _run_communication_evaluation_job(*, evaluation_id: str, attempt_id: str) ->
         if attempt is not None:
             REPOSITORY.save_attempt(attempt.model_copy(update={'status': 'failed', 'updated_at': _utcnow()}))
         _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='failed', stage='failed', error=f'pipeline_error:{type(exc).__name__}:{exc}')
+
+
+def _fallback_analysis_output(*, branch: str, detail: str) -> dict[str, object]:
+    title = {'contenido': 'Contenido', 'delivery': 'Delivery', 'visual': 'Visual'}.get(branch, branch.title())
+    details = [f'Fallo controlado en rama {branch}: {detail}']
+    base: dict[str, object] = {
+        'block_id': branch,
+        'title': title,
+        'status_visual': 'placeholder',
+        'score_0_100': 40,
+        'summary': f'Evaluación degradada de {branch} por error de ejecución en la rama paralela.',
+        'details': details,
+        'recommendations': ['Reintenta la evaluación para recuperar el diagnóstico completo de esta rama.'],
+    }
+    if branch == 'visual':
+        base['evidence_frames'] = []
+    return base
+
+
+def _run_parallel_communication_analyses(
+    *,
+    evaluation_id: str,
+    attempt_id: str,
+    bundle: object,
+) -> tuple[dict[str, object], dict[str, object], dict[str, object], dict[str, str]]:
+    branch_specs = {
+        'contenido': ('content_analysis_started', 'content_analysis_ready', evaluate_communication_content),
+        'delivery': ('delivery_analysis_started', 'delivery_analysis_ready', evaluate_communication_delivery),
+        'visual': ('visual_analysis_started', 'visual_analysis_ready', evaluate_communication_visual),
+    }
+    futures: dict[Future[dict[str, object]], str] = {}
+    errors: dict[str, str] = {}
+    results: dict[str, dict[str, object]] = {}
+    errors_lock = threading.Lock()
+
+    def _run_branch(branch: str) -> dict[str, object]:
+        started_stage, ready_stage, evaluator = branch_specs[branch]
+        _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='running', stage=started_stage)
+        try:
+            result = evaluator(bundle)
+        except Exception as exc:  # pragma: no cover - defensive branch
+            detail = f'{type(exc).__name__}:{exc}'
+            with errors_lock:
+                errors[branch] = detail
+            result = _fallback_analysis_output(branch=branch, detail=detail)
+        _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='running', stage=ready_stage)
+        return result
+
+    with ThreadPoolExecutor(max_workers=3, thread_name_prefix='communication_eval_branches') as executor:
+        for branch in branch_specs:
+            future = executor.submit(_run_branch, branch)
+            futures[future] = branch
+        try:
+            for future in as_completed(futures, timeout=_PARALLEL_ANALYSIS_TIMEOUT_SECONDS):
+                branch = futures[future]
+                results[branch] = future.result()
+        except TimeoutError:
+            for future, branch in futures.items():
+                if branch in results:
+                    continue
+                future.cancel()
+                errors[branch] = f'timeout>{_PARALLEL_ANALYSIS_TIMEOUT_SECONDS}s'
+                results[branch] = _fallback_analysis_output(branch=branch, detail=errors[branch])
+                _, ready_stage, _ = branch_specs[branch]
+                _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='running', stage=ready_stage)
+
+    content = results.get('contenido') or _fallback_analysis_output(branch='contenido', detail='missing_result')
+    delivery = results.get('delivery') or _fallback_analysis_output(branch='delivery', detail='missing_result')
+    visual = results.get('visual') or _fallback_analysis_output(branch='visual', detail='missing_result')
+    return content, delivery, visual, errors
 
 
 def persist_transcript_artifact(*, evaluation_id: str, bundle: object) -> None:

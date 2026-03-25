@@ -11,11 +11,15 @@ from evaluacion.contracts.communication_models import (
 from evaluacion.contracts.models import SessionRef
 from evaluacion.domains.communication import (
     build_real_audio_features,
+    build_real_audio_features_from_audio_track,
     build_placeholder_audio_features,
     build_placeholder_transcript,
     build_real_transcript,
+    build_real_transcript_from_audio_track,
     build_real_visual_features,
+    build_real_visual_features_from_manifest,
     build_placeholder_visual_features,
+    prepare_media_artifacts,
     resolve_communication_evaluation_context_from_attempt,
 )
 from evaluacion.engine.communication_stt import CommunicationSttProvider
@@ -50,18 +54,45 @@ def build_communication_feedback_input_bundle(
     )
 
     try:
-        transcript = build_real_transcript(recording=recording, provider=stt_provider)
+        _, audio_track, frame_manifest = prepare_media_artifacts(recording=recording)
     except HTTPException:
-        transcript = build_placeholder_transcript(recording=recording)
+        audio_track = None
+        frame_manifest = None
+
+    if audio_track is not None:
+        try:
+            transcript = build_real_transcript_from_audio_track(audio_track=audio_track, provider=stt_provider)
+        except HTTPException:
+            transcript = build_placeholder_transcript(recording=recording)
+    else:
+        try:
+            transcript = build_real_transcript(recording=recording, provider=stt_provider)
+        except HTTPException:
+            transcript = build_placeholder_transcript(recording=recording)
+
     transcript_words = len([token for token in (transcript.full_text or '').split() if token])
-    try:
-        audio_features = build_real_audio_features(recording=recording, transcript_words=transcript_words)
-    except HTTPException:
-        audio_features = build_placeholder_audio_features(recording=recording)
-    try:
-        visual_features = build_real_visual_features(recording=recording)
-    except HTTPException:
-        visual_features = build_placeholder_visual_features(recording=recording)
+
+    if audio_track is not None:
+        try:
+            audio_features = build_real_audio_features_from_audio_track(audio_track=audio_track, transcript_words=transcript_words)
+        except HTTPException:
+            audio_features = build_placeholder_audio_features(recording=recording)
+    else:
+        try:
+            audio_features = build_real_audio_features(recording=recording, transcript_words=transcript_words)
+        except HTTPException:
+            audio_features = build_placeholder_audio_features(recording=recording)
+
+    if frame_manifest is not None:
+        try:
+            visual_features = build_real_visual_features_from_manifest(recording=recording, manifest=frame_manifest)
+        except HTTPException:
+            visual_features = build_placeholder_visual_features(recording=recording)
+    else:
+        try:
+            visual_features = build_real_visual_features(recording=recording)
+        except HTTPException:
+            visual_features = build_placeholder_visual_features(recording=recording)
 
     return CommunicationFeedbackInputBundleV1(
         evaluation_id=evaluation_id,
