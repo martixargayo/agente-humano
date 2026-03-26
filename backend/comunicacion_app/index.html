@@ -12,25 +12,45 @@
         <div id="communicationErrorBanner" class="communication-banner communication-banner--error hidden" aria-live="assertive"></div>
 
         <section id="screenSetup" class="communication-panel" data-screen="setup">
-          <div class="setup-entry-shell">
-            <div class="setup-entry-card">
-              <div id="setupStatusText" class="setup-status">Necesitamos activar cámara y micrófono para continuar.</div>
-              <div class="video-shell video-shell--setup">
-                <video id="setupPreviewVideo" class="video-frame" autoplay playsinline muted></video>
-              </div>
-              <div class="permissions-grid">
-                <div class="field-group">
-                  <label for="videoDeviceSelect">Cámara</label>
-                  <select id="videoDeviceSelect"></select>
+          <div class="comm-entry-overlay">
+            <div class="comm-entry-card">
+              <div class="comm-entry-card-content">
+                <p id="setupStatusText" class="comm-entry-subtitle">Necesitamos permisos de cámara y micrófono para detectar tus dispositivos.</p>
+                <div id="setupDeviceLayout" class="comm-entry-columns hidden">
+                  <section class="comm-entry-talk-content">
+                    <p class="comm-entry-device-label">Dispositivos de audio</p>
+                    <div class="comm-entry-device-search" aria-live="polite">
+                      <span>Micrófonos detectados</span>
+                      <span class="comm-entry-device-search-spinner" aria-hidden="true"></span>
+                    </div>
+                    <div id="commAudioFeaturedList" class="comm-entry-device-list" role="listbox" aria-label="Micrófonos destacados"></div>
+                    <div class="comm-entry-device-search">
+                      <span>Otros micrófonos</span>
+                    </div>
+                    <div id="commAudioOtherList" class="comm-entry-device-list" role="listbox" aria-label="Otros micrófonos"></div>
+                    <div id="commAudioStatus" class="comm-entry-device-status" aria-live="polite"></div>
+                  </section>
+
+                  <section class="comm-entry-talk-content">
+                    <p class="comm-entry-device-label">Dispositivos de video</p>
+                    <div class="video-shell video-shell--setup">
+                      <video id="setupPreviewVideo" class="video-frame" autoplay playsinline muted></video>
+                    </div>
+                    <div class="comm-entry-device-search" aria-live="polite">
+                      <span>Cámaras de video detectadas</span>
+                      <span class="comm-entry-device-search-spinner" aria-hidden="true"></span>
+                    </div>
+                    <div id="commVideoDeviceList" class="comm-entry-device-list" role="listbox" aria-label="Seleccionar dispositivo de cámara"></div>
+                    <div id="commVideoStatus" class="comm-entry-device-status" aria-live="polite"></div>
+                  </section>
                 </div>
-                <div class="field-group">
-                  <label for="audioDeviceSelect">Micrófono</label>
+                <div class="comm-entry-actions">
+                  <button id="setupPrimaryBtn" class="btn btn-primary" type="button">Activar cámara y micro</button>
+                </div>
+                <div class="comm-entry-hidden-selects" aria-hidden="true">
+                  <select id="videoDeviceSelect"></select>
                   <select id="audioDeviceSelect"></select>
                 </div>
-              </div>
-              <div class="setup-entry-actions">
-                <button id="setupPrimaryBtn" class="btn btn-primary" type="button">Activar cámara y micrófono</button>
-                <button id="refreshDevicesBtn" class="btn btn-secondary" type="button">Actualizar dispositivos</button>
               </div>
             </div>
           </div>
