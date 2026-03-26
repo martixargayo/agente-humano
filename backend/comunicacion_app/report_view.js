@@ -312,11 +312,22 @@
   }
 
   function buildCaptureSvgMarkup(clonedRoot, width, height) {
+    const captureFontStack = 'Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+    if (clonedRoot?.style) {
+      clonedRoot.style.fontFamily = captureFontStack;
+    }
+    const captureStyles = collectCaptureStyles(clonedRoot);
     return `
       <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
         <foreignObject width="100%" height="100%">
-          <div xmlns="http://www.w3.org/1999/xhtml">
-            <style>${collectCaptureStyles()}</style>
+          <div xmlns="http://www.w3.org/1999/xhtml" class="comm-report-capture-frame">
+            <style>
+              .comm-report-capture-frame,
+              .comm-report-capture-frame * {
+                font-family: ${captureFontStack};
+              }
+              ${captureStyles}
+            </style>
             ${clonedRoot.outerHTML}
           </div>
         </foreignObject>
@@ -324,10 +335,52 @@
     `;
   }
 
-  function collectCaptureStyles() {
-    const preferredSelectors = ['.comm-report', '.comm-v3', '.communication-report-placeholder', '[data-report-root="true"]'];
+  function collectCaptureStyles(captureRoot) {
     const chunks = [];
     const sheets = Array.from(global.document?.styleSheets || []);
+    const shouldIncludeSelector = (selector) => {
+      if (!selector) return false;
+      const normalized = selector.trim();
+      if (!normalized) return false;
+      if (normalized === 'html' || normalized === 'body' || normalized.startsWith(':root')) return true;
+      if (!captureRoot || typeof captureRoot.querySelector !== 'function' || typeof captureRoot.matches !== 'function') return true;
+      const variants = normalized.split(',').map((value) => value.trim()).filter(Boolean);
+      return variants.some((variant) => {
+        try {
+          return captureRoot.matches(variant) || Boolean(captureRoot.querySelector(variant));
+        } catch (_) {
+          return false;
+        }
+      });
+    };
+    const collectRule = (rule) => {
+      const cssText = String(rule?.cssText || '');
+      if (!cssText) return;
+      if (rule.type === 1) {
+        const selector = String(rule.selectorText || '');
+        if (shouldIncludeSelector(selector)) chunks.push(cssText);
+        return;
+      }
+      if (rule.type === 4 || rule.type === 12) {
+        const nestedRules = Array.from(rule.cssRules || []);
+        const nestedChunks = nestedRules
+          .map((nestedRule) => {
+            if (nestedRule.type !== 1) return '';
+            const selector = String(nestedRule.selectorText || '');
+            return shouldIncludeSelector(selector) ? String(nestedRule.cssText || '') : '';
+          })
+          .filter(Boolean);
+        if (nestedChunks.length > 0) {
+          const prelude = String(rule.conditionText || '').trim();
+          const atRuleName = rule.type === 12 ? '@supports' : '@media';
+          chunks.push(`${atRuleName} ${prelude}{${nestedChunks.join('\n')}}`);
+        }
+        return;
+      }
+      if (rule.type === 5 || rule.type === 7 || rule.type === 8 || rule.type === 16) {
+        chunks.push(cssText);
+      }
+    };
     sheets.forEach((sheet) => {
       let rules;
       try {
@@ -336,14 +389,7 @@
         return;
       }
       if (!rules) return;
-      Array.from(rules).forEach((rule) => {
-        const cssText = String(rule.cssText || '');
-        if (!cssText || cssText.startsWith('@import')) return;
-        const selector = String(rule.selectorText || '');
-        if (!selector || preferredSelectors.some((candidate) => selector.includes(candidate))) {
-          chunks.push(cssText);
-        }
-      });
+      Array.from(rules).forEach((rule) => collectRule(rule));
     });
     return chunks.join('\n');
   }
