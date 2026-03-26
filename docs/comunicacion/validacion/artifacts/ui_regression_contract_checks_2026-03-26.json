@@ -1,0 +1,23 @@
+{
+  "summary": {
+    "total": 14,
+    "passed": 14,
+    "failed": 0
+  },
+  "checks": {
+    "screen_setup_present": true,
+    "screen_aida_present": true,
+    "screen_recording_present": true,
+    "screen_review_present": true,
+    "screen_uploading_hidden": true,
+    "processing_screen_detached": true,
+    "report_screen_detached": true,
+    "error_screen_detached": true,
+    "legacy_screen_processing_absent": true,
+    "legacy_report_actions_absent": true,
+    "auto_final_emit_hooked": true,
+    "view_switcher_present": true,
+    "upload_transition_disabled": true,
+    "internal_exports_kept": true
+  }
+}

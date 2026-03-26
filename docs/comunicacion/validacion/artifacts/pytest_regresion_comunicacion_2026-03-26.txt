@@ -1,0 +1,29 @@
+..............................                                           [100%]
+=============================== warnings summary ===============================
+../../root/.pyenv/versions/3.10.19/lib/python3.10/site-packages/google/api_core/_python_version_support.py:275
+  /root/.pyenv/versions/3.10.19/lib/python3.10/site-packages/google/api_core/_python_version_support.py:275: FutureWarning: You are using a Python version (3.10.19) which Google will stop supporting in new releases of google.api_core once it reaches its end of life (2026-10-04). Please upgrade to the latest Python version, or at least Python 3.11, to continue receiving updates for google.api_core past that date.
+    warnings.warn(message, FutureWarning)
+
+../../root/.pyenv/versions/3.10.19/lib/python3.10/site-packages/google/api_core/_python_version_support.py:275
+  /root/.pyenv/versions/3.10.19/lib/python3.10/site-packages/google/api_core/_python_version_support.py:275: FutureWarning: You are using a Python version (3.10.19) which Google will stop supporting in new releases of google.cloud.speech_v1 once it reaches its end of life (2026-10-04). Please upgrade to the latest Python version, or at least Python 3.11, to continue receiving updates for google.cloud.speech_v1 past that date.
+    warnings.warn(message, FutureWarning)
+
+backend/api/app.py:467
+  /workspace/agente-humano/backend/api/app.py:467: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+../../root/.pyenv/versions/3.10.19/lib/python3.10/site-packages/fastapi/applications.py:4598
+  /root/.pyenv/versions/3.10.19/lib/python3.10/site-packages/fastapi/applications.py:4598: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    return self.router.on_event(event_type)  # ty: ignore[deprecated]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html

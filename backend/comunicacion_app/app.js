@@ -136,6 +136,7 @@
   };
   let floatingPhraseTimer = null;
   let floatingPhrasesActive = false;
+  let finalSaveToastTimer = null;
 
   function $(id) { return document.getElementById(id); }
   function transitionTo(screen) { state.ui.screen = screen; renderApp(); }
@@ -143,6 +144,26 @@
   function clearError() { state.ui.error_message = null; }
   function setNotice(message) { state.ui.notice_message = message || null; renderApp(); }
   function setError(message) { state.ui.error_message = message || 'Ha ocurrido un error inesperado.'; state.ui.notice_message = null; transitionTo(SCREEN_ERROR); }
+  function hideFinalSaveToast() {
+    const toast = $('finalSaveToast');
+    if (!toast) return;
+    toast.classList.remove('visible');
+    if (finalSaveToastTimer) {
+      global.clearTimeout(finalSaveToastTimer);
+      finalSaveToastTimer = null;
+    }
+  }
+  function showFinalSaveToast(message = 'Resultados guardados', durationMs = 4200) {
+    const toast = $('finalSaveToast');
+    if (!toast) return;
+    toast.textContent = message;
+    toast.classList.add('visible');
+    if (finalSaveToastTimer) global.clearTimeout(finalSaveToastTimer);
+    finalSaveToastTimer = global.setTimeout(() => {
+      finalSaveToastTimer = null;
+      toast.classList.remove('visible');
+    }, durationMs);
+  }
 
   function formatDurationLabel(durationMs) {
     const totalSeconds = Math.max(0, Math.round((durationMs || 0) / 1000));
@@ -310,6 +331,9 @@
       complementary_matches: complementaryMatches.length,
       acknowledged_at: new Date().toISOString(),
     };
+    if (typeof showFinalSaveToast === 'function') {
+      showFinalSaveToast('Resultados guardados');
+    }
     renderApp();
     return true;
   }
@@ -367,6 +391,9 @@
     if (!detectEmbedMode() || !isEmbeddedRuntime()) {
       state.final_delivery.status = 'ready';
       state.final_delivery.last_error = 'embed_runtime_not_detected';
+      if (typeof showFinalSaveToast === 'function') {
+        showFinalSaveToast('Resultado final listo');
+      }
       renderApp();
       return payload;
     }
@@ -386,6 +413,27 @@
     window.parent.postMessage(envelope, parentOrigin);
     renderApp();
     return payload;
+  }
+
+  function resolveCommunicationViewMode() {
+    if (state.ui.screen === SCREEN_PROCESSING) return 'loading';
+    if (state.ui.screen === SCREEN_REPORT) return 'report';
+    if (state.ui.screen === SCREEN_ERROR) return 'error';
+    return 'app';
+  }
+
+  function showCommunicationView(mode) {
+    const appRoot = $('communicationMainApp');
+    const loadingRoot = $('communicationLoadingScreen');
+    const reportRoot = $('communicationReportScreen');
+    const errorRoot = $('communicationErrorScreen');
+    if (!appRoot || !loadingRoot || !reportRoot || !errorRoot) return;
+    appRoot.classList.toggle('hidden', mode !== 'app');
+    loadingRoot.classList.toggle('hidden', mode !== 'loading');
+    reportRoot.classList.toggle('hidden', mode !== 'report');
+    errorRoot.classList.toggle('hidden', mode !== 'error');
+    if (mode === 'loading') startFloatingPhrases();
+    else stopFloatingPhrases();
   }
 
   function installCommunicationEmbedMessageListener() {
@@ -497,13 +545,15 @@
     const camBadge = $('recordingCamBadge');
     if (micBadge) {
       const micHealth = getTrackHealth(audioTrack);
-      micBadge.className = `recording-status-badge status-badge--${micHealth}`;
-      micBadge.textContent = micHealth === 'ok' ? 'Micrófono · OK' : 'Micrófono · Sin señal';
+      micBadge.className = `recording-av-item status-badge--${micHealth}`;
+      const micText = micBadge.querySelector('span:last-child');
+      if (micText) micText.textContent = micHealth === 'ok' ? 'Micrófono · OK' : 'Micrófono · Sin señal';
     }
     if (camBadge) {
       const camHealth = getTrackHealth(videoTrack);
-      camBadge.className = `recording-status-badge status-badge--${camHealth}`;
-      camBadge.textContent = camHealth === 'ok' ? 'Cámara · OK' : 'Cámara · Sin señal';
+      camBadge.className = `recording-av-item status-badge--${camHealth}`;
+      const camText = camBadge.querySelector('span:last-child');
+      if (camText) camText.textContent = camHealth === 'ok' ? 'Cámara · OK' : 'Cámara · Sin señal';
     }
   }
 
@@ -690,7 +740,6 @@
 
   async function registerRecordingMetadata() {
     if (!state.capture.recorded_blob || !state.capture.blob_url) throw new Error('No hay una grabación local lista para registrar');
-    transitionTo(SCREEN_UPLOADING);
     setBusy(true);
     try {
       await createAttempt();
@@ -798,6 +847,12 @@
     state.report.payload = out;
     state.report.placeholder_ready = true;
     transitionTo(SCREEN_REPORT);
+    try {
+      await emitCommunicationFinalResultLifecycle(out, { rootElement: $('reportPlaceholderRoot') });
+    } catch (error) {
+      state.final_delivery.status = 'error';
+      state.final_delivery.last_error = error.message;
+    }
     renderApp();
     return out;
   }
@@ -865,11 +920,7 @@
   }
 
   function renderApp() {
-    const title = state.context.activity_brief?.title || 'Presentación breve grabada';
-    $('activityTitle').textContent = title;
-    $('setupContextSummary').textContent = state.context.activity_brief?.description || 'Vamos a preparar tu sesión y a comprobar permisos de cámara y micrófono.';
-    $('aidaContextSummary').textContent = state.context.activity_brief?.description || 'Prepara tus ideas clave antes de grabar.';
-
+    showCommunicationView(resolveCommunicationViewMode());
     const statusBanner = $('communicationStatusBanner');
     const errorBanner = $('communicationErrorBanner');
     if (state.ui.notice_message) { statusBanner.textContent = state.ui.notice_message; statusBanner.classList.remove('hidden'); }
@@ -894,23 +945,16 @@
     if (avPanel) avPanel.classList.toggle('hidden', !state.capture.av_panel_open);
     const manageAvBtn = $('manageAvBtn');
     if (manageAvBtn) manageAvBtn.setAttribute('aria-expanded', state.capture.av_panel_open ? 'true' : 'false');
-    $('uploadStatusText').textContent = state.ui.busy ? 'Estamos creando el attempt y enviando la referencia provisional de la grabación.' : 'El registro de metadata ha finalizado o está pendiente de reintento.';
+    const uploadStatusNode = $('uploadStatusText');
+    if (uploadStatusNode) {
+      uploadStatusNode.textContent = state.ui.busy
+        ? 'Estamos creando el attempt y enviando la referencia provisional de la grabación.'
+        : 'El registro de metadata ha finalizado o está pendiente de reintento.';
+    }
     const processingNode = $('processingStatusText');
     if (processingNode) processingNode.textContent = ProcessingStageLabel[state.evaluation.stage || state.evaluation.status] || 'Analizando la comunicación...';
-    if (state.ui.screen === SCREEN_PROCESSING) startFloatingPhrases();
-    else stopFloatingPhrases();
-
-    const deliveryPanel = $('finalResultStatusPanel');
-    if (deliveryPanel) {
-      deliveryPanel.dataset.deliveryStatus = state.final_delivery.status || 'idle';
-      if (state.final_delivery.status === 'ack_received') deliveryPanel.textContent = 'Resultado final enviado y ACK recibido.';
-      else if (state.final_delivery.status === 'sending') deliveryPanel.textContent = 'Envío del resultado final en curso. Esperando ACK correlacionado.';
-      else if (state.final_delivery.status === 'ready') deliveryPanel.textContent = detectEmbedMode() && isEmbeddedRuntime()
-        ? 'Resultado final listo para enviar al contenedor embebido.'
-        : 'Resultado final listo localmente. Si se embebe, podrá emitirse como final_result.';
-      else if (state.final_delivery.status === 'error') deliveryPanel.textContent = `Error de entrega final: ${state.final_delivery.last_error || 'desconocido'}`;
-      else deliveryPanel.textContent = 'El resultado final se habilitará cuando el informe esté disponible.';
-    }
+    const errorMessageNode = $('communicationErrorMessage');
+    if (errorMessageNode && state.ui.error_message) errorMessageNode.textContent = state.ui.error_message;
 
     const reportRoot = $('reportPlaceholderRoot');
     if (state.report.payload) {
@@ -925,14 +969,15 @@
     syncDeviceSelects();
     renderDevicePanelOptions();
     syncBrainmapInputs();
-    syncSetupState();
+    renderSetupEntryState();
     syncVideoElements();
     refreshCaptureHealthIndicators();
     ensureWaveformBars();
+    syncRecordingActionVisibility();
     syncButtons();
   }
 
-  function syncSetupState() {
+  function renderSetupEntryState() {
     const setupStatus = $('setupStatusText');
     const setupPrimaryBtn = $('setupPrimaryBtn');
     if (!setupStatus || !setupPrimaryBtn) return;
@@ -944,6 +989,13 @@
       setupStatus.textContent = 'Cámara y micrófono listos. Ya puedes empezar.';
     }
     setupPrimaryBtn.textContent = isSetupReady() ? 'Empezar' : 'Activar cámara y micrófono';
+  }
+
+  function syncRecordingActionVisibility() {
+    const startBtn = $('startRecordingBtn');
+    const stopBtn = $('stopRecordingBtn');
+    if (startBtn) startBtn.classList.toggle('hidden', state.capture.is_recording);
+    if (stopBtn) stopBtn.classList.toggle('hidden', !state.capture.is_recording);
   }
 
   function syncBrainmapInputs() {
@@ -1034,10 +1086,6 @@
     toggleDisabled('continueToRecordingBtn', busy || !isSetupReady());
     toggleDisabled('rerecordBtn', busy);
     toggleDisabled('sendAndEvaluateBtn', busy || !state.capture.recorded_blob);
-    toggleDisabled('exportReportJsonBtn', busy || !state.report.payload);
-    toggleDisabled('exportReportHtmlBtn', busy || !state.report.payload);
-    toggleDisabled('exportReportPngBtn', busy || !state.report.payload);
-    toggleDisabled('emitFinalResultBtn', busy || !state.report.payload);
   }
 
   function toggleDisabled(id, value) { const node = $(id); if (node) node.disabled = Boolean(value); }
@@ -1213,10 +1261,23 @@
     $('stopRecordingBtn').addEventListener('click', async () => { setBusy(true); try { await stopRecording(); } catch (error) { setError(`No se pudo detener la grabación: ${error.message}`); } finally { setBusy(false); } });
     $('rerecordBtn').addEventListener('click', () => { clearError(); resetRecordingReview(); });
     $('sendAndEvaluateBtn').addEventListener('click', async () => { clearError(); try { await sendAndEvaluate(); } catch (error) { setError(`No se pudo enviar la evaluación: ${error.message}`); } });
-    $('exportReportJsonBtn').addEventListener('click', async () => { clearError(); try { await exportReportJson(); } catch (error) { setError(`No se pudo exportar el JSON: ${error.message}`); } });
-    $('exportReportHtmlBtn').addEventListener('click', async () => { clearError(); try { await exportReportHtml(); } catch (error) { setError(`No se pudo exportar el HTML: ${error.message}`); } });
-    $('exportReportPngBtn').addEventListener('click', async () => { clearError(); try { await exportReportPng(); } catch (error) { setError(`No se pudo exportar el PNG: ${error.message}`); } });
-    $('emitFinalResultBtn').addEventListener('click', async () => { clearError(); try { await emitCommunicationFinalResultLifecycle(state.report.payload, { rootElement: $('reportPlaceholderRoot') }); } catch (error) { state.final_delivery.status = 'error'; state.final_delivery.last_error = error.message; renderApp(); } });
+    const exportReportJsonBtn = $('exportReportJsonBtn');
+    if (exportReportJsonBtn) exportReportJsonBtn.addEventListener('click', async () => {
+      try { await exportReportJson(); } catch (error) { setError(`No se pudo exportar JSON: ${error.message}`); }
+    });
+    const exportReportHtmlBtn = $('exportReportHtmlBtn');
+    if (exportReportHtmlBtn) exportReportHtmlBtn.addEventListener('click', async () => {
+      try { await exportReportHtml(); } catch (error) { setError(`No se pudo exportar HTML: ${error.message}`); }
+    });
+    const exportReportPngBtn = $('exportReportPngBtn');
+    if (exportReportPngBtn) exportReportPngBtn.addEventListener('click', async () => {
+      try { await exportReportPng(); } catch (error) { setError(`No se pudo exportar PNG: ${error.message}`); }
+    });
+    const backToReviewBtn = $('communicationBackToReviewBtn');
+    if (backToReviewBtn) backToReviewBtn.addEventListener('click', () => {
+      clearError();
+      transitionTo(SCREEN_REVIEW);
+    });
   }
 
   function escapeHtml(value) { return String(value || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;'); }
