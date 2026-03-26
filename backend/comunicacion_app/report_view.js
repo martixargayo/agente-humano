@@ -19,33 +19,59 @@
     const payload = report || {};
     const header = payload.header || {};
     const media = payload.media || {};
-    const videoPanel = payload.video_panel || {};
-    const blocks = Array.isArray(payload.block_cards) ? payload.block_cards : [];
-    const timeline = payload.timeline && Array.isArray(payload.timeline.segments) ? payload.timeline.segments : [];
     const recommendations = payload.recommendations && Array.isArray(payload.recommendations.items) ? payload.recommendations.items : [];
+    const blockCards = Array.isArray(payload.block_cards) ? payload.block_cards : [];
+    const aidaCards = resolveAidaCards(blockCards);
+    const summary = buildImmediateSummary(header, recommendations, blockCards);
+    const intonation = resolveIntonationBlock(payload, blockCards, recommendations);
+    const gestures = resolveGesturesBlock(payload, blockCards, recommendations);
+
     return `
-      <section class="comm-report" data-report-root="true">
-        <header class="comm-report__header">
-          <div class="comm-report__hero-copy">
+      <section class="comm-report-v3" data-report-root="true">
+        <header class="comm-v3-card comm-v3-hero">
+          <div>
             <p class="comm-report__eyebrow">Informe final · Comunicación</p>
             <h2>${escapeHtml(header.report_title || 'Evaluación de tu comunicación oral')}</h2>
-            <p>${escapeHtml(header.summary_2_3_lines || 'Ya puedes leer la evaluación mientras revisas tu vídeo.')}</p>
-            <div class="comm-report__score-row">
-              <strong>${escapeHtml(String(header.score_global_100 || '-'))}/100</strong>
-              <span>${escapeHtml(String(header.stars_0_5 || '-'))} ★</span>
-              <span>${escapeHtml(header.activity_name || 'Presentación breve grabada')}</span>
-            </div>
+            <p>${escapeHtml(header.activity_name || 'Presentación breve grabada')}</p>
           </div>
-          ${renderCommunicationVideoPanel(media, videoPanel, options)}
+          <div class="comm-v3-score">
+            <strong>${escapeHtml(String(header.score_global_100 || '-'))}<small>/100</small></strong>
+            <div class="comm-v3-stars">${renderStars(header.stars_0_5)}</div>
+          </div>
         </header>
-        <section class="comm-report__blocks">
-          ${blocks.map(renderBlockCard).join('')}
+
+        <section class="comm-v3-card comm-v3-summary">
+          <h3>Resumen inmediato</h3>
+          <p><strong>Por qué esta nota:</strong> ${escapeHtml(summary.why)}</p>
+          <p><strong>Lo más fuerte:</strong> ${escapeHtml(summary.good)}</p>
+          <p><strong>Prioridad de mejora:</strong> ${escapeHtml(summary.improve)}</p>
         </section>
-        <section class="comm-report__timeline">
-          <h3>Timeline</h3>
-          <ol>${timeline.map(renderTimelineSegment).join('')}</ol>
+
+        <section class="comm-v3-card">
+          <h3>AIDA</h3>
+          <div class="comm-v3-aida">
+            ${aidaCards.map(renderAidaCard).join('')}
+          </div>
         </section>
-        <section class="comm-report__recommendations">
+
+        <section class="comm-v3-card comm-v3-meter">
+          <h3>Entonación</h3>
+          <div class="comm-v3-meter-bars">${renderMeterBars(intonation.level)}</div>
+          <p>${escapeHtml(intonation.description)}</p>
+        </section>
+
+        <section class="comm-v3-card">
+          <h3>Gestos y presencia visual</h3>
+          <p><strong>Nivel:</strong> ${escapeHtml(gestures.level_label)}</p>
+          <p>${escapeHtml(gestures.description)}</p>
+        </section>
+
+        <section class="comm-v3-card">
+          <h3>Tu grabación</h3>
+          ${renderCommunicationVideoPanel(media, options)}
+        </section>
+
+        <section class="comm-v3-card comm-report__recommendations">
           <h3>Recomendaciones</h3>
           <ol>${recommendations.map(renderRecommendation).join('')}</ol>
         </section>
@@ -53,24 +79,103 @@
     `;
   }
 
-  function renderCommunicationVideoPanel(media, panel, options = {}) {
+  function renderCommunicationVideoPanel(media, options = {}) {
     const poster = media.poster_frame_ref ? ` poster="${escapeHtml(media.poster_frame_ref)}"` : '';
     const resolvedVideoSrc = resolveCommunicationVideoSrc(media);
     const showSource = options.disableVideo !== true && resolvedVideoSrc;
     return `
-      <aside class="comm-report__video-panel">
-        <h3>${escapeHtml(panel.title || 'Tu grabación')}</h3>
-        <p>${escapeHtml(panel.help_text || 'Reproduce tu vídeo mientras lees la evaluación para contrastar cada observación.')}</p>
-        <video class="comm-report__video" controls preload="metadata" playsinline${poster}>
-          ${showSource ? `<source src="${escapeHtml(resolvedVideoSrc)}" type="${escapeHtml(media.mime_type || 'video/webm')}" />` : ''}
-        </video>
-        <dl class="comm-report__video-meta">
-          <div><dt>recording_id</dt><dd>${escapeHtml(media.recording_id || '-')}</dd></div>
-          <div><dt>video_ref</dt><dd>${escapeHtml(media.video_ref || '-')}</dd></div>
-          <div><dt>playback_url</dt><dd>${escapeHtml(media.playback_url || '-')}</dd></div>
-        </dl>
-      </aside>
+      <video class="comm-report__video" controls preload="metadata" playsinline${poster}>
+        ${showSource ? `<source src="${escapeHtml(resolvedVideoSrc)}" type="${escapeHtml(media.mime_type || 'video/webm')}" />` : ''}
+      </video>
+      <dl class="comm-report__video-meta">
+        <div><dt>recording_id</dt><dd>${escapeHtml(media.recording_id || '-')}</dd></div>
+        <div><dt>video_ref</dt><dd>${escapeHtml(media.video_ref || '-')}</dd></div>
+      </dl>
     `;
+  }
+
+  function resolveAidaCards(blockCards) {
+    const fallbackTitles = ['Atención', 'Interés', 'Desarrollo', 'Acción'];
+    const cards = fallbackTitles.map((title, index) => {
+      const source = blockCards[index] || {};
+      return {
+        title,
+        score: Number.isFinite(source.score_0_100) ? source.score_0_100 : null,
+        verdict: source.block_verdict || source.summary || 'Sección preparada; pendiente de mayor granularidad en el contrato actual.',
+        status: normalizeStatus(source.status_visual, source.score_0_100),
+      };
+    });
+    return cards;
+  }
+
+  function buildImmediateSummary(header, recommendations, blockCards) {
+    const why = header.summary_2_3_lines || 'La nota combina contenido, delivery y presencia visual observada en la grabación.';
+    const bestCard = [...blockCards].sort((a, b) => Number(b.score_0_100 || 0) - Number(a.score_0_100 || 0))[0];
+    const worstCard = [...blockCards].sort((a, b) => Number(a.score_0_100 || 0) - Number(b.score_0_100 || 0))[0];
+    const good = bestCard ? `${bestCard.title || 'Bloque fuerte'}: ${bestCard.block_verdict || bestCard.summary || 'buen desempeño relativo.'}` : 'Estructura general consistente.';
+    const improve = recommendations[0]?.description || (worstCard ? `${worstCard.title || 'Bloque crítico'}: prioriza una mejora concreta en esta área.` : 'Define una prioridad de mejora y practícala en la siguiente toma.');
+    return { why, good, improve };
+  }
+
+  function resolveIntonationBlock(payload, blocks, recommendations) {
+    const candidate = findByKeyword(blocks, ['enton', 'voz', 'ritmo']) || findByKeyword(recommendations, ['enton', 'voz', 'ritmo']);
+    const score = Number(candidate?.score_0_100 || candidate?.score || 60);
+    const level = Math.max(1, Math.min(5, Math.round(score / 20)));
+    return {
+      level,
+      description: candidate?.description || candidate?.summary || candidate?.block_verdict || 'Valoración simplificada de entonación basada en señales disponibles en el reporte actual.',
+    };
+  }
+
+  function resolveGesturesBlock(payload, blocks, recommendations) {
+    const candidate = findByKeyword(blocks, ['gest', 'visual', 'presencia']) || findByKeyword(recommendations, ['gest', 'visual', 'presencia']);
+    const score = Number(candidate?.score_0_100 || candidate?.score || 60);
+    const level = Math.max(1, Math.min(5, Math.round(score / 20)));
+    return {
+      level_label: `${level}/5`,
+      description: candidate?.description || candidate?.summary || candidate?.block_verdict || 'Bloque visual en fallback honesto: preparado para enriquecerse cuando el contrato aporte más detalle de gestualidad.',
+    };
+  }
+
+  function findByKeyword(items, keywords) {
+    return (items || []).find((item) => {
+      const raw = `${item?.title || ''} ${item?.description || ''} ${item?.summary || ''}`.toLowerCase();
+      return keywords.some((keyword) => raw.includes(keyword));
+    });
+  }
+
+  function normalizeStatus(raw, score) {
+    if (raw === 'correcto') return 'ok';
+    if (raw === 'mejorable') return 'warn';
+    if (raw === 'placeholder') return 'neutral';
+    if (Number.isFinite(score)) {
+      if (score >= 75) return 'ok';
+      if (score >= 50) return 'warn';
+      return 'bad';
+    }
+    return 'neutral';
+  }
+
+  function renderAidaCard(card) {
+    const scoreText = Number.isFinite(card.score) ? `${card.score}/100` : 'Sin score';
+    return `
+      <article class="comm-v3-card comm-v3-aida-card--${escapeHtml(card.status)}">
+        <h4>${escapeHtml(card.title)}</h4>
+        <p><strong>${escapeHtml(scoreText)}</strong></p>
+        <p>${escapeHtml(card.verdict)}</p>
+      </article>
+    `;
+  }
+
+  function renderMeterBars(level) {
+    const safe = Math.max(1, Math.min(5, Number(level || 1)));
+    return new Array(5).fill(0).map((_, index) => `<span class="${index < safe ? 'active' : ''}" style="height:${35 + (index * 10)}%"></span>`).join('');
+  }
+
+  function renderStars(value) {
+    const numeric = Math.max(0, Math.min(5, Number(value || 0)));
+    const full = Math.round(numeric);
+    return `${'★'.repeat(full)}${'☆'.repeat(5 - full)} <span>${escapeHtml(String(value || 0))}/5</span>`;
   }
 
   function resolveCommunicationVideoSrc(media) {
@@ -79,25 +184,6 @@
     const fallback = String(media && media.video_ref ? media.video_ref : '').trim();
     if (fallback.startsWith('file://')) return '';
     return fallback;
-  }
-
-  function renderBlockCard(block) {
-    const checks = Array.isArray(block.checks) ? block.checks : [];
-    return `
-      <article class="comm-report__card comm-report__card--${escapeHtml(block.status_visual || 'mejorable')}">
-        <div class="comm-report__card-head">
-          <h3>${escapeHtml(block.title || 'Bloque')}</h3>
-          <span>${escapeHtml(String(block.score_0_100 ?? '-'))}</span>
-        </div>
-        <p>${escapeHtml(block.block_verdict || block.summary || '')}</p>
-        <ul>${checks.map((item) => `<li>${escapeHtml(item.micro_explanation || '')}</li>`).join('')}</ul>
-      </article>
-    `;
-  }
-
-  function renderTimelineSegment(segment) {
-    const signals = Array.isArray(segment.signals) ? segment.signals : [];
-    return `<li><strong>${escapeHtml(segment.label || 'Segmento')}</strong> · ${escapeHtml(segment.summary || '')} <span>${signals.map((signal) => escapeHtml(signal)).join(', ')}</span></li>`;
   }
 
   function renderRecommendation(item) {
