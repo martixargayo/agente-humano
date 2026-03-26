@@ -27,54 +27,46 @@
     const gestures = resolveGesturesBlock(payload, blockCards, recommendations);
 
     return `
-      <section class="comm-report-v3" data-report-root="true">
-        <header class="comm-v3-card comm-v3-hero">
-          <div>
-            <p class="comm-report__eyebrow">Informe final · Comunicación</p>
-            <h2>${escapeHtml(header.report_title || 'Evaluación de tu comunicación oral')}</h2>
-            <p>${escapeHtml(header.activity_name || 'Presentación breve grabada')}</p>
-          </div>
-          <div class="comm-v3-score">
-            <strong>${escapeHtml(String(header.score_global_100 || '-'))}<small>/100</small></strong>
-            <div class="comm-v3-stars">${renderStars(header.stars_0_5)}</div>
-          </div>
-        </header>
+      <section class="comm-feedback-root" data-report-root="true">
+        <div class="feedback-dashboard">
+          <header class="fb-card fb-header">
+            <div>
+              <h1 class="fb-title">${escapeHtml(header.report_title || 'Evaluación de tu comunicación oral')}</h1>
+              <div class="fb-case-row">${escapeHtml(header.activity_name || 'Presentación breve grabada')}</div>
+            </div>
+            <div class="fb-header-right">
+              <div class="fb-stars">${renderStars(header.stars_0_5)}</div>
+              <div class="fb-score-pill">${escapeHtml(String(header.score_global_100 || '-'))} / 100</div>
+            </div>
+          </header>
 
-        <section class="comm-v3-card comm-v3-summary">
-          <h3>Resumen inmediato</h3>
-          <p><strong>Por qué esta nota:</strong> ${escapeHtml(summary.why)}</p>
-          <p><strong>Lo más fuerte:</strong> ${escapeHtml(summary.good)}</p>
-          <p><strong>Prioridad de mejora:</strong> ${escapeHtml(summary.improve)}</p>
-        </section>
+          <section class="fb-card fb-section">
+            <h2>Resumen inmediato</h2>
+            <p><strong>Por qué esta nota:</strong> ${escapeHtml(summary.why)}</p>
+            <p><strong>Lo más fuerte:</strong> ${escapeHtml(summary.good)}</p>
+            <p><strong>Prioridad de mejora:</strong> ${escapeHtml(summary.improve)}</p>
+          </section>
 
-        <section class="comm-v3-card">
-          <h3>AIDA</h3>
-          <div class="comm-v3-aida">
+          <section class="fb-grid-cards">
             ${aidaCards.map(renderAidaCard).join('')}
-          </div>
-        </section>
+          </section>
 
-        <section class="comm-v3-card comm-v3-meter">
-          <h3>Entonación</h3>
-          <div class="comm-v3-meter-bars">${renderMeterBars(intonation.level)}</div>
-          <p>${escapeHtml(intonation.description)}</p>
-        </section>
+          <section class="fb-card fb-section">
+            <h3>Entrega verbal</h3>
+            <p><strong>Entonación:</strong> ${escapeHtml(intonation.description)}</p>
+            <p><strong>Gestos y presencia visual (${escapeHtml(gestures.level_label)}):</strong> ${escapeHtml(gestures.description)}</p>
+          </section>
 
-        <section class="comm-v3-card">
-          <h3>Gestos y presencia visual</h3>
-          <p><strong>Nivel:</strong> ${escapeHtml(gestures.level_label)}</p>
-          <p>${escapeHtml(gestures.description)}</p>
-        </section>
+          <section class="fb-card fb-section">
+            <h3>Tu grabación</h3>
+            ${renderCommunicationVideoPanel(media, options)}
+          </section>
 
-        <section class="comm-v3-card">
-          <h3>Tu grabación</h3>
-          ${renderCommunicationVideoPanel(media, options)}
-        </section>
-
-        <section class="comm-v3-card comm-report__recommendations">
-          <h3>Recomendaciones</h3>
-          <ol>${recommendations.map(renderRecommendation).join('')}</ol>
-        </section>
+          <section class="fb-card fb-section">
+            <h3>Recomendaciones</h3>
+            <div class="fb-recommendations-grid">${recommendations.map(renderRecommendation).join('')}</div>
+          </section>
+        </div>
       </section>
     `;
   }
@@ -84,7 +76,7 @@
     const resolvedVideoSrc = resolveCommunicationVideoSrc(media);
     const showSource = options.disableVideo !== true && resolvedVideoSrc;
     return `
-      <video class="comm-report__video" controls preload="metadata" playsinline${poster}>
+      <video class="fb-video" controls preload="metadata" playsinline${poster}>
         ${showSource ? `<source src="${escapeHtml(resolvedVideoSrc)}" type="${escapeHtml(media.mime_type || 'video/webm')}" />` : ''}
       </video>
       <dl class="comm-report__video-meta">
@@ -158,9 +150,13 @@
 
   function renderAidaCard(card) {
     const scoreText = Number.isFinite(card.score) ? `${card.score}/100` : 'Sin score';
+    const badge = card.status === 'ok' ? 'correcto' : card.status === 'warn' ? 'mejorable' : 'crítico';
     return `
-      <article class="comm-v3-card comm-v3-aida-card--${escapeHtml(card.status)}">
-        <h4>${escapeHtml(card.title)}</h4>
+      <article class="fb-card fb-skill-card ${escapeHtml(card.status)}">
+        <div class="fb-skill-top">
+          <h3>${escapeHtml(card.title)}</h3>
+          <span class="fb-badge ${escapeHtml(card.status)}">${escapeHtml(badge)}</span>
+        </div>
         <p><strong>${escapeHtml(scoreText)}</strong></p>
         <p>${escapeHtml(card.verdict)}</p>
       </article>
@@ -190,7 +186,7 @@
     const example = item.example
       ? `<p class="comm-report__example"><strong>Ejemplo:</strong> ${escapeHtml(item.example.better_rephrase || '')}</p>`
       : '';
-    return `<li><strong>${escapeHtml(item.title || '')}</strong><p>${escapeHtml(item.description || '')}</p>${example}</li>`;
+    return `<article class="fb-rec-item"><h4>${escapeHtml(item.title || '')}</h4><p>${escapeHtml(item.description || '')}</p>${example}</article>`;
   }
 
   function serializeCommunicationReportToHtml(report) {

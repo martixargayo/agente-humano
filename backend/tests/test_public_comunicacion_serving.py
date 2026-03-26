@@ -19,7 +19,10 @@ class PublicComunicacionServingTests(unittest.TestCase):
             self.assertIn('/comunicacion/app.js', body)
             self.assertIn('/comunicacion/report_view.js', body)
             self.assertIn('/comunicacion/styles.css', body)
-            self.assertIn('Presentación breve grabada', body)
+            self.assertIn('id="screenSetup"', body)
+            self.assertIn('id="communicationLoadingScreen"', body)
+            self.assertIn('id="communicationReportScreen"', body)
+            self.assertNotIn('id="screenProcessing"', body)
 
         app_js = self.client.get('/comunicacion/app.js')
         report_js = self.client.get('/comunicacion/report_view.js')
@@ -29,8 +32,10 @@ class PublicComunicacionServingTests(unittest.TestCase):
         self.assertIn('CommunicationApp', app_js.text)
         self.assertIn('bootstrapCommunicationSession', app_js.text)
         self.assertIn("SCREEN_REVIEW = 'review'", app_js.text)
+        self.assertIn("SCREEN_SETUP = 'setup'", app_js.text)
         self.assertIn("buildCommunicationEmbedEnvelope('final_result_available'", app_js.text)
         self.assertIn("buildCommunicationFinalAvailabilityPayload", app_js.text)
+        self.assertIn("showCommunicationView(mode)", app_js.text)
 
         self.assertEqual(report_js.status_code, 200)
         self.assertIn('CommunicationReportView', report_js.text)
@@ -41,3 +46,4 @@ class PublicComunicacionServingTests(unittest.TestCase):
         self.assertIn('.communication-shell', styles_css.text)
         self.assertIn('.communication-card', styles_css.text)
         self.assertIn('.comm-report__video-panel', styles_css.text)
+        self.assertIn('.feedback-screen', styles_css.text)

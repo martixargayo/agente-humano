@@ -18,6 +18,13 @@ Incluye:
 6. `06-rediseno-plantilla-feedback.md`
 7. `07-analisis-parpadeos-preview-y-captura.md`
 8. `08-aislamiento-de-sesiones-y-concurrencia.md`
+9. `09-extraccion-exacta-pantalla-permisos-negociacion.md`
+10. `10-limpieza-de-cabeceras-y-textos-sobrantes-en-comunicacion.md`
+11. `11-diagnostico-transicion-a-loading-y-pantalla-intermedia-rara.md`
+12. `12-extraccion-exacta-feedback-negociacion-y-entrega-final.md`
+13. `plan_impl_correccion_fase_1.md`
+14. `plan_impl_correccion_fase_2.md`
+15. `plan_impl_correccion_fase_3.md`
 
 ## 3) Dependencias entre cambios (UX + técnico)
 
@@ -68,3 +75,17 @@ Durante la inspección se usó como base el código real de:
 - `backend/comunicacion/services/*`, `storage/*`
 - `backend/evaluacion/engine/communication_*`
 - `backend/sessions/*`
+
+## 8) Bloque obligatorio antes de la siguiente implementación correctiva
+Antes de tocar runtime/UI nuevamente en `comunicacion`, revisar obligatoriamente:
+- `09-extraccion-exacta-pantalla-permisos-negociacion.md`
+- `10-limpieza-de-cabeceras-y-textos-sobrantes-en-comunicacion.md`
+- `11-diagnostico-transicion-a-loading-y-pantalla-intermedia-rara.md`
+- `12-extraccion-exacta-feedback-negociacion-y-entrega-final.md`
+
+Estos documentos definen extracción exacta, diagnóstico por pantalla y criterios de parity con negociación.
+
+## 9) Orden recomendado de consulta (antes de implementar)
+1. Diagnóstico base: `09`, `10`, `11`, `12`.
+2. Plan operativo de ejecución: `plan_impl_correccion_fase_1.md` → `plan_impl_correccion_fase_2.md` → `plan_impl_correccion_fase_3.md`.
+3. Solo después iniciar implementación correctiva en runtime.
