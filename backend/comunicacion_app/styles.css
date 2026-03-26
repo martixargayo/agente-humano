@@ -193,6 +193,24 @@ body {
   gap: 14px;
 }
 
+.aida-prep-header {
+  display: grid;
+  gap: 6px;
+}
+
+.aida-prep-title {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.2;
+  color: #0f172a;
+}
+
+.aida-prep-description {
+  margin: 0;
+  color: var(--comm-muted);
+  line-height: 1.5;
+}
+
 .brainmap-textarea {
   width: 100%;
   border: 1px solid var(--comm-border);
