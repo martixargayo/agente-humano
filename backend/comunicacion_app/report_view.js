@@ -213,6 +213,10 @@
       if (width <= 0 || height <= 0) throw new Error(`Root de captura inválido (${width}x${height})`);
       const clonedRoot = captureRoot.cloneNode(true);
       clonedRoot.style.margin = '0';
+      const sanitization = sanitizeCaptureCloneForRasterization(clonedRoot);
+      if (sanitization.removed_sections > 0 || sanitization.removed_nodes > 0) {
+        console.info('[comm-report-capture] Sanitización aplicada antes de rasterizar.', sanitization);
+      }
       const svgMarkup = buildCaptureSvgMarkup(clonedRoot, width, height);
       const svgDataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgMarkup)}`;
       const image = await loadImage(svgDataUrl);
@@ -228,6 +232,21 @@
     } finally {
       cleanup();
     }
+  }
+
+  function sanitizeCaptureCloneForRasterization(clonedRoot) {
+    if (!clonedRoot || typeof clonedRoot.querySelectorAll !== 'function') {
+      return { removed_sections: 0, removed_nodes: 0 };
+    }
+    const mediaSections = Array.from(clonedRoot.querySelectorAll('.fb-card.fb-section'))
+      .filter((section) => section.querySelector('video, audio, iframe, object, embed, .comm-report__video-meta'));
+    mediaSections.forEach((section) => section.remove());
+    const mediaNodes = Array.from(clonedRoot.querySelectorAll('video, audio, iframe, object, embed, .comm-report__video-meta'));
+    mediaNodes.forEach((node) => node.remove());
+    return {
+      removed_sections: mediaSections.length,
+      removed_nodes: mediaNodes.length,
+    };
   }
 
   function attachDetachedCaptureRootIfNeeded(report, options = {}) {

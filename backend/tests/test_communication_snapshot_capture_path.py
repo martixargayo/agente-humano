@@ -90,6 +90,60 @@ class CommunicationSnapshotCapturePathTests(unittest.TestCase):
         )
         return json.loads(completed.stdout)
 
+    def _run_sanitization_harness(self) -> dict:
+        sanitize_fn = self._extract_function_source('sanitizeCaptureCloneForRasterization')
+        script = textwrap.dedent(
+            f"""
+            class FakeNode {{
+              constructor(kind) {{
+                this.kind = kind;
+                this.removed = false;
+              }}
+              remove() {{
+                this.removed = true;
+              }}
+            }}
+            class FakeSection extends FakeNode {{
+              constructor(hasMedia) {{
+                super('section');
+                this.hasMedia = hasMedia;
+              }}
+              querySelector(selector) {{
+                if (!this.hasMedia) return null;
+                if (selector.includes('video') || selector.includes('.comm-report__video-meta')) return new FakeNode('media-inside');
+                return null;
+              }}
+            }}
+            class FakeRoot {{
+              constructor() {{
+                this.sections = [new FakeSection(true), new FakeSection(false)];
+                this.mediaNodes = [new FakeNode('video'), new FakeNode('meta')];
+              }}
+              querySelectorAll(selector) {{
+                if (selector === '.fb-card.fb-section') return this.sections;
+                if (selector.includes('video') || selector.includes('.comm-report__video-meta')) return this.mediaNodes;
+                return [];
+              }}
+            }}
+            {sanitize_fn}
+            const root = new FakeRoot();
+            const summary = sanitizeCaptureCloneForRasterization(root);
+            process.stdout.write(JSON.stringify({{
+              summary,
+              sectionRemovedFlags: root.sections.map((s) => s.removed),
+              mediaRemovedFlags: root.mediaNodes.map((n) => n.removed),
+            }}));
+            """
+        )
+        completed = subprocess.run(
+            ['node', '-e', script],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return json.loads(completed.stdout)
+
     def test_happy_path_uses_dom_capture_as_primary_strategy(self) -> None:
         output = self._run_harness(from_dom_mode='ok')
         self.assertEqual(output['value'], 'data:image/png;base64,RE9NX1NOT1Q=')
@@ -100,6 +154,15 @@ class CommunicationSnapshotCapturePathTests(unittest.TestCase):
         self.assertEqual(output['value'], 'data:image/png;base64,RkFMTEJBQ0s=')
         self.assertEqual(output['calls'][0], ['fromDom'])
         self.assertIn(['fallback'], output['calls'])
+
+    def test_dom_capture_sanitizes_video_related_nodes_before_rasterization(self) -> None:
+        self.assertIn('const sanitization = sanitizeCaptureCloneForRasterization(clonedRoot);', self.source)
+        self.assertIn("section.querySelector('video, audio, iframe, object, embed, .comm-report__video-meta')", self.source)
+        self.assertIn("clonedRoot.querySelectorAll('video, audio, iframe, object, embed, .comm-report__video-meta')", self.source)
+        output = self._run_sanitization_harness()
+        self.assertEqual(output['summary'], {'removed_sections': 1, 'removed_nodes': 2})
+        self.assertEqual(output['sectionRemovedFlags'], [True, False])
+        self.assertEqual(output['mediaRemovedFlags'], [True, True])
 
 
 if __name__ == '__main__':
