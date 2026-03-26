@@ -1,0 +1,175 @@
+{
+  "flow": [
+    {
+      "step": "bootstrap",
+      "ok": true,
+      "detail": {
+        "status": 200,
+        "body": {
+          "user_id": "iu_FVIMLOzz7e5bme7FRgrNK5XS",
+          "session_id": "sess_FVIMLOzz7e5bme7FRgrNK5XS",
+          "session_bootstrap_state": "new",
+          "existing_session": false,
+          "context_id": "baseline_current",
+          "public_slug": "comunicacion",
+          "presentation_config": {
+            "version": "1.0.0",
+            "theme": "communication",
+            "layout": "capture_shell"
+          },
+          "activity_brief": {
+            "title": "Presentaci\u00f3n breve grabada",
+            "description": "Shell base de la actividad de comunicaci\u00f3n para la fase 1."
+          },
+          "capture_policy": {
+            "min_duration_ms": 30000,
+            "max_duration_ms": 180000,
+            "allow_rerecord": true,
+            "audio_required": true,
+            "video_required": true,
+            "accepted_mime_types": [
+              "video/webm",
+              "video/mp4"
+            ]
+          },
+          "trace_count": 0,
+          "last_updated": "2026-03-26T08:23:48.862002+00:00",
+          "communication_status": "bootstrap_ready",
+          "last_attempt_id": null,
+          "last_evaluation_id": null,
+          "extras": {}
+        }
+      }
+    },
+    {
+      "step": "create_attempt",
+      "ok": true,
+      "detail": {
+        "status": 200,
+        "body": {
+          "attempt_id": "att_23e634fec420",
+          "status": "draft",
+          "context_id": "baseline_current",
+          "recording_id": null,
+          "latest_evaluation_id": null,
+          "rerecord_count": 0
+        }
+      }
+    },
+    {
+      "step": "upload_recording",
+      "ok": true,
+      "detail": {
+        "status": 200,
+        "body": {
+          "attempt_id": "att_23e634fec420",
+          "recording_id": "rec_9968e0ed1a9a",
+          "status": "uploaded",
+          "video_ref": "file:///tmp/comunicacion_uploads/att_23e634fec420_0d95b79a74.webm",
+          "playback_url": "/api/comunicacion/recordings/rec_9968e0ed1a9a/video",
+          "poster_frame_ref": null
+        }
+      }
+    },
+    {
+      "step": "submit",
+      "ok": true,
+      "detail": {
+        "status": 200,
+        "body": {
+          "attempt_id": "att_23e634fec420",
+          "evaluation_id": "eval_3518600cd5db",
+          "status": "running"
+        }
+      }
+    },
+    {
+      "step": "report_fetch",
+      "ok": true,
+      "detail": {
+        "status": 200,
+        "keys": [
+          "attempt_id",
+          "block_cards",
+          "evaluation_id",
+          "exports",
+          "global_synthesis",
+          "header",
+          "key_moments",
+          "media",
+          "placeholders",
+          "provenance",
+          "recommendations",
+          "recording_id",
+          "schema_version",
+          "status",
+          "timeline",
+          "video_panel"
+        ]
+      }
+    },
+    {
+      "step": "poll_until_completed",
+      "ok": true,
+      "detail": {
+        "history_len": 2,
+        "last": {
+          "status_code": 200,
+          "payload": {
+            "evaluation_id": "eval_3518600cd5db",
+            "attempt_id": "att_23e634fec420",
+            "status": "completed",
+            "stage": "completed",
+            "report_available": true,
+            "error": null
+          }
+        }
+      }
+    }
+  ],
+  "concurrency": {
+    "ownership_eval_3518600cd5db": {
+      "status": 404,
+      "body": {
+        "detail": {
+          "error": "communication_evaluation_not_found"
+        }
+      }
+    },
+    "ownership_report": {
+      "status": 404,
+      "body": {
+        "detail": {
+          "error": "communication_evaluation_not_found"
+        }
+      }
+    },
+    "double_submit": {
+      "first": {
+        "attempt_id": "att_23e634fec420",
+        "evaluation_id": "eval_3518600cd5db",
+        "status": "completed"
+      },
+      "second": {
+        "attempt_id": "att_23e634fec420",
+        "evaluation_id": "eval_3518600cd5db",
+        "status": "completed"
+      },
+      "same_eval": true
+    },
+    "parallel_sessions": [
+      {
+        "idx": 1,
+        "status": 200,
+        "evaluation_id": "eval_e2a7499aeaff",
+        "session_id": "sess_UKnIr4FdVokaqRBB_cBB8hS1"
+      },
+      {
+        "idx": 0,
+        "status": 200,
+        "evaluation_id": "eval_e86bff9899ae",
+        "session_id": "sess_dai1mJSeu1EHDBqDjWV8tIRA"
+      }
+    ]
+  }
+}

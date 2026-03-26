@@ -1,0 +1,39 @@
+{
+  "checks": [
+    {
+      "check": "fase1_no_open_preview",
+      "ok": true,
+      "detail": "No CTA legacy de preview visible"
+    },
+    {
+      "check": "fase1_no_register_submit_buttons",
+      "ok": true,
+      "detail": "No CTAs legacy t\u00e9cnicos"
+    },
+    {
+      "check": "fase2_recording_layout",
+      "ok": true,
+      "detail": "Layout recording Fase 2 presente"
+    },
+    {
+      "check": "fase3_loading_parity_markup",
+      "ok": true,
+      "detail": "Markup loading parity presente"
+    },
+    {
+      "check": "fase3_loading_no_tech_status",
+      "ok": true,
+      "detail": "Processing no expone datos t\u00e9cnicos directos"
+    },
+    {
+      "check": "fase3_report_sections",
+      "ok": true,
+      "detail": "Secciones report Fase 3 presentes"
+    },
+    {
+      "check": "fase3_send_and_evaluate_still_exists",
+      "ok": true,
+      "detail": "Flujo CTA \u00fanico se mantiene"
+    }
+  ]
+}
