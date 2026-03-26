@@ -258,7 +258,7 @@ def assemble_communication_report(
             'transcript': bundle.transcript.explanation,
             'audio_features': bundle.audio_features.explanation,
             'visual_features': bundle.visual_features.explanation,
-            'snapshot_png': 'PNG placeholder estático hasta disponer de captura real del DOM en cliente.',
+            'snapshot_png': 'El PNG final se captura en cliente desde el DOM del feedback al emitir final_result; este campo documenta el comportamiento de fallback.',
         },
     )
     report.exports.report_json = report.model_dump(mode='json', exclude={'exports'})

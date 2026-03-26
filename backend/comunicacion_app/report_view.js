@@ -199,6 +199,168 @@
   }
 
   async function captureCommunicationReportPngDataUrl(report, options = {}) {
+    try {
+      return await captureCommunicationReportPngDataUrlFromDom(report, options);
+    } catch (error) {
+      console.warn('[comm-report-capture] Falló captura DOM real; se usará fallback sintético.', error);
+      return buildCommunicationReportSyntheticFallbackPngDataUrl(report, options);
+    }
+  }
+
+  async function captureCommunicationReportPngDataUrlFromDom(report, options = {}) {
+    const attached = attachDetachedCaptureRootIfNeeded(report, options);
+    const captureRoot = attached.captureRoot;
+    const cleanup = attached.cleanup;
+    try {
+      await waitForCaptureStability(captureRoot);
+      const { width, height } = deriveCaptureDimensions(captureRoot, options);
+      if (width <= 0 || height <= 0) throw new Error(`Root de captura inválido (${width}x${height})`);
+      const clonedRoot = captureRoot.cloneNode(true);
+      clonedRoot.style.margin = '0';
+      const svgMarkup = buildCaptureSvgMarkup(clonedRoot, width, height);
+      const svgDataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgMarkup)}`;
+      const image = await loadImage(svgDataUrl);
+      const canvas = global.document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Canvas 2D no disponible');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(image, 0, 0, width, height);
+      return canvas.toDataURL('image/png');
+    } finally {
+      cleanup();
+    }
+  }
+
+  function attachDetachedCaptureRootIfNeeded(report, options = {}) {
+    const liveRoot = options.rootElement && options.rootElement.isConnected
+      ? options.rootElement.querySelector('[data-report-root="true"]') || options.rootElement
+      : null;
+    if (liveRoot && liveRoot.isConnected) {
+      return {
+        captureRoot: liveRoot,
+        cleanup: () => {},
+      };
+    }
+    const detachedRoot = global.document.createElement('div');
+    detachedRoot.style.position = 'fixed';
+    detachedRoot.style.left = '0';
+    detachedRoot.style.top = '0';
+    detachedRoot.style.opacity = '0';
+    detachedRoot.style.pointerEvents = 'none';
+    detachedRoot.style.zIndex = '-1';
+    detachedRoot.style.width = `${Math.max(1180, Number(options.width) || 1180)}px`;
+    renderCommunicationReport(detachedRoot, report, options);
+    global.document.body.appendChild(detachedRoot);
+    return {
+      captureRoot: detachedRoot.querySelector('[data-report-root="true"]') || detachedRoot,
+      cleanup: () => detachedRoot.remove(),
+    };
+  }
+
+  async function waitForCaptureStability(root) {
+    if (!root) return;
+    if (global.document?.fonts?.ready) {
+      try {
+        await global.document.fonts.ready;
+      } catch (_) {
+        // Fuentes no bloqueantes.
+      }
+    }
+    await waitForRaf();
+    await waitForRaf();
+    await waitForTimeout(60);
+  }
+
+  function deriveCaptureDimensions(root, options = {}) {
+    const rect = typeof root.getBoundingClientRect === 'function'
+      ? root.getBoundingClientRect()
+      : { width: 0, height: 0 };
+    const preferredWidth = Math.max(
+      Number(options.width) || 0,
+      Math.ceil(rect.width || 0),
+      Math.ceil(root.scrollWidth || 0),
+      1180
+    );
+    const preferredHeight = Math.max(
+      Number(options.height) || 0,
+      Math.ceil(rect.height || 0),
+      Math.ceil(root.scrollHeight || 0),
+      720
+    );
+    return {
+      width: preferredWidth,
+      height: preferredHeight,
+    };
+  }
+
+  function buildCaptureSvgMarkup(clonedRoot, width, height) {
+    return `
+      <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+        <foreignObject width="100%" height="100%">
+          <div xmlns="http://www.w3.org/1999/xhtml">
+            <style>${collectCaptureStyles()}</style>
+            ${clonedRoot.outerHTML}
+          </div>
+        </foreignObject>
+      </svg>
+    `;
+  }
+
+  function collectCaptureStyles() {
+    const preferredSelectors = ['.comm-report', '.comm-v3', '.communication-report-placeholder', '[data-report-root="true"]'];
+    const chunks = [];
+    const sheets = Array.from(global.document?.styleSheets || []);
+    sheets.forEach((sheet) => {
+      let rules;
+      try {
+        rules = sheet.cssRules;
+      } catch (_) {
+        return;
+      }
+      if (!rules) return;
+      Array.from(rules).forEach((rule) => {
+        const cssText = String(rule.cssText || '');
+        if (!cssText || cssText.startsWith('@import')) return;
+        const selector = String(rule.selectorText || '');
+        if (!selector || preferredSelectors.some((candidate) => selector.includes(candidate))) {
+          chunks.push(cssText);
+        }
+      });
+    });
+    return chunks.join('\n');
+  }
+
+  function waitForRaf() {
+    return new Promise((resolve) => global.requestAnimationFrame(() => resolve()));
+  }
+
+  function waitForTimeout(ms) {
+    return new Promise((resolve) => global.setTimeout(resolve, ms));
+  }
+
+  async function loadImage(src) {
+    const img = new global.Image();
+    img.decoding = 'sync';
+    const loaded = new Promise((resolve, reject) => {
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('No se pudo rasterizar el DOM del informe a PNG.'));
+    });
+    img.src = src;
+    if (typeof img.decode === 'function') {
+      try {
+        await img.decode();
+        return img;
+      } catch (_) {
+        // continuamos con onload.
+      }
+    }
+    return loaded;
+  }
+
+  function buildCommunicationReportSyntheticFallbackPngDataUrl(report, options = {}) {
     const width = options.width || 1200;
     const height = options.height || 720;
     const canvas = global.document.createElement('canvas');
