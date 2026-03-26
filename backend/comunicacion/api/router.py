@@ -21,6 +21,7 @@ from comunicacion.models import (
 )
 from comunicacion.services import (
     attach_recording_to_attempt,
+    assert_evaluation_owner,
     create_attempt,
     ensure_communication_session,
     get_attempt,
@@ -34,6 +35,7 @@ from comunicacion.services.recording_service import (
     resolve_recording_playback_path,
 )
 from comunicacion.storage import REPOSITORY
+from sessions.session_lock import SessionBusyError, acquire_session_execution_lock
 
 router = APIRouter(prefix='/api/comunicacion', tags=['comunicacion'])
 
@@ -64,7 +66,15 @@ def bootstrap_session(payload: CommunicationSessionBootstrapRequest) -> Communic
 
 @router.post('/attempts', response_model=CreateAttemptResponse)
 def create_attempt_endpoint(payload: CreateAttemptRequest) -> CreateAttemptResponse:
-    attempt = create_attempt(user_id=payload.user_id, session_id=payload.session_id)
+    try:
+        with acquire_session_execution_lock(user_id=payload.user_id, session_id=payload.session_id):
+            attempt = create_attempt(user_id=payload.user_id, session_id=payload.session_id)
+    except SessionBusyError as exc:
+        raise HTTPException(
+            status_code=423,
+            detail={'error': 'session_busy', 'retry_after_seconds': exc.retry_after_seconds},
+            headers={'Retry-After': str(exc.retry_after_seconds)},
+        ) from exc
     return CreateAttemptResponse(
         attempt_id=attempt.attempt_id,
         status=attempt.status,
@@ -138,16 +148,24 @@ async def attach_recording_endpoint(attempt_id: str, request: Request) -> Upload
     else:
         payload = UploadRecordingRequest.model_validate(await request.json())
 
-    recording = attach_recording_to_attempt(
-        user_id=payload.user_id,
-        session_id=payload.session_id,
-        attempt_id=attempt_id,
-        mime_type=payload.mime_type,
-        duration_ms=payload.duration_ms,
-        video_ref=payload.video_ref,
-        poster_frame_ref=payload.poster_frame_ref,
-        capture_meta=payload.capture_meta,
-    )
+    try:
+        with acquire_session_execution_lock(user_id=payload.user_id, session_id=payload.session_id):
+            recording = attach_recording_to_attempt(
+                user_id=payload.user_id,
+                session_id=payload.session_id,
+                attempt_id=attempt_id,
+                mime_type=payload.mime_type,
+                duration_ms=payload.duration_ms,
+                video_ref=payload.video_ref,
+                poster_frame_ref=payload.poster_frame_ref,
+                capture_meta=payload.capture_meta,
+            )
+    except SessionBusyError as exc:
+        raise HTTPException(
+            status_code=423,
+            detail={'error': 'session_busy', 'retry_after_seconds': exc.retry_after_seconds},
+            headers={'Retry-After': str(exc.retry_after_seconds)},
+        ) from exc
     attempt = REPOSITORY.get_attempt(attempt_id)
     status = attempt.status if attempt is not None else 'uploaded'
     return UploadRecordingResponse(
@@ -172,11 +190,7 @@ def stream_recording_video_endpoint(recording_id: str) -> FileResponse:
 
 @router.post('/attempts/{attempt_id}/submit', response_model=SubmitAttemptResponse)
 def submit_attempt_endpoint(attempt_id: str, payload: SubmitAttemptRequest) -> SubmitAttemptResponse:
-    status = submit_attempt_for_evaluation(
-        user_id=payload.user_id,
-        session_id=payload.session_id,
-        attempt_id=attempt_id,
-    )
+    status = submit_attempt_for_evaluation(user_id=payload.user_id, session_id=payload.session_id, attempt_id=attempt_id)
     return SubmitAttemptResponse(
         attempt_id=status.attempt_id,
         evaluation_id=status.evaluation_id,
@@ -185,10 +199,24 @@ def submit_attempt_endpoint(attempt_id: str, payload: SubmitAttemptRequest) -> S
 
 
 @router.get('/evaluations/{evaluation_id}', response_model=CommunicationEvaluationStatusApiResponse)
-def get_evaluation_status_endpoint(evaluation_id: str) -> CommunicationEvaluationStatusApiResponse:
+def get_evaluation_status_endpoint(
+    evaluation_id: str,
+    *,
+    user_id: str | None = Query(default=None),
+    session_id: str | None = Query(default=None),
+) -> CommunicationEvaluationStatusApiResponse:
+    if user_id and session_id:
+        assert_evaluation_owner(evaluation_id=evaluation_id, user_id=user_id, session_id=session_id)
     return CommunicationEvaluationStatusApiResponse(**read_evaluation_status(evaluation_id=evaluation_id).model_dump())
 
 
 @router.get('/evaluations/{evaluation_id}/report', response_model=CommunicationEvaluationReportResponse)
-def get_evaluation_report_endpoint(evaluation_id: str) -> CommunicationEvaluationReportResponse:
+def get_evaluation_report_endpoint(
+    evaluation_id: str,
+    *,
+    user_id: str | None = Query(default=None),
+    session_id: str | None = Query(default=None),
+) -> CommunicationEvaluationReportResponse:
+    if user_id and session_id:
+        assert_evaluation_owner(evaluation_id=evaluation_id, user_id=user_id, session_id=session_id)
     return CommunicationEvaluationReportResponse(**read_evaluation_report(evaluation_id=evaluation_id).model_dump())

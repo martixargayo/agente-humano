@@ -11,29 +11,23 @@
       <section class="communication-card communication-card--shell">
         <header class="communication-header">
           <p class="eyebrow">Comunicación · Captura</p>
-          <h1 id="activityTitle">Presentación breve grabada</h1>
+          <h1 id="activityTitle">Preparación de vídeo</h1>
           <p id="activitySubtitle" class="communication-subtitle">
-            Fase 4: bootstrap, captura, review, submit, processing y report placeholder.
+            Configura cámara y micrófono, prepara tu esquema AIDA y envía tu grabación a evaluación.
           </p>
         </header>
 
         <div id="communicationStatusBanner" class="communication-banner hidden" aria-live="polite"></div>
         <div id="communicationErrorBanner" class="communication-banner communication-banner--error hidden" aria-live="assertive"></div>
 
-        <section id="screenIntro" class="communication-panel" data-screen="intro">
+        <section id="screenSetup" class="communication-panel" data-screen="setup">
           <div class="panel-copy">
-            <h2>Antes de empezar</h2>
-            <p id="introContextSummary">Vamos a preparar tu sesión y a comprobar permisos de cámara y micrófono.</p>
+            <h2>Configura cámara y micrófono</h2>
+            <p id="setupContextSummary">Vamos a preparar tu sesión y a comprobar permisos de cámara y micrófono.</p>
           </div>
-          <div class="panel-actions">
-            <button id="startFlowBtn" class="btn btn-primary" type="button">Empezar</button>
-          </div>
-        </section>
-
-        <section id="screenPermissions" class="communication-panel hidden" data-screen="permissions">
-          <div class="panel-copy">
-            <h2>Permisos y dispositivos</h2>
-            <p>Necesitamos cámara y micrófono para abrir la vista previa y permitir la grabación local.</p>
+          <div id="setupStatusText" class="setup-status">Necesitamos activar cámara y micrófono para continuar.</div>
+          <div class="video-shell video-shell--setup">
+            <video id="setupPreviewVideo" class="video-frame" autoplay playsinline muted></video>
           </div>
           <div class="permissions-grid">
             <div class="field-group">
@@ -46,45 +40,113 @@
             </div>
           </div>
           <div class="panel-actions">
-            <button id="grantPermissionsBtn" class="btn btn-primary" type="button">Conceder permisos</button>
-            <button id="openPreviewBtn" class="btn btn-secondary" type="button">Abrir preview</button>
+            <button id="refreshDevicesBtn" class="btn btn-secondary" type="button">Actualizar dispositivos</button>
+            <button id="setupPrimaryBtn" class="btn btn-primary" type="button">Activar cámara y micrófono</button>
           </div>
         </section>
 
-        <section id="screenPreview" class="communication-panel hidden" data-screen="preview">
+        <section id="screenAidaPrep" class="communication-panel hidden" data-screen="aida_prep">
           <div class="panel-copy">
-            <h2>Preview</h2>
-            <p>Comprueba encuadre y sonido antes de empezar a grabar.</p>
+            <h2>Prepara tu guion con AIDA</h2>
+            <p id="aidaContextSummary">Organiza tus ideas antes de empezar la grabación.</p>
           </div>
-          <div class="video-shell">
-            <video id="previewVideo" class="video-frame" autoplay playsinline muted></video>
+          <div class="aida-grid">
+            <div class="field-group">
+              <label for="brainmapAttention">Atención</label>
+              <textarea id="brainmapAttention" class="brainmap-textarea" rows="4" placeholder="¿Cómo captarás la atención?"></textarea>
+            </div>
+            <div class="field-group">
+              <label for="brainmapInterest">Interés</label>
+              <textarea id="brainmapInterest" class="brainmap-textarea" rows="4" placeholder="¿Cómo despertarás interés?"></textarea>
+            </div>
+            <div class="field-group">
+              <label for="brainmapDevelopment">Desarrollo</label>
+              <textarea id="brainmapDevelopment" class="brainmap-textarea" rows="4" placeholder="¿Qué ideas principales desarrollarás?"></textarea>
+            </div>
+            <div class="field-group">
+              <label for="brainmapAction">Acción</label>
+              <textarea id="brainmapAction" class="brainmap-textarea" rows="4" placeholder="¿Qué acción final propones?"></textarea>
+            </div>
           </div>
-          <div class="panel-actions">
-            <button id="refreshDevicesBtn" class="btn btn-secondary" type="button">Actualizar dispositivos</button>
-            <button id="startRecordingBtn" class="btn btn-primary" type="button">Grabar</button>
+          <div class="panel-actions wizard-actions">
+            <button id="backToSetupBtn" class="btn btn-secondary" type="button">Atrás</button>
+            <button id="continueToRecordingBtn" class="btn btn-primary" type="button">Continuar</button>
           </div>
         </section>
 
         <section id="screenRecording" class="communication-panel hidden" data-screen="recording">
-          <div class="panel-copy panel-copy--row">
+          <div class="panel-copy panel-copy--row panel-copy--recording">
             <div>
-              <h2>Grabando</h2>
-              <p>Tu grabación se está guardando localmente en este navegador.</p>
+              <h2>Grabación guiada</h2>
+              <p>Usa tu guía AIDA mientras grabas. Verás monitorización en vivo de cámara y micrófono.</p>
             </div>
             <div id="recordingIndicator" class="recording-indicator">● 00:00</div>
           </div>
-          <div class="video-shell">
-            <video id="recordingVideo" class="video-frame" autoplay playsinline muted></video>
+          <div class="recording-layout">
+            <section class="recording-main">
+              <h3 class="recording-section-title">Guía AIDA</h3>
+              <div class="recording-aida-grid">
+                <article class="recording-aida-card">
+                  <h4>Atención</h4>
+                  <p id="recordingAidaAttention" class="recording-aida-text">-</p>
+                </article>
+                <article class="recording-aida-card">
+                  <h4>Interés</h4>
+                  <p id="recordingAidaInterest" class="recording-aida-text">-</p>
+                </article>
+                <article class="recording-aida-card">
+                  <h4>Desarrollo</h4>
+                  <p id="recordingAidaDevelopment" class="recording-aida-text">-</p>
+                </article>
+                <article class="recording-aida-card">
+                  <h4>Acción</h4>
+                  <p id="recordingAidaAction" class="recording-aida-text">-</p>
+                </article>
+              </div>
+            </section>
+
+            <aside class="recording-side">
+              <h3 class="recording-section-title">Self-view</h3>
+              <div class="video-shell video-shell--recording-side">
+                <video id="recordingVideo" class="video-frame video-frame--selfview" autoplay playsinline muted></video>
+              </div>
+              <div class="recording-av-status">
+                <div id="recordingMicBadge" class="recording-status-badge status-badge--idle">Micrófono · --</div>
+                <div id="recordingCamBadge" class="recording-status-badge status-badge--idle">Cámara · --</div>
+              </div>
+            </aside>
           </div>
-          <div class="panel-actions">
-            <button id="stopRecordingBtn" class="btn btn-danger" type="button">Detener</button>
+          <div class="recording-control-bar">
+            <div id="recordingWaveform" class="recording-waveform" aria-label="Medidor de audio en vivo"></div>
+            <div class="recording-control-actions">
+              <button id="backToAidaBtn" class="btn btn-secondary" type="button">Atrás</button>
+              <button id="manageAvBtn" class="btn btn-secondary" type="button" aria-expanded="false">Gestionar micrófono y cámara</button>
+              <button id="startRecordingBtn" class="btn btn-primary" type="button">Grabar</button>
+              <button id="stopRecordingBtn" class="btn btn-danger" type="button">Detener</button>
+            </div>
+          </div>
+          <div id="avDevicePanel" class="av-device-panel hidden">
+            <div class="av-device-panel__head">
+              <h3>Dispositivos activos</h3>
+              <button id="closeAvPanelBtn" class="btn btn-secondary" type="button">Cerrar</button>
+            </div>
+            <div class="av-device-panel__grid">
+              <section class="av-device-group">
+                <h4>Cámara</h4>
+                <div id="recordingVideoDeviceList" class="av-device-options"></div>
+              </section>
+              <section class="av-device-group">
+                <h4>Micrófono</h4>
+                <div id="recordingAudioDeviceList" class="av-device-options"></div>
+              </section>
+            </div>
           </div>
         </section>
 
         <section id="screenReview" class="communication-panel hidden" data-screen="review">
           <div class="panel-copy">
             <h2>Review</h2>
-            <p>Revisa tu grabación local. Si te convence, registra su metadata y envíala a la evaluación mínima de Fase 4.</p>
+            <p>Revisa tu grabación local. Si te convence, envíala a evaluación.</p>
           </div>
           <div class="video-shell">
             <video id="reviewVideo" class="video-frame" controls playsinline></video>
@@ -95,22 +157,13 @@
               <dd id="reviewDuration">-</dd>
             </div>
             <div>
-              <dt>MIME</dt>
-              <dd id="reviewMimeType">-</dd>
-            </div>
-            <div>
               <dt>Tamaño</dt>
               <dd id="reviewBlobSize">-</dd>
-            </div>
-            <div>
-              <dt>Referencia provisional</dt>
-              <dd id="reviewVideoRef">-</dd>
             </div>
           </dl>
           <div class="panel-actions">
             <button id="rerecordBtn" class="btn btn-secondary" type="button">Volver a grabar</button>
-            <button id="registerRecordingBtn" class="btn btn-primary" type="button">Registrar grabación</button>
-            <button id="submitEvaluationBtn" class="btn btn-secondary" type="button">Enviar a evaluar</button>
+            <button id="sendAndEvaluateBtn" class="btn btn-primary" type="button">Enviar y evaluar</button>
           </div>
         </section>
 
@@ -122,9 +175,20 @@
         </section>
 
         <section id="screenProcessing" class="communication-panel hidden" data-screen="processing">
-          <div class="panel-copy">
-            <h2>Procesando evaluación</h2>
-            <p id="processingStatusText">Estamos esperando el resultado del pipeline mínimo y el report placeholder.</p>
+          <div class="feedback-loading-layout">
+            <div id="feedbackFloatingLayer" class="feedback-floating-layer" aria-hidden="true"></div>
+            <div class="feedback-loading-content">
+              <article class="feedback-card">
+                <h1 class="feedback-title feedback-title-shimmer">Estamos evaluando tu desempeño...</h1>
+                <p class="feedback-subtitle">
+                  Analizamos tu grabación para construir un feedback claro y accionable.
+                </p>
+                <div class="feedback-loading-stage">
+                  <span class="feedback-stage-dot"></span>
+                  <span id="processingStatusText">Analizando la comunicación...</span>
+                </div>
+              </article>
+            </div>
           </div>
         </section>
 

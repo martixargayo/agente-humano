@@ -1,7 +1,6 @@
 (function attachCommunicationApp(global) {
-  const SCREEN_INTRO = 'intro';
-  const SCREEN_PERMISSIONS = 'permissions';
-  const SCREEN_PREVIEW = 'preview';
+  const SCREEN_SETUP = 'setup';
+  const SCREEN_AIDA_PREP = 'aida_prep';
   const SCREEN_RECORDING = 'recording';
   const SCREEN_REVIEW = 'review';
   const SCREEN_UPLOADING = 'uploading';
@@ -10,11 +9,40 @@
   const SCREEN_ERROR = 'error';
   const EMBED_MESSAGE_VERSION = 1;
   const EMBED_NAMESPACE = 'gestionce.simulator';
+  const WAVEFORM_BAR_COUNT = 24;
+  const ProcessingStageLabel = {
+    queued: 'Preparando análisis...',
+    extracting: 'Procesando recursos...',
+    extracting_media: 'Preparando medios...',
+    transcription_started: 'Analizando transcripción...',
+    transcript_ready: 'Transcripción lista.',
+    content_analysis_started: 'Evaluando claridad del mensaje...',
+    content_analysis_ready: 'Contenido evaluado.',
+    delivery_analysis_started: 'Evaluando entrega y ritmo...',
+    audio_metrics_started: 'Midiendo audio...',
+    audio_features_ready: 'Audio analizado.',
+    delivery_analysis_ready: 'Entrega evaluada.',
+    frame_extraction_started: 'Analizando lenguaje visual...',
+    frames_ready: 'Frames procesados.',
+    visual_analysis_started: 'Evaluando presencia visual...',
+    visual_analysis_ready: 'Presencia visual analizada.',
+    synthesis_started: 'Integrando hallazgos...',
+    synthesis_ready: 'Sintetizando feedback...',
+    assembling_report: 'Preparando informe final...',
+    completed: 'Informe listo.',
+  };
+  const FloatingPhrases = [
+    'Estructura y claridad del discurso',
+    'Orden y narrativa del mensaje',
+    'Ritmo, pausas y expresividad',
+    'Presencia visual y apoyo gestual',
+    'AIDA y llamada a la acción',
+    'Consistencia del argumento',
+  ];
 
   const SCREEN_ORDER = [
-    SCREEN_INTRO,
-    SCREEN_PERMISSIONS,
-    SCREEN_PREVIEW,
+    SCREEN_SETUP,
+    SCREEN_AIDA_PREP,
     SCREEN_RECORDING,
     SCREEN_REVIEW,
     SCREEN_UPLOADING,
@@ -36,7 +64,7 @@
       capture_policy: null,
     },
     ui: {
-      screen: SCREEN_INTRO,
+      screen: SCREEN_SETUP,
       busy: false,
       error_message: null,
       notice_message: null,
@@ -60,6 +88,21 @@
       record_started_at_ms: null,
       record_timer_id: null,
       elapsed_label: '00:00',
+      av_panel_open: false,
+      audio_level_ratio: 0,
+      av_status_timer_id: null,
+      audio_context: null,
+      audio_analyser: null,
+      audio_source_node: null,
+      audio_data_array: null,
+      audio_raf_id: null,
+    },
+    brainmap: {
+      attention: '',
+      interest: '',
+      development: '',
+      action: '',
+      updated_at: null,
     },
     attempt: {
       attempt_id: null,
@@ -91,6 +134,8 @@
       ack_meta: null,
     },
   };
+  let floatingPhraseTimer = null;
+  let floatingPhrasesActive = false;
 
   function $(id) { return document.getElementById(id); }
   function transitionTo(screen) { state.ui.screen = screen; renderApp(); }
@@ -112,6 +157,14 @@
     if (size < 1024) return `${size} B`;
     if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
     return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  function isSetupReady() {
+    return state.capture.permission_camera === 'granted'
+      && state.capture.permission_mic === 'granted'
+      && state.capture.stream_active
+      && Boolean(state.capture.selected_video_device_id)
+      && Boolean(state.capture.selected_audio_device_id);
   }
 
   function readCommunicationSlugFromUrl() {
@@ -411,8 +464,13 @@
     });
     state.capture.media_stream = stream;
     state.capture.stream_active = true;
+    state.capture.selected_video_device_id = videoDeviceId || state.capture.selected_video_device_id;
+    state.capture.selected_audio_device_id = audioDeviceId || state.capture.selected_audio_device_id;
+    startAudioMonitoring(stream);
+    startAvStatusLoop();
     renderApp();
     syncVideoElements();
+    refreshCaptureHealthIndicators();
     return stream;
   }
 
@@ -420,7 +478,128 @@
     if (state.capture.media_stream) state.capture.media_stream.getTracks().forEach((track) => track.stop());
     state.capture.media_stream = null;
     state.capture.stream_active = false;
+    stopAudioMonitoring();
+    stopAvStatusLoop();
     syncVideoElements();
+  }
+
+  function getTrackHealth(track) {
+    if (!track) return 'missing';
+    if (track.readyState === 'live' && track.enabled) return 'ok';
+    return 'ko';
+  }
+
+  function refreshCaptureHealthIndicators() {
+    const stream = state.capture.media_stream;
+    const audioTrack = stream ? stream.getAudioTracks()[0] : null;
+    const videoTrack = stream ? stream.getVideoTracks()[0] : null;
+    const micBadge = $('recordingMicBadge');
+    const camBadge = $('recordingCamBadge');
+    if (micBadge) {
+      const micHealth = getTrackHealth(audioTrack);
+      micBadge.className = `recording-status-badge status-badge--${micHealth}`;
+      micBadge.textContent = micHealth === 'ok' ? 'Micrófono · OK' : 'Micrófono · Sin señal';
+    }
+    if (camBadge) {
+      const camHealth = getTrackHealth(videoTrack);
+      camBadge.className = `recording-status-badge status-badge--${camHealth}`;
+      camBadge.textContent = camHealth === 'ok' ? 'Cámara · OK' : 'Cámara · Sin señal';
+    }
+  }
+
+  function ensureWaveformBars() {
+    const node = $('recordingWaveform');
+    if (!node || node.dataset.hydrated === 'true') return;
+    node.innerHTML = new Array(WAVEFORM_BAR_COUNT).fill(0).map(() => '<span class="recording-waveform__bar"></span>').join('');
+    node.dataset.hydrated = 'true';
+  }
+
+  function renderWaveform(levelRatio) {
+    ensureWaveformBars();
+    const node = $('recordingWaveform');
+    if (!node) return;
+    const bars = node.querySelectorAll('.recording-waveform__bar');
+    const clamped = Math.max(0, Math.min(1, levelRatio || 0));
+    const activeBars = Math.max(1, Math.round(clamped * WAVEFORM_BAR_COUNT));
+    bars.forEach((bar, index) => {
+      const shouldGlow = index < activeBars;
+      bar.style.setProperty('--bar-scale', shouldGlow ? `${0.35 + (index / WAVEFORM_BAR_COUNT) * 0.65}` : '0.16');
+      bar.classList.toggle('active', shouldGlow);
+    });
+  }
+
+  function startAvStatusLoop() {
+    stopAvStatusLoop();
+    state.capture.av_status_timer_id = global.setInterval(() => {
+      refreshCaptureHealthIndicators();
+    }, 300);
+  }
+
+  function stopAvStatusLoop() {
+    if (state.capture.av_status_timer_id) {
+      global.clearInterval(state.capture.av_status_timer_id);
+      state.capture.av_status_timer_id = null;
+    }
+  }
+
+  function startAudioMonitoring(stream) {
+    stopAudioMonitoring();
+    if (!stream) return;
+    try {
+      const AudioCtx = global.AudioContext || global.webkitAudioContext;
+      if (!AudioCtx) return;
+      const audioTrack = stream.getAudioTracks()[0];
+      if (!audioTrack) return;
+      const context = new AudioCtx();
+      const analyser = context.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.75;
+      const source = context.createMediaStreamSource(stream);
+      source.connect(analyser);
+      state.capture.audio_context = context;
+      state.capture.audio_analyser = analyser;
+      state.capture.audio_source_node = source;
+      state.capture.audio_data_array = new Uint8Array(analyser.fftSize);
+
+      const loop = () => {
+        if (!state.capture.audio_analyser || !state.capture.audio_data_array) return;
+        state.capture.audio_analyser.getByteTimeDomainData(state.capture.audio_data_array);
+        let sumSquares = 0;
+        for (let i = 0; i < state.capture.audio_data_array.length; i += 1) {
+          const centered = (state.capture.audio_data_array[i] - 128) / 128;
+          sumSquares += centered * centered;
+        }
+        const rms = Math.sqrt(sumSquares / state.capture.audio_data_array.length);
+        state.capture.audio_level_ratio = Math.min(1, rms * 3.2);
+        renderWaveform(state.capture.audio_level_ratio);
+        state.capture.audio_raf_id = global.requestAnimationFrame(loop);
+      };
+      loop();
+    } catch (_error) {
+      // noop: monitor visual es best-effort
+    }
+  }
+
+  function stopAudioMonitoring() {
+    if (state.capture.audio_raf_id) {
+      global.cancelAnimationFrame(state.capture.audio_raf_id);
+      state.capture.audio_raf_id = null;
+    }
+    state.capture.audio_level_ratio = 0;
+    renderWaveform(0);
+    if (state.capture.audio_source_node && typeof state.capture.audio_source_node.disconnect === 'function') {
+      state.capture.audio_source_node.disconnect();
+    }
+    if (state.capture.audio_analyser && typeof state.capture.audio_analyser.disconnect === 'function') {
+      state.capture.audio_analyser.disconnect();
+    }
+    if (state.capture.audio_context && typeof state.capture.audio_context.close === 'function') {
+      state.capture.audio_context.close().catch(() => {});
+    }
+    state.capture.audio_context = null;
+    state.capture.audio_analyser = null;
+    state.capture.audio_source_node = null;
+    state.capture.audio_data_array = null;
   }
 
   async function createAttempt() {
@@ -495,11 +674,12 @@
     state.evaluation.report_available = false;
     state.report.payload = null;
     state.report.placeholder_ready = false;
+    state.capture.av_panel_open = false;
     state.attempt.attempt_id = null;
     state.attempt.status = null;
     state.attempt.rerecord_count += 1;
     setNotice('Grabación reiniciada. Puedes volver a grabar antes de registrar metadata.');
-    transitionTo(SCREEN_PREVIEW);
+    transitionTo(SCREEN_RECORDING);
   }
 
   function deriveTemporaryVideoRef() {
@@ -585,9 +765,21 @@
     }
   }
 
+  async function sendAndEvaluate() {
+    if (!state.capture.recorded_blob) throw new Error('No hay grabación lista para enviar');
+    if (!state.upload.recording_id) {
+      await registerRecordingMetadata();
+    }
+    await submitCommunicationAttempt();
+  }
+
   async function fetchEvaluationStatus() {
     if (!state.evaluation.evaluation_id) throw new Error('No existe evaluation_id para consultar');
-    const out = await api(`/api/comunicacion/evaluations/${state.evaluation.evaluation_id}`);
+    const params = new URLSearchParams({
+      user_id: state.session.user_id || '',
+      session_id: state.session.session_id || '',
+    });
+    const out = await api(`/api/comunicacion/evaluations/${state.evaluation.evaluation_id}?${params.toString()}`);
     state.evaluation.status = out.status;
     state.evaluation.stage = out.stage;
     state.evaluation.report_available = Boolean(out.report_available);
@@ -598,7 +790,11 @@
 
   async function fetchEvaluationReport() {
     if (!state.evaluation.evaluation_id) throw new Error('No existe evaluation_id para leer report');
-    const out = await api(`/api/comunicacion/evaluations/${state.evaluation.evaluation_id}/report`);
+    const params = new URLSearchParams({
+      user_id: state.session.user_id || '',
+      session_id: state.session.session_id || '',
+    });
+    const out = await api(`/api/comunicacion/evaluations/${state.evaluation.evaluation_id}/report?${params.toString()}`);
     state.report.payload = out;
     state.report.placeholder_ready = true;
     transitionTo(SCREEN_REPORT);
@@ -630,10 +826,49 @@
     await step();
   }
 
+  function stopFloatingPhrases() {
+    floatingPhrasesActive = false;
+    if (floatingPhraseTimer) {
+      global.clearTimeout(floatingPhraseTimer);
+      floatingPhraseTimer = null;
+    }
+    const layer = $('feedbackFloatingLayer');
+    if (layer) layer.innerHTML = '';
+  }
+
+  function spawnFloatingPhrase() {
+    const layer = $('feedbackFloatingLayer');
+    if (!layer || state.ui.screen !== SCREEN_PROCESSING) return;
+    const phrase = FloatingPhrases[Math.floor(Math.random() * FloatingPhrases.length)];
+    const line = document.createElement('span');
+    line.className = 'feedback-floating-line';
+    line.textContent = phrase;
+    line.style.left = `${8 + Math.random() * 72}%`;
+    line.style.top = `${10 + Math.random() * 70}%`;
+    line.style.setProperty('--line-duration', `${7600 + Math.random() * 2200}ms`);
+    layer.appendChild(line);
+    global.setTimeout(() => line.remove(), 9800);
+  }
+
+  function startFloatingPhrases() {
+    if (floatingPhrasesActive) return;
+    floatingPhrasesActive = true;
+    stopFloatingPhrases();
+    floatingPhrasesActive = true;
+    for (let i = 0; i < 4; i += 1) spawnFloatingPhrase();
+    const loop = () => {
+      if (state.ui.screen !== SCREEN_PROCESSING) return;
+      spawnFloatingPhrase();
+      floatingPhraseTimer = global.setTimeout(loop, 900 + Math.random() * 1200);
+    };
+    floatingPhraseTimer = global.setTimeout(loop, 800);
+  }
+
   function renderApp() {
     const title = state.context.activity_brief?.title || 'Presentación breve grabada';
     $('activityTitle').textContent = title;
-    $('introContextSummary').textContent = state.context.activity_brief?.description || 'Vamos a preparar tu sesión y a comprobar permisos de cámara y micrófono.';
+    $('setupContextSummary').textContent = state.context.activity_brief?.description || 'Vamos a preparar tu sesión y a comprobar permisos de cámara y micrófono.';
+    $('aidaContextSummary').textContent = state.context.activity_brief?.description || 'Prepara tus ideas clave antes de grabar.';
 
     const statusBanner = $('communicationStatusBanner');
     const errorBanner = $('communicationErrorBanner');
@@ -649,15 +884,21 @@
     }
 
     $('reviewDuration').textContent = state.capture.duration_ms ? formatDurationLabel(state.capture.duration_ms) : '-';
-    $('reviewMimeType').textContent = state.capture.mime_type || '-';
     $('reviewBlobSize').textContent = state.capture.blob_size_bytes ? formatBytes(state.capture.blob_size_bytes) : '-';
-    $('reviewVideoRef').textContent = state.upload.video_ref || 'Se generará al registrar metadata';
     $('recordingIndicator').textContent = `● ${state.capture.elapsed_label}`;
+    $('recordingAidaAttention').textContent = state.brainmap.attention || 'Sin contenido todavía.';
+    $('recordingAidaInterest').textContent = state.brainmap.interest || 'Sin contenido todavía.';
+    $('recordingAidaDevelopment').textContent = state.brainmap.development || 'Sin contenido todavía.';
+    $('recordingAidaAction').textContent = state.brainmap.action || 'Sin contenido todavía.';
+    const avPanel = $('avDevicePanel');
+    if (avPanel) avPanel.classList.toggle('hidden', !state.capture.av_panel_open);
+    const manageAvBtn = $('manageAvBtn');
+    if (manageAvBtn) manageAvBtn.setAttribute('aria-expanded', state.capture.av_panel_open ? 'true' : 'false');
     $('uploadStatusText').textContent = state.ui.busy ? 'Estamos creando el attempt y enviando la referencia provisional de la grabación.' : 'El registro de metadata ha finalizado o está pendiente de reintento.';
     const processingNode = $('processingStatusText');
-    if (processingNode) processingNode.textContent = state.evaluation.evaluation_id
-      ? `evaluation_id=${state.evaluation.evaluation_id} · status=${state.evaluation.status} · stage=${state.evaluation.stage || 'queued'}`
-      : 'Aún no has enviado la grabación a evaluación.';
+    if (processingNode) processingNode.textContent = ProcessingStageLabel[state.evaluation.stage || state.evaluation.status] || 'Analizando la comunicación...';
+    if (state.ui.screen === SCREEN_PROCESSING) startFloatingPhrases();
+    else stopFloatingPhrases();
 
     const deliveryPanel = $('finalResultStatusPanel');
     if (deliveryPanel) {
@@ -682,8 +923,42 @@
     }
 
     syncDeviceSelects();
+    renderDevicePanelOptions();
+    syncBrainmapInputs();
+    syncSetupState();
     syncVideoElements();
+    refreshCaptureHealthIndicators();
+    ensureWaveformBars();
     syncButtons();
+  }
+
+  function syncSetupState() {
+    const setupStatus = $('setupStatusText');
+    const setupPrimaryBtn = $('setupPrimaryBtn');
+    if (!setupStatus || !setupPrimaryBtn) return;
+    if (state.capture.permission_camera === 'denied' || state.capture.permission_mic === 'denied') {
+      setupStatus.textContent = 'Permiso denegado. Activa cámara y micrófono en el navegador para continuar.';
+    } else if (!state.capture.stream_active) {
+      setupStatus.textContent = 'Necesitamos activar cámara y micrófono para continuar.';
+    } else {
+      setupStatus.textContent = 'Cámara y micrófono listos. Ya puedes empezar.';
+    }
+    setupPrimaryBtn.textContent = isSetupReady() ? 'Empezar' : 'Activar cámara y micrófono';
+  }
+
+  function syncBrainmapInputs() {
+    const map = {
+      brainmapAttention: 'attention',
+      brainmapInterest: 'interest',
+      brainmapDevelopment: 'development',
+      brainmapAction: 'action',
+    };
+    Object.entries(map).forEach(([id, key]) => {
+      const node = $(id);
+      if (!node) return;
+      const nextValue = state.brainmap[key] || '';
+      if (node.value !== nextValue) node.value = nextValue;
+    });
   }
 
   function syncDeviceSelects() {
@@ -696,30 +971,69 @@
   function hydrateDeviceSelect(select, devices, selectedId, emptyLabel) {
     if (!select) return;
     const entries = devices.length > 0 ? devices.map((device, index) => ({ value: device.deviceId, label: device.label || `Dispositivo ${index + 1}` })) : [{ value: '', label: emptyLabel }];
-    select.innerHTML = entries.map((entry) => `<option value="${escapeHtml(entry.value)}">${escapeHtml(entry.label)}</option>`).join('');
-    select.value = selectedId || entries[0].value;
+    const signature = JSON.stringify(entries.map((entry) => `${entry.value}:${entry.label}`));
+    if (select.dataset.signature !== signature) {
+      select.innerHTML = entries.map((entry) => `<option value="${escapeHtml(entry.value)}">${escapeHtml(entry.label)}</option>`).join('');
+      select.dataset.signature = signature;
+    }
+    const nextValue = selectedId || entries[0].value;
+    if (select.value !== nextValue) select.value = nextValue;
+  }
+
+  function buildDeviceOptionsMarkup(devices, selectedId, kind) {
+    if (!devices.length) return '<div class="av-device-empty">No hay dispositivos disponibles.</div>';
+    return devices.map((device, index) => {
+      const label = device.label || `${kind === 'video' ? 'Cámara' : 'Micrófono'} ${index + 1}`;
+      const isActive = selectedId === device.deviceId;
+      return `<button class="av-device-option${isActive ? ' active' : ''}" type="button" data-device-kind="${kind}" data-device-id="${escapeHtml(device.deviceId)}"><span>${escapeHtml(label)}</span><span class="av-device-option__check">${isActive ? '✓' : ''}</span></button>`;
+    }).join('');
+  }
+
+  function renderDevicePanelOptions() {
+    const videoList = $('recordingVideoDeviceList');
+    const audioList = $('recordingAudioDeviceList');
+    if (videoList) {
+      const signature = JSON.stringify([state.capture.selected_video_device_id, ...state.capture.available_video_devices.map((d) => `${d.deviceId}:${d.label || ''}`)]);
+      if (videoList.dataset.signature !== signature) {
+        videoList.innerHTML = buildDeviceOptionsMarkup(state.capture.available_video_devices, state.capture.selected_video_device_id, 'video');
+        videoList.dataset.signature = signature;
+      }
+    }
+    if (audioList) {
+      const signature = JSON.stringify([state.capture.selected_audio_device_id, ...state.capture.available_audio_devices.map((d) => `${d.deviceId}:${d.label || ''}`)]);
+      if (audioList.dataset.signature !== signature) {
+        audioList.innerHTML = buildDeviceOptionsMarkup(state.capture.available_audio_devices, state.capture.selected_audio_device_id, 'audio');
+        audioList.dataset.signature = signature;
+      }
+    }
   }
 
   function syncVideoElements() {
-    const previewVideo = $('previewVideo');
+    const previewVideo = $('setupPreviewVideo');
     const recordingVideo = $('recordingVideo');
     const reviewVideo = $('reviewVideo');
-    if (previewVideo) previewVideo.srcObject = state.capture.media_stream || null;
-    if (recordingVideo) recordingVideo.srcObject = state.capture.media_stream || null;
-    if (reviewVideo) { reviewVideo.srcObject = null; reviewVideo.src = state.capture.blob_url || ''; }
+    if (previewVideo && previewVideo.srcObject !== (state.capture.media_stream || null)) previewVideo.srcObject = state.capture.media_stream || null;
+    if (recordingVideo && recordingVideo.srcObject !== (state.capture.media_stream || null)) recordingVideo.srcObject = state.capture.media_stream || null;
+    if (reviewVideo) {
+      if (reviewVideo.srcObject !== null) reviewVideo.srcObject = null;
+      const nextUrl = state.capture.blob_url || '';
+      if ((reviewVideo.getAttribute('src') || '') !== nextUrl) reviewVideo.src = nextUrl;
+    }
   }
 
   function syncButtons() {
     const busy = state.ui.busy;
-    toggleDisabled('startFlowBtn', busy);
-    toggleDisabled('grantPermissionsBtn', busy);
-    toggleDisabled('openPreviewBtn', busy || !state.capture.permission_camera || state.capture.permission_camera === 'denied');
+    toggleDisabled('setupPrimaryBtn', busy);
     toggleDisabled('refreshDevicesBtn', busy);
-    toggleDisabled('startRecordingBtn', busy || !state.capture.stream_active);
+    toggleDisabled('startRecordingBtn', busy || !state.capture.stream_active || state.capture.is_recording);
     toggleDisabled('stopRecordingBtn', busy || !state.capture.is_recording);
+    toggleDisabled('backToAidaBtn', busy || state.capture.is_recording);
+    toggleDisabled('manageAvBtn', busy);
+    toggleDisabled('closeAvPanelBtn', busy);
+    toggleDisabled('backToSetupBtn', busy);
+    toggleDisabled('continueToRecordingBtn', busy || !isSetupReady());
     toggleDisabled('rerecordBtn', busy);
-    toggleDisabled('registerRecordingBtn', busy || !state.capture.recorded_blob);
-    toggleDisabled('submitEvaluationBtn', busy || !state.upload.recording_id);
+    toggleDisabled('sendAndEvaluateBtn', busy || !state.capture.recorded_blob);
     toggleDisabled('exportReportJsonBtn', busy || !state.report.payload);
     toggleDisabled('exportReportHtmlBtn', busy || !state.report.payload);
     toggleDisabled('exportReportPngBtn', busy || !state.report.payload);
@@ -764,11 +1078,12 @@
   function startRecordingTimer() {
     stopRecordingTimer();
     state.capture.elapsed_label = '00:00';
+    const indicator = $('recordingIndicator');
     state.capture.record_timer_id = global.setInterval(() => {
       const elapsed = Date.now() - (state.capture.record_started_at_ms || Date.now());
       state.capture.duration_ms = elapsed;
       state.capture.elapsed_label = formatDurationLabel(elapsed);
-      renderApp();
+      if (indicator) indicator.textContent = `● ${state.capture.elapsed_label}`;
     }, 250);
   }
 
@@ -785,27 +1100,119 @@
     state.capture.elapsed_label = '00:00';
   }
 
+  async function handleDeviceChange(kind, deviceId) {
+    if (!deviceId) return;
+    if (state.capture.is_recording) {
+      setNotice('Para cambiar dispositivo de forma segura, detén la grabación actual.');
+      return;
+    }
+    if (kind === 'video') state.capture.selected_video_device_id = deviceId;
+    if (kind === 'audio') state.capture.selected_audio_device_id = deviceId;
+    const videoSelect = $('videoDeviceSelect');
+    const audioSelect = $('audioDeviceSelect');
+    if (videoSelect && kind === 'video') videoSelect.value = deviceId;
+    if (audioSelect && kind === 'audio') audioSelect.value = deviceId;
+    if (!state.capture.stream_active) {
+      renderDevicePanelOptions();
+      return;
+    }
+    try {
+      setBusy(true);
+      await openPreviewStream({
+        videoDeviceId: state.capture.selected_video_device_id,
+        audioDeviceId: state.capture.selected_audio_device_id,
+      });
+      renderDevicePanelOptions();
+    } catch (error) {
+      setError(`No se pudo cambiar el dispositivo: ${error.message}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function installEventHandlers() {
-    $('startFlowBtn').addEventListener('click', () => transitionTo(SCREEN_PERMISSIONS));
-    $('grantPermissionsBtn').addEventListener('click', async () => {
-      clearError(); setBusy(true);
+    $('setupPrimaryBtn').addEventListener('click', async () => {
+      clearError();
+      if (isSetupReady()) {
+        transitionTo(SCREEN_AIDA_PREP);
+        return;
+      }
+      setBusy(true);
       try {
         const stream = await requestCapturePermissions();
-        stopPreviewStream(); state.capture.media_stream = stream; state.capture.stream_active = true;
-        await listCaptureDevices(); setNotice('Permisos concedidos. Ya puedes abrir la preview.');
+        stopPreviewStream();
+        state.capture.media_stream = stream;
+        state.capture.stream_active = true;
+        await listCaptureDevices();
+        await openPreviewStream({
+          videoDeviceId: $('videoDeviceSelect').value || state.capture.selected_video_device_id || null,
+          audioDeviceId: $('audioDeviceSelect').value || state.capture.selected_audio_device_id || null,
+        });
+        setNotice('Permisos concedidos. Cuando quieras, pulsa “Empezar”.');
       } catch (error) {
-        state.capture.permission_camera = 'denied'; state.capture.permission_mic = 'denied'; setError(`No se pudieron conceder permisos: ${error.message}`);
-      } finally { setBusy(false); }
+        state.capture.permission_camera = 'denied';
+        state.capture.permission_mic = 'denied';
+        setError(`No se pudieron conceder permisos: ${error.message}`);
+      } finally {
+        setBusy(false);
+      }
     });
-    $('openPreviewBtn').addEventListener('click', async () => { clearError(); setBusy(true); try { await openPreviewStream({ videoDeviceId: $('videoDeviceSelect').value || null, audioDeviceId: $('audioDeviceSelect').value || null }); transitionTo(SCREEN_PREVIEW); } catch (error) { setError(`No se pudo abrir la preview: ${error.message}`); } finally { setBusy(false); } });
+    $('backToSetupBtn').addEventListener('click', () => transitionTo(SCREEN_SETUP));
+    $('continueToRecordingBtn').addEventListener('click', async () => {
+      clearError();
+      setBusy(true);
+      try {
+        if (!state.capture.stream_active) {
+          await openPreviewStream({
+            videoDeviceId: state.capture.selected_video_device_id,
+            audioDeviceId: state.capture.selected_audio_device_id,
+          });
+        }
+        transitionTo(SCREEN_RECORDING);
+      } catch (error) {
+        setError(`No se pudo preparar la grabación: ${error.message}`);
+      } finally {
+        setBusy(false);
+      }
+    });
     $('refreshDevicesBtn').addEventListener('click', async () => { setBusy(true); try { await listCaptureDevices(); await openPreviewStream({ videoDeviceId: $('videoDeviceSelect').value || null, audioDeviceId: $('audioDeviceSelect').value || null }); } catch (error) { setError(`No se pudieron refrescar los dispositivos: ${error.message}`); } finally { setBusy(false); } });
-    $('videoDeviceSelect').addEventListener('change', async (event) => { state.capture.selected_video_device_id = event.target.value || null; if (state.capture.stream_active) { try { await openPreviewStream({ videoDeviceId: state.capture.selected_video_device_id, audioDeviceId: state.capture.selected_audio_device_id }); } catch (error) { setError(`No se pudo cambiar la cámara: ${error.message}`); } } });
-    $('audioDeviceSelect').addEventListener('change', async (event) => { state.capture.selected_audio_device_id = event.target.value || null; if (state.capture.stream_active) { try { await openPreviewStream({ videoDeviceId: state.capture.selected_video_device_id, audioDeviceId: state.capture.selected_audio_device_id }); } catch (error) { setError(`No se pudo cambiar el micrófono: ${error.message}`); } } });
+    $('videoDeviceSelect').addEventListener('change', async (event) => { await handleDeviceChange('video', event.target.value || null); });
+    $('audioDeviceSelect').addEventListener('change', async (event) => { await handleDeviceChange('audio', event.target.value || null); });
+    ['brainmapAttention', 'brainmapInterest', 'brainmapDevelopment', 'brainmapAction'].forEach((id) => {
+      const map = {
+        brainmapAttention: 'attention',
+        brainmapInterest: 'interest',
+        brainmapDevelopment: 'development',
+        brainmapAction: 'action',
+      };
+      $(id).addEventListener('input', (event) => {
+        state.brainmap[map[id]] = event.target.value || '';
+        state.brainmap.updated_at = new Date().toISOString();
+      });
+    });
+    $('backToAidaBtn').addEventListener('click', () => { if (!state.capture.is_recording) transitionTo(SCREEN_AIDA_PREP); });
+    $('manageAvBtn').addEventListener('click', () => {
+      state.capture.av_panel_open = !state.capture.av_panel_open;
+      renderApp();
+    });
+    $('closeAvPanelBtn').addEventListener('click', () => {
+      state.capture.av_panel_open = false;
+      renderApp();
+    });
+    $('recordingVideoDeviceList').addEventListener('click', async (event) => {
+      const button = event.target.closest('button[data-device-kind="video"]');
+      if (!button) return;
+      await handleDeviceChange('video', button.dataset.deviceId || '');
+    });
+    $('recordingAudioDeviceList').addEventListener('click', async (event) => {
+      const button = event.target.closest('button[data-device-kind="audio"]');
+      if (!button) return;
+      await handleDeviceChange('audio', button.dataset.deviceId || '');
+    });
     $('startRecordingBtn').addEventListener('click', async () => { setBusy(true); try { await startRecording(); } catch (error) { setError(`No se pudo iniciar la grabación: ${error.message}`); } finally { setBusy(false); } });
     $('stopRecordingBtn').addEventListener('click', async () => { setBusy(true); try { await stopRecording(); } catch (error) { setError(`No se pudo detener la grabación: ${error.message}`); } finally { setBusy(false); } });
     $('rerecordBtn').addEventListener('click', () => { clearError(); resetRecordingReview(); });
-    $('registerRecordingBtn').addEventListener('click', async () => { clearError(); try { await registerRecordingMetadata(); } catch (error) { setError(`No se pudo registrar la grabación: ${error.message}`); } });
-    $('submitEvaluationBtn').addEventListener('click', async () => { clearError(); try { await submitCommunicationAttempt(); } catch (error) { setError(`No se pudo enviar la evaluación: ${error.message}`); } });
+    $('sendAndEvaluateBtn').addEventListener('click', async () => { clearError(); try { await sendAndEvaluate(); } catch (error) { setError(`No se pudo enviar la evaluación: ${error.message}`); } });
     $('exportReportJsonBtn').addEventListener('click', async () => { clearError(); try { await exportReportJson(); } catch (error) { setError(`No se pudo exportar el JSON: ${error.message}`); } });
     $('exportReportHtmlBtn').addEventListener('click', async () => { clearError(); try { await exportReportHtml(); } catch (error) { setError(`No se pudo exportar el HTML: ${error.message}`); } });
     $('exportReportPngBtn').addEventListener('click', async () => { clearError(); try { await exportReportPng(); } catch (error) { setError(`No se pudo exportar el PNG: ${error.message}`); } });
@@ -816,8 +1223,21 @@
 
   async function initialize() {
     renderApp(); installEventHandlers(); installCommunicationEmbedMessageListener();
+    window.addEventListener('beforeunload', () => {
+      stopAudioMonitoring();
+      stopAvStatusLoop();
+      stopRecordingTimer();
+      stopEvaluationPolling();
+      stopPreviewStream();
+      stopFloatingPhrases();
+    });
     try { await bootstrapCommunicationSession(); } catch (error) { setError(`No se pudo preparar la sesión: ${error.message}`); return; }
     try { await listCaptureDevices(); } catch (_error) { }
+    if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+      navigator.mediaDevices.addEventListener('devicechange', async () => {
+        try { await listCaptureDevices(); } catch (_error) { }
+      });
+    }
     renderApp();
   }
 
@@ -825,9 +1245,8 @@
 
   global.CommunicationApp = {
     state,
-    SCREEN_INTRO,
-    SCREEN_PERMISSIONS,
-    SCREEN_PREVIEW,
+    SCREEN_SETUP,
+    SCREEN_AIDA_PREP,
     SCREEN_RECORDING,
     SCREEN_REVIEW,
     SCREEN_UPLOADING,
@@ -843,6 +1262,7 @@
     startRecording,
     stopRecording,
     resetRecordingReview,
+    sendAndEvaluate,
     registerRecordingMetadata,
     submitCommunicationAttempt,
     pollEvaluationUntilReportReady,
