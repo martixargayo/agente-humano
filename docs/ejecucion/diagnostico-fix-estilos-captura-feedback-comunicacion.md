@@ -42,6 +42,18 @@ Se cambió la recolección de CSS para que sea contextual al `clonedRoot`:
 
 Con esto, el SVG embebe los estilos reales del feedback que antes faltaban.
 
+## Ajuste adicional por tipografía serif remanente
+Tras el ajuste contextual de CSS, persistía un caso visual: el PNG podía verse en Times New Roman aunque el layout ya fuese correcto.
+
+Causa raíz: en el `foreignObject` el árbol capturado no depende de un `<body>` real del documento; por tanto, reglas tipográficas globales podían no terminar heredando de forma consistente sobre todo el subtree serializado.
+
+Corrección mínima aplicada:
+- Se fuerza `font-family` en el root clonado antes de serializar (`clonedRoot.style.fontFamily = ...`).
+- Se inyecta una regla explícita dentro del SVG para el contenedor de captura y todo su subtree:
+  - `.comm-report-capture-frame, .comm-report-capture-frame * { font-family: Inter, system-ui, ... }`
+
+Esto mantiene la captura DOM real y evita degradación tipográfica sin tocar el contrato de `snapshot_png_dataurl`.
+
 ## Tests ejecutados
 - `python -m unittest backend.tests.test_communication_snapshot_capture_path`
 
@@ -49,6 +61,7 @@ Además se amplió el harness en `test_communication_snapshot_capture_path.py` p
 - se embeben reglas de tipografía (`body { font-family: ... }`);
 - se embeben reglas clave de layout/cards (`.feedback-dashboard`, `.fb-card`, `.fb-grid-cards`);
 - no se cuelan selectores no relacionados.
+- el SVG final contiene una regla explícita de `font-family` para el contenedor de captura y que el root clonado también recibe `fontFamily`.
 
 ## Veredicto final
 Con el cambio aplicado, el happy path DOM→SVG→PNG mantiene la sanitización multimedia y además embebe el CSS necesario para preservar la estética real del feedback de comunicación. El fallback sintético sigue intacto y reservado para errores reales de rasterización/captura.

@@ -198,6 +198,36 @@ class CommunicationSnapshotCapturePathTests(unittest.TestCase):
         )
         return json.loads(completed.stdout)
 
+    def _run_svg_font_family_harness(self) -> dict:
+        build_svg_fn = self._extract_function_source('buildCaptureSvgMarkup')
+        script = textwrap.dedent(
+            f"""
+            function collectCaptureStyles() {{
+              return '.feedback-dashboard {{ display:grid; }}';
+            }}
+            {build_svg_fn}
+            const clonedRoot = {{
+              style: {{}},
+              outerHTML: '<section class="comm-feedback-root" data-report-root="true"><div class="feedback-dashboard">ok</div></section>'
+            }};
+            const svg = buildCaptureSvgMarkup(clonedRoot, 1180, 720);
+            process.stdout.write(JSON.stringify({{
+              svgHasFontFamilyRule: svg.includes('font-family: Inter, system-ui'),
+              svgHasCaptureFrameRule: svg.includes('.comm-report-capture-frame'),
+              svgKeepsCollectedStyles: svg.includes('.feedback-dashboard {{ display:grid; }}'),
+              clonedRootFontFamily: clonedRoot.style.fontFamily || null
+            }}));
+            """
+        )
+        completed = subprocess.run(
+            ['node', '-e', script],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return json.loads(completed.stdout)
+
     def test_happy_path_uses_dom_capture_as_primary_strategy(self) -> None:
         output = self._run_harness(from_dom_mode='ok')
         self.assertEqual(output['value'], 'data:image/png;base64,RE9NX1NOT1Q=')
@@ -226,6 +256,13 @@ class CommunicationSnapshotCapturePathTests(unittest.TestCase):
         self.assertTrue(output['hasFbCardRules'])
         self.assertTrue(output['hasFbGridCardsRules'])
         self.assertFalse(output['includesUnrelatedSelector'])
+
+    def test_svg_markup_forces_font_family_on_capture_subtree(self) -> None:
+        output = self._run_svg_font_family_harness()
+        self.assertTrue(output['svgHasFontFamilyRule'])
+        self.assertTrue(output['svgHasCaptureFrameRule'])
+        self.assertTrue(output['svgKeepsCollectedStyles'])
+        self.assertIn('Inter, system-ui', output['clonedRootFontFamily'])
 
 
 if __name__ == '__main__':

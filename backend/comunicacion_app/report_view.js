@@ -312,12 +312,22 @@
   }
 
   function buildCaptureSvgMarkup(clonedRoot, width, height) {
+    const captureFontStack = 'Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+    if (clonedRoot?.style) {
+      clonedRoot.style.fontFamily = captureFontStack;
+    }
     const captureStyles = collectCaptureStyles(clonedRoot);
     return `
       <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
         <foreignObject width="100%" height="100%">
-          <div xmlns="http://www.w3.org/1999/xhtml">
-            <style>${captureStyles}</style>
+          <div xmlns="http://www.w3.org/1999/xhtml" class="comm-report-capture-frame">
+            <style>
+              .comm-report-capture-frame,
+              .comm-report-capture-frame * {
+                font-family: ${captureFontStack};
+              }
+              ${captureStyles}
+            </style>
             ${clonedRoot.outerHTML}
           </div>
         </foreignObject>
