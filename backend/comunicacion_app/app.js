@@ -1243,12 +1243,8 @@
   }
 
   function installEventHandlers() {
-    $('setupPrimaryBtn').addEventListener('click', async () => {
+    $('setupPermissionsBtn').addEventListener('click', async () => {
       clearError();
-      if (isSetupReady()) {
-        transitionTo(SCREEN_AIDA_PREP);
-        return;
-      }
       setBusy(true);
       try {
         const stream = await requestCapturePermissions();
@@ -1267,6 +1263,10 @@
       } finally {
         setBusy(false);
       }
+    });
+    $('setupPrimaryBtn').addEventListener('click', () => {
+      clearError();
+      if (isSetupReady()) transitionTo(SCREEN_AIDA_PREP);
     });
     $('backToSetupBtn').addEventListener('click', () => transitionTo(SCREEN_SETUP));
     $('continueToRecordingBtn').addEventListener('click', async () => {
