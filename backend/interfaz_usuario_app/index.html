@@ -2003,13 +2003,19 @@
       </div>
 
       <div id="entryOverlay" class="entry-overlay" role="dialog" aria-modal="true">
-        <div class="entry-mode-tabs" role="tablist" aria-label="Modo de acceso">
-          <button id="entryModeTalk" class="entry-mode-tab active" role="tab" aria-selected="true">Hablar</button>
-          <button id="entryModeWrite" class="entry-mode-tab" role="tab" aria-selected="false">Escribir</button>
-        </div>
         <div class="entry-card">
           <div class="entry-card-content">
-            <p class="entry-subtitle" id="entrySubtitle">Prepara tu dispositivo para hablar.</p>
+            <p class="entry-subtitle" id="entrySubtitle">Prepara tu cámara y micrófono para empezar.</p>
+
+            <div id="entryCameraContent" class="entry-talk-content">
+              <p id="entryCameraLabel" class="entry-device-label">Dispositivos de cámara</p>
+              <div id="entryCameraSearch" class="entry-device-search" aria-live="polite">
+                <span>Buscando cámaras</span>
+                <span class="entry-device-search-spinner" aria-hidden="true"></span>
+              </div>
+              <div id="entryCameraList" class="entry-device-list" role="listbox" aria-label="Seleccionar dispositivo de cámara"></div>
+              <div id="entryCameraStatus" class="entry-device-status" aria-live="polite"></div>
+            </div>
 
             <div id="entryTalkContent" class="entry-talk-content">
               <p id="entryDeviceLabel" class="entry-device-label">Dispositivos de audio</p>
@@ -2019,11 +2025,6 @@
               </div>
               <div id="entryDeviceList" class="entry-device-list" role="listbox" aria-label="Seleccionar dispositivo de audio"></div>
               <div id="entryDeviceStatus" class="entry-device-status" aria-live="polite"></div>
-            </div>
-  
-            <div id="entryWriteContent" class="entry-write-content entry-hidden">
-              <p>Entrarás en modo escritura.</p>
-              <p>Podrás empezar aunque no haya micrófono disponible.</p>
             </div>
 
             <div class="entry-actions">

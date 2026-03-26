@@ -921,10 +921,7 @@
 
   function renderApp() {
     showCommunicationView(resolveCommunicationViewMode());
-    const statusBanner = $('communicationStatusBanner');
     const errorBanner = $('communicationErrorBanner');
-    if (state.ui.notice_message) { statusBanner.textContent = state.ui.notice_message; statusBanner.classList.remove('hidden'); }
-    else { statusBanner.classList.add('hidden'); }
     if (state.ui.error_message) { errorBanner.textContent = state.ui.error_message; errorBanner.classList.remove('hidden'); }
     else { errorBanner.classList.add('hidden'); }
 
@@ -1196,7 +1193,6 @@
           videoDeviceId: $('videoDeviceSelect').value || state.capture.selected_video_device_id || null,
           audioDeviceId: $('audioDeviceSelect').value || state.capture.selected_audio_device_id || null,
         });
-        setNotice('Permisos concedidos. Cuando quieras, pulsa “Empezar”.');
       } catch (error) {
         state.capture.permission_camera = 'denied';
         state.capture.permission_mic = 'denied';

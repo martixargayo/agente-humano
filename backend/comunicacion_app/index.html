@@ -9,7 +9,6 @@
   <body>
     <main id="communicationMainApp" class="communication-shell">
       <section class="communication-card communication-card--shell">
-        <div id="communicationStatusBanner" class="communication-banner hidden" aria-live="polite"></div>
         <div id="communicationErrorBanner" class="communication-banner communication-banner--error hidden" aria-live="assertive"></div>
 
         <section id="screenSetup" class="communication-panel" data-screen="setup">
@@ -38,6 +37,10 @@
         </section>
 
         <section id="screenAidaPrep" class="communication-panel hidden" data-screen="aida_prep">
+          <header class="aida-prep-header">
+            <h2 id="aidaPrepTitle" class="aida-prep-title">Estructura tu mensaje con AIDA</h2>
+            <p id="aidaPrepDescription" class="aida-prep-description">Completa los cuatro bloques para preparar tu guion antes de empezar a grabar.</p>
+          </header>
           <div class="aida-grid">
             <div class="field-group">
               <label for="brainmapAttention">Atención</label>

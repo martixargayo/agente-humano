@@ -217,9 +217,13 @@ let entryInProgress = false;
 let entryRequestedMode = null;
 let entryResolvedInputMode = null;
 let entryPermissionStatus = 'unknown';
+let entryCameraPermissionStatus = 'unknown';
 let lastEntryMicError = '';
+let lastEntryCameraError = '';
 let availableInputDevices = [];
+let availableVideoInputDevices = [];
 let selectedEntryDeviceId = null;
+let selectedEntryCameraDeviceId = null;
 let entryDeviceRefreshTimer = null;
 let entryDeviceDebounceTimer = null;
 let refreshInFlight = false;
@@ -240,14 +244,17 @@ let lastEmbeddedHeight = 0;
 let finalSaveToastTimer = null;
 let pendingEmbeddedFinalResultAck = null;
 const LAST_DEVICE_STORAGE_KEY = 'interfaz_usuario:last_audio_input_device';
+const LAST_VIDEO_DEVICE_STORAGE_KEY = 'interfaz_usuario:last_video_input_device';
 
 const ui = {
   listeningGlow: $('listeningGlow'),
   entryOverlay: $('entryOverlay'),
-  entryModeTalk: $('entryModeTalk'),
-  entryModeWrite: $('entryModeWrite'),
+  entryCameraContent: $('entryCameraContent'),
+  entryCameraLabel: $('entryCameraLabel'),
+  entryCameraSearch: $('entryCameraSearch'),
+  entryCameraList: $('entryCameraList'),
+  entryCameraStatus: $('entryCameraStatus'),
   entryTalkContent: $('entryTalkContent'),
-  entryWriteContent: $('entryWriteContent'),
   entrySubtitle: $('entrySubtitle'),
   entryDeviceLabel: $('entryDeviceLabel'),
   entryDeviceSearch: $('entryDeviceSearch'),
@@ -1264,6 +1271,20 @@ function saveEntryDeviceId(deviceId) {
   } catch (_) {}
 }
 
+function getSavedEntryCameraDeviceId() {
+  try {
+    return window.localStorage.getItem(LAST_VIDEO_DEVICE_STORAGE_KEY);
+  } catch (_) {
+    return null;
+  }
+}
+
+function saveEntryCameraDeviceId(deviceId) {
+  try {
+    if (deviceId) window.localStorage.setItem(LAST_VIDEO_DEVICE_STORAGE_KEY, deviceId);
+  } catch (_) {}
+}
+
 function normalizeDeviceLabel(label, index) {
   const raw = String(label || '').trim();
   if (!raw) return `Micrófono ${index + 1}`;
@@ -1302,6 +1323,26 @@ function toUiAudioInputDevices(devices) {
   return [...byIdentity.values()].sort((a, b) => a.cleanLabel.localeCompare(b.cleanLabel, 'es', { sensitivity: 'base' }));
 }
 
+function toUiVideoInputDevices(devices) {
+  const byIdentity = new Map();
+  devices.forEach((device, index) => {
+    if (device.kind !== 'videoinput' || !device.deviceId) return;
+    const cleanLabel = normalizeDeviceLabel(device.label, index).replace(/^Micrófono/i, 'Cámara');
+    const groupPart = device.groupId ? `g:${device.groupId}` : '';
+    const labelPart = getDeviceLabelKey(cleanLabel);
+    const dedupeKey = `${groupPart}|${labelPart}`;
+    if (!byIdentity.has(dedupeKey)) {
+      byIdentity.set(dedupeKey, {
+        deviceId: device.deviceId,
+        groupId: device.groupId || '',
+        label: device.label || '',
+        cleanLabel,
+      });
+    }
+  });
+  return [...byIdentity.values()].sort((a, b) => a.cleanLabel.localeCompare(b.cleanLabel, 'es', { sensitivity: 'base' }));
+}
+
 function pickReplacementDevice(previousDeviceId, previousList, nextList) {
   if (!nextList.length) return null;
   if (!previousDeviceId) return nextList[0].deviceId;
@@ -1323,7 +1364,9 @@ function pickReplacementDevice(previousDeviceId, previousList, nextList) {
 
 function canStartTalkEntry() {
   if (entryPermissionStatus === 'denied') return false;
-  if (entryPermissionStatus === 'granted') return Boolean(selectedEntryDeviceId);
+  if (entryCameraPermissionStatus === 'denied') return false;
+  if (entryPermissionStatus === 'granted' && !selectedEntryDeviceId) return false;
+  if (entryCameraPermissionStatus === 'granted' && !selectedEntryCameraDeviceId) return false;
   return true;
 }
 
@@ -1342,8 +1385,18 @@ function setSelectedEntryDevice(deviceId, reason = 'manual') {
   selectedEntryDeviceId = deviceId;
   saveEntryDeviceId(deviceId);
   renderEntryDevices();
+  renderEntryCameraDevices();
   renderEntryState();
   renderAudioDeviceSelector();
+}
+
+function setSelectedEntryCameraDevice(deviceId) {
+  if (!deviceId || !availableVideoInputDevices.some((d) => d.deviceId === deviceId)) return;
+  if (selectedEntryCameraDeviceId === deviceId) return;
+  selectedEntryCameraDeviceId = deviceId;
+  saveEntryCameraDeviceId(deviceId);
+  renderEntryCameraDevices();
+  renderEntryState();
 }
 
 function getAudioDeviceTriggerText() {
@@ -1605,25 +1658,22 @@ function toggleAudioDevicePopover() {
 
 function renderEntryState() {
   if (!ui.entryOverlay) return;
-  ui.entryModeTalk.classList.toggle('active', entryMode === InputMode.TALK);
-  ui.entryModeWrite.classList.toggle('active', entryMode === InputMode.WRITE);
-  ui.entryModeTalk.setAttribute('aria-selected', String(entryMode === InputMode.TALK));
-  ui.entryModeWrite.setAttribute('aria-selected', String(entryMode === InputMode.WRITE));
-  ui.entryTalkContent.classList.toggle('entry-hidden', entryMode !== InputMode.TALK);
-  ui.entryWriteContent.classList.toggle('entry-hidden', entryMode !== InputMode.WRITE);
-  ui.entrySubtitle.textContent = entryMode === InputMode.TALK
-    ? (entryPermissionStatus === 'granted'
-        ? ''
-        : 'Necesitamos permiso de micrófono para detectar tus dispositivos.')
-    : '';
-  ui.entrySubtitle.classList.toggle('entry-hidden', entryMode !== InputMode.TALK);
+  const waitingMicPermission = entryPermissionStatus !== 'granted';
+  const waitingCameraPermission = entryCameraPermissionStatus !== 'granted';
+
+  if (waitingMicPermission || waitingCameraPermission) {
+    ui.entrySubtitle.textContent = 'Necesitamos permisos de cámara y micrófono para detectar tus dispositivos.';
+  } else {
+    ui.entrySubtitle.textContent = '';
+  }
+  ui.entrySubtitle.classList.toggle('entry-hidden', !ui.entrySubtitle.textContent);
 
   const startEnabled = getEntryModeStartEnabled();
   ui.startBtn.disabled = !startEnabled || entryInProgress;
   if (entryRequested && !scenarioReady) {
     ui.startBtn.textContent = 'Cargando escenario…';
-  } else if (entryMode === InputMode.TALK && entryPermissionStatus !== 'granted') {
-    ui.startBtn.textContent = 'Activar micrófono';
+  } else if (waitingMicPermission || waitingCameraPermission) {
+    ui.startBtn.textContent = 'Activar cámara y micrófono';
   } else {
     ui.startBtn.textContent = 'Empezar';
   }
@@ -1638,14 +1688,19 @@ function renderEntryState() {
     ui.entryScenarioState.classList.add('ready');
   }
 
-  const showSearchHeader = entryMode === InputMode.TALK;
-  const waitingForPermission = entryMode === InputMode.TALK && entryPermissionStatus !== 'granted';
-  ui.entryDeviceSearch?.classList.toggle('hidden', !showSearchHeader);
-  ui.entryDeviceLabel?.classList.toggle('entry-hidden', waitingForPermission || entryMode !== InputMode.TALK);
+  ui.entryDeviceSearch?.classList.remove('hidden');
+  ui.entryDeviceLabel?.classList.toggle('entry-hidden', waitingMicPermission);
   if (ui.entryDeviceSearch) {
-    ui.entryDeviceSearch.innerHTML = waitingForPermission
+    ui.entryDeviceSearch.innerHTML = waitingMicPermission
       ? '<span>Necesitamos permiso para listar los micrófonos disponibles</span>'
       : '<span>Micrófonos detectados</span><span class="entry-device-search-spinner" aria-hidden="true"></span>';
+  }
+  ui.entryCameraSearch?.classList.remove('hidden');
+  ui.entryCameraLabel?.classList.toggle('entry-hidden', waitingCameraPermission);
+  if (ui.entryCameraSearch) {
+    ui.entryCameraSearch.innerHTML = waitingCameraPermission
+      ? '<span>Necesitamos permiso para listar las cámaras disponibles</span>'
+      : '<span>Cámaras detectadas</span><span class="entry-device-search-spinner" aria-hidden="true"></span>';
   }
 
   if (entryPermissionStatus === 'prompt' || entryPermissionStatus === 'unknown') {
@@ -1658,10 +1713,86 @@ function renderEntryState() {
     ui.entryDeviceStatus.textContent = 'No encontramos un micrófono válido después de conceder permiso.';
     ui.entryDeviceStatus.classList.add('error');
   } else {
-    ui.entryDeviceStatus.textContent = 'Micrófono seleccionado. Puedes empezar en modo hablar.';
+    ui.entryDeviceStatus.textContent = 'Micrófono seleccionado.';
     ui.entryDeviceStatus.classList.remove('error');
   }
+  if (entryCameraPermissionStatus === 'prompt' || entryCameraPermissionStatus === 'unknown') {
+    ui.entryCameraStatus.textContent = 'Pulsa “Activar cámara” para conceder acceso y cargar tus cámaras.';
+    ui.entryCameraStatus.classList.remove('error');
+  } else if (entryCameraPermissionStatus === 'denied') {
+    ui.entryCameraStatus.textContent = 'Permiso de cámara denegado. Habilítalo en el navegador.';
+    ui.entryCameraStatus.classList.add('error');
+  } else if (!selectedEntryCameraDeviceId) {
+    ui.entryCameraStatus.textContent = 'No encontramos una cámara válida después de conceder permiso.';
+    ui.entryCameraStatus.classList.add('error');
+  } else {
+    ui.entryCameraStatus.textContent = 'Cámara seleccionada.';
+    ui.entryCameraStatus.classList.remove('error');
+  }
   renderAudioDeviceSelector();
+}
+
+function renderEntryCameraDevices() {
+  if (!ui.entryCameraList) return;
+  const currentChildren = [...ui.entryCameraList.querySelectorAll('[data-device-id]')];
+  const currentById = new Map(currentChildren.map((node) => [node.dataset.deviceId, node]));
+
+  if (entryCameraPermissionStatus !== 'granted') {
+    ui.entryCameraList.innerHTML = '';
+    const empty = document.createElement('div');
+    empty.className = 'entry-device-empty';
+    empty.textContent = 'Activa la cámara para mostrar los dispositivos disponibles';
+    ui.entryCameraList.appendChild(empty);
+    selectedEntryCameraDeviceId = null;
+    return;
+  }
+
+  if (!availableVideoInputDevices.length) {
+    ui.entryCameraList.innerHTML = '';
+    const empty = document.createElement('div');
+    empty.className = 'entry-device-empty';
+    empty.textContent = 'Ninguna cámara conectada';
+    ui.entryCameraList.appendChild(empty);
+    selectedEntryCameraDeviceId = null;
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  availableVideoInputDevices.forEach((device) => {
+    let option = currentById.get(device.deviceId);
+    if (!option) {
+      option = document.createElement('button');
+      option.type = 'button';
+      option.className = 'entry-device-option';
+      option.setAttribute('role', 'option');
+      option.dataset.deviceId = device.deviceId;
+      option.addEventListener('click', () => setSelectedEntryCameraDevice(device.deviceId));
+
+      const main = document.createElement('span');
+      main.className = 'entry-device-main';
+      const icon = document.createElement('span');
+      icon.className = 'entry-device-icon';
+      icon.setAttribute('aria-hidden', 'true');
+      icon.textContent = '📷';
+      const name = document.createElement('span');
+      name.className = 'entry-device-name';
+      main.append(icon, name);
+      const check = document.createElement('span');
+      check.className = 'entry-device-check';
+      check.setAttribute('aria-hidden', 'true');
+      check.textContent = '✓';
+      option.append(main, check);
+    }
+
+    option.querySelector('.entry-device-name').textContent = device.cleanLabel;
+    const isActive = selectedEntryCameraDeviceId === device.deviceId;
+    option.classList.toggle('active', isActive);
+    option.setAttribute('aria-selected', String(isActive));
+    fragment.appendChild(option);
+  });
+
+  ui.entryCameraList.innerHTML = '';
+  ui.entryCameraList.appendChild(fragment);
 }
 
 function renderEntryDevices() {
@@ -1742,6 +1873,72 @@ async function syncMicPermissionState() {
       renderEntryState();
     };
   } catch (_) {}
+  try {
+    const cameraStatus = await navigator.permissions.query({ name: 'camera' });
+    if (cameraStatus.state === 'granted' || cameraStatus.state === 'denied' || cameraStatus.state === 'prompt') {
+      entryCameraPermissionStatus = cameraStatus.state;
+    }
+    cameraStatus.onchange = () => {
+      entryCameraPermissionStatus = cameraStatus.state;
+      scheduleEntryDeviceRefresh('camera-permission-change', 0);
+      renderEntryState();
+    };
+  } catch (_) {}
+}
+
+async function requestAvPermissionsForEntry() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    entryPermissionStatus = 'denied';
+    entryCameraPermissionStatus = 'denied';
+    hasMicPermission = false;
+    lastEntryMicError = 'Este navegador no soporta acceso a cámara/micrófono.';
+    lastEntryCameraError = lastEntryMicError;
+    return false;
+  }
+  lastEntryMicError = '';
+  lastEntryCameraError = '';
+  const baseAudioConstraints = {
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+  };
+  const audioConstraints = selectedEntryDeviceId
+    ? { ...baseAudioConstraints, deviceId: { exact: selectedEntryDeviceId } }
+    : baseAudioConstraints;
+  const videoConstraints = selectedEntryCameraDeviceId
+    ? { deviceId: { exact: selectedEntryCameraDeviceId } }
+    : { facingMode: 'user' };
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: audioConstraints,
+      video: videoConstraints,
+    });
+    stream.getTracks().forEach((track) => track.stop());
+    entryPermissionStatus = 'granted';
+    entryCameraPermissionStatus = 'granted';
+    hasMicPermission = true;
+    return true;
+  } catch (err) {
+    if (err?.name === 'NotAllowedError' || err?.name === 'SecurityError') {
+      entryPermissionStatus = 'denied';
+      entryCameraPermissionStatus = 'denied';
+      lastEntryMicError = 'Has bloqueado el permiso del micrófono.';
+      lastEntryCameraError = 'Has bloqueado el permiso de la cámara.';
+    } else if (err?.name === 'NotReadableError') {
+      entryPermissionStatus = 'prompt';
+      entryCameraPermissionStatus = 'prompt';
+      lastEntryMicError = 'No se pudo iniciar el micrófono. Cierra otras apps que lo estén usando y reintenta.';
+      lastEntryCameraError = 'No se pudo iniciar la cámara. Cierra otras apps que la estén usando y reintenta.';
+    } else {
+      entryPermissionStatus = 'prompt';
+      entryCameraPermissionStatus = 'prompt';
+      lastEntryMicError = 'No pudimos activar el micrófono. Reintenta.';
+      lastEntryCameraError = 'No pudimos activar la cámara. Reintenta.';
+    }
+    hasMicPermission = false;
+    console.error('[entry] Error al pedir permisos AV', err);
+    return false;
+  }
 }
 
 async function requestMicPermissionsForEntry() {
@@ -1813,8 +2010,11 @@ async function requestMicPermissionsForEntry() {
 async function refreshEntryDevices(reason = 'manual') {
   if (!navigator.mediaDevices?.enumerateDevices) {
     availableInputDevices = [];
+    availableVideoInputDevices = [];
     selectedEntryDeviceId = null;
+    selectedEntryCameraDeviceId = null;
     renderEntryDevices();
+    renderEntryCameraDevices();
     renderEntryState();
     return;
   }
@@ -1828,7 +2028,9 @@ async function refreshEntryDevices(reason = 'manual') {
   refreshPendingAfterInFlight = false;
   const sequence = ++refreshSequence;
   const previousList = availableInputDevices;
+  const previousVideoList = availableVideoInputDevices;
   const previousSelected = selectedEntryDeviceId;
+  const previousVideoSelected = selectedEntryCameraDeviceId;
 
   try {
     const rawDevices = await navigator.mediaDevices.enumerateDevices();
@@ -1837,28 +2039,43 @@ async function refreshEntryDevices(reason = 'manual') {
     const nextDevices = entryPermissionStatus === 'granted'
       ? toUiAudioInputDevices(rawDevices)
       : [];
+    const nextVideoDevices = entryCameraPermissionStatus === 'granted'
+      ? toUiVideoInputDevices(rawDevices)
+      : [];
     availableInputDevices = nextDevices;
+    availableVideoInputDevices = nextVideoDevices;
 
     const stored = getSavedEntryDeviceId();
     const storedExists = stored && nextDevices.some((d) => d.deviceId === stored);
+    const storedCamera = getSavedEntryCameraDeviceId();
+    const storedCameraExists = storedCamera && nextVideoDevices.some((d) => d.deviceId === storedCamera);
 
     if (storedExists && !previousSelected) {
       selectedEntryDeviceId = stored;
     } else {
       selectedEntryDeviceId = pickReplacementDevice(previousSelected, previousList, nextDevices);
     }
+    if (storedCameraExists && !previousVideoSelected) {
+      selectedEntryCameraDeviceId = storedCamera;
+    } else {
+      selectedEntryCameraDeviceId = pickReplacementDevice(previousVideoSelected, previousVideoList, nextVideoDevices);
+    }
 
     if (selectedEntryDeviceId) saveEntryDeviceId(selectedEntryDeviceId);
+    if (selectedEntryCameraDeviceId) saveEntryCameraDeviceId(selectedEntryCameraDeviceId);
 
   } catch (err) {
     console.warn('[entry] enumerateDevices falló', err);
     availableInputDevices = [];
+    availableVideoInputDevices = [];
     selectedEntryDeviceId = null;
+    selectedEntryCameraDeviceId = null;
   } finally {
     refreshInFlight = false;
   }
 
   renderEntryDevices();
+  renderEntryCameraDevices();
   renderEntryState();
   renderAudioDeviceSelector();
 
@@ -1880,22 +2097,20 @@ function scheduleEntryDeviceRefresh(reason = 'manual', delayMs = 120) {
 async function validateTalkModeForEntry() {
   if (ui.entryError) ui.entryError.textContent = '';
 
-  if (entryPermissionStatus !== 'granted') {
-    const permissionOk = await requestMicPermissionsForEntry();
+  if (entryPermissionStatus !== 'granted' || entryCameraPermissionStatus !== 'granted') {
+    const permissionOk = await requestAvPermissionsForEntry();
     await refreshEntryDevices(permissionOk ? 'validate-post-permission' : 'validate-permission-error');
 
     if (!permissionOk) {
       if (ui.entryError) {
-        ui.entryError.textContent = lastEntryMicError || (entryPermissionStatus === 'denied'
-          ? 'No pudimos habilitar el micrófono. Activa permisos o usa Escribir.'
-          : 'No pudimos validar el micrófono. Reintenta.');
+        ui.entryError.textContent = `${lastEntryCameraError || 'No pudimos validar la cámara.'} ${lastEntryMicError || 'No pudimos validar el micrófono.'}`.trim();
       }
       renderEntryState();
       return false;
     }
 
-    if (!selectedEntryDeviceId) {
-      if (ui.entryError) ui.entryError.textContent = 'Concediste permiso, pero no detectamos un micrófono disponible.';
+    if (!selectedEntryDeviceId || !selectedEntryCameraDeviceId) {
+      if (ui.entryError) ui.entryError.textContent = 'Concediste permisos, pero no detectamos cámara y micrófono disponibles.';
       renderEntryState();
       return false;
     }
@@ -1906,8 +2121,8 @@ async function validateTalkModeForEntry() {
 
   await refreshEntryDevices('validate-existing-permission');
 
-  if (!selectedEntryDeviceId) {
-    if (ui.entryError) ui.entryError.textContent = 'No se detectó un micrófono disponible.';
+  if (!selectedEntryDeviceId || !selectedEntryCameraDeviceId) {
+    if (ui.entryError) ui.entryError.textContent = 'No se detectaron cámara y micrófono disponibles.';
     renderEntryState();
     return false;
   }
@@ -2750,6 +2965,7 @@ function bindRuntimeReadiness() {
 async function bootstrapEntryDeviceBackground() {
   await syncMicPermissionState();
   await refreshEntryDevices('bootstrap');
+  renderEntryCameraDevices();
   renderEntryDevices();
   renderEntryState();
 }
