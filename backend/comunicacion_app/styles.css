@@ -23,10 +23,7 @@
 body {
   margin: 0;
   font-family: Inter, system-ui, -apple-system, sans-serif;
-  background:
-    radial-gradient(circle at 0% 0%, rgba(191, 219, 254, 0.34), transparent 26%),
-    radial-gradient(circle at 100% 0%, rgba(219, 234, 254, 0.45), transparent 30%),
-    var(--comm-bg);
+  background: #fff;
   color: var(--comm-text);
 }
 
@@ -44,9 +41,9 @@ body {
 .communication-card {
   width: min(1120px, 100%);
   background: var(--comm-card);
-  border: 1px solid #e6ebf2;
+  border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 28px;
-  box-shadow: 0 28px 56px rgba(15, 23, 42, 0.14);
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.14), 0 2px 6px rgba(15, 23, 42, 0.08);
 }
 
 .communication-card--shell {
@@ -79,11 +76,7 @@ body {
 
 .comm-entry-card {
   width: min(980px, 100%);
-  padding: 24px 26px;
-  border-radius: 26px;
-  background: #fff;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.14), 0 2px 6px rgba(15, 23, 42, 0.08);
+  padding: 0;
 }
 
 .comm-entry-card-content {
@@ -105,9 +98,7 @@ body {
 }
 
 .comm-entry-talk-content {
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 18px;
-  padding: 16px;
+  padding: 8px 6px;
 }
 
 .comm-entry-device-label {
@@ -133,7 +124,12 @@ body {
   border-radius: 50%;
   border: 2px solid rgba(148, 163, 184, 0.45);
   border-top-color: rgba(100, 116, 139, 0.9);
-  animation: feedbackDotPulse 1s linear infinite;
+  animation: entrySpin 1s linear infinite;
+}
+
+@keyframes entrySpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .comm-entry-device-list {
@@ -217,7 +213,7 @@ body {
   margin-top: 14px;
   display: flex;
   justify-content: center;
-  gap: 10px;
+  gap: 0;
 }
 
 .comm-entry-actions .btn {
@@ -232,12 +228,6 @@ body {
 .comm-entry-actions .btn-primary {
   border: none;
   background: linear-gradient(120deg, rgba(59, 130, 246, 0.9), rgba(37, 99, 235, 0.9));
-}
-
-.comm-entry-actions .btn-secondary {
-  border: 1px solid rgba(15, 23, 42, 0.14);
-  background: #fff;
-  color: #111827;
 }
 
 .comm-entry-hidden-selects {

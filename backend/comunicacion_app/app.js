@@ -503,6 +503,18 @@
     renderApp();
   }
 
+  async function syncInitialCapturePermissions() {
+    if (!navigator.permissions?.query) return;
+    try {
+      const [cameraPermission, micPermission] = await Promise.all([
+        navigator.permissions.query({ name: 'camera' }),
+        navigator.permissions.query({ name: 'microphone' }),
+      ]);
+      if (cameraPermission.state === 'granted') state.capture.permission_camera = 'granted';
+      if (micPermission.state === 'granted') state.capture.permission_mic = 'granted';
+    } catch (_error) {}
+  }
+
   async function openPreviewStream({ videoDeviceId, audioDeviceId } = {}) {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('getUserMedia no soportado en este navegador');
     stopPreviewStream();
@@ -978,31 +990,33 @@
   function renderSetupEntryState() {
     const setupStatus = $('setupStatusText');
     const setupPrimaryBtn = $('setupPrimaryBtn');
-    const setupPermissionsBtn = $('setupPermissionsBtn');
     const audioStatus = $('commAudioStatus');
     const videoStatus = $('commVideoStatus');
-    if (!setupStatus || !setupPrimaryBtn || !setupPermissionsBtn) return;
+    const setupDeviceLayout = $('setupDeviceLayout');
+    if (!setupStatus || !setupPrimaryBtn || !setupDeviceLayout) return;
+    const hasPermissions = state.capture.permission_camera === 'granted' && state.capture.permission_mic === 'granted';
     if (state.capture.permission_camera === 'denied' || state.capture.permission_mic === 'denied') {
       setupStatus.textContent = 'Permiso denegado. Activa cámara y micrófono en el navegador para continuar.';
-    } else if (!state.capture.stream_active) {
-      setupStatus.textContent = 'Necesitamos activar cámara y micrófono para continuar.';
+    } else if (!hasPermissions) {
+      setupStatus.textContent = 'Necesitamos permisos de cámara y micrófono para detectar tus dispositivos.';
     } else {
-      setupStatus.textContent = 'Cámara y micrófono listos. Ya puedes empezar.';
+      setupStatus.textContent = '';
     }
-    if (audioStatus) {
+    setupDeviceLayout.classList.toggle('hidden', !hasPermissions);
+    if (audioStatus && hasPermissions) {
       audioStatus.textContent = state.capture.selected_audio_device_id
         ? 'Micrófono seleccionado.'
         : 'No se detectaron micrófonos disponibles.';
       audioStatus.classList.toggle('error', !state.capture.selected_audio_device_id);
     }
-    if (videoStatus) {
+    if (videoStatus && hasPermissions) {
       videoStatus.textContent = state.capture.selected_video_device_id
         ? 'Cámara seleccionada.'
         : 'No se detectaron cámaras disponibles.';
       videoStatus.classList.toggle('error', !state.capture.selected_video_device_id);
     }
-    setupPermissionsBtn.disabled = state.ui.busy;
-    setupPrimaryBtn.disabled = state.ui.busy || !isSetupReady();
+    setupPrimaryBtn.textContent = hasPermissions ? 'Empezar' : 'Activar cámara y micro';
+    setupPrimaryBtn.disabled = state.ui.busy;
   }
 
   function syncRecordingActionVisibility() {
@@ -1127,8 +1141,6 @@
 
   function syncButtons() {
     const busy = state.ui.busy;
-    toggleDisabled('setupPermissionsBtn', busy);
-    toggleDisabled('refreshDevicesBtn', busy);
     toggleDisabled('startRecordingBtn', busy || !state.capture.stream_active || state.capture.is_recording);
     toggleDisabled('stopRecordingBtn', busy || !state.capture.is_recording);
     toggleDisabled('backToAidaBtn', busy || state.capture.is_recording);
@@ -1274,7 +1286,6 @@
         setBusy(false);
       }
     });
-    $('refreshDevicesBtn').addEventListener('click', async () => { setBusy(true); try { await listCaptureDevices(); await openPreviewStream({ videoDeviceId: $('videoDeviceSelect').value || null, audioDeviceId: $('audioDeviceSelect').value || null }); } catch (error) { setError(`No se pudieron refrescar los dispositivos: ${error.message}`); } finally { setBusy(false); } });
     $('videoDeviceSelect').addEventListener('change', async (event) => { await handleDeviceChange('video', event.target.value || null); });
     $('audioDeviceSelect').addEventListener('change', async (event) => { await handleDeviceChange('audio', event.target.value || null); });
     $('screenSetup').addEventListener('click', async (event) => {
@@ -1349,6 +1360,15 @@
       stopFloatingPhrases();
     });
     try { await bootstrapCommunicationSession(); } catch (error) { setError(`No se pudo preparar la sesión: ${error.message}`); return; }
+    await syncInitialCapturePermissions();
+    if (state.capture.permission_camera === 'granted' && state.capture.permission_mic === 'granted') {
+      try {
+        const stream = await requestCapturePermissions();
+        stopPreviewStream();
+        state.capture.media_stream = stream;
+        state.capture.stream_active = true;
+      } catch (_error) {}
+    }
     try { await listCaptureDevices(); } catch (_error) { }
     if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
       navigator.mediaDevices.addEventListener('devicechange', async () => {
