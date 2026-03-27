@@ -93,6 +93,32 @@ class CommunicationPhase4SynthesisAndReportTests(unittest.TestCase):
                 ],
             )
 
+    def test_synthesis_llm_allows_zero_recommendations(self) -> None:
+        payload = CommunicationGlobalSynthesisLlmOutputV1(
+            score_global_100=92,
+            summary_short_2_3_lines='Tu comunicación ha sido sólida y consistente, con muy pocos ajustes pendientes.',
+            recommendations=[],
+        )
+        self.assertEqual(payload.recommendations, [])
+
+    def test_synthesis_llm_failure_falls_back_to_rule_based(self) -> None:
+        content = {'score_0_100': 90, 'status_visual': 'correcto', 'summary': 'Contenido sólido', 'details': [], 'recommendations': ['A']}
+        delivery = {'score_0_100': 75, 'status_visual': 'mejorable', 'summary': 'Delivery estable', 'details': [], 'recommendations': ['B']}
+        visual = {'score_0_100': 30, 'status_visual': 'mejorable', 'summary': 'Visual débil', 'details': [], 'recommendations': ['C']}
+        synthesis_input = build_global_synthesis_input(
+            evaluation_id='eval_phase4_llm_fallback',
+            content_output=content,
+            delivery_output=delivery,
+            visual_output=visual,
+        )
+        with (
+            patch('evaluacion.engine.communication_synthesis._is_global_synthesis_llm_enabled', return_value=True),
+            patch('evaluacion.engine.communication_synthesis._run_global_synthesis_llm_openai', side_effect=RuntimeError('forced_failure')),
+        ):
+            output = synthesize_global_communication_feedback(synthesis_input=synthesis_input)
+        self.assertEqual(output.global_score_0_100, 63)
+        self.assertTrue(output.action_plan)
+
     def test_report_includes_global_synthesis_and_uses_its_score(self) -> None:
         client = TestClient(app, raise_server_exceptions=False)
         client.post('/api/comunicacion/sessions/bootstrap', json={'user_id': 'iu_phase4', 'session_id': 'sess_phase4'})
