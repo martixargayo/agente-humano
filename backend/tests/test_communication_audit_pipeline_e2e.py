@@ -282,13 +282,13 @@ class CommunicationAuditPipelineE2ETests(unittest.TestCase):
         report = REPOSITORY._communication_eval_reports[evaluation_id]
         self.assertEqual(report.status, 'completed')
         self.assertIsNotNone(report.global_synthesis)
-        self.assertEqual(report.global_synthesis.global_score_0_100, 84)
+        self.assertEqual(report.global_synthesis.score_global_100, 84)
         self.assertEqual(
-            report.global_synthesis.friendly_summary,
+            report.global_synthesis.summary_short_2_3_lines,
             final_synthesis.summary_short_2_3_lines,
         )
-        self.assertEqual(len(report.global_synthesis.action_plan), 1)
-        self.assertNotIn('\n\n', report.global_synthesis.friendly_summary)
+        self.assertEqual(len(report.global_synthesis.recommendations), 1)
+        self.assertNotIn('\n\n', report.global_synthesis.summary_short_2_3_lines)
 
         kinds = {artifact.kind for artifact in REPOSITORY.list_artifacts_for_recording('rec_audit_e2e')}
         self.assertTrue({'visual_batch_eval', 'visual_llm_final', 'global_synthesis'}.issubset(kinds))

@@ -461,6 +461,14 @@ class CommunicationGlobalSynthesisLlmOutputV1(BaseModel):
     recommendations: list[CommunicationGlobalSynthesisRecommendationV1] = Field(default_factory=list, max_length=4)
 
 
+class CommunicationGlobalSynthesisMetaV1(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    mode: Literal['llm', 'fallback']
+    fallback_reason: Literal['disabled_flag', 'missing_openai_api_key', 'openai_error', 'schema_validation_error', 'unexpected_error'] | None = None
+    detail: str | None = None
+
+
 class CommunicationGlobalSynthesisOutputV1(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
@@ -601,6 +609,8 @@ class CommunicationReportProvenance(BaseModel):
     content_output_hash: str
     delivery_output_hash: str
     visual_output_hash: str
+    global_synthesis_mode: Literal['llm', 'fallback'] | None = None
+    global_synthesis_fallback_reason: str | None = None
 
 
 class CommunicationReportExports(BaseModel):
@@ -626,7 +636,8 @@ class UiCommunicationReportV1(BaseModel):
     timeline: CommunicationTimeline
     key_moments: CommunicationKeyMoments
     recommendations: CommunicationRecommendations
-    global_synthesis: CommunicationGlobalSynthesisOutputV1 | None = None
+    global_synthesis: CommunicationGlobalSynthesisLlmOutputV1 | None = None
+    global_synthesis_meta: CommunicationGlobalSynthesisMetaV1 | None = None
     provenance: CommunicationReportProvenance
     exports: CommunicationReportExports
     placeholders: dict[str, str] = Field(default_factory=dict)

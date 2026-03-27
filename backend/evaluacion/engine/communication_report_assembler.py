@@ -7,8 +7,9 @@ import textwrap
 from typing import Any
 
 from evaluacion.contracts.communication_models import (
-    CommunicationGlobalSynthesisOutputV1,
     CommunicationFeedbackInputBundleV1,
+    CommunicationGlobalSynthesisLlmOutputV1,
+    CommunicationGlobalSynthesisMetaV1,
     CommunicationKeyMoment,
     CommunicationKeyMoments,
     CommunicationRecommendationExample,
@@ -43,9 +44,9 @@ def build_report_media_block(bundle: CommunicationFeedbackInputBundleV1) -> Comm
     )
 
 
-def _build_header(*, score_global_100: int, content_output: dict[str, Any], delivery_output: dict[str, Any], synthesis_output: CommunicationGlobalSynthesisOutputV1 | None = None) -> CommunicationReportHeader:
+def _build_header(*, score_global_100: int, content_output: dict[str, Any], delivery_output: dict[str, Any], synthesis_output: CommunicationGlobalSynthesisLlmOutputV1 | None = None) -> CommunicationReportHeader:
     summary = str(
-        (synthesis_output.friendly_summary if synthesis_output is not None else None)
+        (synthesis_output.summary_short_2_3_lines if synthesis_output is not None else None)
         or content_output.get('summary')
         or delivery_output.get('summary')
         or 'La evaluación ya es legible y reutilizable.'
@@ -123,15 +124,15 @@ def _build_key_moments(timeline: CommunicationTimeline) -> CommunicationKeyMomen
     )
 
 
-def _build_recommendations(bundle: CommunicationFeedbackInputBundleV1, synthesis_output: CommunicationGlobalSynthesisOutputV1 | None = None) -> CommunicationRecommendations:
-    if synthesis_output is not None and synthesis_output.action_plan:
+def _build_recommendations(bundle: CommunicationFeedbackInputBundleV1, synthesis_output: CommunicationGlobalSynthesisLlmOutputV1 | None = None) -> CommunicationRecommendations:
+    if synthesis_output is not None:
         return CommunicationRecommendations(items=[
             CommunicationRecommendationItem(
-                title=f'Prioridad {idx + 1}',
-                description=plan_item,
+                title=item.title,
+                description=item.description,
                 example=None,
             )
-            for idx, plan_item in enumerate(synthesis_output.action_plan[:3])
+            for item in synthesis_output.recommendations[:4]
         ])
     first_excerpt = bundle.transcript.segments[0].text if bundle.transcript.segments else 'Mensaje inicial placeholder.'
     return CommunicationRecommendations(items=[
@@ -202,11 +203,13 @@ def assemble_communication_report(
     delivery_output: dict[str, Any],
     visual_output: dict[str, Any],
     synthesis_output: dict[str, Any] | None = None,
+    synthesis_meta: dict[str, Any] | None = None,
 ) -> UiCommunicationReportV1:
-    synthesis = CommunicationGlobalSynthesisOutputV1.model_validate(synthesis_output) if synthesis_output is not None else None
+    synthesis = CommunicationGlobalSynthesisLlmOutputV1.model_validate(synthesis_output) if synthesis_output is not None else None
+    synthesis_runtime_meta = CommunicationGlobalSynthesisMetaV1.model_validate(synthesis_meta) if synthesis_meta is not None else None
     block_cards = [_build_block(content_output), _build_block(delivery_output), _build_block(visual_output)]
     scored = [block.score_0_100 for block in block_cards if block.score_0_100 is not None]
-    score_global_100 = synthesis.global_score_0_100 if synthesis is not None else (int(round(sum(scored) / len(scored))) if scored else 60)
+    score_global_100 = synthesis.score_global_100 if synthesis is not None else (int(round(sum(scored) / len(scored))) if scored else 60)
     header = _build_header(score_global_100=score_global_100, content_output=content_output, delivery_output=delivery_output, synthesis_output=synthesis)
     media = build_report_media_block(bundle)
     video_panel = CommunicationVideoPanel(
@@ -235,6 +238,8 @@ def assemble_communication_report(
         content_output_hash=_stable_hash(content_output),
         delivery_output_hash=_stable_hash(delivery_output),
         visual_output_hash=_stable_hash(visual_output),
+        global_synthesis_mode=(synthesis_runtime_meta.mode if synthesis_runtime_meta is not None else None),
+        global_synthesis_fallback_reason=(synthesis_runtime_meta.fallback_reason if synthesis_runtime_meta is not None else None),
     )
     report = UiCommunicationReportV1(
         evaluation_id=bundle.evaluation_id,
@@ -248,6 +253,7 @@ def assemble_communication_report(
         key_moments=key_moments,
         recommendations=recommendations,
         global_synthesis=synthesis,
+        global_synthesis_meta=synthesis_runtime_meta,
         provenance=provenance,
         exports=CommunicationReportExports(
             report_json={},

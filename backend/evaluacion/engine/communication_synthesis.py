@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
 
@@ -9,10 +10,11 @@ import openai
 from evaluacion.contracts.communication_models import (
     CommunicationGlobalSynthesisInputV1,
     CommunicationGlobalSynthesisLlmOutputV1,
-    CommunicationGlobalSynthesisOutputV1,
+    CommunicationGlobalSynthesisMetaV1,
 )
 
 _PROMPT_PATH = Path(__file__).resolve().parents[1] / 'prompts' / 'communication_global_synthesis_prompt.txt'
+_LOGGER = logging.getLogger(__name__)
 
 
 def _load_global_synthesis_prompt_template() -> str:
@@ -101,17 +103,13 @@ def build_global_synthesis_input(
     )
 
 
-def _derive_global_diagnosis(score: int) -> str:
-    if score >= 85:
-        return 'Comunicación sólida y consistente en contenido, delivery y presencia visual.'
-    if score >= 70:
-        return 'Buen desempeño general con oportunidades puntuales de mejora.'
-    if score >= 55:
-        return 'Desempeño intermedio: conviene reforzar prioridades clave para subir consistencia.'
-    return 'Desempeño inicial: requiere un plan de mejora guiado en contenido, delivery y visual.'
+def _normalize_single_paragraph(text: str) -> str:
+    chunks = [chunk.strip() for chunk in text.replace('\r', '\n').split('\n') if chunk.strip()]
+    normalized = ' '.join(chunks)
+    return normalized or 'Tu evaluación ya está disponible y resume tu desempeño global con acciones concretas de mejora.'
 
 
-def _rule_based_synthesize_global_communication_feedback(*, synthesis_input: CommunicationGlobalSynthesisInputV1) -> CommunicationGlobalSynthesisOutputV1:
+def _rule_based_synthesize_global_communication_feedback(*, synthesis_input: CommunicationGlobalSynthesisInputV1) -> CommunicationGlobalSynthesisLlmOutputV1:
     content = synthesis_input.content_evaluation
     delivery = synthesis_input.delivery_evaluation
     visual = synthesis_input.visual_evaluation
@@ -127,77 +125,22 @@ def _rule_based_synthesize_global_communication_feedback(*, synthesis_input: Com
 
     strengths: list[str] = []
     improvements: list[str] = []
-    consistency_notes: list[str] = []
-
-    for label, payload, score in [
-        ('contenido', content, content_score),
-        ('delivery', delivery, delivery_score),
-        ('visual', visual, visual_score),
-    ]:
-        summary = str(payload.get('summary') or f'Bloque {label} sin resumen explícito.')
-        if score >= 75:
-            strengths.append(f'{label}: {summary}')
-        if score < 65:
-            improvements.append(f'{label}: priorizar mejora (score={score}).')
-        if payload.get('status_visual') == 'placeholder':
-            consistency_notes.append(f'{label}: evaluación degradada por datos parciales/placeholder.')
-
-    if spread > 35:
-        consistency_notes.append('Se detecta dispersión entre bloques; priorizar equilibrio entre claridad, delivery y componente visual.')
-
-    actions: list[str] = []
+    recommendations_payload: list[dict[str, str]] = []
     for payload in (content, delivery, visual):
         recommendations = payload.get('recommendations', [])
         if isinstance(recommendations, list):
             for recommendation in recommendations:
                 item = str(recommendation).strip()
-                if item and item not in actions:
-                    actions.append(item)
-                if len(actions) >= 5:
+                if item and all(existing['description'] != item for existing in recommendations_payload):
+                    recommendations_payload.append({
+                        'title': f'Prioridad {len(recommendations_payload) + 1}',
+                        'description': item,
+                    })
+                if len(recommendations_payload) >= 4:
                     break
-        if len(actions) >= 5:
+        if len(recommendations_payload) >= 4:
             break
-    if not actions:
-        actions = [
-            'Define una apertura y cierre con mensaje central explícito.',
-            'Ajusta ritmo y pausas para mejorar claridad.',
-            'Revisa encuadre e iluminación antes de grabar.',
-        ]
 
-    if not strengths:
-        strengths.append('Hay una base de avance identificable, aunque todavía sin fortaleza dominante consistente.')
-    if not improvements:
-        improvements.append('Mantener consistencia entre contenido, delivery y visual para sostener el rendimiento global.')
-
-    friendly_summary = (
-        f'Resultado global {global_score}/100. '
-        f'Fortalezas destacadas: {min(len(strengths), 2)}. '
-        f'Prioridades de mejora: {min(len(improvements), 2)}.'
-    )
-
-    return CommunicationGlobalSynthesisOutputV1(
-        global_score_0_100=global_score,
-        global_diagnosis=_derive_global_diagnosis(global_score),
-        top_strengths=strengths[:3],
-        priority_improvements=improvements[:3],
-        action_plan=actions[:5],
-        friendly_summary=friendly_summary,
-        consistency_notes=consistency_notes[:4],
-    )
-
-
-def _map_llm_output_to_synthesis_output(
-    *,
-    synthesis_input: CommunicationGlobalSynthesisInputV1,
-    llm_output: CommunicationGlobalSynthesisLlmOutputV1,
-) -> CommunicationGlobalSynthesisOutputV1:
-    content_score = _safe_score(synthesis_input.content_evaluation)
-    delivery_score = _safe_score(synthesis_input.delivery_evaluation)
-    visual_score = _safe_score(synthesis_input.visual_evaluation)
-    spread = max(content_score, delivery_score, visual_score) - min(content_score, delivery_score, visual_score)
-
-    top_strengths: list[str] = []
-    priority_improvements: list[str] = []
     for label, payload, score in [
         ('contenido', synthesis_input.content_evaluation, content_score),
         ('delivery', synthesis_input.delivery_evaluation, delivery_score),
@@ -205,42 +148,92 @@ def _map_llm_output_to_synthesis_output(
     ]:
         summary = str(payload.get('summary') or f'Bloque {label} sin resumen explícito.')
         if score >= 75:
-            top_strengths.append(f'{label}: {summary}')
+            strengths.append(f'{label}: {summary}')
         if score < 70:
-            priority_improvements.append(f'{label}: reforzar este bloque para equilibrar el desempeño global.')
+            improvements.append(f'{label}: reforzar este bloque para equilibrar el desempeño global.')
 
-    consistency_notes: list[str] = []
+    score_reason = 'Tu desempeño global es consistente en los tres bloques principales.'
     if spread > 35:
-        consistency_notes.append('Se detecta dispersión entre bloques; conviene equilibrar contenido, delivery y visual.')
+        score_reason = 'Tu desempeño global es irregular entre bloques y eso reduce la nota final.'
+    elif improvements:
+        score_reason = 'Tu desempeño global muestra avances, pero todavía hay áreas claras para reforzar.'
+    strengths_clause = f' Tu punto más fuerte ahora es {strengths[0]}.' if strengths else ''
+    improve_clause = f' Prioriza {improvements[0]}.' if improvements else ''
+    summary = _normalize_single_paragraph(
+        f'Has obtenido {global_score}/100. {score_reason}{strengths_clause}{improve_clause}'
+    )
 
-    action_plan = [f'{item.title}: {item.description}' for item in llm_output.recommendations]
-    if not top_strengths:
-        top_strengths.append('Hay una base de avance identificable, aunque todavía sin fortaleza dominante consistente.')
-    if not priority_improvements and llm_output.score_global_100 < 90:
-        priority_improvements.append('Refuerza la consistencia entre contenido, delivery y presencia visual para subir tu nota global.')
-
-    return CommunicationGlobalSynthesisOutputV1(
-        global_score_0_100=llm_output.score_global_100,
-        global_diagnosis=_derive_global_diagnosis(llm_output.score_global_100),
-        top_strengths=top_strengths[:3],
-        priority_improvements=priority_improvements[:3],
-        action_plan=action_plan[:4],
-        friendly_summary=llm_output.summary_short_2_3_lines,
-        consistency_notes=consistency_notes[:4],
+    return CommunicationGlobalSynthesisLlmOutputV1(
+        score_global_100=global_score,
+        summary_short_2_3_lines=summary,
+        recommendations=recommendations_payload[:4],
     )
 
 
-def synthesize_global_communication_feedback(*, synthesis_input: CommunicationGlobalSynthesisInputV1) -> CommunicationGlobalSynthesisOutputV1:
-    if _is_global_synthesis_llm_enabled():
+def _finalize_llm_output(output: CommunicationGlobalSynthesisLlmOutputV1) -> CommunicationGlobalSynthesisLlmOutputV1:
+    return CommunicationGlobalSynthesisLlmOutputV1(
+        score_global_100=output.score_global_100,
+        summary_short_2_3_lines=_normalize_single_paragraph(output.summary_short_2_3_lines),
+        recommendations=output.recommendations[:4],
+    )
+
+
+def synthesize_global_communication_feedback(*, synthesis_input: CommunicationGlobalSynthesisInputV1) -> tuple[CommunicationGlobalSynthesisLlmOutputV1, CommunicationGlobalSynthesisMetaV1]:
+    if not _is_global_synthesis_llm_enabled():
+        _LOGGER.info('communication_global_synthesis fallback=disabled_flag evaluation_id=%s', synthesis_input.evaluation_id)
+        return _rule_based_synthesize_global_communication_feedback(synthesis_input=synthesis_input), CommunicationGlobalSynthesisMetaV1(
+            mode='fallback',
+            fallback_reason='disabled_flag',
+        )
+    try:
         prompt = _load_global_synthesis_prompt_template()
         payload = _build_synthesis_llm_payload(synthesis_input=synthesis_input)
-        try:
-            llm_output = _run_global_synthesis_llm_openai(prompt=prompt, payload=payload)
-            return _map_llm_output_to_synthesis_output(synthesis_input=synthesis_input, llm_output=llm_output)
-        except Exception:
-            pass
-    return _rule_based_synthesize_global_communication_feedback(synthesis_input=synthesis_input)
+        llm_output = _run_global_synthesis_llm_openai(prompt=prompt, payload=payload)
+        _LOGGER.info('communication_global_synthesis mode=llm evaluation_id=%s', synthesis_input.evaluation_id)
+        return _finalize_llm_output(llm_output), CommunicationGlobalSynthesisMetaV1(mode='llm')
+    except RuntimeError as exc:
+        reason = 'missing_openai_api_key' if str(exc) == 'missing_openai_api_key' else 'unexpected_error'
+        _LOGGER.warning(
+            'communication_global_synthesis fallback=%s evaluation_id=%s detail=%s',
+            reason,
+            synthesis_input.evaluation_id,
+            str(exc),
+        )
+        return _rule_based_synthesize_global_communication_feedback(synthesis_input=synthesis_input), CommunicationGlobalSynthesisMetaV1(
+            mode='fallback',
+            fallback_reason=reason,
+            detail=str(exc),
+        )
+    except ValueError as exc:
+        _LOGGER.warning(
+            'communication_global_synthesis fallback=schema_validation_error evaluation_id=%s detail=%s',
+            synthesis_input.evaluation_id,
+            str(exc),
+        )
+        return _rule_based_synthesize_global_communication_feedback(synthesis_input=synthesis_input), CommunicationGlobalSynthesisMetaV1(
+            mode='fallback',
+            fallback_reason='schema_validation_error',
+            detail=str(exc),
+        )
+    except openai.OpenAIError as exc:
+        _LOGGER.warning(
+            'communication_global_synthesis fallback=openai_error evaluation_id=%s detail=%s',
+            synthesis_input.evaluation_id,
+            str(exc),
+        )
+        return _rule_based_synthesize_global_communication_feedback(synthesis_input=synthesis_input), CommunicationGlobalSynthesisMetaV1(
+            mode='fallback',
+            fallback_reason='openai_error',
+            detail=str(exc),
+        )
+    except Exception as exc:
+        _LOGGER.exception('communication_global_synthesis fallback=unexpected_error evaluation_id=%s', synthesis_input.evaluation_id)
+        return _rule_based_synthesize_global_communication_feedback(synthesis_input=synthesis_input), CommunicationGlobalSynthesisMetaV1(
+            mode='fallback',
+            fallback_reason='unexpected_error',
+            detail=str(exc),
+        )
 
 
-def validate_synthesis_schema(raw_output: dict[str, object]) -> CommunicationGlobalSynthesisOutputV1:
-    return CommunicationGlobalSynthesisOutputV1.model_validate(raw_output)
+def validate_synthesis_schema(raw_output: dict[str, object]) -> CommunicationGlobalSynthesisLlmOutputV1:
+    return CommunicationGlobalSynthesisLlmOutputV1.model_validate(raw_output)

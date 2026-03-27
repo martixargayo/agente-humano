@@ -38,13 +38,13 @@ class CommunicationPhase4SynthesisAndReportTests(unittest.TestCase):
             delivery_output=delivery,
             visual_output=visual,
         )
-        output = synthesize_global_communication_feedback(synthesis_input=synthesis_input)
+        output, meta = synthesize_global_communication_feedback(synthesis_input=synthesis_input)
         # weighted = 40.5 + 26.25 + 6 = 72.75; spread=60 => penalty 10 => 63
-        self.assertEqual(output.global_score_0_100, 63)
-        self.assertTrue(output.top_strengths)
-        self.assertTrue(output.priority_improvements)
-        self.assertTrue(output.action_plan)
-        self.assertIn('dispersión', ' '.join(output.consistency_notes))
+        self.assertEqual(output.score_global_100, 63)
+        self.assertEqual(meta.mode, 'fallback')
+        self.assertEqual(meta.fallback_reason, 'disabled_flag')
+        self.assertNotIn('Fortalezas destacadas', output.summary_short_2_3_lines)
+        self.assertNotIn('Prioridades de mejora', output.summary_short_2_3_lines)
 
     def test_synthesis_llm_output_contract_and_mapping(self) -> None:
         content = {'score_0_100': 84, 'status_visual': 'correcto', 'summary': 'Contenido bien enfocado', 'details': [], 'recommendations': []}
@@ -70,14 +70,14 @@ class CommunicationPhase4SynthesisAndReportTests(unittest.TestCase):
             patch('evaluacion.engine.communication_synthesis._is_global_synthesis_llm_enabled', return_value=True),
             patch('evaluacion.engine.communication_synthesis._run_global_synthesis_llm_openai', return_value=llm_output),
         ):
-            output = synthesize_global_communication_feedback(synthesis_input=synthesis_input)
+            output, meta = synthesize_global_communication_feedback(synthesis_input=synthesis_input)
 
-        self.assertEqual(output.global_score_0_100, 84)
-        self.assertEqual(output.friendly_summary, llm_output.summary_short_2_3_lines)
-        self.assertEqual(
-            output.action_plan,
-            ['Haz el cierre más intencional: Termina con una idea final más clara para reforzar el mensaje principal.'],
-        )
+        self.assertEqual(output.score_global_100, 84)
+        self.assertEqual(output.summary_short_2_3_lines, llm_output.summary_short_2_3_lines)
+        self.assertEqual(meta.mode, 'llm')
+        self.assertEqual(meta.fallback_reason, None)
+        self.assertEqual(len(output.recommendations), 1)
+        self.assertEqual(output.recommendations[0].title, 'Haz el cierre más intencional')
 
     def test_synthesis_llm_contract_limits_recommendations_to_four(self) -> None:
         with self.assertRaises(ValidationError):
@@ -115,9 +115,11 @@ class CommunicationPhase4SynthesisAndReportTests(unittest.TestCase):
             patch('evaluacion.engine.communication_synthesis._is_global_synthesis_llm_enabled', return_value=True),
             patch('evaluacion.engine.communication_synthesis._run_global_synthesis_llm_openai', side_effect=RuntimeError('forced_failure')),
         ):
-            output = synthesize_global_communication_feedback(synthesis_input=synthesis_input)
-        self.assertEqual(output.global_score_0_100, 63)
-        self.assertTrue(output.action_plan)
+            output, meta = synthesize_global_communication_feedback(synthesis_input=synthesis_input)
+        self.assertEqual(output.score_global_100, 63)
+        self.assertEqual(meta.mode, 'fallback')
+        self.assertEqual(meta.fallback_reason, 'unexpected_error')
+        self.assertLessEqual(len(output.recommendations), 4)
 
     def test_report_includes_global_synthesis_and_uses_its_score(self) -> None:
         client = TestClient(app, raise_server_exceptions=False)
@@ -148,8 +150,10 @@ class CommunicationPhase4SynthesisAndReportTests(unittest.TestCase):
 
         report = client.get(f'/api/comunicacion/evaluations/{evaluation_id}/report').json()
         self.assertIn('global_synthesis', report)
-        self.assertIsInstance(report['global_synthesis']['global_score_0_100'], int)
-        self.assertEqual(report['header']['score_global_100'], report['global_synthesis']['global_score_0_100'])
+        self.assertIsInstance(report['global_synthesis']['score_global_100'], int)
+        self.assertEqual(report['header']['score_global_100'], report['global_synthesis']['score_global_100'])
+        self.assertNotIn('Fortalezas destacadas', report['header']['summary_2_3_lines'])
+        self.assertNotIn('Prioridades de mejora', report['header']['summary_2_3_lines'])
 
 
 if __name__ == '__main__':
