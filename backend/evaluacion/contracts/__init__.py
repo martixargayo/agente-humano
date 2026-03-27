@@ -7,6 +7,16 @@ from .models import (
     TurnTrajectoryV1,
     UiFeedbackReportV1,
 )
+from .communication_models import (
+    CommunicationVisualBatchEvalInputV1,
+    CommunicationVisualBatchEvalV2,
+    CommunicationVisualBatchFrameRefV1,
+    CommunicationVisualFinalEvalV1,
+    CommunicationVisualFrameCoverageSummaryV1,
+    CommunicationVisualMode,
+    CommunicationVisualObservabilityFlagsV1,
+    CommunicationVisualSamplingStrategyV1,
+)
 
 __all__ = [
     "JobStatus",
@@ -16,4 +26,12 @@ __all__ = [
     "FeedbackReportCoreV1",
     "TurnTrajectoryV1",
     "UiFeedbackReportV1",
+    "CommunicationVisualMode",
+    "CommunicationVisualSamplingStrategyV1",
+    "CommunicationVisualBatchFrameRefV1",
+    "CommunicationVisualBatchEvalInputV1",
+    "CommunicationVisualObservabilityFlagsV1",
+    "CommunicationVisualFrameCoverageSummaryV1",
+    "CommunicationVisualBatchEvalV2",
+    "CommunicationVisualFinalEvalV1",
 ]

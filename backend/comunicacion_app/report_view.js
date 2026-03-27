@@ -76,7 +76,7 @@
     const resolvedVideoSrc = resolveCommunicationVideoSrc(media);
     const showSource = options.disableVideo !== true && resolvedVideoSrc;
     return `
-      <video class="fb-video" controls preload="metadata" playsinline${poster}>
+      <video class="comm-report__video" controls preload="metadata" playsinline${poster}>
         ${showSource ? `<source src="${escapeHtml(resolvedVideoSrc)}" type="${escapeHtml(media.mime_type || 'video/webm')}" />` : ''}
       </video>
       <dl class="comm-report__video-meta">

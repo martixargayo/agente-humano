@@ -30,6 +30,7 @@ CommunicationJobStage = Literal[
     'failed',
 ]
 CommunicationBlockStatus = Literal['correcto', 'mejorable', 'placeholder']
+CommunicationVisualMode = Literal['metadata', 'llm_v1']
 
 
 class CommunicationDomainContext(BaseModel):
@@ -227,6 +228,102 @@ class CommunicationVisualFeaturesRealV1(BaseModel):
     coverage_stats: dict[str, float | int] = Field(default_factory=dict)
     quality_flags: list[str] = Field(default_factory=list)
     explanation: str | None = None
+
+
+class CommunicationVisualSamplingStrategyV1(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    mode: Literal['uniform_1fps_capped_90'] = 'uniform_1fps_capped_90'
+    candidate_fps: Literal[1] = 1
+    max_frames: int = Field(default=90, ge=1, le=90)
+    selection: Literal['uniform_full_duration'] = 'uniform_full_duration'
+    batch_target: int = Field(default=30, ge=1, le=90)
+    tail_merge_threshold: int = Field(default=6, ge=1, le=30)
+
+
+class CommunicationVisualBatchFrameRefV1(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    frame_id: str
+    timestamp_ms: int = Field(ge=0)
+    frame_ref: str
+    detail: Literal['low'] = 'low'
+
+
+class CommunicationVisualBatchEvalInputV1(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    schema_version: Literal['communication_visual_batch_eval_input.v1'] = 'communication_visual_batch_eval_input.v1'
+    evaluation_id: str
+    recording_id: str
+    batch_index: int = Field(ge=1)
+    total_batches: int = Field(ge=1)
+    video_duration_ms: int = Field(ge=0)
+    sampling_strategy: CommunicationVisualSamplingStrategyV1 = Field(default_factory=CommunicationVisualSamplingStrategyV1)
+    frames: list[CommunicationVisualBatchFrameRefV1] = Field(default_factory=list)
+    rubric: dict[str, str] = Field(default_factory=dict)
+
+
+class CommunicationVisualObservabilityFlagsV1(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    hands_not_visible: bool
+    face_partially_visible: bool
+    upper_body_not_visible: bool
+    blur_detected: bool
+    low_light_detected: bool
+    camera_far_distance: bool
+
+
+class CommunicationVisualFrameCoverageSummaryV1(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    frames_total: int = Field(ge=0)
+    frames_usable: int = Field(ge=0)
+    frames_with_face_visible: int = Field(ge=0)
+    frames_with_hands_visible: int = Field(ge=0)
+    frames_with_upper_body_visible: int = Field(ge=0)
+    frames_blurry: int = Field(ge=0)
+    frames_low_light: int = Field(ge=0)
+
+
+class CommunicationVisualBatchEvalV2(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    schema_version: Literal['communication_visual_batch_eval.v2'] = 'communication_visual_batch_eval.v2'
+    batch_index: int = Field(ge=1)
+    total_batches: int = Field(ge=1)
+    batch_score_1_5: int = Field(ge=1, le=5)
+    evidence_sufficiency: Literal['low', 'medium', 'high']
+    confidence: float = Field(ge=0.0, le=1.0)
+    hand_use_assessment: str
+    facial_expression_assessment: str
+    posture_assessment: str
+    visual_support_assessment: str
+    strengths: list[str] = Field(default_factory=list)
+    weaknesses: list[str] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
+    cited_frame_ids: list[str] = Field(default_factory=list)
+    observability_flags: CommunicationVisualObservabilityFlagsV1
+    frame_coverage_summary: CommunicationVisualFrameCoverageSummaryV1
+    confidence_reasoning: list[str] = Field(default_factory=list)
+
+
+class CommunicationVisualFinalEvalV1(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    schema_version: Literal['communication_visual_final_eval.v1'] = 'communication_visual_final_eval.v1'
+    global_score_1_5: int = Field(ge=1, le=5)
+    label: str
+    diagnosis: str
+    temporal_consistency: Literal['low', 'medium', 'high']
+    top_strengths: list[str] = Field(default_factory=list)
+    top_weaknesses: list[str] = Field(default_factory=list)
+    recommendations: list[str] = Field(default_factory=list)
+    evidence_frame_ids: list[str] = Field(default_factory=list)
+    confidence: float = Field(ge=0.0, le=1.0)
+    limitations: list[str] = Field(default_factory=list)
+    batch_summaries: list[CommunicationVisualBatchEvalV2] = Field(default_factory=list)
 
 
 class CommunicationFeedbackInputBundleV1(BaseModel):
