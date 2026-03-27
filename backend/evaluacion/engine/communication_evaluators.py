@@ -7,7 +7,9 @@ from evaluacion.engine.communication_synthesis import (
     build_global_synthesis_input,
     synthesize_global_communication_feedback,
 )
-from evaluacion.engine.communication_visual_evaluator import evaluate_visual_from_features
+from evaluacion.engine.communication_visual_config import get_visual_mode, is_visual_llm_enabled
+from evaluacion.engine.communication_visual_evaluator import evaluate_visual_from_features, evaluate_visual_llm_v1_from_features
+from evaluacion.engine.communication_visual_openai_client import CommunicationVisualLlmError
 
 
 def evaluate_communication_content(bundle: CommunicationFeedbackInputBundleV1) -> dict[str, object]:
@@ -35,7 +37,26 @@ def evaluate_communication_delivery(bundle: CommunicationFeedbackInputBundleV1) 
 
 
 def evaluate_communication_visual(bundle: CommunicationFeedbackInputBundleV1) -> dict[str, object]:
-    evaluated = evaluate_visual_from_features(visual_features=bundle.visual_features)
+    fallback_notes: list[str] = []
+    llm_batch_outputs: list[dict[str, object]] = []
+    llm_final_evaluation: dict[str, object] | None = None
+    mode = get_visual_mode()
+    use_llm_mode = mode == 'llm_v1' and is_visual_llm_enabled()
+    if use_llm_mode:
+        try:
+            evaluated, batch_outputs, final_eval = evaluate_visual_llm_v1_from_features(
+                evaluation_id=bundle.evaluation_id,
+                recording_id=bundle.attempt_ref.recording_id,
+                video_duration_ms=bundle.recording.duration_ms,
+                visual_features=bundle.visual_features,
+            )
+            llm_batch_outputs = [item.model_dump(mode='json') for item in batch_outputs]
+            llm_final_evaluation = final_eval.model_dump(mode='json') if hasattr(final_eval, 'model_dump') else None
+        except CommunicationVisualLlmError as exc:
+            fallback_notes.append(f'llm_v1_fallback_to_metadata:{exc.kind}:{exc.message}')
+            evaluated = evaluate_visual_from_features(visual_features=bundle.visual_features)
+    else:
+        evaluated = evaluate_visual_from_features(visual_features=bundle.visual_features)
     status_visual = 'mejorable'
     if evaluated.score_0_100 >= 75:
         status_visual = 'correcto'
@@ -47,10 +68,13 @@ def evaluate_communication_visual(bundle: CommunicationFeedbackInputBundleV1) ->
         'status_visual': status_visual,
         'score_0_100': evaluated.score_0_100,
         'summary': 'Evaluación visual real basada en frames extraídos.' if getattr(bundle.visual_features, 'status', None) == 'ready' else 'Evaluación visual degradada por indisponibilidad de frames.',
-        'details': evaluated.observations + [finding.finding for finding in evaluated.temporal_findings],
+        'details': evaluated.observations + [finding.finding for finding in evaluated.temporal_findings] + fallback_notes,
         'subscores': evaluated.subscores,
         'recommendations': evaluated.recommendations,
         'evidence_frames': evaluated.evidence_frames,
+        'visual_mode': mode,
+        'llm_batch_evaluations': llm_batch_outputs,
+        'llm_final_evaluation': llm_final_evaluation or {},
     }
 
 

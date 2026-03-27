@@ -141,6 +141,8 @@ def _run_communication_evaluation_job(*, evaluation_id: str, attempt_id: str) ->
                 stage='visual_analysis_ready',
                 error=f'partial_failures:{merged_error}',
             )
+        persist_visual_batch_eval_artifacts(evaluation_id=evaluation_id, bundle=bundle, visual_output=visual_result)
+        persist_visual_llm_final_artifact(evaluation_id=evaluation_id, bundle=bundle, visual_output=visual_result)
         persist_visual_evaluation_artifact(evaluation_id=evaluation_id, bundle=bundle)
         _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='running', stage='synthesis_started')
         synthesis_result = evaluate_communication_synthesis(
@@ -321,6 +323,55 @@ def persist_visual_evaluation_artifact(*, evaluation_id: str, bundle: object) ->
             recording_id=getattr(attempt_ref, 'recording_id'),
             kind='visual_evaluation',
             version='communication_visual_evaluation.v1',
+            storage_ref=storage_ref,
+            content_hash=None,
+            created_at=_utcnow(),
+        )
+    )
+
+
+def persist_visual_batch_eval_artifacts(*, evaluation_id: str, bundle: object, visual_output: dict[str, object]) -> None:
+    attempt_ref = getattr(bundle, 'attempt_ref', None)
+    if attempt_ref is None:
+        return
+    raw_batches = visual_output.get('llm_batch_evaluations')
+    if not isinstance(raw_batches, list):
+        return
+    for index, _payload in enumerate(raw_batches, start=1):
+        storage_ref = (
+            f'memory://communication/visual_batch_eval/{evaluation_id}/'
+            f'{getattr(attempt_ref, "recording_id", "unknown")}/batch_{index}.json'
+        )
+        REPOSITORY.save_artifact(
+            DerivedArtifactRecord(
+                artifact_id=_generate_artifact_id(),
+                recording_id=getattr(attempt_ref, 'recording_id'),
+                kind='visual_batch_eval',
+                version='communication_visual_batch_eval.v2',
+                storage_ref=storage_ref,
+                content_hash=None,
+                created_at=_utcnow(),
+            )
+        )
+
+
+def persist_visual_llm_final_artifact(*, evaluation_id: str, bundle: object, visual_output: dict[str, object]) -> None:
+    attempt_ref = getattr(bundle, 'attempt_ref', None)
+    if attempt_ref is None:
+        return
+    raw_final = visual_output.get('llm_final_evaluation')
+    if not isinstance(raw_final, dict) or not raw_final:
+        return
+    storage_ref = (
+        f'memory://communication/visual_llm_final/{evaluation_id}/'
+        f'{getattr(attempt_ref, "recording_id", "unknown")}.json'
+    )
+    REPOSITORY.save_artifact(
+        DerivedArtifactRecord(
+            artifact_id=_generate_artifact_id(),
+            recording_id=getattr(attempt_ref, 'recording_id'),
+            kind='visual_llm_final',
+            version='communication_visual_final_eval.v1',
             storage_ref=storage_ref,
             content_hash=None,
             created_at=_utcnow(),
