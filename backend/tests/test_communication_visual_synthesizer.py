@@ -66,17 +66,9 @@ class CommunicationVisualSynthesizerTests(unittest.TestCase):
         fake_response = SimpleNamespace(
             output_text=json.dumps(
                 {
-                    'global_score_1_5': 4,
-                    'label': 'solido',
-                    'diagnosis': 'diagnosis',
-                    'temporal_consistency': 'medium',
-                    'top_strengths': ['s'],
-                    'top_weaknesses': ['w'],
-                    'recommendations': ['r'],
-                    'evidence_frame_ids': ['frame_001'],
-                    'confidence': 0.65,
-                    'limitations': ['l'],
-                    'batch_summaries': [_batch(1).model_dump(mode='json'), _batch(2).model_dump(mode='json')],
+                    'score_1_5': 4,
+                    'label': 'medio-alto',
+                    'reason_short': 'Tu gesticulación acompaña bien el mensaje y puedes mejorar la consistencia.',
                 }
             )
         )
@@ -89,7 +81,7 @@ class CommunicationVisualSynthesizerTests(unittest.TestCase):
             client=fake_client,
             max_retries=0,
         )
-        self.assertEqual(output.global_score_1_5, 4)
+        self.assertEqual(output.score_1_5, 4)
 
 
 if __name__ == '__main__':

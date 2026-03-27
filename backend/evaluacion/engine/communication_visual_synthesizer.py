@@ -5,7 +5,7 @@ from pathlib import Path
 
 import openai
 
-from evaluacion.contracts.communication_models import CommunicationVisualBatchEvalV2, CommunicationVisualFinalEvalV1
+from evaluacion.contracts.communication_models import CommunicationSpecializedDimensionEvalV1, CommunicationVisualBatchEvalV2
 from evaluacion.engine.communication_visual_config import (
     get_visual_openai_max_retries,
     get_visual_openai_model,
@@ -43,7 +43,7 @@ def run_visual_synthesis_openai(
     timeout_s: float | None = None,
     max_retries: int | None = None,
     client: openai.OpenAI | None = None,
-) -> CommunicationVisualFinalEvalV1:
+) -> CommunicationSpecializedDimensionEvalV1:
     if not batch_outputs:
         raise CommunicationVisualLlmError(kind='schema', message='cannot_synthesize_without_batches')
 
@@ -54,7 +54,7 @@ def run_visual_synthesis_openai(
         video_duration_ms=video_duration_ms,
         batch_outputs=batch_outputs,
     )
-    schema = CommunicationVisualFinalEvalV1.model_json_schema()
+    schema = CommunicationSpecializedDimensionEvalV1.model_json_schema()
 
     selected_model = model or get_visual_openai_model()
     selected_timeout = timeout_s if timeout_s is not None else get_visual_openai_timeout_s()
@@ -73,7 +73,7 @@ def run_visual_synthesis_openai(
                 text={
                     'format': {
                         'type': 'json_schema',
-                        'name': 'communication_visual_final_eval_v1',
+                        'name': 'communication_specialized_dimension_eval_v1',
                         'schema': schema,
                         'strict': True,
                     }
@@ -83,7 +83,7 @@ def run_visual_synthesis_openai(
             )
             raw = getattr(response, 'output_text', '') or '{}'
             parsed = json.loads(raw)
-            return CommunicationVisualFinalEvalV1.model_validate(parsed)
+            return CommunicationSpecializedDimensionEvalV1.model_validate(parsed)
         except json.JSONDecodeError as exc:
             raise CommunicationVisualLlmError(kind='schema', message=f'visual_synthesis_json_decode_failed:{exc}') from exc
         except CommunicationVisualLlmError:

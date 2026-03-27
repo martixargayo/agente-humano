@@ -1,9 +1,69 @@
 from __future__ import annotations
 
+import json
+import os
+from pathlib import Path
+
+import openai
+
 from evaluacion.contracts.communication_models import (
     CommunicationGlobalSynthesisInputV1,
+    CommunicationGlobalSynthesisLlmOutputV1,
     CommunicationGlobalSynthesisOutputV1,
 )
+
+_PROMPT_PATH = Path(__file__).resolve().parents[1] / 'prompts' / 'communication_global_synthesis_prompt.txt'
+
+
+def _load_global_synthesis_prompt_template() -> str:
+    if _PROMPT_PATH.exists():
+        return _PROMPT_PATH.read_text(encoding='utf-8')
+    return 'Sintetiza score global, resumen corto y recomendaciones en JSON estricto.'
+
+
+def _is_global_synthesis_llm_enabled() -> bool:
+    raw = (os.getenv('COMM_SYNTHESIS_OPENAI_ENABLED') or '').strip().lower()
+    return raw in {'1', 'true', 'yes', 'on'}
+
+
+def _build_openai_client() -> openai.OpenAI:
+    api_key = (os.getenv('OPENAI_API_KEY') or '').strip()
+    if not api_key:
+        raise RuntimeError('missing_openai_api_key')
+    return openai.OpenAI(api_key=api_key)
+
+
+def _build_synthesis_llm_payload(*, synthesis_input: CommunicationGlobalSynthesisInputV1) -> dict[str, object]:
+    return {
+        'evaluation_id': synthesis_input.evaluation_id,
+        'content_evaluation': synthesis_input.content_evaluation,
+        'delivery_evaluation': synthesis_input.delivery_evaluation,
+        'visual_evaluation': synthesis_input.visual_evaluation,
+        'evidence_summary': synthesis_input.evidence_summary,
+    }
+
+
+def _run_global_synthesis_llm_openai(*, prompt: str, payload: dict[str, object]) -> CommunicationGlobalSynthesisLlmOutputV1:
+    client = _build_openai_client()
+    response = client.responses.create(
+        model=(os.getenv('COMM_SYNTHESIS_OPENAI_MODEL') or '').strip() or 'gpt-4.1-mini',
+        input=[
+            {'role': 'developer', 'content': prompt},
+            {'role': 'user', 'content': f'BEGIN_INPUT_JSON\n{json.dumps(payload, ensure_ascii=False)}\nEND_INPUT_JSON'},
+        ],
+        text={
+            'format': {
+                'type': 'json_schema',
+                'name': 'communication_global_synthesis_llm_output_v1',
+                'schema': CommunicationGlobalSynthesisLlmOutputV1.model_json_schema(),
+                'strict': True,
+            }
+        },
+        store=False,
+        timeout=20.0,
+    )
+    raw = getattr(response, 'output_text', '') or '{}'
+    return CommunicationGlobalSynthesisLlmOutputV1.model_validate(json.loads(raw))
 
 
 def _safe_score(payload: dict[str, object], default: int = 60) -> int:
@@ -51,7 +111,7 @@ def _derive_global_diagnosis(score: int) -> str:
     return 'Desempeño inicial: requiere un plan de mejora guiado en contenido, delivery y visual.'
 
 
-def synthesize_global_communication_feedback(*, synthesis_input: CommunicationGlobalSynthesisInputV1) -> CommunicationGlobalSynthesisOutputV1:
+def _rule_based_synthesize_global_communication_feedback(*, synthesis_input: CommunicationGlobalSynthesisInputV1) -> CommunicationGlobalSynthesisOutputV1:
     content = synthesis_input.content_evaluation
     delivery = synthesis_input.delivery_evaluation
     visual = synthesis_input.visual_evaluation
@@ -124,6 +184,62 @@ def synthesize_global_communication_feedback(*, synthesis_input: CommunicationGl
         friendly_summary=friendly_summary,
         consistency_notes=consistency_notes[:4],
     )
+
+
+def _map_llm_output_to_synthesis_output(
+    *,
+    synthesis_input: CommunicationGlobalSynthesisInputV1,
+    llm_output: CommunicationGlobalSynthesisLlmOutputV1,
+) -> CommunicationGlobalSynthesisOutputV1:
+    content_score = _safe_score(synthesis_input.content_evaluation)
+    delivery_score = _safe_score(synthesis_input.delivery_evaluation)
+    visual_score = _safe_score(synthesis_input.visual_evaluation)
+    spread = max(content_score, delivery_score, visual_score) - min(content_score, delivery_score, visual_score)
+
+    top_strengths: list[str] = []
+    priority_improvements: list[str] = []
+    for label, payload, score in [
+        ('contenido', synthesis_input.content_evaluation, content_score),
+        ('delivery', synthesis_input.delivery_evaluation, delivery_score),
+        ('visual', synthesis_input.visual_evaluation, visual_score),
+    ]:
+        summary = str(payload.get('summary') or f'Bloque {label} sin resumen explícito.')
+        if score >= 75:
+            top_strengths.append(f'{label}: {summary}')
+        if score < 70:
+            priority_improvements.append(f'{label}: reforzar este bloque para equilibrar el desempeño global.')
+
+    consistency_notes: list[str] = []
+    if spread > 35:
+        consistency_notes.append('Se detecta dispersión entre bloques; conviene equilibrar contenido, delivery y visual.')
+
+    action_plan = [f'{item.title}: {item.description}' for item in llm_output.recommendations]
+    if not top_strengths:
+        top_strengths.append('Hay una base de avance identificable, aunque todavía sin fortaleza dominante consistente.')
+    if not priority_improvements and llm_output.score_global_100 < 90:
+        priority_improvements.append('Refuerza la consistencia entre contenido, delivery y presencia visual para subir tu nota global.')
+
+    return CommunicationGlobalSynthesisOutputV1(
+        global_score_0_100=llm_output.score_global_100,
+        global_diagnosis=_derive_global_diagnosis(llm_output.score_global_100),
+        top_strengths=top_strengths[:3],
+        priority_improvements=priority_improvements[:3],
+        action_plan=action_plan[:4],
+        friendly_summary=llm_output.summary_short_2_3_lines,
+        consistency_notes=consistency_notes[:4],
+    )
+
+
+def synthesize_global_communication_feedback(*, synthesis_input: CommunicationGlobalSynthesisInputV1) -> CommunicationGlobalSynthesisOutputV1:
+    if _is_global_synthesis_llm_enabled():
+        prompt = _load_global_synthesis_prompt_template()
+        payload = _build_synthesis_llm_payload(synthesis_input=synthesis_input)
+        try:
+            llm_output = _run_global_synthesis_llm_openai(prompt=prompt, payload=payload)
+            return _map_llm_output_to_synthesis_output(synthesis_input=synthesis_input, llm_output=llm_output)
+        except Exception:
+            pass
+    return _rule_based_synthesize_global_communication_feedback(synthesis_input=synthesis_input)
 
 
 def validate_synthesis_schema(raw_output: dict[str, object]) -> CommunicationGlobalSynthesisOutputV1:

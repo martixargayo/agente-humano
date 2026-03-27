@@ -8,6 +8,10 @@ from .models import (
     UiFeedbackReportV1,
 )
 from .communication_models import (
+    CommunicationContentAidaEvalV1,
+    CommunicationGlobalSynthesisLlmOutputV1,
+    CommunicationGlobalSynthesisRecommendationV1,
+    CommunicationSpecializedDimensionEvalV1,
     CommunicationVisualBatchEvalInputV1,
     CommunicationVisualBatchEvalV2,
     CommunicationVisualBatchFrameRefV1,
@@ -27,6 +31,10 @@ __all__ = [
     "TurnTrajectoryV1",
     "UiFeedbackReportV1",
     "CommunicationVisualMode",
+    "CommunicationContentAidaEvalV1",
+    "CommunicationGlobalSynthesisRecommendationV1",
+    "CommunicationGlobalSynthesisLlmOutputV1",
+    "CommunicationSpecializedDimensionEvalV1",
     "CommunicationVisualSamplingStrategyV1",
     "CommunicationVisualBatchFrameRefV1",
     "CommunicationVisualBatchEvalInputV1",

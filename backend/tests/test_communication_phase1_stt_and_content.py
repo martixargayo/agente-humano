@@ -164,6 +164,11 @@ class CommunicationPhase1SttAndContentTests(unittest.TestCase):
         self.assertEqual(content['block_id'], 'contenido')
         self.assertIn('transcripción real', content['summary'].lower())
         self.assertGreaterEqual(content['score_0_100'], 55)
+        self.assertIn('llm_specialized_evaluation', content)
+        specialized = content['llm_specialized_evaluation']
+        self.assertEqual(set(specialized.keys()), {'attention', 'interest', 'development', 'action'})
+        self.assertIn(specialized['attention']['score_1_3'], [1, 2, 3])
+        self.assertIn(specialized['attention']['label'], ['mal', 'mejorable', 'correcto'])
 
     def test_bundle_degrades_to_placeholder_when_stt_provider_fails(self) -> None:
         self._seed_attempt_and_recording()
