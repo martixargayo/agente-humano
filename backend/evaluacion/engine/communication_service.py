@@ -190,6 +190,12 @@ def _fallback_analysis_output(*, branch: str, detail: str) -> dict[str, object]:
         'summary': f'Evaluación degradada de {branch} por error de ejecución en la rama paralela.',
         'details': details,
         'recommendations': ['Reintenta la evaluación para recuperar el diagnóstico completo de esta rama.'],
+        'runtime_meta': {
+            'branch_id': branch,
+            'mode': 'fallback',
+            'reason': 'parallel_branch_error',
+            'detail': detail,
+        },
     }
     if branch == 'visual':
         base['evidence_frames'] = []

@@ -7,6 +7,7 @@ import textwrap
 from typing import Any
 
 from evaluacion.contracts.communication_models import (
+    CommunicationBranchRuntimeMetaV1,
     CommunicationFeedbackInputBundleV1,
     CommunicationGlobalSynthesisLlmOutputV1,
     CommunicationGlobalSynthesisMetaV1,
@@ -58,6 +59,54 @@ def _build_header(*, score_global_100: int, content_output: dict[str, Any], deli
         stars_0_5=round(score_global_100 / 20.0, 1),
         summary_2_3_lines=summary,
     )
+
+
+def _build_branch_runtime_meta(
+    *,
+    content_output: dict[str, Any],
+    delivery_output: dict[str, Any],
+    visual_output: dict[str, Any],
+    synthesis_runtime_meta: CommunicationGlobalSynthesisMetaV1 | None,
+) -> dict[str, CommunicationBranchRuntimeMetaV1]:
+    out: dict[str, CommunicationBranchRuntimeMetaV1] = {}
+    for branch_id, payload in (
+        ('contenido', content_output),
+        ('delivery', delivery_output),
+        ('visual', visual_output),
+    ):
+        raw = payload.get('runtime_meta')
+        if isinstance(raw, dict):
+            out[branch_id] = CommunicationBranchRuntimeMetaV1.model_validate({
+                'branch_id': branch_id,
+                'mode': raw.get('mode') or 'fallback',
+                'reason': raw.get('reason'),
+                'detail': raw.get('detail'),
+            })
+            continue
+        status_visual = str(payload.get('status_visual') or '')
+        out[branch_id] = CommunicationBranchRuntimeMetaV1(
+            branch_id=branch_id,
+            mode='placeholder' if status_visual == 'placeholder' else 'real',
+            reason='missing_runtime_meta',
+        )
+    out['global_synthesis'] = CommunicationBranchRuntimeMetaV1(
+        branch_id='global_synthesis',
+        mode=(synthesis_runtime_meta.mode if synthesis_runtime_meta is not None else 'fallback'),
+        reason=(synthesis_runtime_meta.fallback_reason if synthesis_runtime_meta is not None else 'missing_meta'),
+        detail=(synthesis_runtime_meta.detail if synthesis_runtime_meta is not None else None),
+    )
+    return out
+
+
+def _maybe_add_low_signal_note(*, header: CommunicationReportHeader, branch_runtime_meta: dict[str, CommunicationBranchRuntimeMetaV1]) -> CommunicationReportHeader:
+    degraded = [
+        key for key, meta in branch_runtime_meta.items()
+        if key in {'contenido', 'delivery', 'visual'} and meta.mode in {'placeholder', 'fallback'}
+    ]
+    if len(degraded) < 2:
+        return header
+    warning = f' Diagnóstico parcial: señal degradada en {", ".join(degraded)}.'
+    return header.model_copy(update={'summary_2_3_lines': f'{header.summary_2_3_lines}{warning}'})
 
 
 def _build_block(output: dict[str, Any]) -> CommunicationReportBlock:
@@ -208,9 +257,16 @@ def assemble_communication_report(
     synthesis = CommunicationGlobalSynthesisLlmOutputV1.model_validate(synthesis_output) if synthesis_output is not None else None
     synthesis_runtime_meta = CommunicationGlobalSynthesisMetaV1.model_validate(synthesis_meta) if synthesis_meta is not None else None
     block_cards = [_build_block(content_output), _build_block(delivery_output), _build_block(visual_output)]
+    branch_runtime_meta = _build_branch_runtime_meta(
+        content_output=content_output,
+        delivery_output=delivery_output,
+        visual_output=visual_output,
+        synthesis_runtime_meta=synthesis_runtime_meta,
+    )
     scored = [block.score_0_100 for block in block_cards if block.score_0_100 is not None]
     score_global_100 = synthesis.score_global_100 if synthesis is not None else (int(round(sum(scored) / len(scored))) if scored else 60)
     header = _build_header(score_global_100=score_global_100, content_output=content_output, delivery_output=delivery_output, synthesis_output=synthesis)
+    header = _maybe_add_low_signal_note(header=header, branch_runtime_meta=branch_runtime_meta)
     media = build_report_media_block(bundle)
     video_panel = CommunicationVideoPanel(
         title='Tu grabación',
@@ -254,6 +310,7 @@ def assemble_communication_report(
         recommendations=recommendations,
         global_synthesis=synthesis,
         global_synthesis_meta=synthesis_runtime_meta,
+        branch_runtime_meta=branch_runtime_meta,
         provenance=provenance,
         exports=CommunicationReportExports(
             report_json={},

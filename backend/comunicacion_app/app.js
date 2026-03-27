@@ -753,6 +753,15 @@
     return `client-temp://${state.session.session_id}/${attemptId}/${Date.now()}.${extension}`;
   }
 
+  function blobToDataUrl(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(new Error('No se pudo serializar el vídeo local para fallback JSON.'));
+      reader.readAsDataURL(blob);
+    });
+  }
+
   async function registerRecordingMetadata() {
     if (!state.capture.recorded_blob || !state.capture.blob_url) throw new Error('No hay una grabación local lista para registrar');
     setBusy(true);
@@ -777,6 +786,7 @@
           body: form,
         });
       } catch (uploadError) {
+        const videoBlobBase64 = await blobToDataUrl(state.capture.recorded_blob);
         out = await api(`/api/comunicacion/attempts/${state.attempt.attempt_id}/upload`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -786,10 +796,12 @@
             mime_type: state.capture.mime_type || 'video/webm',
             duration_ms: state.capture.duration_ms || 1,
             video_ref: deriveTemporaryVideoRef(),
+            video_blob_base64: videoBlobBase64,
             poster_frame_ref: null,
             capture_meta: {
               blob_size_bytes: state.capture.blob_size_bytes,
               provisional_client_ref: true,
+              local_blob_base64_fallback: true,
               upload_binary_failed: true,
               upload_binary_error: uploadError && uploadError.message ? uploadError.message : 'unknown_upload_error',
             },

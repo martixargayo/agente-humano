@@ -90,6 +90,7 @@ class UploadRecordingRequest(BaseModel):
     mime_type: str
     duration_ms: int
     video_ref: str
+    video_blob_base64: str | None = None
     poster_frame_ref: str | None = None
     capture_meta: dict[str, Any] = Field(default_factory=dict)
 
