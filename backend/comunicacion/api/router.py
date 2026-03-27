@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import base64
 import json
 from typing import Any
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse
@@ -50,6 +52,22 @@ def _parse_capture_meta(value: str | None) -> dict[str, Any]:
     if not isinstance(parsed, dict):
         raise HTTPException(status_code=400, detail={'error': 'invalid_capture_meta_json'})
     return parsed
+
+
+def _decode_video_blob_base64(raw: str) -> bytes:
+    normalized = (raw or '').strip()
+    if not normalized:
+        raise HTTPException(status_code=400, detail={'error': 'recording_media_payload_empty'})
+    payload = normalized
+    if normalized.startswith('data:'):
+        marker = normalized.find('base64,')
+        if marker == -1:
+            raise HTTPException(status_code=400, detail={'error': 'invalid_video_blob_base64'})
+        payload = normalized[marker + len('base64,'):]
+    try:
+        return base64.b64decode(payload, validate=True)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail={'error': 'invalid_video_blob_base64'}) from exc
 
 
 @router.post('/sessions/bootstrap', response_model=CommunicationSessionBootstrapResponse)
@@ -147,6 +165,26 @@ async def attach_recording_endpoint(attempt_id: str, request: Request) -> Upload
         )
     else:
         payload = UploadRecordingRequest.model_validate(await request.json())
+        parsed_ref = urlparse((payload.video_ref or '').strip())
+        if payload.video_blob_base64 and parsed_ref.scheme == 'client-temp':
+            media_bytes = _decode_video_blob_base64(payload.video_blob_base64)
+            persisted_video_ref = persist_uploaded_video_blob(
+                attempt_id=attempt_id,
+                original_filename=f'{attempt_id}.webm',
+                payload=media_bytes,
+                mime_type_hint=payload.mime_type,
+            )
+            patched_capture_meta = dict(payload.capture_meta)
+            patched_capture_meta.update({
+                'uploaded_binary': True,
+                'upload_transport': 'json_base64_fallback',
+                'blob_size_bytes': len(media_bytes),
+                'original_video_ref': payload.video_ref,
+            })
+            payload = payload.model_copy(update={
+                'video_ref': persisted_video_ref,
+                'capture_meta': patched_capture_meta,
+            })
 
     try:
         with acquire_session_execution_lock(user_id=payload.user_id, session_id=payload.session_id):

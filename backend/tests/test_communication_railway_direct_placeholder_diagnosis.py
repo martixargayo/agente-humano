@@ -81,16 +81,18 @@ class CommunicationRailwayDirectPlaceholderDiagnosisTests(unittest.TestCase):
         visual = next(block for block in report['block_cards'] if block['block_id'] == 'visual')
 
         self.assertEqual(content['score_0_100'], 55)
-        self.assertIn('0 palabras, 1 segmentos', content['summary'])
-        self.assertIn('Proveedor STT: desconocido.', content['details'])
+        self.assertIn('degradada por ausencia de transcripción real', content['summary'])
+        self.assertIn('Transcripción no disponible en modo real; se usó señal placeholder para contenido.', content['details'])
 
-        self.assertEqual(delivery['score_0_100'], 52)
+        self.assertEqual(delivery['score_0_100'], 40)
         self.assertIn('degradada', delivery['summary'].lower())
-        self.assertIn('No hay métricas acústicas reales disponibles todavía en esta ejecución.', delivery['details'])
+        self.assertIn('No hay extracción acústica real todavía; las métricas son placeholders sintéticos para estabilizar contratos y stages.', delivery['details'])
 
         self.assertEqual(visual['score_0_100'], 50)
         self.assertIn('degradada', visual['summary'].lower())
         self.assertIn('No hay frame manifest real disponible; evaluación visual degradada a modo placeholder.', visual['details'])
+        self.assertIn('branch_runtime_meta', report)
+        self.assertEqual(report['branch_runtime_meta']['global_synthesis']['mode'], 'fallback')
 
 
 if __name__ == '__main__':

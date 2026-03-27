@@ -122,6 +122,16 @@ def _rule_based_synthesize_global_communication_feedback(*, synthesis_input: Com
     spread = max(content_score, delivery_score, visual_score) - min(content_score, delivery_score, visual_score)
     consistency_penalty = 10 if spread > 50 else 5 if spread > 35 else 0
     global_score = max(0, min(100, int(round(weighted - consistency_penalty))))
+    placeholder_branches = [
+        branch_name
+        for branch_name, payload in (
+            ('contenido', content),
+            ('delivery', delivery),
+            ('visual', visual),
+        )
+        if str(payload.get('status_visual') or '') == 'placeholder'
+    ]
+    low_signal_mode = len(placeholder_branches) >= 2
 
     strengths: list[str] = []
     improvements: list[str] = []
@@ -162,6 +172,14 @@ def _rule_based_synthesize_global_communication_feedback(*, synthesis_input: Com
     summary = _normalize_single_paragraph(
         f'Has obtenido {global_score}/100. {score_reason}{strengths_clause}{improve_clause}'
     )
+    if low_signal_mode:
+        summary = _normalize_single_paragraph(
+            f'{summary} Esta nota es orientativa porque faltó señal real en: {", ".join(placeholder_branches)}.'
+        )
+        recommendations_payload.insert(0, {
+            'title': 'Mejora la captura real',
+            'description': f'Para obtener un diagnóstico más fiable, repite la evaluación con señal real en: {", ".join(placeholder_branches)}.',
+        })
 
     return CommunicationGlobalSynthesisLlmOutputV1(
         score_global_100=global_score,

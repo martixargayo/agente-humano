@@ -174,8 +174,31 @@ class CommunicationPublicUploadRealVideoTests(unittest.TestCase):
         report = self.client.get(f'/api/comunicacion/evaluations/{evaluation_id}/report').json()
         delivery = next(block for block in report['block_cards'] if block['block_id'] == 'delivery')
         visual = next(block for block in report['block_cards'] if block['block_id'] == 'visual')
-        self.assertIn('No hay métricas acústicas reales disponibles todavía en esta ejecución.', delivery['details'])
+        self.assertIn('No hay extracción acústica real todavía; las métricas son placeholders sintéticos para estabilizar contratos y stages.', delivery['details'])
         self.assertIn('No hay frame manifest real disponible; evaluación visual degradada a modo placeholder.', visual['details'])
+
+    def test_json_client_temp_upload_with_base64_blob_is_persisted_as_file_ref(self) -> None:
+        attempt = self.client.post('/api/comunicacion/attempts', json={'user_id': 'iu_public_real', 'session_id': 'sess_public_real'}).json()
+        payload = self.client.post(
+            f"/api/comunicacion/attempts/{attempt['attempt_id']}/upload",
+            json={
+                'user_id': 'iu_public_real',
+                'session_id': 'sess_public_real',
+                'mime_type': 'video/webm',
+                'duration_ms': 2000,
+                'video_ref': 'client-temp://sess_public_real/att_diag/1710000000000.webm',
+                'video_blob_base64': 'data:video/webm;base64,UklGRi4uLldFQk0uLi5iaW5hcnk=',
+                'capture_meta': {'provisional_client_ref': True, 'local_blob_base64_fallback': True},
+            },
+        )
+        self.assertEqual(payload.status_code, 200)
+        body = payload.json()
+        self.assertTrue(body['video_ref'].startswith('file://'))
+        recording = REPOSITORY.get_recording(body['recording_id'])
+        self.assertIsNotNone(recording)
+        self.assertTrue((recording.video_ref or '').startswith('file://'))
+        source = resolve_recording_media_source(recording=recording)
+        self.assertTrue(source.local_path.exists())
 
 
 if __name__ == '__main__':

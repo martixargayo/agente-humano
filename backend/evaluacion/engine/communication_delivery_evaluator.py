@@ -168,22 +168,28 @@ def evaluate_delivery_with_specialized_from_audio_metrics(
     *,
     audio_features: CommunicationAudioFeaturesPlaceholder | CommunicationAudioFeaturesRealV1,
     transcript_excerpt: str | None = None,
-) -> tuple[CommunicationDeliveryEvaluationV1, CommunicationSpecializedDimensionEvalV1]:
+) -> tuple[CommunicationDeliveryEvaluationV1, CommunicationSpecializedDimensionEvalV1, dict[str, str | None]]:
     prompt = load_delivery_prompt_template()
     payload = build_delivery_llm_input(audio_features=audio_features, transcript_excerpt=transcript_excerpt)
     specialized_eval: CommunicationSpecializedDimensionEvalV1
+    runtime_meta: dict[str, str | None]
     if _is_audio_llm_enabled():
         try:
             specialized_eval = _run_audio_specialized_eval_openai(prompt=prompt, payload=payload)
+            runtime_meta = {'mode': 'llm', 'reason': None, 'detail': None}
         except Exception:
             specialized_eval = _rule_based_specialized_delivery_eval(audio_features=audio_features)
+            runtime_meta = {'mode': 'fallback', 'reason': 'openai_error', 'detail': None}
     else:
         specialized_eval = _rule_based_specialized_delivery_eval(audio_features=audio_features)
-    return _map_specialized_to_delivery_eval(specialized_eval=specialized_eval, audio_features=audio_features), specialized_eval
+        runtime_meta = {'mode': 'fallback', 'reason': 'disabled_flag', 'detail': None}
+    if isinstance(audio_features, CommunicationAudioFeaturesPlaceholder):
+        runtime_meta = {'mode': 'placeholder', 'reason': 'audio_features_placeholder', 'detail': audio_features.explanation}
+    return _map_specialized_to_delivery_eval(specialized_eval=specialized_eval, audio_features=audio_features), specialized_eval, runtime_meta
 
 
 def evaluate_delivery_from_audio_metrics(*, audio_features: CommunicationAudioFeaturesPlaceholder | CommunicationAudioFeaturesRealV1, transcript_excerpt: str | None = None) -> CommunicationDeliveryEvaluationV1:
-    evaluated, _ = evaluate_delivery_with_specialized_from_audio_metrics(audio_features=audio_features, transcript_excerpt=transcript_excerpt)
+    evaluated, _, _ = evaluate_delivery_with_specialized_from_audio_metrics(audio_features=audio_features, transcript_excerpt=transcript_excerpt)
     return evaluated
 
 
@@ -192,5 +198,5 @@ def evaluate_delivery_specialized_from_audio_metrics(
     audio_features: CommunicationAudioFeaturesPlaceholder | CommunicationAudioFeaturesRealV1,
     transcript_excerpt: str | None = None,
 ) -> CommunicationSpecializedDimensionEvalV1:
-    _, specialized = evaluate_delivery_with_specialized_from_audio_metrics(audio_features=audio_features, transcript_excerpt=transcript_excerpt)
+    _, specialized, _ = evaluate_delivery_with_specialized_from_audio_metrics(audio_features=audio_features, transcript_excerpt=transcript_excerpt)
     return specialized

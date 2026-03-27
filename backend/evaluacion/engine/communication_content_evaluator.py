@@ -202,13 +202,39 @@ def evaluate_content_from_transcript(*, bundle: CommunicationFeedbackInputBundle
     prompt = _load_content_prompt_template()
     content_rubric = _load_content_aida_rubric()
     payload = _build_content_llm_input(bundle=bundle, content_rubric=content_rubric)
+    llm_mode = 'rule_based'
+    fallback_reason: str | None = None
 
     if _is_content_llm_enabled():
         try:
             aida_eval = _run_content_llm_openai(prompt=prompt, payload=payload)
+            llm_mode = 'llm'
         except Exception:
             aida_eval = _rule_based_content_eval(transcript_text=transcript_text, segment_count=segment_count)
+            llm_mode = 'fallback'
+            fallback_reason = 'openai_error'
     else:
         aida_eval = _rule_based_content_eval(transcript_text=transcript_text, segment_count=segment_count)
+        llm_mode = 'fallback'
+        fallback_reason = 'disabled_flag'
 
-    return _map_aida_eval_to_content_output(bundle=bundle, aida_eval=aida_eval)
+    output = _map_aida_eval_to_content_output(bundle=bundle, aida_eval=aida_eval)
+    transcript_status = getattr(bundle.transcript, 'status', None)
+    transcript_provider = getattr(bundle.transcript, 'provider', None)
+    output['summary'] = (
+        f'Evaluación AIDA de contenido basada en transcripción real ({len([item for item in transcript_text.split() if item])} palabras, {segment_count} segmentos).'
+        if transcript_status == 'ready'
+        else f'Evaluación AIDA de contenido degradada por ausencia de transcripción real ({segment_count} segmentos placeholder).'
+    )
+    if transcript_status != 'ready':
+        output['status_visual'] = 'placeholder'
+        output['details'].append('Transcripción no disponible en modo real; se usó señal placeholder para contenido.')
+    else:
+        output['details'].append(f'Proveedor STT: {transcript_provider or "desconocido"}.')
+    output['runtime_meta'] = {
+        'branch_id': 'contenido',
+        'mode': ('placeholder' if transcript_status != 'ready' else ('llm' if llm_mode == 'llm' else 'fallback' if llm_mode == 'fallback' else 'rule_based')),
+        'reason': ('transcript_placeholder' if transcript_status != 'ready' else fallback_reason),
+        'detail': (None if transcript_status == 'ready' else 'content_eval_without_real_transcript'),
+    }
+    return output

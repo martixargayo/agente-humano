@@ -469,6 +469,15 @@ class CommunicationGlobalSynthesisMetaV1(BaseModel):
     detail: str | None = None
 
 
+class CommunicationBranchRuntimeMetaV1(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    branch_id: Literal['contenido', 'delivery', 'visual', 'global_synthesis']
+    mode: Literal['llm', 'fallback', 'placeholder', 'metadata', 'real', 'rule_based']
+    reason: str | None = None
+    detail: str | None = None
+
+
 class CommunicationGlobalSynthesisOutputV1(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
@@ -638,6 +647,7 @@ class UiCommunicationReportV1(BaseModel):
     recommendations: CommunicationRecommendations
     global_synthesis: CommunicationGlobalSynthesisLlmOutputV1 | None = None
     global_synthesis_meta: CommunicationGlobalSynthesisMetaV1 | None = None
+    branch_runtime_meta: dict[str, CommunicationBranchRuntimeMetaV1] = Field(default_factory=dict)
     provenance: CommunicationReportProvenance
     exports: CommunicationReportExports
     placeholders: dict[str, str] = Field(default_factory=dict)

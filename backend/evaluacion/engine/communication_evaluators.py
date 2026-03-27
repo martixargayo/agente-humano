@@ -20,7 +20,7 @@ def evaluate_communication_content(bundle: CommunicationFeedbackInputBundleV1) -
 
 def evaluate_communication_delivery(bundle: CommunicationFeedbackInputBundleV1) -> dict[str, object]:
     transcript_excerpt = bundle.transcript.segments[0].text if bundle.transcript.segments else ''
-    evaluated, specialized = evaluate_delivery_with_specialized_from_audio_metrics(
+    evaluated, specialized, runtime_meta = evaluate_delivery_with_specialized_from_audio_metrics(
         audio_features=bundle.audio_features,
         transcript_excerpt=transcript_excerpt,
     )
@@ -39,6 +39,12 @@ def evaluate_communication_delivery(bundle: CommunicationFeedbackInputBundleV1) 
         'subscores': evaluated.subscores,
         'recommendations': evaluated.recommendations,
         'llm_specialized_evaluation': specialized.model_dump(mode='json'),
+        'runtime_meta': {
+            'branch_id': 'delivery',
+            'mode': runtime_meta.get('mode') or 'fallback',
+            'reason': runtime_meta.get('reason'),
+            'detail': runtime_meta.get('detail'),
+        },
     }
 
 
@@ -49,6 +55,12 @@ def evaluate_communication_visual(bundle: CommunicationFeedbackInputBundleV1) ->
     llm_specialized_evaluation: dict[str, object] = {}
     mode = get_visual_mode()
     use_llm_mode = mode == 'llm_v1' and is_visual_llm_enabled()
+    runtime_meta: dict[str, str | None] = {
+        'branch_id': 'visual',
+        'mode': 'metadata',
+        'reason': None,
+        'detail': None,
+    }
     if use_llm_mode:
         try:
             evaluated, batch_outputs, final_eval = evaluate_visual_llm_v1_from_features(
@@ -60,16 +72,23 @@ def evaluate_communication_visual(bundle: CommunicationFeedbackInputBundleV1) ->
             llm_batch_outputs = [item.model_dump(mode='json') for item in batch_outputs]
             llm_final_evaluation = final_eval.model_dump(mode='json') if hasattr(final_eval, 'model_dump') else None
             llm_specialized_evaluation = dict(llm_final_evaluation or {})
+            runtime_meta = {'branch_id': 'visual', 'mode': 'llm', 'reason': None, 'detail': None}
         except CommunicationVisualLlmError as exc:
             fallback_notes.append(f'llm_v1_fallback_to_metadata:{exc.kind}:{exc.message}')
             evaluated = evaluate_visual_from_features(visual_features=bundle.visual_features)
+            runtime_meta = {'branch_id': 'visual', 'mode': 'fallback', 'reason': f'visual_llm_{exc.kind}', 'detail': exc.message}
     else:
         evaluated = evaluate_visual_from_features(visual_features=bundle.visual_features)
+        if mode == 'llm_v1' and not is_visual_llm_enabled():
+            runtime_meta = {'branch_id': 'visual', 'mode': 'metadata', 'reason': 'disabled_flag', 'detail': 'COMM_VISUAL_OPENAI_ENABLED=false'}
+        else:
+            runtime_meta = {'branch_id': 'visual', 'mode': 'metadata', 'reason': None, 'detail': None}
     status_visual = 'mejorable'
     if evaluated.score_0_100 >= 75:
         status_visual = 'correcto'
     elif getattr(bundle.visual_features, 'status', None) == 'placeholder':
         status_visual = 'placeholder'
+        runtime_meta = {'branch_id': 'visual', 'mode': 'placeholder', 'reason': 'visual_features_placeholder', 'detail': getattr(bundle.visual_features, 'explanation', None)}
     return {
         'block_id': 'visual',
         'title': 'Visual',
@@ -84,6 +103,7 @@ def evaluate_communication_visual(bundle: CommunicationFeedbackInputBundleV1) ->
         'llm_batch_evaluations': llm_batch_outputs,
         'llm_final_evaluation': llm_final_evaluation or {},
         'llm_specialized_evaluation': llm_specialized_evaluation,
+        'runtime_meta': runtime_meta,
     }
 
 
