@@ -12,6 +12,8 @@ from evaluacion.contracts.communication_models import (
     CommunicationGlobalSynthesisLlmOutputV1,
     CommunicationGlobalSynthesisMetaV1,
 )
+from evaluacion.engine.communication_llm_config import parse_env_bool
+from evaluacion.engine.communication_llm_models import get_global_synthesis_llm_model
 
 _PROMPT_PATH = Path(__file__).resolve().parents[1] / 'prompts' / 'communication_global_synthesis_prompt.txt'
 _LOGGER = logging.getLogger(__name__)
@@ -24,8 +26,7 @@ def _load_global_synthesis_prompt_template() -> str:
 
 
 def _is_global_synthesis_llm_enabled() -> bool:
-    raw = (os.getenv('COMM_SYNTHESIS_OPENAI_ENABLED') or '').strip().lower()
-    return raw in {'1', 'true', 'yes', 'on'}
+    return parse_env_bool('COMM_SYNTHESIS_OPENAI_ENABLED', default=False)
 
 
 def _build_openai_client() -> openai.OpenAI:
@@ -48,7 +49,7 @@ def _build_synthesis_llm_payload(*, synthesis_input: CommunicationGlobalSynthesi
 def _run_global_synthesis_llm_openai(*, prompt: str, payload: dict[str, object]) -> CommunicationGlobalSynthesisLlmOutputV1:
     client = _build_openai_client()
     response = client.responses.create(
-        model=(os.getenv('COMM_SYNTHESIS_OPENAI_MODEL') or '').strip() or 'gpt-4.1-mini',
+        model=get_global_synthesis_llm_model(),
         input=[
             {'role': 'developer', 'content': prompt},
             {'role': 'user', 'content': f'BEGIN_INPUT_JSON\n{json.dumps(payload, ensure_ascii=False)}\nEND_INPUT_JSON'},
