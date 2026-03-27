@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+from evaluacion.engine.communication_llm_config import parse_env_bool, parse_env_choice
+from evaluacion.engine.communication_llm_models import get_visual_llm_model
 
 COMM_VISUAL_MODE_DEFAULT = 'metadata'
 COMM_VISUAL_MAX_FRAMES = 90
@@ -8,29 +10,20 @@ COMM_VISUAL_BATCH_TARGET = 30
 COMM_VISUAL_TAIL_MIN = 6
 COMM_VISUAL_DETAIL = 'low'
 
-COMM_VISUAL_OPENAI_MODEL_DEFAULT = 'gpt-4.1-mini'
 COMM_VISUAL_OPENAI_TIMEOUT_S_DEFAULT = 25.0
 COMM_VISUAL_OPENAI_MAX_RETRIES_DEFAULT = 2
 
 
 def get_visual_mode() -> str:
-    raw = (os.getenv('COMM_VISUAL_MODE') or '').strip().lower()
-    if raw in {'metadata', 'llm_v1'}:
-        return raw
-    return COMM_VISUAL_MODE_DEFAULT
+    return parse_env_choice('COMM_VISUAL_MODE', allowed={'metadata', 'llm_v1'}, default=COMM_VISUAL_MODE_DEFAULT)
 
 
 def is_visual_llm_enabled() -> bool:
-    raw = (os.getenv('COMM_VISUAL_OPENAI_ENABLED') or '').strip().lower()
-    if raw in {'1', 'true', 'yes', 'on'}:
-        return True
-    if raw in {'0', 'false', 'no', 'off'}:
-        return False
-    return False
+    return parse_env_bool('COMM_VISUAL_OPENAI_ENABLED', default=False)
 
 
 def get_visual_openai_model() -> str:
-    return (os.getenv('COMM_VISUAL_OPENAI_MODEL') or '').strip() or COMM_VISUAL_OPENAI_MODEL_DEFAULT
+    return get_visual_llm_model()
 
 
 def get_visual_openai_timeout_s() -> float:

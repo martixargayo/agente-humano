@@ -13,6 +13,8 @@ from evaluacion.contracts.communication_models import (
     CommunicationDeliveryEvaluationV1,
     CommunicationSpecializedDimensionEvalV1,
 )
+from evaluacion.engine.communication_llm_config import parse_env_bool
+from evaluacion.engine.communication_llm_models import get_delivery_llm_model
 
 _PROMPT_PATH = Path(__file__).resolve().parents[1] / 'prompts' / 'communication_delivery_evaluator_prompt.txt'
 
@@ -58,8 +60,7 @@ def _score_to_label(score_1_5: int) -> str:
 
 
 def _is_audio_llm_enabled() -> bool:
-    raw = (os.getenv('COMM_AUDIO_OPENAI_ENABLED') or '').strip().lower()
-    return raw in {'1', 'true', 'yes', 'on'}
+    return parse_env_bool('COMM_AUDIO_OPENAI_ENABLED', default=False)
 
 
 def _build_openai_client() -> openai.OpenAI:
@@ -108,7 +109,7 @@ def _run_audio_specialized_eval_openai(
 ) -> CommunicationSpecializedDimensionEvalV1:
     client = _build_openai_client()
     response = client.responses.create(
-        model=(os.getenv('COMM_AUDIO_OPENAI_MODEL') or '').strip() or 'gpt-4.1-mini',
+        model=get_delivery_llm_model(),
         input=[
             {'role': 'developer', 'content': prompt},
             {'role': 'user', 'content': f'BEGIN_INPUT_JSON\n{json.dumps(payload, ensure_ascii=False)}\nEND_INPUT_JSON'},
@@ -177,9 +178,19 @@ def evaluate_delivery_with_specialized_from_audio_metrics(
         try:
             specialized_eval = _run_audio_specialized_eval_openai(prompt=prompt, payload=payload)
             runtime_meta = {'mode': 'llm', 'reason': None, 'detail': None}
-        except Exception:
+        except RuntimeError as exc:
+            reason = 'missing_openai_api_key' if str(exc) == 'missing_openai_api_key' else 'openai_error'
             specialized_eval = _rule_based_specialized_delivery_eval(audio_features=audio_features)
-            runtime_meta = {'mode': 'fallback', 'reason': 'openai_error', 'detail': None}
+            runtime_meta = {'mode': 'fallback', 'reason': reason, 'detail': str(exc)}
+        except ValueError as exc:
+            specialized_eval = _rule_based_specialized_delivery_eval(audio_features=audio_features)
+            runtime_meta = {'mode': 'fallback', 'reason': 'schema_validation_error', 'detail': str(exc)}
+        except openai.OpenAIError as exc:
+            specialized_eval = _rule_based_specialized_delivery_eval(audio_features=audio_features)
+            runtime_meta = {'mode': 'fallback', 'reason': 'openai_error', 'detail': str(exc)}
+        except Exception as exc:
+            specialized_eval = _rule_based_specialized_delivery_eval(audio_features=audio_features)
+            runtime_meta = {'mode': 'fallback', 'reason': 'unexpected_error', 'detail': str(exc)}
     else:
         specialized_eval = _rule_based_specialized_delivery_eval(audio_features=audio_features)
         runtime_meta = {'mode': 'fallback', 'reason': 'disabled_flag', 'detail': None}

@@ -12,6 +12,8 @@ from evaluacion.contracts.communication_models import (
     CommunicationContentAidaEvalV1,
     CommunicationFeedbackInputBundleV1,
 )
+from evaluacion.engine.communication_llm_config import parse_env_bool
+from evaluacion.engine.communication_llm_models import get_content_llm_model
 
 _PROMPT_PATH = Path(__file__).resolve().parents[1] / 'prompts' / 'communication_content_evaluator_prompt.txt'
 _RUBRIC_PATH = Path(__file__).resolve().parents[1] / 'prompts' / 'communication_content_aida_rubric.json'
@@ -51,8 +53,7 @@ def _build_content_llm_input(*, bundle: CommunicationFeedbackInputBundleV1, cont
 
 
 def _is_content_llm_enabled() -> bool:
-    raw = (os.getenv('COMM_CONTENT_OPENAI_ENABLED') or '').strip().lower()
-    return raw in {'1', 'true', 'yes', 'on'}
+    return parse_env_bool('COMM_CONTENT_OPENAI_ENABLED', default=False)
 
 
 def _build_openai_client() -> openai.OpenAI:
@@ -65,7 +66,7 @@ def _build_openai_client() -> openai.OpenAI:
 def _run_content_llm_openai(*, prompt: str, payload: dict[str, object]) -> CommunicationContentAidaEvalV1:
     client = _build_openai_client()
     response = client.responses.create(
-        model=(os.getenv('COMM_CONTENT_OPENAI_MODEL') or '').strip() or 'gpt-4.1-mini',
+        model=get_content_llm_model(),
         input=[
             {'role': 'developer', 'content': prompt},
             {'role': 'user', 'content': f'BEGIN_INPUT_JSON\n{json.dumps(payload, ensure_ascii=False)}\nEND_INPUT_JSON'},
@@ -209,10 +210,22 @@ def evaluate_content_from_transcript(*, bundle: CommunicationFeedbackInputBundle
         try:
             aida_eval = _run_content_llm_openai(prompt=prompt, payload=payload)
             llm_mode = 'llm'
-        except Exception:
+        except RuntimeError as exc:
+            aida_eval = _rule_based_content_eval(transcript_text=transcript_text, segment_count=segment_count)
+            llm_mode = 'fallback'
+            fallback_reason = 'missing_openai_api_key' if str(exc) == 'missing_openai_api_key' else 'openai_error'
+        except ValueError:
+            aida_eval = _rule_based_content_eval(transcript_text=transcript_text, segment_count=segment_count)
+            llm_mode = 'fallback'
+            fallback_reason = 'schema_validation_error'
+        except openai.OpenAIError:
             aida_eval = _rule_based_content_eval(transcript_text=transcript_text, segment_count=segment_count)
             llm_mode = 'fallback'
             fallback_reason = 'openai_error'
+        except Exception:
+            aida_eval = _rule_based_content_eval(transcript_text=transcript_text, segment_count=segment_count)
+            llm_mode = 'fallback'
+            fallback_reason = 'unexpected_error'
     else:
         aida_eval = _rule_based_content_eval(transcript_text=transcript_text, segment_count=segment_count)
         llm_mode = 'fallback'

@@ -86,6 +86,39 @@ Opcionales (speech):
 - `OPENAI_TTS_MODEL`, `OPENAI_TTS_VOICE`, `OPENAI_TTS_FORMAT`, `OPENAI_TTS_SPEED`, `OPENAI_STT_MODEL`
 - `GOOGLE_SERVICE_ACCOUNT_JSON` (Railway recomendado), `GOOGLE_CREDENTIALS_PATH` (local) y `GOOGLE_STT_*`. Prioridad: JSON inline > path > fallback OpenAI STT en `/stt_google`.
 
+### Activación de ramas LLM en `/comunicacion`
+
+Por defecto, el pipeline de comunicación arranca en modo conservador:
+- contenido: fallback (`COMM_CONTENT_OPENAI_ENABLED=false`)
+- delivery: fallback (`COMM_AUDIO_OPENAI_ENABLED=false`)
+- visual: metadata (`COMM_VISUAL_MODE=metadata`)
+- síntesis global: fallback (`COMM_SYNTHESIS_OPENAI_ENABLED=false`)
+
+Para forzar modo **full LLM** (cuando el entorno esté listo), configura:
+
+```bash
+OPENAI_API_KEY=...
+COMM_CONTENT_OPENAI_ENABLED=true
+COMM_AUDIO_OPENAI_ENABLED=true
+COMM_SYNTHESIS_OPENAI_ENABLED=true
+COMM_VISUAL_MODE=llm_v1
+COMM_VISUAL_OPENAI_ENABLED=true
+```
+
+Los modelos por rama están definidos en código (no en `.env`) en:
+- `backend/evaluacion/engine/communication_llm_models.py`
+
+Correspondencia actual:
+- `content` -> `gpt-4.1-mini`
+- `delivery` -> `gpt-4.1-mini`
+- `visual` -> `gpt-4.1-mini`
+- `global_synthesis` -> `gpt-4.1-mini`
+
+Notas de observabilidad:
+- `disabled_flag`: rama LLM no habilitada por env.
+- `missing_openai_api_key`: flag ON pero `OPENAI_API_KEY` ausente/vacía.
+- visual en `metadata` con `reason=null`: esperado cuando `COMM_VISUAL_MODE` queda en default (`metadata`).
+
 ### Smoke check post-deploy
 
 1. `GET /health` → `{"status":"ok"}`
