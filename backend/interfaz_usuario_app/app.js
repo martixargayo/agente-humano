@@ -244,7 +244,10 @@ const LAST_DEVICE_STORAGE_KEY = 'interfaz_usuario:last_audio_input_device';
 const ui = {
   listeningGlow: $('listeningGlow'),
   entryOverlay: $('entryOverlay'),
+  entryModeTalk: $('entryModeTalk'),
+  entryModeWrite: $('entryModeWrite'),
   entryTalkContent: $('entryTalkContent'),
+  entryWriteContent: $('entryWriteContent'),
   entrySubtitle: $('entrySubtitle'),
   entryDeviceLabel: $('entryDeviceLabel'),
   entryDeviceSearch: $('entryDeviceSearch'),
@@ -1602,16 +1605,25 @@ function toggleAudioDevicePopover() {
 
 function renderEntryState() {
   if (!ui.entryOverlay) return;
+  const isWriteMode = entryMode === InputMode.WRITE;
   const waitingMicPermission = entryPermissionStatus !== 'granted';
-  ui.entrySubtitle.textContent = waitingMicPermission
-    ? 'Necesitamos permisos de micrófono para detectar tus dispositivos.'
-    : '';
+  ui.entrySubtitle.textContent = isWriteMode
+    ? 'Empezarás escribiendo. No necesitas permisos de micrófono.'
+    : (waitingMicPermission ? 'Necesitamos permisos de micrófono para detectar tus dispositivos.' : '');
   ui.entrySubtitle.classList.toggle('entry-hidden', !ui.entrySubtitle.textContent);
+  ui.entryModeTalk?.classList.toggle('active', !isWriteMode);
+  ui.entryModeWrite?.classList.toggle('active', isWriteMode);
+  ui.entryModeTalk?.setAttribute('aria-selected', String(!isWriteMode));
+  ui.entryModeWrite?.setAttribute('aria-selected', String(isWriteMode));
+  ui.entryTalkContent?.classList.toggle('entry-hidden', isWriteMode);
+  ui.entryWriteContent?.classList.toggle('entry-hidden', !isWriteMode);
 
   const startEnabled = getEntryModeStartEnabled();
   ui.startBtn.disabled = !startEnabled || entryInProgress;
   if (entryRequested && !scenarioReady) {
     ui.startBtn.textContent = 'Cargando escenario…';
+  } else if (isWriteMode) {
+    ui.startBtn.textContent = 'Empezar escribiendo';
   } else if (waitingMicPermission) {
     ui.startBtn.textContent = 'Activar micrófono';
   } else {
@@ -1628,15 +1640,18 @@ function renderEntryState() {
     ui.entryScenarioState.classList.add('ready');
   }
 
-  ui.entryDeviceSearch?.classList.remove('hidden');
-  ui.entryDeviceLabel?.classList.toggle('entry-hidden', waitingMicPermission);
+  ui.entryDeviceSearch?.classList.toggle('hidden', isWriteMode);
+  ui.entryDeviceLabel?.classList.toggle('entry-hidden', isWriteMode || waitingMicPermission);
   if (ui.entryDeviceSearch) {
     ui.entryDeviceSearch.innerHTML = waitingMicPermission
       ? '<span>Necesitamos permiso para listar los micrófonos disponibles</span>'
       : '<span>Micrófonos detectados</span><span class="entry-device-search-spinner" aria-hidden="true"></span>';
   }
 
-  if (entryPermissionStatus === 'prompt' || entryPermissionStatus === 'unknown') {
+  if (isWriteMode) {
+    ui.entryDeviceStatus.textContent = 'Puedes continuar sin micrófono y cambiar a Hablar más tarde cuando quieras.';
+    ui.entryDeviceStatus.classList.remove('error');
+  } else if (entryPermissionStatus === 'prompt' || entryPermissionStatus === 'unknown') {
     ui.entryDeviceStatus.textContent = 'Pulsa “Activar micrófono” para conceder acceso y cargar tus dispositivos de audio.';
     ui.entryDeviceStatus.classList.remove('error');
   } else if (entryPermissionStatus === 'denied') {

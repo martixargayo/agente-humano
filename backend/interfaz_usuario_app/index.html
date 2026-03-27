@@ -994,12 +994,13 @@
       }
 
       html[data-embed-mode="1"] .bottom-bar {
-        position: sticky;
-        left: auto;
-        bottom: 16px;
-        transform: none;
+        position: fixed;
+        left: 50%;
+        right: auto;
+        bottom: max(16px, env(safe-area-inset-bottom, 0px));
+        transform: translateX(-50%);
         width: min(920px, calc(100% - 24px));
-        margin: 0 auto;
+        margin: 0;
       }
 
       .bar-inner {
@@ -2003,6 +2004,10 @@
       </div>
 
       <div id="entryOverlay" class="entry-overlay" role="dialog" aria-modal="true">
+        <div class="entry-mode-tabs" role="tablist" aria-label="Modo de inicio">
+          <button id="entryModeTalk" class="entry-mode-tab active" role="tab" aria-selected="true">Hablar</button>
+          <button id="entryModeWrite" class="entry-mode-tab" role="tab" aria-selected="false">Escribir</button>
+        </div>
         <div class="entry-card">
           <div class="entry-card-content">
             <p class="entry-subtitle" id="entrySubtitle">Necesitamos permisos de micrófono para detectar tus dispositivos.</p>
@@ -2015,6 +2020,11 @@
               </div>
               <div id="entryDeviceList" class="entry-device-list" role="listbox" aria-label="Seleccionar dispositivo de audio"></div>
               <div id="entryDeviceStatus" class="entry-device-status" aria-live="polite"></div>
+            </div>
+
+            <div id="entryWriteContent" class="entry-write-content entry-hidden">
+              <p>Vas a iniciar en modo escritura.</p>
+              <p>Puedes empezar sin micrófono y enviar tu mensaje escribiendo.</p>
             </div>
 
             <div class="entry-actions">
