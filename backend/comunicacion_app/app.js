@@ -66,6 +66,7 @@
     ui: {
       screen: SCREEN_SETUP,
       busy: false,
+      setup_initializing: true,
       error_message: null,
       notice_message: null,
     },
@@ -144,6 +145,7 @@
   function clearError() { state.ui.error_message = null; }
   function setNotice(message) { state.ui.notice_message = message || null; renderApp(); }
   function setError(message) { state.ui.error_message = message || 'Ha ocurrido un error inesperado.'; state.ui.notice_message = null; transitionTo(SCREEN_ERROR); }
+  function setSetupError(message) { state.ui.error_message = message || 'No se pudo preparar cámara y micrófono.'; state.ui.notice_message = null; renderApp(); }
   function hideFinalSaveToast() {
     const toast = $('finalSaveToast');
     if (!toast) return;
@@ -1003,7 +1005,8 @@
     const videoStatus = $('commVideoStatus');
     if (!setupStatus || !setupPermissionsBtn) return;
     const hasPermissions = state.capture.permission_camera === 'granted' && state.capture.permission_mic === 'granted';
-    if (setupDevicesColumns) setupDevicesColumns.classList.toggle('hidden', !hasPermissions);
+    const setupLoading = hasPermissions && (state.ui.setup_initializing || state.ui.busy);
+    if (setupDevicesColumns) setupDevicesColumns.classList.remove('hidden');
     if (state.capture.permission_camera === 'denied' || state.capture.permission_mic === 'denied') {
       setupStatus.textContent = 'Permiso denegado. Activa cámara y micrófono en el navegador para continuar.';
     } else if (!hasPermissions) {
@@ -1023,8 +1026,14 @@
         : (state.capture.selected_video_device_id ? 'Cámara seleccionada.' : 'No se detectaron cámaras disponibles.');
       videoStatus.classList.toggle('error', hasPermissions && !state.capture.selected_video_device_id);
     }
-    setupPermissionsBtn.textContent = hasPermissions ? 'Empezar' : 'Activar cámara y micrófono';
-    setupPermissionsBtn.disabled = state.ui.busy;
+    if (!hasPermissions) {
+      setupPermissionsBtn.textContent = 'Activar micrófono y cámara';
+    } else if (setupLoading) {
+      setupPermissionsBtn.textContent = 'Cargando escenario';
+    } else {
+      setupPermissionsBtn.textContent = 'Empezar';
+    }
+    setupPermissionsBtn.disabled = setupLoading || (hasPermissions && !isSetupReady());
   }
 
   function syncRecordingActionVisibility() {
@@ -1156,7 +1165,6 @@
 
   function syncButtons() {
     const busy = state.ui.busy;
-    toggleDisabled('setupPermissionsBtn', busy);
     toggleDisabled('refreshDevicesBtn', busy);
     toggleDisabled('startRecordingBtn', busy || !state.capture.stream_active || state.capture.is_recording);
     toggleDisabled('stopRecordingBtn', busy || !state.capture.is_recording);
@@ -1270,20 +1278,30 @@
       setBusy(true);
       try {
         if (state.capture.permission_camera !== 'granted' || state.capture.permission_mic !== 'granted') {
-          const stream = await requestCapturePermissions();
-          stopPreviewStream();
-          state.capture.media_stream = stream;
-          state.capture.stream_active = true;
+          try {
+            const stream = await requestCapturePermissions();
+            stopPreviewStream();
+            state.capture.media_stream = stream;
+            state.capture.stream_active = true;
+          } catch (permissionError) {
+            const deniedByUser = permissionError && (permissionError.name === 'NotAllowedError' || permissionError.name === 'SecurityError');
+            if (deniedByUser) {
+              state.capture.permission_camera = 'denied';
+              state.capture.permission_mic = 'denied';
+              setSetupError('Permiso denegado. Activa cámara y micrófono en el navegador para continuar.');
+              return;
+            }
+            throw permissionError;
+          }
         }
         await listCaptureDevices();
         await openPreviewStream({
           videoDeviceId: $('videoDeviceSelect').value || state.capture.selected_video_device_id || null,
           audioDeviceId: $('audioDeviceSelect').value || state.capture.selected_audio_device_id || null,
         });
+        state.ui.setup_initializing = false;
       } catch (error) {
-        state.capture.permission_camera = 'denied';
-        state.capture.permission_mic = 'denied';
-        setError(`No se pudieron conceder permisos: ${error.message}`);
+        setSetupError(`No se pudo inicializar cámara/micrófono: ${error.message}`);
       } finally {
         setBusy(false);
       }
@@ -1391,7 +1409,11 @@
           audioDeviceId: state.capture.selected_audio_device_id || null,
         });
       }
-    } catch (_error) { }
+    } catch (error) {
+      setSetupError(`No se pudieron preparar los dispositivos: ${error.message}`);
+    } finally {
+      state.ui.setup_initializing = false;
+    }
     if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
       navigator.mediaDevices.addEventListener('devicechange', async () => {
         if (state.capture.permission_camera !== 'granted' || state.capture.permission_mic !== 'granted') return;
