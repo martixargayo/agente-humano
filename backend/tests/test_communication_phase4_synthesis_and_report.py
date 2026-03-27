@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import time
 import unittest
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from api.app import app
 from comunicacion.storage import REPOSITORY
+from evaluacion.contracts.communication_models import CommunicationGlobalSynthesisLlmOutputV1
 from evaluacion.engine.communication_synthesis import (
     build_global_synthesis_input,
     synthesize_global_communication_feedback,
@@ -42,6 +45,53 @@ class CommunicationPhase4SynthesisAndReportTests(unittest.TestCase):
         self.assertTrue(output.priority_improvements)
         self.assertTrue(output.action_plan)
         self.assertIn('dispersión', ' '.join(output.consistency_notes))
+
+    def test_synthesis_llm_output_contract_and_mapping(self) -> None:
+        content = {'score_0_100': 84, 'status_visual': 'correcto', 'summary': 'Contenido bien enfocado', 'details': [], 'recommendations': []}
+        delivery = {'score_0_100': 80, 'status_visual': 'correcto', 'summary': 'Delivery claro', 'details': [], 'recommendations': []}
+        visual = {'score_0_100': 74, 'status_visual': 'mejorable', 'summary': 'Visual correcto con margen', 'details': [], 'recommendations': []}
+        synthesis_input = build_global_synthesis_input(
+            evaluation_id='eval_phase4_llm',
+            content_output=content,
+            delivery_output=delivery,
+            visual_output=visual,
+        )
+        llm_output = CommunicationGlobalSynthesisLlmOutputV1(
+            score_global_100=84,
+            summary_short_2_3_lines='Has construido una comunicación bastante sólida y clara, con varios aciertos visibles, aunque aún puedes afinar el cierre.',
+            recommendations=[
+                {
+                    'title': 'Haz el cierre más intencional',
+                    'description': 'Termina con una idea final más clara para reforzar el mensaje principal.',
+                }
+            ],
+        )
+        with (
+            patch('evaluacion.engine.communication_synthesis._is_global_synthesis_llm_enabled', return_value=True),
+            patch('evaluacion.engine.communication_synthesis._run_global_synthesis_llm_openai', return_value=llm_output),
+        ):
+            output = synthesize_global_communication_feedback(synthesis_input=synthesis_input)
+
+        self.assertEqual(output.global_score_0_100, 84)
+        self.assertEqual(output.friendly_summary, llm_output.summary_short_2_3_lines)
+        self.assertEqual(
+            output.action_plan,
+            ['Haz el cierre más intencional: Termina con una idea final más clara para reforzar el mensaje principal.'],
+        )
+
+    def test_synthesis_llm_contract_limits_recommendations_to_four(self) -> None:
+        with self.assertRaises(ValidationError):
+            CommunicationGlobalSynthesisLlmOutputV1(
+                score_global_100=70,
+                summary_short_2_3_lines='Resumen breve.',
+                recommendations=[
+                    {'title': 'r1', 'description': 'd1'},
+                    {'title': 'r2', 'description': 'd2'},
+                    {'title': 'r3', 'description': 'd3'},
+                    {'title': 'r4', 'description': 'd4'},
+                    {'title': 'r5', 'description': 'd5'},
+                ],
+            )
 
     def test_report_includes_global_synthesis_and_uses_its_score(self) -> None:
         client = TestClient(app, raise_server_exceptions=False)

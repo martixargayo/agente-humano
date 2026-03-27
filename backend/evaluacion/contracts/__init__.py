@@ -9,6 +9,8 @@ from .models import (
 )
 from .communication_models import (
     CommunicationContentAidaEvalV1,
+    CommunicationGlobalSynthesisLlmOutputV1,
+    CommunicationGlobalSynthesisRecommendationV1,
     CommunicationSpecializedDimensionEvalV1,
     CommunicationVisualBatchEvalInputV1,
     CommunicationVisualBatchEvalV2,
@@ -30,6 +32,8 @@ __all__ = [
     "UiFeedbackReportV1",
     "CommunicationVisualMode",
     "CommunicationContentAidaEvalV1",
+    "CommunicationGlobalSynthesisRecommendationV1",
+    "CommunicationGlobalSynthesisLlmOutputV1",
     "CommunicationSpecializedDimensionEvalV1",
     "CommunicationVisualSamplingStrategyV1",
     "CommunicationVisualBatchFrameRefV1",

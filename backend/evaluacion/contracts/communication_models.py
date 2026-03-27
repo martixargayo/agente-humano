@@ -446,6 +446,21 @@ class CommunicationGlobalSynthesisInputV1(BaseModel):
     evidence_summary: list[str] = Field(default_factory=list)
 
 
+class CommunicationGlobalSynthesisRecommendationV1(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    title: str = Field(min_length=1)
+    description: str = Field(min_length=1)
+
+
+class CommunicationGlobalSynthesisLlmOutputV1(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    score_global_100: int = Field(ge=0, le=100)
+    summary_short_2_3_lines: str = Field(min_length=1)
+    recommendations: list[CommunicationGlobalSynthesisRecommendationV1] = Field(default_factory=list, max_length=4)
+
+
 class CommunicationGlobalSynthesisOutputV1(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
