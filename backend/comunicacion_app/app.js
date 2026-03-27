@@ -565,18 +565,22 @@
     const videoTrack = stream ? stream.getVideoTracks()[0] : null;
     const micBadge = $('recordingMicBadge');
     const camBadge = $('recordingCamBadge');
+    const micInlineBadge = $('recordingMicInlineBadge');
+    const camInlineBadge = $('recordingCamInlineBadge');
+    const micHealth = getTrackHealth(audioTrack);
+    const camHealth = getTrackHealth(videoTrack);
     if (micBadge) {
-      const micHealth = getTrackHealth(audioTrack);
       micBadge.className = `recording-av-item status-badge--${micHealth}`;
       const micText = micBadge.querySelector('span:last-child');
       if (micText) micText.textContent = micHealth === 'ok' ? 'Micrófono · OK' : 'Micrófono · Sin señal';
     }
     if (camBadge) {
-      const camHealth = getTrackHealth(videoTrack);
       camBadge.className = `recording-av-item status-badge--${camHealth}`;
       const camText = camBadge.querySelector('span:last-child');
       if (camText) camText.textContent = camHealth === 'ok' ? 'Cámara · OK' : 'Cámara · Sin señal';
     }
+    if (micInlineBadge) micInlineBadge.className = `recording-inline-badge status-badge--${micHealth}`;
+    if (camInlineBadge) camInlineBadge.className = `recording-inline-badge status-badge--${camHealth}`;
   }
 
   function ensureWaveformBars() {
@@ -1131,9 +1135,28 @@
     }).join('');
   }
 
+  function resolveSelectedDeviceLabel(kind) {
+    const devices = kind === 'video' ? state.capture.available_video_devices : state.capture.available_audio_devices;
+    const selectedId = kind === 'video' ? state.capture.selected_video_device_id : state.capture.selected_audio_device_id;
+    const selected = devices.find((device) => device.deviceId === selectedId);
+    if (selected && selected.label) return selected.label;
+    if (selected) return `${kind === 'video' ? 'Cámara' : 'Micrófono'} conectada`;
+    return `${kind === 'video' ? 'Cámara' : 'Micrófono'} sin detectar`;
+  }
+
+  function renderRecordingDeviceSummary() {
+    const micLabel = $('recordingMicDeviceLabel');
+    const camLabel = $('recordingCamDeviceLabel');
+    if (micLabel) micLabel.textContent = `Micrófono · ${resolveSelectedDeviceLabel('audio')}`;
+    if (camLabel) camLabel.textContent = `Cámara · ${resolveSelectedDeviceLabel('video')}`;
+  }
+
   function renderDevicePanelOptions() {
     const videoList = $('recordingVideoDeviceList');
     const audioList = $('recordingAudioDeviceList');
+    const panelStatus = $('avPanelStatusText');
+    const permissionBtn = $('avPanelPermissionBtn');
+    const hasPermissions = state.capture.permission_camera === 'granted' && state.capture.permission_mic === 'granted';
     if (videoList) {
       const signature = JSON.stringify([state.capture.selected_video_device_id, ...state.capture.available_video_devices.map((d) => `${d.deviceId}:${d.label || ''}`)]);
       if (videoList.dataset.signature !== signature) {
@@ -1148,6 +1171,13 @@
         audioList.dataset.signature = signature;
       }
     }
+    if (permissionBtn) permissionBtn.classList.toggle('hidden', hasPermissions);
+    if (panelStatus) {
+      if (!hasPermissions) panelStatus.textContent = 'Activa permisos para gestionar micrófono y cámara.';
+      else if (!state.capture.available_video_devices.length || !state.capture.available_audio_devices.length) panelStatus.textContent = 'No detectamos todos los dispositivos. Conéctalos y pulsa Actualizar.';
+      else panelStatus.textContent = 'Selecciona los dispositivos que usarás en esta grabación.';
+    }
+    renderRecordingDeviceSummary();
   }
 
   function syncVideoElements() {
@@ -1171,6 +1201,8 @@
     toggleDisabled('backToAidaBtn', busy || state.capture.is_recording);
     toggleDisabled('manageAvBtn', busy);
     toggleDisabled('closeAvPanelBtn', busy);
+    toggleDisabled('avPanelRefreshBtn', busy);
+    toggleDisabled('avPanelPermissionBtn', busy);
     toggleDisabled('backToSetupBtn', busy);
     toggleDisabled('continueToRecordingBtn', busy || !isSetupReady());
     toggleDisabled('rerecordBtn', busy);
@@ -1352,6 +1384,39 @@
       state.capture.av_panel_open = false;
       renderApp();
     });
+    const refreshAvPanelBtn = $('avPanelRefreshBtn');
+    if (refreshAvPanelBtn) refreshAvPanelBtn.addEventListener('click', async () => {
+      setBusy(true);
+      try {
+        await listCaptureDevices();
+        if (state.capture.stream_active) {
+          await openPreviewStream({
+            videoDeviceId: state.capture.selected_video_device_id,
+            audioDeviceId: state.capture.selected_audio_device_id,
+          });
+        }
+      } catch (error) {
+        setError(`No se pudieron actualizar dispositivos: ${error.message}`);
+      } finally {
+        setBusy(false);
+      }
+    });
+    const permissionAvPanelBtn = $('avPanelPermissionBtn');
+    if (permissionAvPanelBtn) permissionAvPanelBtn.addEventListener('click', async () => {
+      setBusy(true);
+      try {
+        await requestCapturePermissions();
+        await listCaptureDevices();
+        await openPreviewStream({
+          videoDeviceId: state.capture.selected_video_device_id,
+          audioDeviceId: state.capture.selected_audio_device_id,
+        });
+      } catch (error) {
+        setError(`No se pudieron activar permisos: ${error.message}`);
+      } finally {
+        setBusy(false);
+      }
+    });
     $('recordingVideoDeviceList').addEventListener('click', async (event) => {
       const button = event.target.closest('button[data-device-kind="video"]');
       if (!button) return;
@@ -1382,6 +1447,21 @@
     if (backToReviewBtn) backToReviewBtn.addEventListener('click', () => {
       clearError();
       transitionTo(SCREEN_REVIEW);
+    });
+    document.addEventListener('click', (event) => {
+      if (!state.capture.av_panel_open) return;
+      const trigger = $('manageAvBtn');
+      const panel = $('avDevicePanel');
+      const target = event.target;
+      if (!trigger || !panel || !(target instanceof Element)) return;
+      if (trigger.contains(target) || panel.contains(target)) return;
+      state.capture.av_panel_open = false;
+      renderApp();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape' || !state.capture.av_panel_open) return;
+      state.capture.av_panel_open = false;
+      renderApp();
     });
   }
 

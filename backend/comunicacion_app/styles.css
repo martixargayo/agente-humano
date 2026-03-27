@@ -448,6 +448,7 @@ body {
   display: grid;
   grid-template-columns: minmax(0, 1.95fr) minmax(300px, 0.72fr);
   gap: 24px;
+  align-items: center;
 }
 
 .recording-main,
@@ -462,7 +463,7 @@ body {
   border: 0;
   border-radius: 0;
   background: transparent;
-  padding: 0;
+  padding: 0 10px;
 }
 
 .recording-section-title {
@@ -478,6 +479,8 @@ body {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 18px 26px;
+  max-width: 760px;
+  margin: 0 auto;
 }
 
 .recording-aida-card {
@@ -505,12 +508,11 @@ body {
 
 .recording-side {
   display: grid;
-  align-content: end;
+  align-content: center;
 }
 
 .recording-floating-dock {
-  position: sticky;
-  bottom: 18px;
+  position: relative;
   border: 1px solid #e8edf3;
   border-radius: 18px;
   background: #fff;
@@ -525,36 +527,89 @@ body {
   gap: 10px;
 }
 
+.recording-live-status {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.recording-inline-badge {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid #dbe3ef;
+  background: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.11);
+}
+
+.recording-inline-icon {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.recording-inline-monitor {
+  min-width: 32px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid #dbe3ef;
+  background: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.11);
+}
+
+.recording-inline-monitor-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #2563eb;
+  animation: recordingMonitorPulse 1.35s ease-in-out infinite;
+}
+
+@keyframes recordingMonitorPulse {
+  0%, 100% { transform: scale(0.82); opacity: 0.52; }
+  50% { transform: scale(1); opacity: 1; }
+}
+
 .recording-waveform {
-  min-height: 30px;
+  min-height: 24px;
   border-radius: 10px;
-  border: 1px solid #e2e8f0;
-  background: #f8fafc;
+  border: 0;
+  background: transparent;
   display: flex;
   align-items: flex-end;
   gap: 5px;
-  padding: 7px;
+  padding: 0 4px;
 }
 
 .recording-waveform--compact {
-  min-height: 30px;
-  padding: 6px;
-  gap: 3px;
+  min-height: 20px;
+  padding: 0 2px;
+  gap: 4px;
 }
 
 .recording-waveform__bar {
   flex: 1 1 0;
   height: 100%;
-  max-width: 6px;
+  max-width: 5px;
   border-radius: 999px;
-  background: #d1d9e6;
+  background: #d6dfeb;
   transform-origin: bottom center;
   transform: scaleY(var(--bar-scale, 0.1));
   transition: transform 120ms linear, background-color 140ms linear;
 }
 
 .recording-waveform--compact .recording-waveform__bar {
-  max-width: 6px;
+  max-width: 5px;
 }
 
 .recording-waveform__bar.active {
@@ -563,8 +618,8 @@ body {
 
 .recording-av-control-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
+  grid-template-columns: 1fr;
+  gap: 8px;
   align-items: stretch;
 }
 
@@ -613,6 +668,12 @@ body {
   background: #fff7f7;
 }
 
+.status-badge--missing {
+  color: #a11f1f;
+  border-color: #f5caca;
+  background: #fff7f7;
+}
+
 .status-badge--idle {
   color: #475569;
   background: #f8fafc;
@@ -628,6 +689,11 @@ body {
   color: #991b1b;
 }
 
+.status-badge--missing .recording-av-icon {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
 .status-badge--idle .recording-av-icon {
   background: #e2e8f0;
   color: #475569;
@@ -638,19 +704,91 @@ body {
   justify-content: flex-start;
   border: 0;
   background: transparent;
-  padding: 0;
+  padding: 4px 0 0;
 }
 
 .recording-action-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
   align-items: center;
 }
 
+.recording-action-row .btn,
+.recording-action-row .recording-indicator {
+  min-height: 42px;
+}
+
+.recording-action-row .btn {
+  border-radius: 999px;
+}
+
+.recording-indicator {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.recording-device-trigger-wrap {
+  position: relative;
+}
+
+.recording-device-trigger {
+  width: 100%;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 8px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.recording-device-trigger:focus-visible {
+  outline: 2px solid rgba(59, 130, 246, 0.38);
+  outline-offset: 2px;
+}
+
+.recording-device-trigger-chevron {
+  font-size: 11px;
+  color: #475569;
+  transition: transform 180ms ease;
+}
+
+.recording-device-trigger-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.recording-device-name {
+  min-width: 0;
+  color: #334155;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recording-device-trigger[aria-expanded="true"] .recording-device-trigger-chevron {
+  transform: rotate(180deg);
+}
+
 .av-device-panel {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 10px);
+  width: min(360px, 86vw);
   display: grid;
   gap: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.16), 0 4px 12px rgba(15, 23, 42, 0.08);
+  padding: 14px;
+  z-index: 12;
 }
 
 .av-device-panel__head {
@@ -663,6 +801,22 @@ body {
 .av-device-panel__head h3,
 .av-device-group h4 {
   margin: 0;
+}
+
+.av-panel-close-btn {
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  background: #fff;
+  color: #334155;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.av-panel-status {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
 }
 
 .av-device-panel__grid {
@@ -695,6 +849,27 @@ body {
   justify-content: space-between;
   align-items: center;
   cursor: pointer;
+}
+
+.av-panel-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.av-panel-inline-btn {
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: #fff;
+  color: #0f172a;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.av-panel-inline-btn:hover {
+  background: #f8fafc;
 }
 
 .av-device-option.active {
@@ -1229,6 +1404,17 @@ body {
     position: static;
     bottom: auto;
     margin-top: 8px;
+  }
+
+  .recording-action-row {
+    grid-template-columns: 1fr;
+  }
+
+  .av-device-panel {
+    right: 0;
+    left: 0;
+    width: auto;
+    bottom: calc(100% + 8px);
   }
 
   .setup-entry-actions {
