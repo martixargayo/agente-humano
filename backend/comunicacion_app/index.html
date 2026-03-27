@@ -16,7 +16,7 @@
             <div class="comm-entry-card">
               <div class="comm-entry-card-content">
                 <p id="setupStatusText" class="comm-entry-subtitle">Necesitamos permisos de cámara y micrófono para detectar tus dispositivos.</p>
-                <div class="comm-entry-columns">
+                <div id="setupDevicesColumns" class="comm-entry-columns">
                   <section class="comm-entry-talk-content">
                     <p class="comm-entry-device-label">Dispositivos de audio</p>
                     <div class="comm-entry-device-search" aria-live="polite">
@@ -46,10 +46,6 @@
                 </div>
                 <div class="comm-entry-actions">
                   <button id="setupPermissionsBtn" class="btn btn-primary" type="button">Activar cámara y micrófono</button>
-                  <button id="setupPrimaryBtn" class="btn btn-secondary" type="button">Empezar</button>
-                </div>
-                <div class="comm-entry-actions">
-                  <button id="refreshDevicesBtn" class="btn btn-secondary" type="button">Actualizar dispositivos</button>
                 </div>
                 <div class="comm-entry-hidden-selects" aria-hidden="true">
                   <select id="videoDeviceSelect"></select>

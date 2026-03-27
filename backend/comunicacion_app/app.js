@@ -491,6 +491,26 @@
     return stream;
   }
 
+  async function detectCapturePermissionState() {
+    const fallback = {
+      camera: state.capture.permission_camera || 'prompt',
+      microphone: state.capture.permission_mic || 'prompt',
+    };
+    if (!navigator.permissions || !navigator.permissions.query) return fallback;
+    const readState = async (name, current) => {
+      try {
+        const status = await navigator.permissions.query({ name });
+        return status && status.state ? status.state : current;
+      } catch (_error) {
+        return current;
+      }
+    };
+    return {
+      camera: await readState('camera', fallback.camera),
+      microphone: await readState('microphone', fallback.microphone),
+    };
+  }
+
   async function listCaptureDevices() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
       state.capture.available_video_devices = []; state.capture.available_audio_devices = []; return;
@@ -977,32 +997,34 @@
 
   function renderSetupEntryState() {
     const setupStatus = $('setupStatusText');
-    const setupPrimaryBtn = $('setupPrimaryBtn');
     const setupPermissionsBtn = $('setupPermissionsBtn');
+    const setupDevicesColumns = $('setupDevicesColumns');
     const audioStatus = $('commAudioStatus');
     const videoStatus = $('commVideoStatus');
-    if (!setupStatus || !setupPrimaryBtn || !setupPermissionsBtn) return;
+    if (!setupStatus || !setupPermissionsBtn) return;
+    const hasPermissions = state.capture.permission_camera === 'granted' && state.capture.permission_mic === 'granted';
+    if (setupDevicesColumns) setupDevicesColumns.classList.toggle('hidden', !hasPermissions);
     if (state.capture.permission_camera === 'denied' || state.capture.permission_mic === 'denied') {
       setupStatus.textContent = 'Permiso denegado. Activa cámara y micrófono en el navegador para continuar.';
-    } else if (!state.capture.stream_active) {
+    } else if (!hasPermissions) {
       setupStatus.textContent = 'Necesitamos activar cámara y micrófono para continuar.';
     } else {
       setupStatus.textContent = 'Cámara y micrófono listos. Ya puedes empezar.';
     }
     if (audioStatus) {
-      audioStatus.textContent = state.capture.selected_audio_device_id
-        ? 'Micrófono seleccionado.'
-        : 'No se detectaron micrófonos disponibles.';
-      audioStatus.classList.toggle('error', !state.capture.selected_audio_device_id);
+      audioStatus.textContent = !hasPermissions
+        ? ''
+        : (state.capture.selected_audio_device_id ? 'Micrófono seleccionado.' : 'No se detectaron micrófonos disponibles.');
+      audioStatus.classList.toggle('error', hasPermissions && !state.capture.selected_audio_device_id);
     }
     if (videoStatus) {
-      videoStatus.textContent = state.capture.selected_video_device_id
-        ? 'Cámara seleccionada.'
-        : 'No se detectaron cámaras disponibles.';
-      videoStatus.classList.toggle('error', !state.capture.selected_video_device_id);
+      videoStatus.textContent = !hasPermissions
+        ? ''
+        : (state.capture.selected_video_device_id ? 'Cámara seleccionada.' : 'No se detectaron cámaras disponibles.');
+      videoStatus.classList.toggle('error', hasPermissions && !state.capture.selected_video_device_id);
     }
+    setupPermissionsBtn.textContent = hasPermissions ? 'Empezar' : 'Activar cámara y micrófono';
     setupPermissionsBtn.disabled = state.ui.busy;
-    setupPrimaryBtn.disabled = state.ui.busy || !isSetupReady();
   }
 
   function syncRecordingActionVisibility() {
@@ -1044,6 +1066,13 @@
     const audioFeatured = $('commAudioFeaturedList');
     const audioOther = $('commAudioOtherList');
     const videoList = $('commVideoDeviceList');
+    const hasPermissions = state.capture.permission_camera === 'granted' && state.capture.permission_mic === 'granted';
+    if (!hasPermissions) {
+      if (audioFeatured) audioFeatured.innerHTML = '';
+      if (audioOther) audioOther.innerHTML = '';
+      if (videoList) videoList.innerHTML = '';
+      return;
+    }
     if (audioFeatured) {
       if (!state.capture.available_audio_devices.length) {
         audioFeatured.innerHTML = '<div class="comm-entry-device-empty">Activa el micrófono para mostrar tus dispositivos disponibles.</div>';
@@ -1231,14 +1260,21 @@
   }
 
   function installEventHandlers() {
-    $('setupPermissionsBtn').addEventListener('click', async () => {
+    const setupPermissionsBtn = $('setupPermissionsBtn');
+    if (setupPermissionsBtn) setupPermissionsBtn.addEventListener('click', async () => {
       clearError();
+      if (state.capture.permission_camera === 'granted' && state.capture.permission_mic === 'granted' && isSetupReady()) {
+        transitionTo(SCREEN_AIDA_PREP);
+        return;
+      }
       setBusy(true);
       try {
-        const stream = await requestCapturePermissions();
-        stopPreviewStream();
-        state.capture.media_stream = stream;
-        state.capture.stream_active = true;
+        if (state.capture.permission_camera !== 'granted' || state.capture.permission_mic !== 'granted') {
+          const stream = await requestCapturePermissions();
+          stopPreviewStream();
+          state.capture.media_stream = stream;
+          state.capture.stream_active = true;
+        }
         await listCaptureDevices();
         await openPreviewStream({
           videoDeviceId: $('videoDeviceSelect').value || state.capture.selected_video_device_id || null,
@@ -1251,10 +1287,6 @@
       } finally {
         setBusy(false);
       }
-    });
-    $('setupPrimaryBtn').addEventListener('click', () => {
-      clearError();
-      if (isSetupReady()) transitionTo(SCREEN_AIDA_PREP);
     });
     $('backToSetupBtn').addEventListener('click', () => transitionTo(SCREEN_SETUP));
     $('continueToRecordingBtn').addEventListener('click', async () => {
@@ -1274,7 +1306,6 @@
         setBusy(false);
       }
     });
-    $('refreshDevicesBtn').addEventListener('click', async () => { setBusy(true); try { await listCaptureDevices(); await openPreviewStream({ videoDeviceId: $('videoDeviceSelect').value || null, audioDeviceId: $('audioDeviceSelect').value || null }); } catch (error) { setError(`No se pudieron refrescar los dispositivos: ${error.message}`); } finally { setBusy(false); } });
     $('videoDeviceSelect').addEventListener('change', async (event) => { await handleDeviceChange('video', event.target.value || null); });
     $('audioDeviceSelect').addEventListener('change', async (event) => { await handleDeviceChange('audio', event.target.value || null); });
     $('screenSetup').addEventListener('click', async (event) => {
@@ -1349,9 +1380,21 @@
       stopFloatingPhrases();
     });
     try { await bootstrapCommunicationSession(); } catch (error) { setError(`No se pudo preparar la sesión: ${error.message}`); return; }
-    try { await listCaptureDevices(); } catch (_error) { }
+    try {
+      const permissionState = await detectCapturePermissionState();
+      state.capture.permission_camera = permissionState.camera;
+      state.capture.permission_mic = permissionState.microphone;
+      if (permissionState.camera === 'granted' && permissionState.microphone === 'granted') {
+        await listCaptureDevices();
+        await openPreviewStream({
+          videoDeviceId: state.capture.selected_video_device_id || null,
+          audioDeviceId: state.capture.selected_audio_device_id || null,
+        });
+      }
+    } catch (_error) { }
     if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
       navigator.mediaDevices.addEventListener('devicechange', async () => {
+        if (state.capture.permission_camera !== 'granted' || state.capture.permission_mic !== 'granted') return;
         try { await listCaptureDevices(); } catch (_error) { }
       });
     }
