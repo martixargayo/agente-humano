@@ -28,6 +28,8 @@ from sessions.state import SESSIONS, get_session_state
 
 NEW_CONTEXT_ID = 'validacion_multicontexto'
 NEW_PUBLIC_SLUG = 'negociacion-validacion'
+THIRD_CONTEXT_ID = 'sala_reuniones'
+THIRD_PUBLIC_SLUG = 'sala-reuniones'
 
 
 class Phase8SecondOfficialContextTests(unittest.TestCase):
@@ -64,6 +66,17 @@ class Phase8SecondOfficialContextTests(unittest.TestCase):
         response_slash = self.client.get(f'/interfaz_usuario/{NEW_PUBLIC_SLUG}/')
 
         self.assertEqual(selection.context_id, NEW_CONTEXT_ID)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response_slash.status_code, 200)
+        self.assertIn('Interfaz Usuario', response.text)
+
+    def test_third_context_sala_reuniones_resolves_publicly_and_slugged_ui_entry_returns_200(self) -> None:
+        self.assertEqual(resolve_public_slug_to_context_id(THIRD_PUBLIC_SLUG), THIRD_CONTEXT_ID)
+        selection = resolve_public_context_selection(public_slug=THIRD_PUBLIC_SLUG)
+        response = self.client.get(f'/interfaz_usuario/{THIRD_PUBLIC_SLUG}')
+        response_slash = self.client.get(f'/interfaz_usuario/{THIRD_PUBLIC_SLUG}/')
+
+        self.assertEqual(selection.context_id, THIRD_CONTEXT_ID)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response_slash.status_code, 200)
         self.assertIn('Interfaz Usuario', response.text)
