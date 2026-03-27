@@ -8,6 +8,7 @@ from .models import (
     UiFeedbackReportV1,
 )
 from .communication_models import (
+    CommunicationContentAidaEvalV1,
     CommunicationSpecializedDimensionEvalV1,
     CommunicationVisualBatchEvalInputV1,
     CommunicationVisualBatchEvalV2,
@@ -28,6 +29,7 @@ __all__ = [
     "TurnTrajectoryV1",
     "UiFeedbackReportV1",
     "CommunicationVisualMode",
+    "CommunicationContentAidaEvalV1",
     "CommunicationSpecializedDimensionEvalV1",
     "CommunicationVisualSamplingStrategyV1",
     "CommunicationVisualBatchFrameRefV1",

@@ -1,0 +1,158 @@
+{
+  "schema_version": "communication_content_aida_rubric.v1",
+  "dimension": "contenido",
+  "framework": "AIDA",
+  "score_scale": {
+    "1": "mal",
+    "2": "mejorable",
+    "3": "correcto"
+  },
+  "global_guide": {
+    "core_principle": "Un mensaje eficaz sigue un recorrido: primero capta atención, después genera interés, luego desarrolla con claridad y finalmente orienta hacia una acción o conclusión.",
+    "evaluation_order": [
+      "attention",
+      "interest",
+      "development",
+      "action"
+    ],
+    "important_rules": [
+      "Los cuatro bloques cumplen funciones distintas y no deben mezclarse.",
+      "La presencia real del bloque y el cumplimiento de su función pesan más que pequeños detalles menores.",
+      "Explicar demasiado pronto sin haber captado atención debilita el mensaje.",
+      "Generar curiosidad sin construir interés deja el mensaje incompleto.",
+      "Desarrollar sin orden ni claridad debilita la comprensión.",
+      "Cerrar sin dirección o con frases vacías debilita la acción."
+    ],
+    "common_global_mistakes": [
+      "Confundir informar con comunicar.",
+      "Mezclar bloques sin respetar su función.",
+      "Hablar desde el emisor en lugar de conectar con la audiencia.",
+      "Sonar genérico o rutinario.",
+      "Cerrar sin intención clara."
+    ]
+  },
+  "blocks": {
+    "attention": {
+      "name": "Atención",
+      "question": "¿Cómo hago que me escuchen de verdad desde el principio?",
+      "evaluates": "Si el inicio consigue captar escucha, curiosidad, expectativa o impacto inicial antes de desarrollar el contenido.",
+      "must_achieve": [
+        "romper la inercia inicial",
+        "activar curiosidad o escucha",
+        "preparar al público para seguir"
+      ],
+      "positive_signals": [
+        "el inicio entra rápido",
+        "hay una pregunta, dato, historia, promesa o entrada con gancho",
+        "el arranque despierta curiosidad",
+        "el inicio no explica demasiado pronto",
+        "el mensaje abre con energía y foco"
+      ],
+      "negative_signals": [
+        "empieza con frases vacías o rutinarias",
+        "entra directamente a explicar sin captar escucha",
+        "usa demasiado contexto irrelevante",
+        "suena plano, predecible o inseguro",
+        "el arranque no genera expectativa"
+      ],
+      "common_mistakes": [
+        "empezar con 'Buenos días, es un placer estar aquí'",
+        "empezar con 'voy a hablaros de...'",
+        "presentar la estructura antes de captar interés",
+        "alargarse demasiado en antecedentes"
+      ],
+      "evaluator_focus": "No evalúes si el inicio es bonito, sino si realmente cumple la función de captar atención."
+    },
+    "interest": {
+      "name": "Interés",
+      "question": "¿Por qué debería importarle esto a quien me escucha?",
+      "evaluates": "Si el mensaje conecta el tema con necesidades, problemas, beneficios, aspiraciones o relevancia real para la audiencia.",
+      "must_achieve": [
+        "hacer visible el valor del tema",
+        "conectar con la realidad del público",
+        "generar implicación para seguir escuchando"
+      ],
+      "positive_signals": [
+        "se explican beneficios concretos",
+        "se nombran problemas o necesidades reconocibles",
+        "se muestra relevancia real para la audiencia",
+        "hay empatía o conexión con la experiencia del público",
+        "la audiencia puede entender por qué le importa"
+      ],
+      "negative_signals": [
+        "el tema se presenta de forma abstracta o genérica",
+        "se dice que algo es importante sin concretarlo",
+        "los beneficios son vagos",
+        "el foco está en el emisor y no en la audiencia",
+        "el bloque repite el arranque sin avanzar"
+      ],
+      "common_mistakes": [
+        "decir solo 'esto es importante'",
+        "enumerar ventajas vagas sin aterrizarlas",
+        "hablar del trabajo del emisor en vez del valor para la audiencia"
+      ],
+      "evaluator_focus": "No evalúes solo si el tema aparece, sino si el mensaje consigue que le importe a quien escucha."
+    },
+    "development": {
+      "name": "Desarrollo",
+      "question": "¿Qué quiero explicar exactamente y cómo lo hago entendible?",
+      "evaluates": "Si las ideas se desarrollan con orden, claridad, lógica, explicación suficiente y ejemplos o justificaciones útiles.",
+      "must_achieve": [
+        "explicar con claridad",
+        "ordenar las ideas con secuencia",
+        "hacer comprensible la propuesta"
+      ],
+      "positive_signals": [
+        "hay secuencia lógica entre ideas",
+        "se explican conceptos o pasos con claridad",
+        "se usan ejemplos o aclaraciones útiles",
+        "se responden dudas previsibles o se anticipan objeciones",
+        "el mensaje avanza con sentido hacia el cierre"
+      ],
+      "negative_signals": [
+        "las ideas aparecen desordenadas",
+        "hay saturación de información",
+        "se habla de forma abstracta o poco aterrizada",
+        "se introducen ideas nuevas sin relación clara",
+        "faltan claridad, ejemplos o hilo conductor"
+      ],
+      "common_mistakes": [
+        "acumular ideas sin estructura",
+        "explicar de forma confusa o demasiado técnica",
+        "dejar ideas a medio desarrollar",
+        "no justificar afirmaciones importantes"
+      ],
+      "evaluator_focus": "No evalúes solo cantidad de contenido, sino claridad, secuencia y comprensibilidad."
+    },
+    "action": {
+      "name": "Acción",
+      "question": "¿Después de escucharme, qué quiero que ocurra?",
+      "evaluates": "Si el cierre orienta hacia una acción, reflexión, conclusión o siguiente paso claro y con intención.",
+      "must_achieve": [
+        "cerrar con intención",
+        "reforzar el valor principal",
+        "dejar una dirección clara"
+      ],
+      "positive_signals": [
+        "el cierre dice claramente qué se espera o qué debe quedar",
+        "resume el valor principal",
+        "termina con fuerza o dirección",
+        "la conclusión deja huella",
+        "el final no se siente vacío"
+      ],
+      "negative_signals": [
+        "termina con frases vacías",
+        "cierra sin dirección",
+        "abre un tema nuevo al final",
+        "la llamada a la acción es confusa o inexistente",
+        "el final suena débil o apagado"
+      ],
+      "common_mistakes": [
+        "terminar con 'y nada, eso sería todo'",
+        "cerrar con 'ya está' o 'gracias y nada más'",
+        "acabar sin indicar qué hacer, pensar o recordar"
+      ],
+      "evaluator_focus": "No evalúes solo si el mensaje acaba, sino si realmente concluye y orienta."
+    }
+  }
+}

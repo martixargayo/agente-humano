@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from evaluacion.contracts.models import SessionRef
 
@@ -32,6 +32,7 @@ CommunicationJobStage = Literal[
 CommunicationBlockStatus = Literal['correcto', 'mejorable', 'placeholder']
 CommunicationVisualMode = Literal['metadata', 'llm_v1']
 CommunicationSpecializedEvalLabel = Literal['bajo', 'medio-bajo', 'medio', 'medio-alto', 'alto']
+CommunicationContentAidaLabel = Literal['mal', 'mejorable', 'correcto']
 
 
 class CommunicationDomainContext(BaseModel):
@@ -173,6 +174,30 @@ class CommunicationSpecializedDimensionEvalV1(BaseModel):
     score_1_5: int = Field(ge=1, le=5)
     label: CommunicationSpecializedEvalLabel
     reason_short: str = Field(min_length=1)
+
+
+class CommunicationContentAidaBlockEvalV1(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    score_1_3: int = Field(ge=1, le=3)
+    label: CommunicationContentAidaLabel
+    reason_short: str = Field(min_length=1)
+
+    @model_validator(mode='after')
+    def _validate_label_matches_score(self) -> 'CommunicationContentAidaBlockEvalV1':
+        expected = {1: 'mal', 2: 'mejorable', 3: 'correcto'}[self.score_1_3]
+        if self.label != expected:
+            raise ValueError(f'label_mismatch_for_score:{self.score_1_3}->{expected}')
+        return self
+
+
+class CommunicationContentAidaEvalV1(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    attention: CommunicationContentAidaBlockEvalV1
+    interest: CommunicationContentAidaBlockEvalV1
+    development: CommunicationContentAidaBlockEvalV1
+    action: CommunicationContentAidaBlockEvalV1
 
 
 class CommunicationAudioFeaturesRealV1(BaseModel):
