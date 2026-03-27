@@ -266,13 +266,11 @@ body {
 
 .recording-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(260px, 0.8fr);
-  gap: 16px;
+  grid-template-columns: minmax(0, 1.95fr) minmax(300px, 0.72fr);
+  gap: 24px;
 }
 
 .recording-main,
-.recording-side,
-.recording-control-bar,
 .av-device-panel {
   border: 1px solid #eaecf0;
   border-radius: 16px;
@@ -280,59 +278,82 @@ body {
   padding: 14px;
 }
 
+.recording-main {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+}
+
 .recording-section-title {
-  margin: 0 0 10px;
-  font-size: 14px;
-  color: #334155;
+  margin: 0 0 12px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
 }
 
 .recording-aida-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 18px 26px;
 }
 
 .recording-aida-card {
-  border: 1px solid #e2e8f0;
-  background: #f8fafc;
-  border-radius: 12px;
-  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  border-radius: 0;
+  padding: 0;
 }
 
 .recording-aida-card h4 {
-  margin: 0 0 6px;
-  color: #475467;
-  font-size: 13px;
+  margin: 0 0 4px;
+  color: #0f172a;
+  font-size: 16px;
+  font-weight: 700;
 }
 
 .recording-aida-text {
   margin: 0;
   white-space: pre-wrap;
-  color: #1e293b;
-  font-size: 13px;
-  line-height: 1.4;
-  min-height: 38px;
+  color: #334155;
+  font-size: 14px;
+  line-height: 1.6;
+  min-height: 52px;
 }
 
 .recording-side {
+  display: grid;
+  align-content: end;
+}
+
+.recording-floating-dock {
+  position: sticky;
+  bottom: 18px;
+  border: 1px solid #e8edf3;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.11), 0 2px 10px rgba(15, 23, 42, 0.05);
+  padding: 12px;
   display: grid;
   gap: 10px;
 }
 
 .recording-preview-stack {
   display: grid;
-  gap: 8px;
+  gap: 10px;
 }
 
 .recording-waveform {
-  min-height: 34px;
+  min-height: 30px;
   border-radius: 10px;
-  border: 1px solid #dbe4f0;
+  border: 1px solid #e2e8f0;
   background: #f8fafc;
   display: flex;
   align-items: flex-end;
-  gap: 4px;
-  padding: 8px;
+  gap: 5px;
+  padding: 7px;
 }
 
 .recording-waveform--compact {
@@ -344,16 +365,16 @@ body {
 .recording-waveform__bar {
   flex: 1 1 0;
   height: 100%;
-  max-width: 8px;
+  max-width: 6px;
   border-radius: 999px;
-  background: #cbd5e1;
+  background: #d1d9e6;
   transform-origin: bottom center;
   transform: scaleY(var(--bar-scale, 0.1));
   transition: transform 120ms linear, background-color 140ms linear;
 }
 
 .recording-waveform--compact .recording-waveform__bar {
-  max-width: 7px;
+  max-width: 6px;
 }
 
 .recording-waveform__bar.active {
@@ -368,17 +389,17 @@ body {
 }
 
 .recording-av-unified {
-  border: 1px solid #dbe4f0;
+  border: 1px solid #e2e8f0;
   border-radius: 12px;
-  background: #f8fafc;
+  background: #fbfcfe;
   padding: 8px;
   display: grid;
   gap: 8px;
 }
 
 .recording-av-item {
-  border-radius: 10px;
-  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  border: 1px solid #dbe3ef;
   padding: 7px 10px;
   font-size: 12px;
   font-weight: 700;
@@ -401,15 +422,15 @@ body {
 }
 
 .status-badge--ok {
-  color: #166534;
-  border-color: #86efac;
-  background: #f0fdf4;
+  color: #11643d;
+  border-color: #b9e8cd;
+  background: #f5fcf8;
 }
 
 .status-badge--ko {
-  color: #b91c1c;
-  border-color: #fecaca;
-  background: #fef2f2;
+  color: #a11f1f;
+  border-color: #f5caca;
+  background: #fff7f7;
 }
 
 .status-badge--idle {
@@ -435,6 +456,9 @@ body {
 .recording-control-bar {
   display: flex;
   justify-content: flex-start;
+  border: 0;
+  background: transparent;
+  padding: 0;
 }
 
 .recording-action-row {
@@ -994,6 +1018,16 @@ body {
 
   .recording-av-control-row {
     grid-template-columns: 1fr;
+  }
+
+  .recording-side {
+    align-content: initial;
+  }
+
+  .recording-floating-dock {
+    position: static;
+    bottom: auto;
+    margin-top: 8px;
   }
 
   .setup-entry-actions {
