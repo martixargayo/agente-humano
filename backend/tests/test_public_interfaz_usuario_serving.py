@@ -25,6 +25,8 @@ class PublicInterfazUsuarioServingTests(unittest.TestCase):
             '/interfaz_usuario/negociacion/',
             '/interfaz_usuario/negociacion-validacion',
             '/interfaz_usuario/negociacion-validacion/',
+            '/interfaz_usuario/sala-reuniones',
+            '/interfaz_usuario/sala-reuniones/',
         ]:
             response = self.client.get(path)
             self.assertEqual(response.status_code, 200, path)

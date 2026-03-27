@@ -14,6 +14,8 @@ from sessions.state import SESSIONS, get_session_state
 
 TARGET_CONTEXT_ID = 'validacion_multicontexto'
 TARGET_PUBLIC_SLUG = 'negociacion-validacion'
+THIRD_CONTEXT_ID = 'sala_reuniones'
+THIRD_PUBLIC_SLUG = 'sala-reuniones'
 
 
 class Phase8SecondOfficialContextE2EHttpTests(unittest.TestCase):
@@ -100,6 +102,36 @@ class Phase8SecondOfficialContextE2EHttpTests(unittest.TestCase):
             TrajectoryTurn(turn_index=2, agreement_closeness_score_0_100=55, user_excerpt='u2', counterpart_excerpt='a2', impact_reason='progreso', counterpart_thought_effect='ok', better_rephrase='b2'),
             TrajectoryTurn(turn_index=3, agreement_closeness_score_0_100=63, user_excerpt='u3', counterpart_excerpt='a3', impact_reason='ajuste', counterpart_thought_effect='ok', better_rephrase='b3'),
         ])
+
+
+    def test_http_bootstrap_and_turn_bind_sala_reuniones_context(self) -> None:
+        with patch('negociacion.orchestration.turn_contract.run_negotiation_cognitive_turn', side_effect=self._fake_runtime_turn):
+            boot = self.client.post(
+                '/api/interfaz_usuario/sessions/bootstrap',
+                json={'user_id': 'u_sala', 'session_id': 's_sala', 'public_slug': THIRD_PUBLIC_SLUG},
+            )
+            self.assertEqual(boot.status_code, 200)
+            self.assertEqual(boot.json()['context_id'], THIRD_CONTEXT_ID)
+            self.assertEqual(boot.json()['public_slug'], THIRD_PUBLIC_SLUG)
+
+            turn = self.client.post(
+                '/api/interfaz_usuario/negociacion/turn',
+                json={
+                    'user_id': 'u_sala',
+                    'session_id': 's_sala',
+                    'message': 'Hola, quiero revisar este caso en sala de reuniones.',
+                    'new_conversation': False,
+                },
+            )
+            self.assertEqual(turn.status_code, 200)
+
+            state = get_session_state('u_sala', 's_sala')
+            trace = state.world_state['negotiation_canonical_traces'][-1]
+            self.assertEqual(state.world_state[NEGOTIATION_CONTEXT_WORLD_STATE_KEY]['context_id'], THIRD_CONTEXT_ID)
+            self.assertEqual(turn.json()['session_id'], 's_sala')
+            self.assertEqual(trace['context_meta']['context_id'], THIRD_CONTEXT_ID)
+            self.assertEqual(trace['_entry_contract']['context_meta']['context_id'], THIRD_CONTEXT_ID)
+            self.assertNotEqual(state.world_state[NEGOTIATION_CONTEXT_WORLD_STATE_KEY]['context_id'], 'baseline_current')
 
     def test_http_end_to_end_surface_keeps_context_across_runtime_evaluation_and_optimizer(self) -> None:
         with patch('negociacion.orchestration.turn_contract.run_negotiation_cognitive_turn', side_effect=self._fake_runtime_turn), patch(
