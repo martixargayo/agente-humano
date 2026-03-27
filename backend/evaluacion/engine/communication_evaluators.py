@@ -93,12 +93,12 @@ def evaluate_communication_synthesis(
     content_output: dict[str, object],
     delivery_output: dict[str, object],
     visual_output: dict[str, object],
-) -> dict[str, object]:
+) -> tuple[dict[str, object], dict[str, object]]:
     synthesis_input = build_global_synthesis_input(
         evaluation_id=bundle.evaluation_id,
         content_output=content_output,
         delivery_output=delivery_output,
         visual_output=visual_output,
     )
-    synthesized = synthesize_global_communication_feedback(synthesis_input=synthesis_input)
-    return synthesized.model_dump(mode='json')
+    synthesized, synthesis_meta = synthesize_global_communication_feedback(synthesis_input=synthesis_input)
+    return synthesized.model_dump(mode='json'), synthesis_meta.model_dump(mode='json')

@@ -145,7 +145,7 @@ def _run_communication_evaluation_job(*, evaluation_id: str, attempt_id: str) ->
         persist_visual_llm_final_artifact(evaluation_id=evaluation_id, bundle=bundle, visual_output=visual_result)
         persist_visual_evaluation_artifact(evaluation_id=evaluation_id, bundle=bundle)
         _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='running', stage='synthesis_started')
-        synthesis_result = evaluate_communication_synthesis(
+        synthesis_result, synthesis_meta = evaluate_communication_synthesis(
             bundle=bundle,
             content_output=content_result,
             delivery_output=delivery_result,
@@ -161,6 +161,7 @@ def _run_communication_evaluation_job(*, evaluation_id: str, attempt_id: str) ->
             delivery_output=delivery_result,
             visual_output=visual_result,
             synthesis_output=synthesis_result,
+            synthesis_meta=synthesis_meta,
         )
         _reports_block()[evaluation_id] = report
         _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='completed', stage='completed')

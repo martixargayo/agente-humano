@@ -82,16 +82,15 @@ class CommunicationParallelPipelineTests(unittest.TestCase):
 
         def _synthesis(**kwargs):  # type: ignore[no-untyped-def]
             _mark('synthesis', 'start')
-            return {
-                'schema_version': 'communication_global_synthesis_output.v1',
-                'global_score_0_100': 79,
-                'global_diagnosis': 'ok',
-                'top_strengths': [],
-                'priority_improvements': [],
-                'action_plan': [],
-                'friendly_summary': 'ok',
-                'consistency_notes': [],
-            }
+            return ({
+                'score_global_100': 79,
+                'summary_short_2_3_lines': 'Resumen breve de prueba.',
+                'recommendations': [],
+            }, {
+                'mode': 'llm',
+                'fallback_reason': None,
+                'detail': None,
+            })
 
         with (
             patch('evaluacion.engine.communication_service.evaluate_communication_content', side_effect=_content),
@@ -165,16 +164,15 @@ class CommunicationParallelPipelineTests(unittest.TestCase):
             timestamps['synthesis_start'] = time.perf_counter()
             time.sleep(0.03)
             timestamps['synthesis_end'] = time.perf_counter()
-            return {
-                'schema_version': 'communication_global_synthesis_output.v1',
-                'global_score_0_100': 70,
-                'global_diagnosis': 'ok',
-                'top_strengths': [],
-                'priority_improvements': [],
-                'action_plan': [],
-                'friendly_summary': 'ok',
-                'consistency_notes': [],
-            }
+            return ({
+                'score_global_100': 70,
+                'summary_short_2_3_lines': 'Resumen breve de prueba.',
+                'recommendations': [],
+            }, {
+                'mode': 'llm',
+                'fallback_reason': None,
+                'detail': None,
+            })
 
         def _assemble(**kwargs):  # type: ignore[no-untyped-def]
             timestamps['assembler_start'] = time.perf_counter()
