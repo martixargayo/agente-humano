@@ -5,10 +5,10 @@ import unittest
 from pydantic import ValidationError
 
 from evaluacion.contracts.communication_models import (
+    CommunicationSpecializedDimensionEvalV1,
     CommunicationVisualBatchEvalInputV1,
     CommunicationVisualBatchEvalV2,
     CommunicationVisualBatchFrameRefV1,
-    CommunicationVisualFinalEvalV1,
     CommunicationVisualFrameCoverageSummaryV1,
     CommunicationVisualObservabilityFlagsV1,
     CommunicationVisualSamplingStrategyV1,
@@ -122,55 +122,13 @@ class CommunicationVisualContractsTests(unittest.TestCase):
                 'unexpected': True,
             })
 
-    def test_final_eval_model(self) -> None:
-        summary = CommunicationVisualBatchEvalV2(
-            batch_index=1,
-            total_batches=1,
-            batch_score_1_5=3,
-            evidence_sufficiency='low',
-            confidence=0.4,
-            hand_use_assessment='low',
-            facial_expression_assessment='low',
-            posture_assessment='low',
-            visual_support_assessment='low',
-            strengths=[],
-            weaknesses=['w'],
-            limitations=['l'],
-            cited_frame_ids=['frame_001'],
-            observability_flags=CommunicationVisualObservabilityFlagsV1(
-                hands_not_visible=True,
-                face_partially_visible=False,
-                upper_body_not_visible=True,
-                blur_detected=False,
-                low_light_detected=False,
-                camera_far_distance=False,
-            ),
-            frame_coverage_summary=CommunicationVisualFrameCoverageSummaryV1(
-                frames_total=10,
-                frames_usable=5,
-                frames_with_face_visible=3,
-                frames_with_hands_visible=0,
-                frames_with_upper_body_visible=4,
-                frames_blurry=0,
-                frames_low_light=0,
-            ),
-            confidence_reasoning=['cap'],
+    def test_specialized_dimension_eval_model(self) -> None:
+        final = CommunicationSpecializedDimensionEvalV1(
+            score_1_5=3,
+            label='medio',
+            reason_short='Tu apoyo visual es funcional pero irregular.',
         )
-
-        final = CommunicationVisualFinalEvalV1(
-            global_score_1_5=3,
-            label='mejorable',
-            diagnosis='dx',
-            temporal_consistency='medium',
-            top_strengths=[],
-            top_weaknesses=['w'],
-            recommendations=['r'],
-            evidence_frame_ids=['frame_001'],
-            confidence=0.41,
-            limitations=['limit'],
-            batch_summaries=[summary],
-        )
-        self.assertEqual(final.schema_version, 'communication_visual_final_eval.v1')
+        self.assertEqual(final.score_1_5, 3)
 
 
 if __name__ == '__main__':

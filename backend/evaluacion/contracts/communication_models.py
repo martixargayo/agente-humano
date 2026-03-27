@@ -31,6 +31,7 @@ CommunicationJobStage = Literal[
 ]
 CommunicationBlockStatus = Literal['correcto', 'mejorable', 'placeholder']
 CommunicationVisualMode = Literal['metadata', 'llm_v1']
+CommunicationSpecializedEvalLabel = Literal['bajo', 'medio-bajo', 'medio', 'medio-alto', 'alto']
 
 
 class CommunicationDomainContext(BaseModel):
@@ -164,6 +165,14 @@ class CommunicationAudioInterpretedMetricsV1(BaseModel):
     pause_control_1_5: int | None = None
     expressiveness_1_5: int | None = None
     stability_1_5: int | None = None
+
+
+class CommunicationSpecializedDimensionEvalV1(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    score_1_5: int = Field(ge=1, le=5)
+    label: CommunicationSpecializedEvalLabel
+    reason_short: str = Field(min_length=1)
 
 
 class CommunicationAudioFeaturesRealV1(BaseModel):

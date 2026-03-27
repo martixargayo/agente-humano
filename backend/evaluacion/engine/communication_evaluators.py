@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from evaluacion.contracts.communication_models import CommunicationFeedbackInputBundleV1
 from evaluacion.engine.communication_content_evaluator import evaluate_content_from_transcript
-from evaluacion.engine.communication_delivery_evaluator import evaluate_delivery_from_audio_metrics
+from evaluacion.engine.communication_delivery_evaluator import (
+    evaluate_delivery_with_specialized_from_audio_metrics,
+)
 from evaluacion.engine.communication_synthesis import (
     build_global_synthesis_input,
     synthesize_global_communication_feedback,
@@ -18,7 +20,10 @@ def evaluate_communication_content(bundle: CommunicationFeedbackInputBundleV1) -
 
 def evaluate_communication_delivery(bundle: CommunicationFeedbackInputBundleV1) -> dict[str, object]:
     transcript_excerpt = bundle.transcript.segments[0].text if bundle.transcript.segments else ''
-    evaluated = evaluate_delivery_from_audio_metrics(audio_features=bundle.audio_features, transcript_excerpt=transcript_excerpt)
+    evaluated, specialized = evaluate_delivery_with_specialized_from_audio_metrics(
+        audio_features=bundle.audio_features,
+        transcript_excerpt=transcript_excerpt,
+    )
     status_visual = 'mejorable'
     if evaluated.score_0_100 >= 75:
         status_visual = 'correcto'
@@ -33,6 +38,7 @@ def evaluate_communication_delivery(bundle: CommunicationFeedbackInputBundleV1) 
         'details': evaluated.evidence_metrics + evaluated.observations,
         'subscores': evaluated.subscores,
         'recommendations': evaluated.recommendations,
+        'llm_specialized_evaluation': specialized.model_dump(mode='json'),
     }
 
 
@@ -40,6 +46,7 @@ def evaluate_communication_visual(bundle: CommunicationFeedbackInputBundleV1) ->
     fallback_notes: list[str] = []
     llm_batch_outputs: list[dict[str, object]] = []
     llm_final_evaluation: dict[str, object] | None = None
+    llm_specialized_evaluation: dict[str, object] = {}
     mode = get_visual_mode()
     use_llm_mode = mode == 'llm_v1' and is_visual_llm_enabled()
     if use_llm_mode:
@@ -52,6 +59,7 @@ def evaluate_communication_visual(bundle: CommunicationFeedbackInputBundleV1) ->
             )
             llm_batch_outputs = [item.model_dump(mode='json') for item in batch_outputs]
             llm_final_evaluation = final_eval.model_dump(mode='json') if hasattr(final_eval, 'model_dump') else None
+            llm_specialized_evaluation = dict(llm_final_evaluation or {})
         except CommunicationVisualLlmError as exc:
             fallback_notes.append(f'llm_v1_fallback_to_metadata:{exc.kind}:{exc.message}')
             evaluated = evaluate_visual_from_features(visual_features=bundle.visual_features)
@@ -75,6 +83,7 @@ def evaluate_communication_visual(bundle: CommunicationFeedbackInputBundleV1) ->
         'visual_mode': mode,
         'llm_batch_evaluations': llm_batch_outputs,
         'llm_final_evaluation': llm_final_evaluation or {},
+        'llm_specialized_evaluation': llm_specialized_evaluation,
     }
 
 

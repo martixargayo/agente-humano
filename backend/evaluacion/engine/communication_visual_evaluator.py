@@ -4,6 +4,7 @@ from collections import Counter
 from typing import Any
 
 from evaluacion.contracts.communication_models import (
+    CommunicationSpecializedDimensionEvalV1,
     CommunicationVisualBatchEvalV2,
     CommunicationVisualEvaluationV1,
     CommunicationVisualFeaturesPlaceholder,
@@ -92,14 +93,14 @@ def evaluate_visual_from_features(*, visual_features: CommunicationVisualFeature
 def _aggregate_batches_to_visual_eval(
     *,
     batch_outputs: list[CommunicationVisualBatchEvalV2],
-    final_eval: object | None = None,
+    final_eval: CommunicationSpecializedDimensionEvalV1 | None = None,
 ) -> CommunicationVisualEvaluationV1:
     if not batch_outputs:
         raise CommunicationVisualLlmError(kind='schema', message='no_batch_outputs_to_aggregate')
 
     mean_score_1_5 = sum(item.batch_score_1_5 for item in batch_outputs) / len(batch_outputs)
-    if final_eval is not None and hasattr(final_eval, 'global_score_1_5'):
-        score_0_100 = max(0, min(100, int(round(getattr(final_eval, 'global_score_1_5') * 20))))
+    if final_eval is not None:
+        score_0_100 = max(0, min(100, int(round(final_eval.score_1_5 * 20))))
     else:
         score_0_100 = max(0, min(100, int(round(mean_score_1_5 * 20))))
 
@@ -114,8 +115,8 @@ def _aggregate_batches_to_visual_eval(
         f'Lote {item.batch_index}/{item.total_batches}: score={item.batch_score_1_5}/5 confidence={item.confidence:.2f}'
         for item in batch_outputs
     )
-    if final_eval is not None and hasattr(final_eval, 'diagnosis'):
-        observations.append(f'Síntesis final LLM: {getattr(final_eval, "diagnosis")}')
+    if final_eval is not None:
+        observations.append(f'Evaluación global de gesticulación: {final_eval.reason_short}')
 
     recommendations: list[str] = []
     evidence_frames: list[str] = []
@@ -124,8 +125,7 @@ def _aggregate_batches_to_visual_eval(
         recommendations.extend(item.limitations[:1])
         evidence_frames.extend(item.cited_frame_ids[:3])
     if final_eval is not None:
-        recommendations.extend(getattr(final_eval, 'recommendations', [])[:3])
-        evidence_frames.extend(getattr(final_eval, 'evidence_frame_ids', [])[:5])
+        recommendations.append(final_eval.reason_short)
     dedup_recommendations = list(dict.fromkeys(recommendations))[:8] or ['Mantén encuadre, iluminación y visibilidad de manos para mejorar la observabilidad.']
     dedup_evidence = list(dict.fromkeys(evidence_frames))[:10]
 
@@ -133,6 +133,7 @@ def _aggregate_batches_to_visual_eval(
         score_0_100=score_0_100,
         subscores={
             'batch_quality': max(1, min(5, int(round(mean_score_1_5)))),
+            'gesticulation_global': final_eval.score_1_5 if final_eval is not None else max(1, min(5, int(round(mean_score_1_5)))),
             'evidence_consistency': 4 if dominant_sufficiency == 'high' else (3 if dominant_sufficiency == 'medium' else 2),
             'coverage': 4 if len(batch_outputs) >= 2 else 3,
         },
@@ -149,7 +150,7 @@ def evaluate_visual_llm_v1_from_features(
     recording_id: str,
     video_duration_ms: int,
     visual_features: CommunicationVisualFeaturesPlaceholder | CommunicationVisualFeaturesRealV1,
-) -> tuple[CommunicationVisualEvaluationV1, list[CommunicationVisualBatchEvalV2], object]:
+) -> tuple[CommunicationVisualEvaluationV1, list[CommunicationVisualBatchEvalV2], CommunicationSpecializedDimensionEvalV1]:
     if isinstance(visual_features, CommunicationVisualFeaturesPlaceholder):
         raise CommunicationVisualLlmError(kind='payload', message='visual_features_placeholder_not_supported_for_llm_v1')
 

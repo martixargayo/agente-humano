@@ -371,7 +371,7 @@ def persist_visual_llm_final_artifact(*, evaluation_id: str, bundle: object, vis
             artifact_id=_generate_artifact_id(),
             recording_id=getattr(attempt_ref, 'recording_id'),
             kind='visual_llm_final',
-            version='communication_visual_final_eval.v1',
+            version='communication_specialized_dimension_eval.v1',
             storage_ref=storage_ref,
             content_hash=None,
             created_at=_utcnow(),

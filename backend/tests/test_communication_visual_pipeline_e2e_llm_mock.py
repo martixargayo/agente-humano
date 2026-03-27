@@ -10,9 +10,9 @@ from comunicacion.storage.models import AttemptRecord, RecordingRecord
 from evaluacion.contracts.communication_models import (
     CommunicationFrameManifestV1,
     CommunicationFrameSample,
+    CommunicationSpecializedDimensionEvalV1,
     CommunicationVisualBatchEvalV2,
     CommunicationVisualFeaturesRealV1,
-    CommunicationVisualFinalEvalV1,
     CommunicationVisualFrameCoverageSummaryV1,
     CommunicationVisualObservabilityFlagsV1,
 )
@@ -91,18 +91,10 @@ class CommunicationVisualPipelineE2ELlmMockTests(unittest.TestCase):
             ),
             confidence_reasoning=['base=0.6'],
         )
-        final_output = CommunicationVisualFinalEvalV1(
-            global_score_1_5=4,
-            label='solido',
-            diagnosis='dx',
-            temporal_consistency='medium',
-            top_strengths=['s'],
-            top_weaknesses=['w'],
-            recommendations=['r'],
-            evidence_frame_ids=['frame_001'],
-            confidence=0.64,
-            limitations=['l'],
-            batch_summaries=[batch_output],
+        final_output = CommunicationSpecializedDimensionEvalV1(
+            score_1_5=4,
+            label='medio-alto',
+            reason_short='Tu gesticulación acompaña bien tu mensaje y puedes sostenerla mejor.',
         )
 
         with patch.dict(os.environ, {'COMM_VISUAL_MODE': 'llm_v1', 'COMM_VISUAL_OPENAI_ENABLED': 'true'}), patch(
