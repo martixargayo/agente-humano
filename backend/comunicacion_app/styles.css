@@ -278,8 +278,7 @@ body {
   align-items: center;
 }
 
-.recording-main,
-.av-device-panel {
+.recording-main {
   border: 1px solid #eaecf0;
   border-radius: 16px;
   background: #fff;
@@ -470,160 +469,214 @@ body {
   align-items: center;
 }
 
-.recording-device-trigger-wrap {
-  position: relative;
+.recording-device-selectors {
+  display: grid;
+  gap: 8px;
 }
 
-.recording-device-trigger {
+.audio-device-selector {
+  position: relative;
+  min-width: 0;
+}
+
+.audio-device-trigger {
   width: 100%;
-  border: 1px solid #e2e8f0;
-  background: #ffffff;
-  border-radius: 12px;
-  padding: 8px 10px;
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  justify-content: space-between;
+  gap: 8px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #111827;
+  padding: 8px 10px;
   cursor: pointer;
-  text-align: left;
 }
 
-.recording-device-trigger:focus-visible {
+.audio-device-trigger:focus-visible {
   outline: 2px solid rgba(59, 130, 246, 0.38);
   outline-offset: 2px;
 }
 
-.recording-device-trigger-chevron {
-  font-size: 11px;
-  color: #475569;
-  transition: transform 180ms ease;
+.audio-device-trigger-main {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.recording-device-trigger-copy {
-  min-width: 0;
-  display: grid;
-  gap: 2px;
+.audio-device-trigger-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #111827;
+  flex: 0 0 auto;
 }
 
-.recording-device-name {
+.audio-device-trigger-label {
   min-width: 0;
-  color: #334155;
-  font-size: 12px;
-  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 500;
 }
 
-.recording-device-trigger[aria-expanded="true"] .recording-device-trigger-chevron {
+.audio-device-trigger-label.muted {
+  color: rgba(15, 23, 42, 0.56);
+  font-weight: 500;
+}
+
+.audio-device-trigger-chevron {
+  flex: 0 0 auto;
+  color: #111827;
+  font-size: 12px;
+  transition: transform 0.18s ease;
+}
+
+.audio-device-selector.open .audio-device-trigger-chevron {
   transform: rotate(180deg);
 }
 
-.av-device-panel {
+.audio-device-popover {
   position: absolute;
   right: 0;
   bottom: calc(100% + 10px);
-  width: min(360px, 86vw);
-  display: grid;
+  width: 320px;
+  max-width: min(320px, 86vw);
+  display: none;
+  flex-direction: column;
   gap: 12px;
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.98);
-  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.16), 0 4px 12px rgba(15, 23, 42, 0.08);
   padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow:
+    0 18px 40px rgba(15, 23, 42, 0.16),
+    0 4px 12px rgba(15, 23, 42, 0.08);
   z-index: 12;
 }
 
-.av-device-panel__head {
+.audio-device-selector.open .audio-device-popover {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
 }
 
-.av-device-panel__head h3,
-.av-device-group h4 {
-  margin: 0;
-}
-
-.av-panel-close-btn {
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  background: #fff;
-  color: #334155;
-  width: 28px;
-  height: 28px;
-  border-radius: 999px;
-  cursor: pointer;
-}
-
-.av-panel-status {
-  margin: 0;
-  color: #64748b;
-  font-size: 12px;
-}
-
-.av-device-panel__grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.av-device-group {
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 10px;
-}
-
-.av-device-options {
-  display: grid;
+.audio-device-popover-list {
+  display: flex;
+  flex-direction: column;
   gap: 8px;
-  margin-top: 8px;
 }
 
-.av-device-option {
+.audio-device-popover-divider {
+  height: 1px;
+  background: rgba(148, 163, 184, 0.28);
+}
+
+.audio-device-option {
   width: 100%;
-  border: 1px solid #d0d5dd;
-  border-radius: 10px;
-  background: #fff;
-  min-height: 40px;
-  font: inherit;
-  padding: 8px 10px;
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  cursor: pointer;
-}
-
-.av-panel-actions {
-  display: flex;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  background: #ffffff;
+  color: #111827;
+  cursor: pointer;
+  text-align: left;
 }
 
-.av-panel-inline-btn {
+.audio-device-option:hover {
+  background: #f8fafc;
+}
+
+.audio-device-option.active {
+  border-color: rgba(96, 165, 250, 0.72);
+  background: #eff6ff;
+  box-shadow: 0 0 0 1px rgba(147, 197, 253, 0.3);
+}
+
+.audio-device-option-main {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.audio-device-option-icon {
+  color: #111827;
+  opacity: 0.92;
+}
+
+.audio-device-option-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.audio-device-option-check {
+  color: #2563eb;
+  opacity: 0;
+}
+
+.audio-device-option.active .audio-device-option-check {
+  opacity: 1;
+}
+
+.audio-device-empty {
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px dashed rgba(15, 23, 42, 0.16);
+  color: rgba(15, 23, 42, 0.62);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.audio-device-empty-actions {
+  margin-top: 10px;
+}
+
+.audio-device-inline-action {
   border: 1px solid rgba(15, 23, 42, 0.12);
-  background: #fff;
-  color: #0f172a;
+  background: #ffffff;
+  color: #111827;
   border-radius: 999px;
-  padding: 8px 12px;
+  padding: 7px 12px;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
 }
 
-.av-panel-inline-btn:hover {
+.audio-device-inline-action:hover {
   background: #f8fafc;
 }
 
-.av-device-option.active {
-  border-color: #93c5fd;
-  background: #eff6ff;
+.audio-device-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(148, 163, 184, 0.22);
+  color: rgba(15, 23, 42, 0.62);
+  font-size: 12px;
 }
 
-.av-device-empty {
-  border: 1px dashed #cbd5e1;
-  border-radius: 10px;
-  padding: 10px;
-  color: #64748b;
-  font-size: 13px;
+.audio-device-footer-spinner {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid rgba(148, 163, 184, 0.45);
+  border-top-color: rgba(100, 116, 139, 0.9);
+  animation: entrySpin 1s linear infinite;
+  flex: 0 0 auto;
+}
+
+@keyframes entrySpin {
+  to { transform: rotate(360deg); }
 }
 
 .communication-report-placeholder {
@@ -1106,13 +1159,8 @@ body {
 
   .recording-layout,
   .recording-aida-grid,
-  .av-device-panel__grid,
   .comm-v3-hero,
   .comm-v3-aida {
-    grid-template-columns: 1fr;
-  }
-
-  .recording-av-control-row {
     grid-template-columns: 1fr;
   }
 
@@ -1130,7 +1178,7 @@ body {
     grid-template-columns: 1fr;
   }
 
-  .av-device-panel {
+  .audio-device-popover {
     right: 0;
     left: 0;
     width: auto;
