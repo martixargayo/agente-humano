@@ -1075,6 +1075,13 @@
     const audioFeatured = $('commAudioFeaturedList');
     const audioOther = $('commAudioOtherList');
     const videoList = $('commVideoDeviceList');
+    const hasPermissions = state.capture.permission_camera === 'granted' && state.capture.permission_mic === 'granted';
+    if (!hasPermissions) {
+      if (audioFeatured) audioFeatured.innerHTML = '';
+      if (audioOther) audioOther.innerHTML = '';
+      if (videoList) videoList.innerHTML = '';
+      return;
+    }
     if (audioFeatured) {
       if (!state.capture.available_audio_devices.length) {
         audioFeatured.innerHTML = '<div class="comm-entry-device-empty">Activa el micrófono para mostrar tus dispositivos disponibles.</div>';
