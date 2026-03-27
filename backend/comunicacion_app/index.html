@@ -121,48 +121,64 @@
                       <div id="recordingCamInlineBadge" class="recording-inline-badge status-badge--idle" title="Estado de la cámara">
                         <span class="recording-inline-icon" aria-hidden="true">📹</span>
                       </div>
-                      <div class="recording-inline-monitor" title="Monitorizando dispositivos en tiempo real" aria-label="Monitorización AV activa">
-                        <span class="recording-inline-monitor-dot" aria-hidden="true"></span>
-                      </div>
                     </div>
                     <video id="recordingVideo" class="video-frame video-frame--selfview" autoplay playsinline muted></video>
                   </div>
                   <div id="recordingWaveform" class="recording-waveform recording-waveform--compact" aria-label="Medidor de audio en vivo"></div>
-                  <div class="recording-device-trigger-wrap">
-                    <button id="manageAvBtn" class="recording-device-trigger" type="button" aria-expanded="false" aria-controls="avDevicePanel">
-                      <span class="recording-device-trigger-chevron" aria-hidden="true">▾</span>
-                      <span class="recording-device-trigger-copy">
-                        <span id="recordingMicDeviceLabel" class="recording-device-name" title="Micrófono">Micrófono · Sin detectar</span>
-                        <span id="recordingCamDeviceLabel" class="recording-device-name" title="Cámara">Cámara · Sin detectar</span>
-                      </span>
-                    </button>
-                    <div id="avDevicePanel" class="av-device-panel hidden">
-                      <div class="av-device-panel__head">
-                        <h3>Dispositivos</h3>
-                        <button id="closeAvPanelBtn" class="av-panel-close-btn" type="button" aria-label="Cerrar panel de dispositivos">✕</button>
-                      </div>
-                      <p id="avPanelStatusText" class="av-panel-status" aria-live="polite"></p>
-                      <div class="av-device-panel__grid">
-                        <section class="av-device-group">
-                          <h4>Cámara</h4>
-                          <div id="recordingVideoDeviceList" class="av-device-options"></div>
-                        </section>
-                        <section class="av-device-group">
-                          <h4>Micrófono</h4>
-                          <div id="recordingAudioDeviceList" class="av-device-options"></div>
-                        </section>
-                      </div>
-                      <div class="av-panel-actions">
-                        <button id="avPanelRefreshBtn" class="av-panel-inline-btn" type="button">Actualizar</button>
-                        <button id="avPanelPermissionBtn" class="av-panel-inline-btn hidden" type="button">Activar permisos</button>
+                  <div class="recording-device-selectors">
+                    <div id="recordingMicSelector" class="audio-device-selector">
+                      <button
+                        id="recordingMicTrigger"
+                        class="audio-device-trigger"
+                        type="button"
+                        aria-haspopup="dialog"
+                        aria-expanded="false"
+                        aria-controls="recordingMicPopover"
+                        aria-label="Seleccionar micrófono"
+                      >
+                        <span class="audio-device-trigger-main">
+                          <span class="audio-device-trigger-icon" aria-hidden="true">🎤</span>
+                          <span id="recordingMicTriggerLabel" class="audio-device-trigger-label">Micrófono</span>
+                        </span>
+                        <span class="audio-device-trigger-chevron" aria-hidden="true">▾</span>
+                      </button>
+                      <div id="recordingMicPopover" class="audio-device-popover" role="dialog" aria-label="Dispositivos de micrófono">
+                        <div id="recordingMicSelectedList" class="audio-device-popover-list"></div>
+                        <div id="recordingMicPopoverDivider" class="audio-device-popover-divider" hidden></div>
+                        <div id="recordingMicOtherList" class="audio-device-popover-list"></div>
+                        <div class="audio-device-footer" aria-live="polite">
+                          <span>Buscando micrófonos…</span>
+                          <span class="audio-device-footer-spinner" aria-hidden="true"></span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </div>
-                <div class="recording-av-control-row">
-                  <div id="recordingAvUnifiedBox" class="recording-av-unified">
-                    <div id="recordingMicBadge" class="recording-av-item status-badge--idle"><span class="recording-av-icon" aria-hidden="true">🎤</span><span>Micrófono · --</span></div>
-                    <div id="recordingCamBadge" class="recording-av-item status-badge--idle"><span class="recording-av-icon" aria-hidden="true">📷</span><span>Cámara · --</span></div>
+
+                    <div id="recordingCamSelector" class="audio-device-selector">
+                      <button
+                        id="recordingCamTrigger"
+                        class="audio-device-trigger"
+                        type="button"
+                        aria-haspopup="dialog"
+                        aria-expanded="false"
+                        aria-controls="recordingCamPopover"
+                        aria-label="Seleccionar cámara"
+                      >
+                        <span class="audio-device-trigger-main">
+                          <span class="audio-device-trigger-icon" aria-hidden="true">📷</span>
+                          <span id="recordingCamTriggerLabel" class="audio-device-trigger-label">Cámara</span>
+                        </span>
+                        <span class="audio-device-trigger-chevron" aria-hidden="true">▾</span>
+                      </button>
+                      <div id="recordingCamPopover" class="audio-device-popover" role="dialog" aria-label="Dispositivos de cámara">
+                        <div id="recordingCamSelectedList" class="audio-device-popover-list"></div>
+                        <div id="recordingCamPopoverDivider" class="audio-device-popover-divider" hidden></div>
+                        <div id="recordingCamOtherList" class="audio-device-popover-list"></div>
+                        <div class="audio-device-footer" aria-live="polite">
+                          <span>Buscando cámaras…</span>
+                          <span class="audio-device-footer-spinner" aria-hidden="true"></span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
                 <div class="recording-action-row">
