@@ -1078,14 +1078,14 @@ body {
 }
 .fb-delivery-top h4 {
   margin: 0;
-  font-size: 17px;
+  font-size: 23px;
   font-weight: 600;
 }
 .fb-level-chip {
   display: inline-flex;
   border-radius: 999px;
-  padding: 4px 10px;
-  font-size: 12px;
+  padding: 6px 14px;
+  font-size: 14px;
   font-weight: 600;
   text-transform: lowercase;
 }

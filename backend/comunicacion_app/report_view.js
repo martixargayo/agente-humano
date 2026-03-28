@@ -53,7 +53,6 @@
           </section>
 
           <section class="fb-card fb-section">
-            <h3>Entrega verbal</h3>
             <div class="fb-delivery-stack">
               ${renderSpecializedFeedbackCard(intonation)}
               ${renderSpecializedFeedbackCard(gestures)}
