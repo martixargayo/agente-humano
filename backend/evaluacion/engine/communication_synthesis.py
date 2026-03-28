@@ -12,7 +12,7 @@ from evaluacion.contracts.communication_models import (
     CommunicationGlobalSynthesisLlmOutputV1,
     CommunicationGlobalSynthesisMetaV1,
 )
-from evaluacion.engine.communication_llm_config import parse_env_bool
+from evaluacion.engine.communication_activation_policy import get_communication_activation_policy
 from evaluacion.engine.communication_llm_models import get_global_synthesis_llm_model
 
 _PROMPT_PATH = Path(__file__).resolve().parents[1] / 'prompts' / 'communication_global_synthesis_prompt.txt'
@@ -26,7 +26,8 @@ def _load_global_synthesis_prompt_template() -> str:
 
 
 def _is_global_synthesis_llm_enabled() -> bool:
-    return parse_env_bool('COMM_SYNTHESIS_OPENAI_ENABLED', default=False)
+    policy = get_communication_activation_policy()
+    return policy.global_synthesis_mode == 'llm'
 
 
 def _build_openai_client() -> openai.OpenAI:
@@ -199,10 +200,10 @@ def _finalize_llm_output(output: CommunicationGlobalSynthesisLlmOutputV1) -> Com
 
 def synthesize_global_communication_feedback(*, synthesis_input: CommunicationGlobalSynthesisInputV1) -> tuple[CommunicationGlobalSynthesisLlmOutputV1, CommunicationGlobalSynthesisMetaV1]:
     if not _is_global_synthesis_llm_enabled():
-        _LOGGER.info('communication_global_synthesis fallback=disabled_flag evaluation_id=%s', synthesis_input.evaluation_id)
+        _LOGGER.info('communication_global_synthesis fallback=disabled_policy evaluation_id=%s', synthesis_input.evaluation_id)
         return _rule_based_synthesize_global_communication_feedback(synthesis_input=synthesis_input), CommunicationGlobalSynthesisMetaV1(
             mode='fallback',
-            fallback_reason='disabled_flag',
+            fallback_reason='disabled_policy',
         )
     try:
         prompt = _load_global_synthesis_prompt_template()

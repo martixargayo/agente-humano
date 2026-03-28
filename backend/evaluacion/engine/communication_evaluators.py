@@ -54,7 +54,7 @@ def evaluate_communication_visual(bundle: CommunicationFeedbackInputBundleV1) ->
     llm_final_evaluation: dict[str, object] | None = None
     llm_specialized_evaluation: dict[str, object] = {}
     mode = get_visual_mode()
-    use_llm_mode = mode == 'llm_v1' and is_visual_llm_enabled()
+    use_llm_mode = is_visual_llm_enabled()
     runtime_meta: dict[str, str | None] = {
         'branch_id': 'visual',
         'mode': 'metadata',
@@ -79,10 +79,7 @@ def evaluate_communication_visual(bundle: CommunicationFeedbackInputBundleV1) ->
             runtime_meta = {'branch_id': 'visual', 'mode': 'fallback', 'reason': f'visual_llm_{exc.kind}', 'detail': exc.message}
     else:
         evaluated = evaluate_visual_from_features(visual_features=bundle.visual_features)
-        if mode == 'llm_v1' and not is_visual_llm_enabled():
-            runtime_meta = {'branch_id': 'visual', 'mode': 'metadata', 'reason': 'disabled_flag', 'detail': 'COMM_VISUAL_OPENAI_ENABLED=false'}
-        else:
-            runtime_meta = {'branch_id': 'visual', 'mode': 'metadata', 'reason': None, 'detail': None}
+        runtime_meta = {'branch_id': 'visual', 'mode': 'metadata', 'reason': 'disabled_policy', 'detail': 'visual_mode=metadata'}
     status_visual = 'mejorable'
     if evaluated.score_0_100 >= 75:
         status_visual = 'correcto'

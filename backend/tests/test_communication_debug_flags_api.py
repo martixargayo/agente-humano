@@ -19,20 +19,16 @@ class CommunicationDebugFlagsApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.json()['detail']['error'], 'debug_endpoint_not_enabled')
 
-    def test_debug_endpoint_exposes_raw_and_parsed_without_secrets(self) -> None:
+    def test_debug_endpoint_exposes_policy_and_runtime_without_secrets(self) -> None:
         with patch.dict(
             os.environ,
             {
                 'COMM_DEBUG_FLAGS_ENABLED': 'true',
-                'COMM_CONTENT_OPENAI_ENABLED': ' true ',
-                'COMM_AUDIO_OPENAI_ENABLED': 'off',
-                'COMM_SYNTHESIS_OPENAI_ENABLED': 'enabled',
-                'COMM_VISUAL_MODE': 'llm_v1',
-                'COMM_VISUAL_OPENAI_ENABLED': '1',
                 'OPENAI_API_KEY': 'sk-test-secret-value',
                 'RAILWAY_SERVICE_NAME': 'comm-backend-prod',
                 'RAILWAY_ENVIRONMENT_NAME': 'production',
                 'GIT_SHA': 'abc123def',
+                'COMMUNICATION_FORCE_SAFE_MODE': 'false',
             },
             clear=False,
         ):
@@ -43,24 +39,18 @@ class CommunicationDebugFlagsApiTests(unittest.TestCase):
 
         self.assertEqual(
             set(payload.keys()),
-            {'raw_env', 'parsed_env', 'openai', 'runtime_fingerprint'},
+            {'policy_source', 'policy_version', 'effective_policy', 'safety_controls', 'openai', 'runtime_fingerprint'},
         )
-
-        self.assertEqual(payload['raw_env']['COMM_CONTENT_OPENAI_ENABLED'], 'true')
-        self.assertEqual(payload['raw_env']['COMM_AUDIO_OPENAI_ENABLED'], 'off')
-        self.assertEqual(payload['raw_env']['COMM_SYNTHESIS_OPENAI_ENABLED'], 'enabled')
-        self.assertEqual(payload['raw_env']['COMM_VISUAL_MODE'], 'llm_v1')
-        self.assertEqual(payload['raw_env']['COMM_VISUAL_OPENAI_ENABLED'], '1')
-
-        self.assertTrue(payload['parsed_env']['content_llm_enabled'])
-        self.assertFalse(payload['parsed_env']['audio_llm_enabled'])
-        self.assertFalse(payload['parsed_env']['global_synthesis_llm_enabled'])
-        self.assertEqual(payload['parsed_env']['visual_mode'], 'llm_v1')
-        self.assertTrue(payload['parsed_env']['visual_llm_enabled'])
+        self.assertEqual(payload['policy_source'], 'code')
+        self.assertTrue(payload['policy_version'])
+        self.assertEqual(payload['effective_policy']['content_mode'], 'llm')
+        self.assertEqual(payload['effective_policy']['delivery_mode'], 'llm')
+        self.assertEqual(payload['effective_policy']['visual_mode'], 'llm_v1')
+        self.assertEqual(payload['effective_policy']['global_synthesis_mode'], 'llm')
+        self.assertFalse(payload['safety_controls']['force_safe_mode'])
 
         self.assertEqual(payload['openai'], {'has_openai_api_key': True})
-        self.assertNotIn('OPENAI_API_KEY', payload['raw_env'])
-        self.assertNotIn("'openai_api_key':", str(payload).lower())
+        self.assertNotIn('OPENAI_API_KEY', str(payload))
         self.assertNotIn('sk-test-secret-value', str(payload))
 
         self.assertEqual(payload['runtime_fingerprint']['git_sha'], 'abc123def')

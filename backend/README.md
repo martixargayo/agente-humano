@@ -88,21 +88,22 @@ Opcionales (speech):
 
 ### Activación de ramas LLM en `/comunicacion`
 
-Por defecto, el pipeline de comunicación arranca en modo conservador:
-- contenido: fallback (`COMM_CONTENT_OPENAI_ENABLED=false`)
-- delivery: fallback (`COMM_AUDIO_OPENAI_ENABLED=false`)
-- visual: metadata (`COMM_VISUAL_MODE=metadata`)
-- síntesis global: fallback (`COMM_SYNTHESIS_OPENAI_ENABLED=false`)
+La política funcional de activación de ramas LLM está centralizada en código en:
+- `backend/evaluacion/engine/communication_activation_policy.py`
 
-Para forzar modo **full LLM** (cuando el entorno esté listo), configura:
+Policy efectiva actual (fuente de verdad en código):
+- contenido: `llm`
+- delivery: `llm`
+- visual: `llm_v1`
+- síntesis global: `llm`
+
+Variables de entorno relacionadas con este flujo:
 
 ```bash
-OPENAI_API_KEY=...
-COMM_CONTENT_OPENAI_ENABLED=true
-COMM_AUDIO_OPENAI_ENABLED=true
-COMM_SYNTHESIS_OPENAI_ENABLED=true
-COMM_VISUAL_MODE=llm_v1
-COMM_VISUAL_OPENAI_ENABLED=true
+OPENAI_API_KEY=...                       # secreto requerido para llamadas LLM
+COMMUNICATION_FORCE_SAFE_MODE=false      # kill switch global opcional (true => fallback/metadata)
+COMM_VISUAL_OPENAI_TIMEOUT_S=25          # tuning operativo opcional
+COMM_VISUAL_OPENAI_MAX_RETRIES=2         # tuning operativo opcional
 ```
 
 Los modelos por rama están definidos en código (no en `.env`) en:
@@ -115,9 +116,9 @@ Correspondencia actual:
 - `global_synthesis` -> `gpt-4.1-mini`
 
 Notas de observabilidad:
-- `disabled_flag`: rama LLM no habilitada por env.
-- `missing_openai_api_key`: flag ON pero `OPENAI_API_KEY` ausente/vacía.
-- visual en `metadata` con `reason=null`: esperado cuando `COMM_VISUAL_MODE` queda en default (`metadata`).
+- `disabled_policy`: rama deshabilitada por policy efectiva en código (ej. safe mode).
+- `missing_openai_api_key`: policy habilita LLM pero `OPENAI_API_KEY` ausente/vacía.
+- visual en `metadata` con `reason=disabled_policy`: esperado en safe mode global.
 
 ### Smoke check post-deploy
 

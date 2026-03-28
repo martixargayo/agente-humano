@@ -116,9 +116,11 @@ def _run_communication_evaluation_job(*, evaluation_id: str, attempt_id: str) ->
     try:
         runtime_flags = build_communication_llm_flags_snapshot()
         _LOGGER.info(
-            'communication_eval_runtime_flags evaluation_id=%s parsed_env=%s has_openai_api_key=%s runtime_fingerprint=%s',
+            'communication_eval_runtime_flags evaluation_id=%s policy_source=%s policy_version=%s effective_policy=%s has_openai_api_key=%s runtime_fingerprint=%s',
             evaluation_id,
-            runtime_flags.get('parsed_env'),
+            runtime_flags.get('policy_source'),
+            runtime_flags.get('policy_version'),
+            runtime_flags.get('effective_policy'),
             runtime_flags.get('openai', {}).get('has_openai_api_key'),
             runtime_flags.get('runtime_fingerprint'),
         )
