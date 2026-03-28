@@ -342,6 +342,14 @@ class CommunicationVisualBatchEvalV2(BaseModel):
     frame_coverage_summary: CommunicationVisualFrameCoverageSummaryV1
     confidence_reasoning: list[str] = Field(default_factory=list)
 
+    @classmethod
+    def model_json_schema(cls, **kwargs: object) -> dict[str, object]:
+        schema = super().model_json_schema(**kwargs)
+        properties = schema.get('properties', {})
+        if isinstance(properties, dict) and properties:
+            schema['required'] = list(properties.keys())
+        return schema
+
 
 class CommunicationVisualFinalEvalV1(BaseModel):
     model_config = ConfigDict(extra='forbid')
