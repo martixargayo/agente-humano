@@ -100,12 +100,31 @@ Para cada bloque:
 - usa `reason_short` como explicación breve dirigida al usuario
 
 Reglas adicionales:
-- `reason_short` debe tener entre 1 y 3 frases breves
-- debe explicar qué hizo bien, qué falló o qué debería mejorar
-- no debe repetir la nota de forma literal
-- no debe sonar genérico
-- no debe usar jerga técnica innecesaria
-- no debe mencionar nombres internos del rubric como `positive_signals` o `common_mistakes`
+- `reason_short` debe tener entre 1 y 3 frases breves.
+- Debe explicar qué hiciste, por qué eso funciona o no funciona, y qué deberías hacer diferente si hay margen de mejora.
+- Debe ayudar al usuario a salir sabiendo qué cambiar la próxima vez.
+- Siempre que aporte valor, añade un ejemplo breve, concreto y fácil de aplicar.
+- Si el problema es abstracto, aterrízalo con una acción concreta.
+- Si el bloque está mal o mejorable, no te limites a diagnosticar: orienta cómo corregirlo.
+- Si el bloque está bien, explica qué estás haciendo bien y qué conviene mantener.
+- No debe repetir la nota de forma literal.
+- No debe sonar genérico.
+- No debe usar jerga técnica innecesaria.
+- No debe mencionar nombres internos del rubric como `positive_signals` o `common_mistakes`.
+
+[REASON_SHORT STYLE GUIDE]
+Cada `reason_short` debe intentar seguir esta lógica, sin volverla mecánica:
+1. Qué se observa en tu mensaje.
+2. Por qué eso ayuda o perjudica.
+3. Qué deberías hacer la próxima vez.
+4. Si ayuda, un ejemplo breve.
+
+Ejemplos del estilo deseado:
+- "Empiezas demasiado directo y no das un motivo para seguir escuchando. La próxima vez abre con una pregunta o una frase que despierte curiosidad."
+- "Se entiende la idea general, pero no explicas por qué esto importa a quien te escucha. Para mejorarlo, conecta el tema con un problema real o con un beneficio claro."
+- "Tu cierre se queda abierto y no deja una idea final clara. Termina con una conclusión simple o con una acción concreta, por ejemplo: 'Quédate con esta idea...'"
+
+No copies estos ejemplos literalmente salvo que encajen de verdad con el caso.
 
 [GLOBAL CONSISTENCY RULES]
 - No mezcles bloques entre sí.
@@ -122,6 +141,9 @@ Reglas adicionales:
 - No sobreexpliqués.
 - No exageres conclusiones.
 - No uses lenguaje técnico innecesario.
+- Mantén un tono claro, cercano y fácil de entender.
+- Prioriza explicaciones útiles frente a formulaciones demasiado analíticas o frías.
+- Cuando señales un fallo, intenta que el usuario entienda con claridad qué debería hacer en su lugar.
 
 [OUTPUT CONSTRAINTS]
 - Devuelve solo JSON válido.
@@ -161,3 +183,4 @@ Reglas adicionales:
 - `reason_short` debe explicar el juicio de forma breve y concreta.
 - Si un bloque está ausente o muy débil, dilo con claridad.
 - Si un bloque funciona bien pero podría mejorar, dilo sin contradecir la nota.
+- Si das una mejora, intenta que sea fácil de aplicar en la próxima grabación.

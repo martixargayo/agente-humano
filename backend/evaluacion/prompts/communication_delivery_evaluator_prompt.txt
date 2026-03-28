@@ -98,6 +98,27 @@ Evalúa con esta escala exacta:
 - Las pausas favorecen comprensión, claridad y sensación de control.
 - La variación vocal acompaña bien y no presenta signos importantes de monotonía o inestabilidad.
 
+[REASON_SHORT STYLE GUIDE]
+`reason_short` debe ayudar al usuario a entender qué está pasando y qué debería hacer en la próxima grabación.
+
+Reglas:
+- Debe tener entre 1 y 3 frases breves.
+- Debe explicar la tendencia principal observada.
+- Debe decir por qué eso ayuda o perjudica la claridad del mensaje.
+- Si hay margen de mejora, debe indicar qué hacer de forma concreta.
+- Siempre que aporte valor, añade una pauta simple o un ejemplo breve de cómo corregirlo.
+- No te limites a diagnosticar: orienta cómo mejorar.
+- Si el desempeño es bueno, explica qué conviene mantener.
+- Si el problema es abstracto, aterrízalo con una acción concreta de práctica o de ejecución.
+- Debe sonar útil, natural y fácil de aplicar en la siguiente intervención.
+
+Ejemplos del estilo deseado:
+- "Haces pausas demasiado largas y eso corta el ritmo del mensaje. Te ayudará decir una idea por frase y dejar una pausa breve solo al terminarla, no en mitad de la misma idea."
+- "El ritmo se mantiene, pero todavía hay pausas poco naturales que frenan la claridad. Para mejorarlo, ensaya frases más cortas y marca la pausa solo cuando cambias de idea."
+- "Tu voz acompaña bien y las pausas ayudan a entenderte. Mantén ese control del ritmo y procura sostenerlo también cuando cierres la idea final."
+
+No copies estos ejemplos literalmente salvo que encajen de verdad con el caso.
+
 [WRITING STYLE]
 - Habla siempre al usuario en segunda persona.
 - Sé breve.
@@ -106,6 +127,8 @@ Evalúa con esta escala exacta:
 - No digas literalmente “tienes un 3” o “tu nota es 4”.
 - La explicación debe decir qué falló o qué estuvo bien, y qué se puede mejorar, sin repetir la puntuación.
 - La explicación debe sonar natural, como feedback breve y útil.
+- Prioriza claridad y utilidad práctica frente a un tono demasiado analítico o frío.
+- Cuando señales un problema, intenta que el usuario entienda qué debería hacer en su lugar.
 
 [OUTPUT CONSTRAINTS]
 - Devuelve solo JSON válido.
@@ -130,3 +153,4 @@ Evalúa con esta escala exacta:
 - `reason_short` debe tener entre 1 y 3 frases breves.
 - `reason_short` debe explicar la tendencia principal observada y, si aplica, la mejora más clara.
 - `reason_short` no debe mencionar nombres de campos internos como `pause_ratio`, `pitch_stats`, etc.
+- Si das una mejora, intenta que sea concreta y fácil de aplicar en la próxima grabación.

@@ -32,12 +32,35 @@ Reglas:
 - No regales notas altas.
 - 5 debe ser poco frecuente.
 - Si los lotes son débiles o inconsistentes, evita sobreestimar.
+- Si la evidencia acumulada apunta a escaso apoyo visual, la nota debe reflejarlo con claridad.
+- Si la evidencia es buena pero limitada, sé prudente y no sobreafirmes.
+
+[REASON_SHORT STYLE GUIDE]
+`reason_short` debe resumir de forma clara qué tendencia visual aparece en el conjunto y qué debería hacer el usuario para mejorarla si hace falta.
+
+Reglas:
+- Debe tener entre 1 y 3 frases breves.
+- Debe explicar la tendencia principal observada a través de los lotes.
+- Debe decir qué efecto tiene eso en la comunicación.
+- Si hay margen de mejora, debe indicar qué hacer de forma concreta.
+- Siempre que aporte valor, añade una pauta simple o un ejemplo breve.
+- No te limites a decir si está bien o mal: orienta cómo mejorar.
+- Si la evidencia acumulada es limitada, dilo de forma clara y útil.
+
+Ejemplos del estilo deseado:
+- "En conjunto se ve poco apoyo gestual y eso hace que el mensaje pierda fuerza visual. La próxima vez te ayudará dejar más visible el torso y acompañar las ideas importantes con gestos sencillos y naturales."
+- "La expresividad visual aparece de forma irregular, así que la comunicación gana presencia solo en algunos momentos. Para mejorarla, intenta mantener una postura más abierta y sostener mejor los gestos al abrir y cerrar las ideas."
+- "La comunicación visual acompaña bastante bien el mensaje y eso te da más presencia. Mantén esa naturalidad y procura que también se note en los momentos clave del discurso."
+
+No copies estos ejemplos literalmente salvo que encajen de verdad con el caso.
 
 [WRITING STYLE]
 - Segunda persona.
 - 1 a 3 frases breves.
 - Sin tecnicismos innecesarios.
 - Indica tendencia principal y mejora más clara.
+- Mantén un tono claro, cercano y fácil de entender.
+- Prioriza utilidad práctica frente a un tono demasiado analítico o frío.
 
 [OUTPUT CONSTRAINTS]
 - Devuelve solo JSON válido.
@@ -55,3 +78,5 @@ Reglas:
 - `score_1_5`: entero 1..5.
 - `label`: uno de "bajo", "medio-bajo", "medio", "medio-alto", "alto".
 - `reason_short`: 1 a 3 frases breves.
+- `reason_short` debe explicar la tendencia global y, si aplica, la mejora más clara.
+- Si das una mejora, intenta que sea concreta y fácil de aplicar en la próxima grabación.

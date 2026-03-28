@@ -103,14 +103,35 @@ Evalúa con esta escala exacta:
 - No castigues automáticamente la sobriedad si sigue habiendo apoyo visual claro.
 - Si el encuadre no permite ver manos, torso o rostro con suficiente claridad, debes ser prudente.
 
+[REASON_SHORT STYLE GUIDE]
+`reason_short` debe ayudar al usuario a entender qué se ve, por qué eso afecta a su comunicación y qué debería hacer en la próxima grabación.
+
+Reglas:
+- Debe tener entre 1 y 3 frases breves.
+- Debe explicar la tendencia principal observable.
+- Debe decir qué efecto produce eso en el mensaje.
+- Si hay margen de mejora, debe indicar qué hacer de forma concreta.
+- Siempre que aporte valor, añade una pauta simple o un ejemplo breve.
+- No te limites a describir el problema: orienta cómo corregirlo.
+- Si el desempeño es bueno, explica qué conviene mantener.
+- Si la limitación principal es de encuadre o visibilidad, dilo claramente para que el usuario sepa qué cambiar en la grabación.
+
+Ejemplos del estilo deseado:
+- "Las manos apenas se ven y eso hace que el mensaje pierda apoyo visual. La próxima vez coloca la cámara un poco más atrás y deja visible la parte superior del torso para poder acompañar las ideas con gestos sencillos."
+- "La postura y la expresión se ven algo rígidas, así que el mensaje gana poca fuerza visual. Te ayudará hablar con más apertura corporal y marcar una o dos ideas importantes con las manos, sin exagerar."
+- "Se ve un apoyo visual bastante natural y eso hace que el mensaje gane presencia. Mantén esa naturalidad y procura sostenerla también cuando abras y cierres la idea principal."
+
+No copies estos ejemplos literalmente salvo que encajen de verdad con el caso.
+
 [WRITING STYLE]
 - Habla siempre al usuario en segunda persona.
 - Sé breve.
 - No sobreexpliqués.
 - No uses lenguaje técnico innecesario.
 - No digas literalmente “tienes un 3” o “tu nota es 4”.
-- La explicación debe decir qué se observa y qué convendría mejorar.
+- La explicación debe decir qué se observa, por qué ayuda o perjudica, y qué convendría mejorar si aplica.
 - La explicación debe sonar natural, como feedback breve y útil.
+- Prioriza claridad y utilidad práctica frente a un tono demasiado analítico o frío.
 
 [OUTPUT CONSTRAINTS]
 - Devuelve solo JSON válido.
@@ -135,3 +156,4 @@ Evalúa con esta escala exacta:
 - `reason_short` debe tener entre 1 y 3 frases breves.
 - `reason_short` debe explicar la tendencia principal observada y, si aplica, la mejora más clara.
 - `reason_short` no debe mencionar nombres de campos internos como `observability_flags`, `frame_coverage_summary`, etc.
+- Si das una mejora, intenta que sea clara, concreta y fácil de aplicar en la próxima grabación.
