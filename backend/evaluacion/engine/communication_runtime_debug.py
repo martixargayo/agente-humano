@@ -3,18 +3,13 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from evaluacion.engine.communication_llm_config import parse_env_bool, parse_env_choice
+from evaluacion.engine.communication_activation_policy import (
+    get_communication_activation_policy,
+    is_force_safe_mode_enabled,
+)
+from evaluacion.engine.communication_llm_config import parse_env_bool
 
 _COMM_DEBUG_FLAG = 'COMM_DEBUG_FLAGS_ENABLED'
-_VISUAL_MODE_DEFAULT = 'metadata'
-
-_RAW_DEBUG_ENV_KEYS = (
-    'COMM_CONTENT_OPENAI_ENABLED',
-    'COMM_AUDIO_OPENAI_ENABLED',
-    'COMM_SYNTHESIS_OPENAI_ENABLED',
-    'COMM_VISUAL_MODE',
-    'COMM_VISUAL_OPENAI_ENABLED',
-)
 
 
 def is_comm_debug_flags_enabled() -> bool:
@@ -38,14 +33,7 @@ def _resolve_git_sha() -> str | None:
 
 
 def build_communication_llm_flags_snapshot() -> dict[str, Any]:
-    raw_env = {name: _read_raw_env_value(name) for name in _RAW_DEBUG_ENV_KEYS}
-    parsed_env = {
-        'content_llm_enabled': parse_env_bool('COMM_CONTENT_OPENAI_ENABLED', default=False),
-        'audio_llm_enabled': parse_env_bool('COMM_AUDIO_OPENAI_ENABLED', default=False),
-        'global_synthesis_llm_enabled': parse_env_bool('COMM_SYNTHESIS_OPENAI_ENABLED', default=False),
-        'visual_mode': parse_env_choice('COMM_VISUAL_MODE', allowed={'metadata', 'llm_v1'}, default=_VISUAL_MODE_DEFAULT),
-        'visual_llm_enabled': parse_env_bool('COMM_VISUAL_OPENAI_ENABLED', default=False),
-    }
+    policy = get_communication_activation_policy()
     runtime_fingerprint = {
         'git_sha': _resolve_git_sha(),
         'railway_service_name': _read_raw_env_value('RAILWAY_SERVICE_NAME'),
@@ -54,8 +42,12 @@ def build_communication_llm_flags_snapshot() -> dict[str, Any]:
         'pid': str(os.getpid()),
     }
     return {
-        'raw_env': raw_env,
-        'parsed_env': parsed_env,
+        'policy_source': policy.policy_source,
+        'policy_version': policy.policy_version,
+        'effective_policy': policy.to_dict(),
+        'safety_controls': {
+            'force_safe_mode': is_force_safe_mode_enabled(),
+        },
         'openai': {
             'has_openai_api_key': bool((os.getenv('OPENAI_API_KEY') or '').strip()),
         },

@@ -256,11 +256,7 @@ class CommunicationAuditPipelineE2ETests(unittest.TestCase):
         with patch.dict(
             environ,
             {
-                'COMM_CONTENT_OPENAI_ENABLED': 'true',
-                'COMM_AUDIO_OPENAI_ENABLED': 'true',
-                'COMM_VISUAL_MODE': 'llm_v1',
-                'COMM_VISUAL_OPENAI_ENABLED': 'true',
-                'COMM_SYNTHESIS_OPENAI_ENABLED': 'true',
+                'COMMUNICATION_FORCE_SAFE_MODE': 'false',
             },
         ), patch('evaluacion.engine.communication_bundle_builder.build_real_transcript', return_value=transcript), patch(
             'evaluacion.engine.communication_bundle_builder.build_real_audio_features', return_value=audio_features

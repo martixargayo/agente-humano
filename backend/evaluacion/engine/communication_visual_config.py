@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import os
-from evaluacion.engine.communication_llm_config import parse_env_bool, parse_env_choice
+
+from evaluacion.engine.communication_activation_policy import get_communication_activation_policy
 from evaluacion.engine.communication_llm_models import get_visual_llm_model
 
-COMM_VISUAL_MODE_DEFAULT = 'metadata'
 COMM_VISUAL_MAX_FRAMES = 90
 COMM_VISUAL_BATCH_TARGET = 30
 COMM_VISUAL_TAIL_MIN = 6
@@ -15,11 +15,11 @@ COMM_VISUAL_OPENAI_MAX_RETRIES_DEFAULT = 2
 
 
 def get_visual_mode() -> str:
-    return parse_env_choice('COMM_VISUAL_MODE', allowed={'metadata', 'llm_v1'}, default=COMM_VISUAL_MODE_DEFAULT)
+    return get_communication_activation_policy().visual_mode
 
 
 def is_visual_llm_enabled() -> bool:
-    return parse_env_bool('COMM_VISUAL_OPENAI_ENABLED', default=False)
+    return get_visual_mode() == 'llm_v1'
 
 
 def get_visual_openai_model() -> str:

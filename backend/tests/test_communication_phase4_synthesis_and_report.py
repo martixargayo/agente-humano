@@ -38,11 +38,12 @@ class CommunicationPhase4SynthesisAndReportTests(unittest.TestCase):
             delivery_output=delivery,
             visual_output=visual,
         )
-        output, meta = synthesize_global_communication_feedback(synthesis_input=synthesis_input)
+        with patch('evaluacion.engine.communication_synthesis._is_global_synthesis_llm_enabled', return_value=False):
+            output, meta = synthesize_global_communication_feedback(synthesis_input=synthesis_input)
         # weighted = 40.5 + 26.25 + 6 = 72.75; spread=60 => penalty 10 => 63
         self.assertEqual(output.score_global_100, 63)
         self.assertEqual(meta.mode, 'fallback')
-        self.assertEqual(meta.fallback_reason, 'disabled_flag')
+        self.assertEqual(meta.fallback_reason, 'disabled_policy')
         self.assertNotIn('Fortalezas destacadas', output.summary_short_2_3_lines)
         self.assertNotIn('Prioridades de mejora', output.summary_short_2_3_lines)
 
@@ -101,6 +102,13 @@ class CommunicationPhase4SynthesisAndReportTests(unittest.TestCase):
         )
         self.assertEqual(payload.recommendations, [])
 
+
+    def test_synthesis_output_schema_marks_all_top_level_properties_required_for_strict_mode(self) -> None:
+        schema = CommunicationGlobalSynthesisLlmOutputV1.model_json_schema()
+        properties = set(schema.get('properties', {}).keys())
+        required = set(schema.get('required', []))
+        self.assertEqual(properties, required)
+
     def test_synthesis_llm_failure_falls_back_to_rule_based(self) -> None:
         content = {'score_0_100': 90, 'status_visual': 'correcto', 'summary': 'Contenido sólido', 'details': [], 'recommendations': ['A']}
         delivery = {'score_0_100': 75, 'status_visual': 'mejorable', 'summary': 'Delivery estable', 'details': [], 'recommendations': ['B']}
@@ -155,6 +163,35 @@ class CommunicationPhase4SynthesisAndReportTests(unittest.TestCase):
         self.assertNotIn('Fortalezas destacadas', report['header']['summary_2_3_lines'])
         self.assertNotIn('Prioridades de mejora', report['header']['summary_2_3_lines'])
 
+
+
+    def test_synthesis_invalid_json_schema_is_mapped_to_schema_validation_error(self) -> None:
+        content = {'score_0_100': 90, 'status_visual': 'correcto', 'summary': 'Contenido sólido', 'details': [], 'recommendations': ['A']}
+        delivery = {'score_0_100': 75, 'status_visual': 'mejorable', 'summary': 'Delivery estable', 'details': [], 'recommendations': ['B']}
+        visual = {'score_0_100': 30, 'status_visual': 'mejorable', 'summary': 'Visual débil', 'details': [], 'recommendations': ['C']}
+        synthesis_input = build_global_synthesis_input(
+            evaluation_id='eval_phase4_invalid_schema',
+            content_output=content,
+            delivery_output=delivery,
+            visual_output=visual,
+        )
+
+        class _FakeOpenAIError(Exception):
+            pass
+
+        with (
+            patch('evaluacion.engine.communication_synthesis._is_global_synthesis_llm_enabled', return_value=True),
+            patch('evaluacion.engine.communication_synthesis.openai.OpenAIError', _FakeOpenAIError),
+            patch(
+                'evaluacion.engine.communication_synthesis._run_global_synthesis_llm_openai',
+                side_effect=_FakeOpenAIError('400 invalid_json_schema: Invalid schema for response_format'),
+            ),
+        ):
+            _, meta = synthesize_global_communication_feedback(synthesis_input=synthesis_input)
+
+        self.assertEqual(meta.mode, 'fallback')
+        self.assertEqual(meta.fallback_reason, 'schema_validation_error')
+        self.assertIn('invalid_json_schema', meta.detail or '')
 
 if __name__ == '__main__':
     unittest.main()
