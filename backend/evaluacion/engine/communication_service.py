@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError, as_completed
 from datetime import datetime, timezone
@@ -20,10 +21,12 @@ from evaluacion.engine.communication_evaluators import (
     evaluate_communication_synthesis,
     evaluate_communication_visual,
 )
+from evaluacion.engine.communication_runtime_debug import build_communication_llm_flags_snapshot
 from evaluacion.engine.communication_report_assembler import assemble_communication_report
 
 _EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix='communication_eval')
 _LAUNCH_LOCK = threading.Lock()
+_LOGGER = logging.getLogger(__name__)
 
 _STAGE_SEQUENCE = [
     'queued',
@@ -111,6 +114,14 @@ def _validate_attempt_owner(*, attempt: AttemptRecord, user_id: str, session_id:
 
 def _run_communication_evaluation_job(*, evaluation_id: str, attempt_id: str) -> None:
     try:
+        runtime_flags = build_communication_llm_flags_snapshot()
+        _LOGGER.info(
+            'communication_eval_runtime_flags evaluation_id=%s parsed_env=%s has_openai_api_key=%s runtime_fingerprint=%s',
+            evaluation_id,
+            runtime_flags.get('parsed_env'),
+            runtime_flags.get('openai', {}).get('has_openai_api_key'),
+            runtime_flags.get('runtime_fingerprint'),
+        )
         _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='running', stage='extracting')
         _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='running', stage='extracting_media')
         _set_job(evaluation_id=evaluation_id, attempt_id=attempt_id, status='running', stage='transcription_started')

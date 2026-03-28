@@ -37,6 +37,10 @@ from comunicacion.services.recording_service import (
     resolve_recording_playback_path,
 )
 from comunicacion.storage import REPOSITORY
+from evaluacion.engine.communication_runtime_debug import (
+    build_communication_llm_flags_snapshot,
+    is_comm_debug_flags_enabled,
+)
 from sessions.session_lock import SessionBusyError, acquire_session_execution_lock
 
 router = APIRouter(prefix='/api/comunicacion', tags=['comunicacion'])
@@ -258,3 +262,10 @@ def get_evaluation_report_endpoint(
     if user_id and session_id:
         assert_evaluation_owner(evaluation_id=evaluation_id, user_id=user_id, session_id=session_id)
     return CommunicationEvaluationReportResponse(**read_evaluation_report(evaluation_id=evaluation_id).model_dump())
+
+
+@router.get('/debug/llm-flags')
+def get_llm_flags_debug() -> dict[str, Any]:
+    if not is_comm_debug_flags_enabled():
+        raise HTTPException(status_code=404, detail={'error': 'debug_endpoint_not_enabled'})
+    return build_communication_llm_flags_snapshot()
