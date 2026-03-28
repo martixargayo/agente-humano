@@ -653,6 +653,9 @@ class UiCommunicationReportV1(BaseModel):
     timeline: CommunicationTimeline
     key_moments: CommunicationKeyMoments
     recommendations: CommunicationRecommendations
+    content_aida_feedback: CommunicationContentAidaEvalV1 | None = None
+    audio_specialized_feedback: CommunicationSpecializedDimensionEvalV1 | None = None
+    visual_specialized_feedback: CommunicationSpecializedDimensionEvalV1 | None = None
     global_synthesis: CommunicationGlobalSynthesisLlmOutputV1 | None = None
     global_synthesis_meta: CommunicationGlobalSynthesisMetaV1 | None = None
     branch_runtime_meta: dict[str, CommunicationBranchRuntimeMetaV1] = Field(default_factory=dict)

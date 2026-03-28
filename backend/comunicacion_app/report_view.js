@@ -17,58 +17,76 @@
 
   function buildCommunicationReportSnapshotMarkup(report, options = {}) {
     const payload = report || {};
-    const header = payload.header || {};
-    const media = payload.media || {};
-    const recommendations = payload.recommendations && Array.isArray(payload.recommendations.items) ? payload.recommendations.items : [];
-    const blockCards = Array.isArray(payload.block_cards) ? payload.block_cards : [];
-    const aidaCards = resolveAidaCards(blockCards);
-    const summary = buildImmediateSummary(header, recommendations, blockCards);
-    const intonation = resolveIntonationBlock(payload, blockCards, recommendations);
-    const gestures = resolveGesturesBlock(payload, blockCards, recommendations);
+    const sources = resolvePrimaryReportSources(payload);
+    const intonation = resolveSpecializedFeedback(sources.audioSpecializedFeedback, {
+      title: 'Entonación y pausas',
+      fallbackLabel: 'No disponible',
+      fallbackReason: 'No hay señal de audio especializada disponible en esta evaluación.',
+    });
+    const gestures = resolveSpecializedFeedback(sources.visualSpecializedFeedback, {
+      title: 'Gesticulación',
+      fallbackLabel: 'No disponible',
+      fallbackReason: 'No hay señal visual especializada disponible en esta evaluación.',
+    });
 
     return `
       <section class="comm-feedback-root" data-report-root="true">
         <div class="feedback-dashboard">
           <header class="fb-card fb-header">
             <div>
-              <h1 class="fb-title">${escapeHtml(header.report_title || 'Evaluación de tu comunicación oral')}</h1>
-              <div class="fb-case-row">${escapeHtml(header.activity_name || 'Presentación breve grabada')}</div>
+              <h1 class="fb-title">${escapeHtml(sources.header.report_title || 'Evaluación de tu comunicación oral')}</h1>
+              <div class="fb-case-row">${escapeHtml(sources.header.activity_name || 'Presentación breve grabada')}</div>
             </div>
             <div class="fb-header-right">
-              <div class="fb-stars">${renderStars(header.stars_0_5)}</div>
-              <div class="fb-score-pill">${escapeHtml(String(header.score_global_100 || '-'))} / 100</div>
+              <div class="fb-stars">${renderStars(sources.header.stars_0_5)}</div>
+              <div class="fb-score-pill">${escapeHtml(String(sources.header.score_global_100 || '-'))} / 100</div>
             </div>
           </header>
 
           <section class="fb-card fb-section">
-            <h2>Resumen inmediato</h2>
-            <p><strong>Por qué esta nota:</strong> ${escapeHtml(summary.why)}</p>
-            <p><strong>Lo más fuerte:</strong> ${escapeHtml(summary.good)}</p>
-            <p><strong>Prioridad de mejora:</strong> ${escapeHtml(summary.improve)}</p>
+            <h2>Resumen</h2>
+            <p>${escapeHtml(sources.summaryText)}</p>
           </section>
 
           <section class="fb-grid-cards">
-            ${aidaCards.map(renderAidaCard).join('')}
+            ${sources.aidaCards.map(renderAidaCard).join('')}
           </section>
 
           <section class="fb-card fb-section">
-            <h3>Entrega verbal</h3>
-            <p><strong>Entonación:</strong> ${escapeHtml(intonation.description)}</p>
-            <p><strong>Gestos y presencia visual (${escapeHtml(gestures.level_label)}):</strong> ${escapeHtml(gestures.description)}</p>
+            <div class="fb-delivery-stack">
+              ${renderSpecializedFeedbackCard(intonation)}
+              ${renderSpecializedFeedbackCard(gestures)}
+            </div>
           </section>
 
           <section class="fb-card fb-section">
             <h3>Tu grabación</h3>
-            ${renderCommunicationVideoPanel(media, options)}
+            ${renderCommunicationVideoPanel(sources.media, options)}
           </section>
 
           <section class="fb-card fb-section">
             <h3>Recomendaciones</h3>
-            <div class="fb-recommendations-grid">${recommendations.map(renderRecommendation).join('')}</div>
+            <div class="fb-recommendations-grid">${sources.recommendations.map(renderRecommendation).join('')}</div>
           </section>
         </div>
       </section>
     `;
+  }
+
+  function resolvePrimaryReportSources(payload) {
+    const header = payload.header || {};
+    const globalSynthesis = payload.global_synthesis || {};
+    // block_cards remains in `/report` for compatibility, but does not drive
+    // this final screen's primary sections anymore.
+    return {
+      header,
+      media: payload.media || {},
+      recommendations: payload.recommendations && Array.isArray(payload.recommendations.items) ? payload.recommendations.items : [],
+      summaryText: resolveSummaryText(header, globalSynthesis),
+      aidaCards: resolveAidaCards(payload.content_aida_feedback),
+      audioSpecializedFeedback: payload.audio_specialized_feedback,
+      visualSpecializedFeedback: payload.visual_specialized_feedback,
+    };
   }
 
   function renderCommunicationVideoPanel(media, options = {}) {
@@ -79,99 +97,89 @@
       <video class="comm-report__video" controls preload="metadata" playsinline${poster}>
         ${showSource ? `<source src="${escapeHtml(resolvedVideoSrc)}" type="${escapeHtml(media.mime_type || 'video/webm')}" />` : ''}
       </video>
-      <dl class="comm-report__video-meta">
-        <div><dt>recording_id</dt><dd>${escapeHtml(media.recording_id || '-')}</dd></div>
-        <div><dt>video_ref</dt><dd>${escapeHtml(media.video_ref || '-')}</dd></div>
-      </dl>
     `;
   }
 
-  function resolveAidaCards(blockCards) {
-    const fallbackTitles = ['Atención', 'Interés', 'Desarrollo', 'Acción'];
-    const cards = fallbackTitles.map((title, index) => {
-      const source = blockCards[index] || {};
+  function resolveAidaCards(contentAidaFeedback) {
+    const source = contentAidaFeedback || {};
+    const config = [
+      ['attention', 'Atención'],
+      ['interest', 'Interés'],
+      ['development', 'Desarrollo'],
+      ['action', 'Acción'],
+    ];
+    return config.map(([key, title]) => {
+      const block = source[key];
+      const hasRealBlock = block && typeof block === 'object';
+      const label = String(block?.label || 'mejorable').toLowerCase();
       return {
         title,
-        score: Number.isFinite(source.score_0_100) ? source.score_0_100 : null,
-        verdict: source.block_verdict || source.summary || 'Sección preparada; pendiente de mayor granularidad en el contrato actual.',
-        status: normalizeStatus(source.status_visual, source.score_0_100),
+        label: hasRealBlock ? label : 'mejorable',
+        reason: hasRealBlock
+          ? String(block.reason_short || 'Sin observaciones disponibles.')
+          : 'No hay evaluación AIDA disponible en esta evaluación.',
+        status: mapAidaLabelToStatus(label),
       };
     });
-    return cards;
   }
 
-  function buildImmediateSummary(header, recommendations, blockCards) {
-    const why = header.summary_2_3_lines || 'La nota combina contenido, delivery y presencia visual observada en la grabación.';
-    const bestCard = [...blockCards].sort((a, b) => Number(b.score_0_100 || 0) - Number(a.score_0_100 || 0))[0];
-    const worstCard = [...blockCards].sort((a, b) => Number(a.score_0_100 || 0) - Number(b.score_0_100 || 0))[0];
-    const good = bestCard ? `${bestCard.title || 'Bloque fuerte'}: ${bestCard.block_verdict || bestCard.summary || 'buen desempeño relativo.'}` : 'Estructura general consistente.';
-    const improve = recommendations[0]?.description || (worstCard ? `${worstCard.title || 'Bloque crítico'}: prioriza una mejora concreta en esta área.` : 'Define una prioridad de mejora y practícala en la siguiente toma.');
-    return { why, good, improve };
+  function resolveSummaryText(header, globalSynthesis) {
+    return String(
+      header?.summary_2_3_lines
+      || globalSynthesis?.summary_short_2_3_lines
+      || 'Tu evaluación global ya está disponible.'
+    );
   }
 
-  function resolveIntonationBlock(payload, blocks, recommendations) {
-    const candidate = findByKeyword(blocks, ['enton', 'voz', 'ritmo']) || findByKeyword(recommendations, ['enton', 'voz', 'ritmo']);
-    const score = Number(candidate?.score_0_100 || candidate?.score || 60);
-    const level = Math.max(1, Math.min(5, Math.round(score / 20)));
+  function resolveSpecializedFeedback(raw, options) {
+    const score = Number(raw?.score_1_5);
+    const hasStructured = Number.isFinite(score) && score >= 1 && score <= 5 && typeof raw?.label === 'string';
+    const normalizedScore = hasStructured ? Math.max(1, Math.min(5, Math.round(score))) : null;
     return {
-      level,
-      description: candidate?.description || candidate?.summary || candidate?.block_verdict || 'Valoración simplificada de entonación basada en señales disponibles en el reporte actual.',
+      title: options.title,
+      levelLabel: hasStructured ? String(raw.label) : options.fallbackLabel,
+      description: hasStructured
+        ? String(raw.reason_short || 'Sin detalle disponible.')
+        : options.fallbackReason,
+      chipClass: hasStructured ? `level-${normalizedScore}` : 'level-na',
     };
   }
 
-  function resolveGesturesBlock(payload, blocks, recommendations) {
-    const candidate = findByKeyword(blocks, ['gest', 'visual', 'presencia']) || findByKeyword(recommendations, ['gest', 'visual', 'presencia']);
-    const score = Number(candidate?.score_0_100 || candidate?.score || 60);
-    const level = Math.max(1, Math.min(5, Math.round(score / 20)));
-    return {
-      level_label: `${level}/5`,
-      description: candidate?.description || candidate?.summary || candidate?.block_verdict || 'Bloque visual en fallback honesto: preparado para enriquecerse cuando el contrato aporte más detalle de gestualidad.',
-    };
-  }
-
-  function findByKeyword(items, keywords) {
-    return (items || []).find((item) => {
-      const raw = `${item?.title || ''} ${item?.description || ''} ${item?.summary || ''}`.toLowerCase();
-      return keywords.some((keyword) => raw.includes(keyword));
-    });
-  }
-
-  function normalizeStatus(raw, score) {
-    if (raw === 'correcto') return 'ok';
-    if (raw === 'mejorable') return 'warn';
-    if (raw === 'placeholder') return 'neutral';
-    if (Number.isFinite(score)) {
-      if (score >= 75) return 'ok';
-      if (score >= 50) return 'warn';
-      return 'bad';
-    }
-    return 'neutral';
+  function mapAidaLabelToStatus(label) {
+    if (label === 'correcto') return 'ok';
+    if (label === 'mal') return 'bad';
+    return 'warn';
   }
 
   function renderAidaCard(card) {
-    const scoreText = Number.isFinite(card.score) ? `${card.score}/100` : 'Sin score';
-    const badge = card.status === 'ok' ? 'correcto' : card.status === 'warn' ? 'mejorable' : 'crítico';
+    const badge = card.label === 'correcto' ? 'correcto' : card.label === 'mal' ? 'mal' : 'mejorable';
     return `
       <article class="fb-card fb-skill-card ${escapeHtml(card.status)}">
         <div class="fb-skill-top">
           <h3>${escapeHtml(card.title)}</h3>
           <span class="fb-badge ${escapeHtml(card.status)}">${escapeHtml(badge)}</span>
         </div>
-        <p><strong>${escapeHtml(scoreText)}</strong></p>
-        <p>${escapeHtml(card.verdict)}</p>
+        <p>${escapeHtml(card.reason)}</p>
       </article>
     `;
   }
 
-  function renderMeterBars(level) {
-    const safe = Math.max(1, Math.min(5, Number(level || 1)));
-    return new Array(5).fill(0).map((_, index) => `<span class="${index < safe ? 'active' : ''}" style="height:${35 + (index * 10)}%"></span>`).join('');
+  function renderSpecializedFeedbackCard(block) {
+    return `
+      <article class="fb-delivery-card">
+        <div class="fb-delivery-top">
+          <h4>${escapeHtml(block.title)}</h4>
+          <span class="fb-level-chip ${escapeHtml(block.chipClass)}">${escapeHtml(block.levelLabel)}</span>
+        </div>
+        <p>${escapeHtml(block.description)}</p>
+      </article>
+    `;
   }
 
   function renderStars(value) {
     const numeric = Math.max(0, Math.min(5, Number(value || 0)));
     const full = Math.round(numeric);
-    return `${'★'.repeat(full)}${'☆'.repeat(5 - full)} <span>${escapeHtml(String(value || 0))}/5</span>`;
+    return `${'★'.repeat(full)}${'☆'.repeat(5 - full)}`;
   }
 
   function resolveCommunicationVideoSrc(media) {
@@ -239,9 +247,9 @@
       return { removed_sections: 0, removed_nodes: 0 };
     }
     const mediaSections = Array.from(clonedRoot.querySelectorAll('.fb-card.fb-section'))
-      .filter((section) => section.querySelector('video, audio, iframe, object, embed, .comm-report__video-meta'));
+      .filter((section) => section.querySelector('video, audio, iframe, object, embed'));
     mediaSections.forEach((section) => section.remove());
-    const mediaNodes = Array.from(clonedRoot.querySelectorAll('video, audio, iframe, object, embed, .comm-report__video-meta'));
+    const mediaNodes = Array.from(clonedRoot.querySelectorAll('video, audio, iframe, object, embed'));
     mediaNodes.forEach((node) => node.remove());
     return {
       removed_sections: mediaSections.length,
