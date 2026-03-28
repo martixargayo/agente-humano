@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from evaluacion.contracts.communication_models import CommunicationVisualFeaturesRealV1
 from evaluacion.engine.communication_evaluators import evaluate_communication_visual
-from evaluacion.engine.communication_visual_openai_client import CommunicationVisualLlmError
+from evaluacion.engine.communication_visual_openai_client import CommunicationVisualLlmError, _resolve_min_usable_frames
 
 
 class CommunicationVisualFallbackModeTests(unittest.TestCase):
@@ -30,6 +30,12 @@ class CommunicationVisualFallbackModeTests(unittest.TestCase):
             quality_flags=[],
             explanation='ok',
         )
+
+
+    def test_min_usable_frames_is_dynamic_for_short_batches(self) -> None:
+        self.assertEqual(_resolve_min_usable_frames(3), 3)
+        self.assertEqual(_resolve_min_usable_frames(5), 3)
+        self.assertEqual(_resolve_min_usable_frames(12), 6)
 
     def test_llm_mode_falls_back_to_metadata_when_llm_fails(self) -> None:
         visual_features = self._build_visual_features()

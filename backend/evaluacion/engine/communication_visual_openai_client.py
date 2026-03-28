@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -28,6 +29,12 @@ _MAX_FRAME_BYTES = 220 * 1024
 _MAX_BATCH_BYTES = int(5.5 * 1024 * 1024)
 _MAX_BATCH_SERIALIZED_BYTES = int(7.5 * 1024 * 1024)
 _MIN_USABLE_FRAMES_PER_BATCH = 6
+
+
+def _resolve_min_usable_frames(batch_total: int) -> int:
+    if batch_total <= 0:
+        return _MIN_USABLE_FRAMES_PER_BATCH
+    return min(_MIN_USABLE_FRAMES_PER_BATCH, max(3, int(math.ceil(batch_total * 0.6))))
 
 
 def _build_openai_client() -> openai.OpenAI:
@@ -104,18 +111,21 @@ def _build_multimodal_input_for_batch(*, batch_input: CommunicationVisualBatchEv
     total_binary_bytes = 0
     total_serialized_bytes = 0
     dropped_frames = 0
+    dropped_by_reason = {'normalization_error': 0, 'size_limit': 0}
 
     for frame in batch_input.frames:
         try:
             image_data_url, frame_bytes = _load_and_normalize_frame_as_data_url(frame.frame_ref)
         except CommunicationVisualLlmError:
             dropped_frames += 1
+            dropped_by_reason['normalization_error'] += 1
             continue
 
         tentative_binary = total_binary_bytes + frame_bytes
         tentative_serialized = total_serialized_bytes + len(image_data_url.encode('utf-8'))
         if tentative_binary > _MAX_BATCH_BYTES or tentative_serialized > _MAX_BATCH_SERIALIZED_BYTES:
             dropped_frames += 1
+            dropped_by_reason['size_limit'] += 1
             continue
 
         usable_frames.append(
@@ -128,12 +138,14 @@ def _build_multimodal_input_for_batch(*, batch_input: CommunicationVisualBatchEv
         total_binary_bytes = tentative_binary
         total_serialized_bytes = tentative_serialized
 
-    if len(usable_frames) < _MIN_USABLE_FRAMES_PER_BATCH:
+    min_usable_frames = _resolve_min_usable_frames(len(batch_input.frames))
+    if len(usable_frames) < min_usable_frames:
         raise CommunicationVisualLlmError(
             kind='payload',
             message=(
                 f'batch_usable_frames_below_threshold:{len(usable_frames)}<'
-                f'{_MIN_USABLE_FRAMES_PER_BATCH};dropped={dropped_frames}'
+                f'{min_usable_frames};batch_total={len(batch_input.frames)};dropped={dropped_frames};'
+                f'dropped_by_reason={dropped_by_reason}'
             ),
         )
 
@@ -143,6 +155,8 @@ def _build_multimodal_input_for_batch(*, batch_input: CommunicationVisualBatchEv
         'dropped_frames': dropped_frames,
         'binary_bytes': total_binary_bytes,
         'serialized_bytes': total_serialized_bytes,
+        'min_usable_frames_required': min_usable_frames,
+        'dropped_by_reason': dict(dropped_by_reason),
     }
 
     user_payload = {
@@ -194,7 +208,7 @@ def run_visual_batch_openai(
     max_retries: int,
     client: openai.OpenAI | None = None,
 ) -> CommunicationVisualBatchEvalV2:
-    message_input, _summary = _build_multimodal_input_for_batch(batch_input=batch_input, developer_prompt=developer_prompt)
+    message_input, payload_summary = _build_multimodal_input_for_batch(batch_input=batch_input, developer_prompt=developer_prompt)
     openai_client = client or _build_openai_client()
     schema = CommunicationVisualBatchEvalV2.model_json_schema()
 
@@ -222,13 +236,13 @@ def run_visual_batch_openai(
         except CommunicationVisualLlmError:
             raise
         except json.JSONDecodeError as exc:
-            raise CommunicationVisualLlmError(kind='schema', message=f'batch_output_json_decode_failed:{exc}') from exc
+            raise CommunicationVisualLlmError(kind='schema', message=f'batch_output_json_decode_failed:{exc};summary={payload_summary}') from exc
         except Exception as exc:  # pragma: no cover - runtime/sdk dependent
             last_error = exc
             if _is_transient_error(exc) and attempt < attempts:
                 time.sleep(0.25 * attempt)
                 continue
             kind = 'transient' if _is_transient_error(exc) else 'schema'
-            raise CommunicationVisualLlmError(kind=kind, message=f'openai_batch_request_failed:{exc}') from exc
+            raise CommunicationVisualLlmError(kind=kind, message=f'openai_batch_request_failed:{exc};summary={payload_summary}') from exc
 
-    raise CommunicationVisualLlmError(kind='transient', message=f'openai_batch_request_failed:{last_error}')
+    raise CommunicationVisualLlmError(kind='transient', message=f'openai_batch_request_failed:{last_error};summary={payload_summary}')

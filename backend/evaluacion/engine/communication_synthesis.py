@@ -236,15 +236,18 @@ def synthesize_global_communication_feedback(*, synthesis_input: CommunicationGl
             detail=str(exc),
         )
     except openai.OpenAIError as exc:
+        detail = str(exc)
+        reason = 'schema_validation_error' if 'invalid_json_schema' in detail.lower() else 'openai_error'
         _LOGGER.warning(
-            'communication_global_synthesis fallback=openai_error evaluation_id=%s detail=%s',
+            'communication_global_synthesis fallback=%s evaluation_id=%s detail=%s',
+            reason,
             synthesis_input.evaluation_id,
-            str(exc),
+            detail,
         )
         return _rule_based_synthesize_global_communication_feedback(synthesis_input=synthesis_input), CommunicationGlobalSynthesisMetaV1(
             mode='fallback',
-            fallback_reason='openai_error',
-            detail=str(exc),
+            fallback_reason=reason,
+            detail=detail,
         )
     except Exception as exc:
         _LOGGER.exception('communication_global_synthesis fallback=unexpected_error evaluation_id=%s', synthesis_input.evaluation_id)
