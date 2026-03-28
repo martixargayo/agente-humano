@@ -39,7 +39,7 @@ class CommunicationVisualFallbackModeTests(unittest.TestCase):
         bundle.recording = type('RecordingMeta', (), {'duration_ms': 10_000})()
         bundle.visual_features = visual_features
 
-        with patch.dict(os.environ, {'COMM_VISUAL_MODE': 'llm_v1', 'COMM_VISUAL_OPENAI_ENABLED': 'true'}), patch(
+        with patch.dict(os.environ, {'COMMUNICATION_FORCE_SAFE_MODE': 'false'}), patch(
             'evaluacion.engine.communication_evaluators.evaluate_visual_llm_v1_from_features',
             side_effect=CommunicationVisualLlmError(kind='transient', message='forced_failure'),
         ):

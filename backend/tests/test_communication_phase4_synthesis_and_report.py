@@ -38,11 +38,12 @@ class CommunicationPhase4SynthesisAndReportTests(unittest.TestCase):
             delivery_output=delivery,
             visual_output=visual,
         )
-        output, meta = synthesize_global_communication_feedback(synthesis_input=synthesis_input)
+        with patch('evaluacion.engine.communication_synthesis._is_global_synthesis_llm_enabled', return_value=False):
+            output, meta = synthesize_global_communication_feedback(synthesis_input=synthesis_input)
         # weighted = 40.5 + 26.25 + 6 = 72.75; spread=60 => penalty 10 => 63
         self.assertEqual(output.score_global_100, 63)
         self.assertEqual(meta.mode, 'fallback')
-        self.assertEqual(meta.fallback_reason, 'disabled_flag')
+        self.assertEqual(meta.fallback_reason, 'disabled_policy')
         self.assertNotIn('Fortalezas destacadas', output.summary_short_2_3_lines)
         self.assertNotIn('Prioridades de mejora', output.summary_short_2_3_lines)
 

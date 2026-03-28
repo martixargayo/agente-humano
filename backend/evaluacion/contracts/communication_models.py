@@ -465,7 +465,7 @@ class CommunicationGlobalSynthesisMetaV1(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     mode: Literal['llm', 'fallback']
-    fallback_reason: Literal['disabled_flag', 'missing_openai_api_key', 'openai_error', 'schema_validation_error', 'unexpected_error'] | None = None
+    fallback_reason: Literal['disabled_policy', 'missing_openai_api_key', 'openai_error', 'schema_validation_error', 'unexpected_error'] | None = None
     detail: str | None = None
 
 
