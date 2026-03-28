@@ -8,6 +8,7 @@ from typing import Any
 
 from evaluacion.contracts.communication_models import (
     CommunicationBranchRuntimeMetaV1,
+    CommunicationContentAidaEvalV1,
     CommunicationFeedbackInputBundleV1,
     CommunicationGlobalSynthesisLlmOutputV1,
     CommunicationGlobalSynthesisMetaV1,
@@ -25,6 +26,7 @@ from evaluacion.contracts.communication_models import (
     CommunicationTimeline,
     CommunicationTimelineSegment,
     CommunicationVideoPanel,
+    CommunicationSpecializedDimensionEvalV1,
     UiCommunicationReportV1,
 )
 
@@ -43,6 +45,26 @@ def build_report_media_block(bundle: CommunicationFeedbackInputBundleV1) -> Comm
         duration_ms=bundle.recording.duration_ms,
         mime_type=bundle.recording.mime_type,
     )
+
+
+def _extract_content_aida_feedback(content_output: dict[str, Any]) -> CommunicationContentAidaEvalV1 | None:
+    raw = content_output.get('llm_specialized_evaluation')
+    if not isinstance(raw, dict):
+        return None
+    try:
+        return CommunicationContentAidaEvalV1.model_validate(raw)
+    except Exception:
+        return None
+
+
+def _extract_specialized_feedback(payload: dict[str, Any]) -> CommunicationSpecializedDimensionEvalV1 | None:
+    raw = payload.get('llm_specialized_evaluation')
+    if not isinstance(raw, dict):
+        return None
+    try:
+        return CommunicationSpecializedDimensionEvalV1.model_validate(raw)
+    except Exception:
+        return None
 
 
 def _build_header(*, score_global_100: int, content_output: dict[str, Any], delivery_output: dict[str, Any], synthesis_output: CommunicationGlobalSynthesisLlmOutputV1 | None = None) -> CommunicationReportHeader:
@@ -276,6 +298,9 @@ def assemble_communication_report(
     timeline = _build_timeline(bundle, block_cards)
     key_moments = _build_key_moments(timeline)
     recommendations = _build_recommendations(bundle, synthesis_output=synthesis)
+    content_aida_feedback = _extract_content_aida_feedback(content_output)
+    audio_specialized_feedback = _extract_specialized_feedback(delivery_output)
+    visual_specialized_feedback = _extract_specialized_feedback(visual_output)
     markup = _serialize_report_markup(
         header=header,
         media=media,
@@ -308,6 +333,9 @@ def assemble_communication_report(
         timeline=timeline,
         key_moments=key_moments,
         recommendations=recommendations,
+        content_aida_feedback=content_aida_feedback,
+        audio_specialized_feedback=audio_specialized_feedback,
+        visual_specialized_feedback=visual_specialized_feedback,
         global_synthesis=synthesis,
         global_synthesis_meta=synthesis_runtime_meta,
         branch_runtime_meta=branch_runtime_meta,
