@@ -13,7 +13,7 @@ from evaluacion.contracts.communication_models import (
     CommunicationDeliveryEvaluationV1,
     CommunicationSpecializedDimensionEvalV1,
 )
-from evaluacion.engine.communication_llm_config import parse_env_bool
+from evaluacion.engine.communication_activation_policy import get_communication_activation_policy
 from evaluacion.engine.communication_llm_models import get_delivery_llm_model
 
 _PROMPT_PATH = Path(__file__).resolve().parents[1] / 'prompts' / 'communication_delivery_evaluator_prompt.txt'
@@ -60,7 +60,8 @@ def _score_to_label(score_1_5: int) -> str:
 
 
 def _is_audio_llm_enabled() -> bool:
-    return parse_env_bool('COMM_AUDIO_OPENAI_ENABLED', default=False)
+    policy = get_communication_activation_policy()
+    return policy.delivery_mode == 'llm'
 
 
 def _build_openai_client() -> openai.OpenAI:
@@ -193,7 +194,7 @@ def evaluate_delivery_with_specialized_from_audio_metrics(
             runtime_meta = {'mode': 'fallback', 'reason': 'unexpected_error', 'detail': str(exc)}
     else:
         specialized_eval = _rule_based_specialized_delivery_eval(audio_features=audio_features)
-        runtime_meta = {'mode': 'fallback', 'reason': 'disabled_flag', 'detail': None}
+        runtime_meta = {'mode': 'fallback', 'reason': 'disabled_policy', 'detail': None}
     if isinstance(audio_features, CommunicationAudioFeaturesPlaceholder):
         runtime_meta = {'mode': 'placeholder', 'reason': 'audio_features_placeholder', 'detail': audio_features.explanation}
     return _map_specialized_to_delivery_eval(specialized_eval=specialized_eval, audio_features=audio_features), specialized_eval, runtime_meta

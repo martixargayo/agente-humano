@@ -97,7 +97,7 @@ class CommunicationVisualPipelineE2ELlmMockTests(unittest.TestCase):
             reason_short='Tu gesticulación acompaña bien tu mensaje y puedes sostenerla mejor.',
         )
 
-        with patch.dict(os.environ, {'COMM_VISUAL_MODE': 'llm_v1', 'COMM_VISUAL_OPENAI_ENABLED': 'true'}), patch(
+        with patch.dict(os.environ, {'COMMUNICATION_FORCE_SAFE_MODE': 'false'}), patch(
             'evaluacion.engine.communication_visual_evaluator.evaluate_visual_batches_openai',
             return_value=[batch_output],
         ), patch(

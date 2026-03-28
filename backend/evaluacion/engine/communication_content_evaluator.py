@@ -12,7 +12,7 @@ from evaluacion.contracts.communication_models import (
     CommunicationContentAidaEvalV1,
     CommunicationFeedbackInputBundleV1,
 )
-from evaluacion.engine.communication_llm_config import parse_env_bool
+from evaluacion.engine.communication_activation_policy import get_communication_activation_policy
 from evaluacion.engine.communication_llm_models import get_content_llm_model
 
 _PROMPT_PATH = Path(__file__).resolve().parents[1] / 'prompts' / 'communication_content_evaluator_prompt.txt'
@@ -53,7 +53,8 @@ def _build_content_llm_input(*, bundle: CommunicationFeedbackInputBundleV1, cont
 
 
 def _is_content_llm_enabled() -> bool:
-    return parse_env_bool('COMM_CONTENT_OPENAI_ENABLED', default=False)
+    policy = get_communication_activation_policy()
+    return policy.content_mode == 'llm'
 
 
 def _build_openai_client() -> openai.OpenAI:
@@ -229,7 +230,7 @@ def evaluate_content_from_transcript(*, bundle: CommunicationFeedbackInputBundle
     else:
         aida_eval = _rule_based_content_eval(transcript_text=transcript_text, segment_count=segment_count)
         llm_mode = 'fallback'
-        fallback_reason = 'disabled_flag'
+        fallback_reason = 'disabled_policy'
 
     output = _map_aida_eval_to_content_output(bundle=bundle, aida_eval=aida_eval)
     transcript_status = getattr(bundle.transcript, 'status', None)

@@ -458,14 +458,14 @@ class CommunicationGlobalSynthesisLlmOutputV1(BaseModel):
 
     score_global_100: int = Field(ge=0, le=100)
     summary_short_2_3_lines: str = Field(min_length=1)
-    recommendations: list[CommunicationGlobalSynthesisRecommendationV1] = Field(default_factory=list, max_length=4)
+    recommendations: list[CommunicationGlobalSynthesisRecommendationV1] = Field(max_length=4)
 
 
 class CommunicationGlobalSynthesisMetaV1(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     mode: Literal['llm', 'fallback']
-    fallback_reason: Literal['disabled_flag', 'missing_openai_api_key', 'openai_error', 'schema_validation_error', 'unexpected_error'] | None = None
+    fallback_reason: Literal['disabled_policy', 'missing_openai_api_key', 'openai_error', 'schema_validation_error', 'unexpected_error'] | None = None
     detail: str | None = None
 
 
