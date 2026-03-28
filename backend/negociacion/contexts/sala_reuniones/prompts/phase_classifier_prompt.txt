@@ -73,7 +73,7 @@ Se activa cuando:
 
 ## propuesta_creativa
 Función dominante:
-- abrir la negociación sustantiva con una primera propuesta concreta, una primera estructura de avance o una primera condición negociable antes de que exista un regateo claro entre dos posiciones ya vivas.
+- abrir la negociación sustantiva con una primera propuesta concreta, una primera estructura de avance o una primera condición negociable antes de que exista un ajuste claro entre dos posiciones ya vivas.
 
 Se activa cuando:
 - ya no solo se explora;
@@ -91,7 +91,7 @@ Función dominante:
 Se activa cuando:
 - el foco principal está en afinar diferencias, mover posiciones o ajustar condiciones;
 - ya existe al menos una oferta o posición negociadora viva de cada parte;
-- el turno actual o la trayectoria reciente muestran contraofertas, mínimos, subidas, bajadas, cesiones cruzadas o fórmulas de aproximación como "ni para ti ni para mí".
+- el turno actual o la trayectoria reciente muestran contraofertas, mínimos, recortes, cesiones cruzadas o fórmulas de aproximación como "ni para ti ni para mí".
 
 No dejar de usar esta fase solo porque:
 - el lenguaje sea cordial;
@@ -109,13 +109,13 @@ Se activa cuando:
 No se activa cuando:
 - todavía falta que una de las partes acepte la última propuesta;
 - solo hay cercanía al cierre, buena disposición o sensación de acuerdo inminente;
-- el turno actual sigue intentando mover precio, garantía, extras o cualquier condición sustancial;
+- el turno actual sigue intentando mover horas o cualquier condición sustancial;
 - el turno cierra la conversación porque una de las partes decide irse sin acuerdo.
 
 Lectura correcta:
 - esta es una fase post-acuerdo, no pre-acuerdo.
 - sirve para verbalizar, consolidar y operar un acuerdo ya producido.
-- si durante esta fase se reabren precio o condiciones, puedes volver a `concesiones_y_ajuste_final`.
+- si durante esta fase se reabren horas o condiciones, puedes volver a `concesiones_y_ajuste_final`.
 
 ## abandono_de_la_negociacion
 Función dominante:
@@ -135,14 +135,14 @@ No se activa cuando:
 Lectura correcta:
 - esta es una fase excepcional y lateral, no una etapa normal de la secuencia principal.
 - sirve para detectar salida explícita sin acuerdo.
-- si después se reabre de forma real el precio o las condiciones, puedes volver a `concesiones_y_ajuste_final`.
+- si después se reabre de forma real el reparto o las condiciones, puedes volver a `concesiones_y_ajuste_final`.
 
 # Copresent boundary examples
 Si `scene_state.copresent = true` y `scene_state.encounter_in_progress = true`, estos ejemplos tienden a seguir en `clima_humano` si su función dominante es solo encuadre, identidad o motivo del encuentro actual:
-- "¿Qué tal? ¿Has venido por esto?"
+- "¿Qué tal? ¿Has venido por lo de la sala?"
 - "Bien, ¿y tú? ¿Eras tú con quien hablaba?"
 - "Perfecto, entonces vienes por la reunión, ¿no?"
-- "Hola, ¿vienes a verlo?"
+- "Hola, ¿vienes a hablar de esto?"
 - "Ah, eras tú."
 - "Vale, estamos aquí para hablar de eso."
 

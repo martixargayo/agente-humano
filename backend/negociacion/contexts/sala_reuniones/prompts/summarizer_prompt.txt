@@ -145,7 +145,7 @@ Debes recalcularlo desde cero en cada turno usando:
   3. o el intercambio la deje claramente superada como foco negociador.
 - Si el turno actual responde a una oferta previa del assistant y esa oferta sigue siendo la referencia negociadora viva, consérvala en `last_offer_self`.
 - Si aparece una nueva oferta del usuario o el usuario modifica una oferta anterior, actualiza `last_offer_other`.
-- Si la nueva oferta o modificación añade términos sustantivos a una oferta ya existente (por ejemplo garantía, transferencia, papeleo, cierre o extras), debes actualizar la oferta vigente como un paquete completo con todos sus términos explícitos.
+- Si la nueva oferta o modificación añade términos sustantivos a una oferta ya existente (por ejemplo bloque horario, ayuda en preparación, ayuda en recogida, transición, cierre o compensaciones adicionales), debes actualizar la oferta vigente como un paquete completo con todos sus términos explícitos.
 - Si una oferta fue reemplazada por otra más reciente de la misma parte, la anterior no debe quedar como vigente.
 
 ## Offer structure rule
@@ -153,16 +153,16 @@ Debes recalcularlo desde cero en cada turno usando:
 - Extrae `price_amount` solo si hay una cifra explícita.
 - Normaliza `currency` cuando sea explícita o inequívoca en el turno/contexto reciente.
 - Trata cada oferta vigente como un paquete único de términos negociados, no como una cifra aislada.
-- Si una oferta incluye precio junto con otros términos explícitos, conserva juntos todos los términos sustantivos de esa misma oferta.
-- No reduzcas una oferta compuesta a solo `price_amount` o a una frase-resumen incompleta si el turno añade también garantía, extras, papeleo, transferencia, cierre, reparto de costes u otras condiciones explícitas.
-- Usa `extras` para elementos añadidos al trato principal con valor propio dentro del trato (por ejemplo ruedas u otros extras del coche).
-- Usa `conditions` para condiciones operativas, de cierre o de reparto asociadas a la oferta (por ejemplo cierre hoy, papeleo hoy, transferencia incluida, reparto de gastos).
-- Si una oferta incluye garantía explícita, no la omitas: debe quedar reflejada dentro del paquete de la oferta vigente y en `summary`.
-- Si la garantía no tiene un campo estructural propio en el schema, represéntala dentro de `conditions` con formulación breve y factual.
+- Si una oferta incluye una cifra junto con otros términos explícitos, conserva juntos todos los términos sustantivos de esa misma oferta.
+- No reduzcas una oferta compuesta a solo `price_amount` o a una frase-resumen incompleta si el turno añade también ayudas, preparación, recogida, transición, cierre, reparto de cargas u otras condiciones explícitas.
+- Usa `extras` para elementos añadidos al trato principal con valor propio dentro del trato.
+- Usa `conditions` para condiciones operativas, de cierre o de reparto asociadas a la oferta.
+- Si una oferta incluye una garantía o cobertura explícita, no la omitas: debe quedar reflejada dentro del paquete de la oferta vigente y en `summary`.
+- Si la garantía o cobertura no tiene un campo estructural propio en el schema, represéntala dentro de `conditions` con formulación breve y factual.
 - No metas en `extras` lo que en realidad son `conditions`.
 - Si el turno actual modifica una oferta anterior añadiendo o quitando términos, actualiza la oferta vigente completa con su nueva composición, no conserves una versión truncada.
 - Una oferta no está correctamente representada si omite términos explícitos materialmente relevantes del mismo paquete negociador.
-- No inventes precio, moneda, extras ni condiciones ausentes.
+- No inventes cifra, moneda, extras ni condiciones ausentes.
 
 ## Active axes rule
 - `active_axes` debe contener solo ejes negociadores vivos ahora mismo.
@@ -170,7 +170,8 @@ Debes recalcularlo desde cero en cada turno usando:
   `price`, `extras`, `paperwork`, `closing_timing`, `transfer_costs`, `delivery`, `risk`, `warranty`
 - No inventes alias ni sinónimos.
 - Incluye solo ejes con evidencia clara en el turno actual o en el intercambio reciente todavía vivo.
-- Si una oferta vigente incluye garantía explícita, activa `warranty`; si incluye papeleo o transferencia, activa `paperwork` o `transfer_costs` según corresponda; si incluye cierre temporal explícito, activa `closing_timing`.
+- Cuando el acuerdo no sea monetario, usa `price` como eje principal cuantitativo solo si el schema existente lo reutiliza para representar el término central del reparto (por ejemplo horas, bloque principal o magnitud equivalente).
+- Si una oferta vigente incluye una garantía o cobertura explícita, activa `warranty`; si incluye una condición operativa o de coordinación claramente equivalente a `paperwork`, `transfer_costs`, `delivery` o `closing_timing` dentro del schema existente, actívala solo cuando haya evidencia clara.
 
 ## Tentative agreement rule
 - Rellena `tentative_agreement` solo si hay convergencia explícita entre ambas partes sobre términos sustancialmente alineados.
@@ -184,8 +185,8 @@ Debes recalcularlo desde cero en cada turno usando:
 - Diferencia explícitamente entre: contraoferta normal, atasco duro y ultimátum activo del assistant.
 - `is_hard_stalemate=true` debe ser raro; no lo actives por una sola discrepancia, una sola contraoferta dura, una frase aislada de "mínimo", una distancia puntual ni por falta de acuerdo temprana.
 - Solo actívalo con evidencia fuerte y acumulada en turno actual + diálogo reciente: varias rondas reales de oferta/contraoferta, posiciones visibles de ambas partes, falta de convergencia apreciable o reciclaje sin avance, repetición de límites duros, y ausencia de nueva palanca material relevante.
-- No actives `is_hard_stalemate=true` si el intercambio aún progresa de forma razonable aunque exista desacuerdo, ni si solo hay tensión normal de regateo.
-- `stalemate_reason` debe ser corto, factual, normalizado y operativo (ejemplos válidos: `price_gap_persistent`, `other_side_repeats_hard_limit`, `multiple_adjustments_without_convergence`). Si no aplica: `null`.
+- No actives `is_hard_stalemate=true` si el intercambio aún progresa de forma razonable aunque exista desacuerdo, ni si solo hay tensión normal de ajuste.
+- `stalemate_reason` debe ser corto, factual, normalizado y operativo (ejemplos válidos: `main_axis_gap_persistent`, `other_side_repeats_hard_limit`, `multiple_adjustments_without_convergence`). Si no aplica: `null`.
 - `self_ultimatum_active=true` solo si el assistant YA emitió una última posición clara y terminal (ej. "esta es mi última propuesta", "si no te encaja, lo dejamos", "hasta aquí puedo llegar y si no, lo dejamos").
 - No marques ultimátum por una contraoferta firme normal, por condiciones habituales de cierre ni por frases ambiguas.
 - Si existe un ultimátum claro del assistant y sigue siendo su posición terminal vigente, `self_ultimatum_active` debe mantenerse en `true` aunque el turno actual no repita literalmente el ultimátum.
