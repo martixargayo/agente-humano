@@ -1,79 +1,155 @@
 {
   "schema_version": "negotiation_brief.v1",
-  "contexto_de_mercado": {
-    "valor_estimado": "El valor de mercado estimado de este modelo está en torno a 6000-6500 euros.",
-    "lectura": "Contexto oficial alternativo de validación multi-context con la misma semántica negociadora del baseline."
+  "naturaleza_del_caso": {
+    "tipo": "Negociación interna de coordinación sobre un recurso único y escaso.",
+    "lectura": "No es una compraventa, no hay dinero y no hay relación cliente-proveedor. La lógica correcta del caso es distinguir necesidad real de preferencia, rediseñar el uso del recurso, introducir compensaciones operativas y cerrar un acuerdo funcional y percibido como razonable."
+  },
+  "marco_relacional_inicial": {
+    "relacion": "La relación entre las partes es cordial y profesional.",
+    "detalle": "Diego y la persona del Equipo A no se conocían antes ni habían hablado previamente. No existe mala relación, pero tampoco confianza previa ni contexto compartido más allá de que ambos saben que hay un conflicto de prioridades que deben resolver hablando."
+  },
+  "situacion_inicial_de_informacion": {
+    "resumen": "Al inicio, Diego no sabe cuántas horas pide el otro equipo ni para qué necesita exactamente la sala.",
+    "detalle": "Solo sabe que le han dicho que existe un conflicto de prioridades con el Equipo A sobre la única sala demo realmente útil del jueves. La información concreta sobre la necesidad del otro equipo debe descubrirse conversando, no puede darse por sabida desde el principio.",
+    "lectura": "Diego no debe hablar como si ya conociera el caso completo del otro equipo. Debe explorar con naturalidad qué parte es necesidad real, qué parte es preferencia y qué margen operativo tiene la otra parte."
+  },
+  "contexto_del_recurso": {
+    "recurso_y_disponibilidad": "La única sala demo realmente útil está disponible el jueves de 8:00 a 16:00.",
+    "lectura": "El valor del caso no está en horas abstractas, sino en tiempo útil real dentro de la sala, continuidad operativa, transición razonable y coste de asumir la franja menos cómoda."
+  },
+  "restricciones_duras": {
+    "resumen": "No existe otra sala equivalente, no se puede mover a otro día, no se escala a un jefe, no hay presupuesto para alquilar nada fuera y no puede aparecer una solución externa que resuelva el conflicto.",
+    "lectura": "La única salida válida es un acuerdo operativo entre ambos equipos dentro del mismo jueves y usando la única sala demo disponible."
   },
   "realidad_de_la_alternativa": {
-    "resumen": "Carlos no tiene una alternativa equivalente cómoda en la zona.",
-    "detalle": "Comprar una unidad parecida fuera implica sumar transporte y matriculación.",
-    "coste_equivalente_aproximado": "La mejor alternativa real se acerca a 8000 euros de coste total.",
-    "lectura": "Por eso Carlos intentará acercarse al precio de mercado, pero sabe que debe ser realista si quiere este coche concreto."
+    "resumen": "Diego, como representante del Equipo B, no tiene una alternativa equivalente sin la sala demo.",
+    "detalle": "Sin acuerdo, el Equipo B podría sacar fuera parte de la teoría o reorganizar fragmentos de la actividad, pero perdería calidad práctica, continuidad y utilidad real para la sesión.",
+    "coste_equivalente_aproximado": "La mejor alternativa real equivale a una sesión claramente peor: menos práctica útil, más fragmentación, más fricción operativa y peor experiencia para los participantes.",
+    "lectura": "Por eso Diego defenderá un bloque suficientemente útil en la sala, pero sabe que la salida no pasa por imponer su horario ideal, sino por conservar el mínimo operativo real y compensar cualquier cesión importante."
   },
   "objetivo_y_marco_de_decision": {
-    "objetivo": "Intentar comprar por precio de mercado o lo más cerca posible.",
-    "realismo": "Este contexto oficial valida que el stack soporte más de un contexto real sin alterar el flow ni el motor.",
-    "criterio": "Empujará para mejorar el precio, pero un acuerdo por debajo de 8000 puede seguir pareciéndole bueno si el conjunto del trato encaja.",
-    "por_encima_de_eso": "Por encima de ese nivel solo le compensa si el vendedor añade valor real suficiente o reduce riesgo de forma clara."
+    "objetivo": "Conseguir para el Equipo B un reparto que preserve una sesión de formación útil y operativa, idealmente en la franja más temprana posible, pero sin convertir esa preferencia en una posición rígida.",
+    "realismo": "Diego sabe que no puede aspirar razonablemente a conservar intacto su esquema ideal si el Equipo A también necesita la misma sala ese jueves.",
+    "criterio": "Intentará proteger al menos 3 horas reales útiles en sala para el núcleo de la actividad del Equipo B, explorando ayuda en preparación o recogida, partes fuera de la sala, mejor transición y compensaciones operativas si asume la parte menos atractiva del día.",
+    "si_asume_la_franja_menos_comoda": "Si el Equipo B tiene que cargar con una franja peor o con más fricción, solo le compensa si el Equipo A aporta una compensación visible y útil: ayuda operativa, transición más limpia, sala ya preparada, reducción real del esfuerzo del Equipo B o una redistribución clara de la carga."
+  },
+  "realidad_operativa_del_equipo_b": {
+    "peticion_inicial": "El Equipo B tiende a pedir 5 horas al inicio.",
+    "desglose_inicial": [
+      "1 hora de preparación",
+      "2 horas de charla",
+      "1 hora de actividades en grupos de 5",
+      "1 hora para recoger"
+    ],
+    "preferencia_inicial": "Cuanto antes termine, mejor.",
+    "minimo_real_en_sala": "Para que la actividad tenga sentido, el Equipo B necesita conservar dentro de la sala pantalla y sistema funcionando, 2 horas reales de charla y 1 hora de actividad en grupos. Mínimo real en sala: 3 horas de uso útil.",
+    "flexibilidad_real": [
+      "Si recibe ayuda para preparar, puede reducir ese tiempo.",
+      "Si recibe ayuda para recoger, puede reducir ese tiempo.",
+      "Puede sacar fuera de la sala la introducción teórica.",
+      "Puede mover fuera parte de la actividad en grupos si el diseño sigue siendo funcional.",
+      "Puede aceptar menos tiempo total si conserva una franja razonable y recibe compensación operativa suficiente."
+    ],
+    "lectura": "La petición inicial del Equipo B incluye colchón operativo. Diego no debe regalar desde el inicio toda esa flexibilidad real."
+  },
+  "filosofia_del_caso": {
+    "premia": [
+      "identificar mínimos reales",
+      "distinguir necesidad de preferencia",
+      "reconfigurar el uso de la sala",
+      "introducir compensaciones operativas",
+      "reducir fricción de transición",
+      "construir reciprocidad visible",
+      "cerrar un acuerdo concreto y funcional"
+    ],
+    "no_premia": [
+      "defender el horario ideal como si fuera sagrado",
+      "tratar la negociación como un pulso territorial",
+      "pedir sacrificios unilaterales",
+      "imponer la peor franja al otro sin compensación",
+      "cerrar rápido un reparto ambiguo",
+      "usar presión artificial o lógica jerárquica"
+    ],
+    "lectura": "La competencia central no es regatear, sino reconfigurar el problema para que ambos puedan operar dentro del límite real del recurso."
   },
   "mapa_de_valor": {
-    "nota": "Los valores aproximados sirven también como referencia para estimar el valor de otras concesiones parecidas que aparezcan en la negociación.",
+    "nota": "Los elementos siguientes sirven como referencia privada para estimar qué concesiones reducen tiempo útil en sala, cuáles reducen fricción operativa y cuáles solo facilitan el acuerdo sin resolver el problema de fondo.",
     "items": [
       {
-        "elemento": "1 año de garantía",
-        "valor_aproximado_eur": 600,
-        "tipo_de_efecto": "suma_valor_real",
-        "lectura": "Reduce riesgo postcompra y puede justificar pagar más."
+        "elemento": "Ayuda en la preparación inicial",
+        "impacto_operativo_aproximado": "Reduce de forma visible el tiempo que el Equipo B necesita consumir dentro de la sala antes de empezar.",
+        "tipo_de_efecto": "reduce_tiempo_real_en_sala",
+        "lectura": "Es una concesión valiosa porque libera tiempo útil real."
       },
       {
-        "elemento": "ITV pasada antes de venderlo",
-        "valor_aproximado_eur": null,
-        "tipo_de_efecto": "suma_valor_real",
-        "lectura": "Reduce coste y fricción inmediata y puede justificar algo más de precio."
+        "elemento": "Ayuda en la recogida final",
+        "impacto_operativo_aproximado": "Reduce el tiempo logístico al final y abarata salir antes o asumir una franja peor.",
+        "tipo_de_efecto": "reduce_tiempo_real_en_sala",
+        "lectura": "Tiene valor porque convierte tiempo de cierre en margen operativo."
       },
       {
-        "elemento": "pack o kit de ruedas",
-        "valor_aproximado_eur": null,
-        "tipo_de_efecto": "suma_valor_real",
-        "lectura": "Añade valor material directo y puede compensar parte del precio."
+        "elemento": "Sacar fuera de la sala la introducción teórica",
+        "impacto_operativo_aproximado": "Reduce ocupación necesaria dentro de la sala sin destruir el núcleo útil de la formación.",
+        "tipo_de_efecto": "reconfigura_uso_del_recurso",
+        "lectura": "Ayuda mucho si la parte práctica conserva continuidad suficiente."
       },
       {
-        "elemento": "cerrar hoy mismo",
-        "valor_aproximado_eur": 0,
+        "elemento": "Sacar fuera parte de la actividad no crítica o del cierre",
+        "impacto_operativo_aproximado": "Reduce tiempo de ocupación y puede ordenar mejor la transición.",
+        "tipo_de_efecto": "reconfigura_uso_del_recurso",
+        "lectura": "Tiene valor real si no vacía la sesión de contenido útil."
+      },
+      {
+        "elemento": "Sala ya conectada y operativa para entrar directo",
+        "impacto_operativo_aproximado": "Reduce tiempo muerto, transición y coste de coordinación.",
+        "tipo_de_efecto": "reduce_friccion_operativa",
+        "lectura": "No sustituye por sí sola una gran cesión horaria, pero sí compensa parte del esfuerzo asumido."
+      },
+      {
+        "elemento": "Aceptar una franja más tardía con compensación visible",
+        "impacto_operativo_aproximado": "No mejora por sí sola la utilidad de la sesión, pero puede ser asumible si el otro equipo absorbe parte del coste operativo.",
+        "tipo_de_efecto": "facilita_acuerdo_con_compensacion",
+        "lectura": "La franja tardía no es equivalente a la temprana. Si el Equipo B la asume, debe obtener algo claro a cambio."
+      },
+      {
+        "elemento": "Operativa sencilla y transición limpia entre equipos",
+        "impacto_operativo_aproximado": "Reduce roce, pérdida de tiempo y sensación de cesión injusta.",
         "tipo_de_efecto": "facilita_acuerdo",
-        "lectura": "No justifica pagar más por sí solo, pero puede hacer a Carlos algo más flexible para cerrar."
-      },
-      {
-        "elemento": "operativa sencilla y poco roce",
-        "valor_aproximado_eur": 0,
-        "tipo_de_efecto": "facilita_acuerdo",
-        "lectura": "No suma valor económico real al coche, pero ayuda a rebajar resistencia para llegar a un entendimiento."
+        "lectura": "No basta por sí sola para justificar una cesión grande, pero sí mejora la aceptabilidad del acuerdo."
       }
     ]
   },
-  "monedas_de_intercambio_del_comprador": {
+  "monedas_de_intercambio_del_equipo_b": {
     "puede_ofrecer": [
       {
-        "elemento": "pago en efectivo",
-        "uso": "Puede usarse para intentar que el vendedor baje expectativas o cierre antes."
+        "elemento": "Hacer la introducción teórica fuera de la sala",
+        "uso": "Puede usarse para reducir el tiempo total que el Equipo B necesita dentro de la sala sin vaciar la sesión de contenido."
       },
       {
-        "elemento": "encargarse del papeleo",
-        "uso": "Puede usarse como contrapartida operativa para pedir mejor precio o mejores condiciones."
+        "elemento": "Preparar materiales con antelación",
+        "uso": "Puede usarse para entrar más directo en la parte útil de la formación y perder menos tiempo dentro de la sala."
       },
       {
-        "elemento": "rapidez y facilidad para cerrar",
-        "uso": "Puede usarse para reducir fricción del vendedor, pero no debe regalarse sin retorno."
+        "elemento": "Recortar o concentrar una parte no esencial del cierre",
+        "uso": "Puede usarse para liberar tiempo si a cambio el reparto sigue siendo razonable y el núcleo de la actividad queda protegido."
+      },
+      {
+        "elemento": "Dejar la sala ya operativa para el siguiente equipo",
+        "uso": "Puede usarse como contrapartida operativa si el Equipo B usa la franja inicial y el Equipo A entra después."
+      },
+      {
+        "elemento": "Aceptar salir antes o asumir una franja menos cómoda",
+        "uso": "Solo debe ofrecerse si hay una compensación visible y útil; no debe regalarse por mera presión o buena voluntad abstracta."
       }
     ]
   },
   "informacion_privada_sensible": {
     "no_conviene_revelar_espontaneamente": [
-      "El coste real de su alternativa.",
-      "La escasez de alternativas equivalentes en la zona.",
-      "Su flexibilidad real.",
-      "Qué concesiones valora más internamente."
+      "Que la petición inicial de 5 horas incluye colchón operativo y no es el mínimo absoluto.",
+      "Que el mínimo real del Equipo B puede bajar a 3 horas útiles en sala si el acuerdo está bien diseñado.",
+      "Qué compensaciones valora más internamente Diego para aceptar una franja menos cómoda.",
+      "Hasta qué punto aceptaría asumir la parte tardía si el otro equipo compensa bien."
     ],
-    "lectura": "Si el vendedor no lo sabe y lo intenta descubrir, conviene evitar revelarlo. Si el vendedor ya lo sabe de forma explícita y lo dice correctamente, no tiene sentido negarlo de manera artificial."
+    "lectura": "Si la otra parte no lo sabe, no conviene regalar desde el principio toda la flexibilidad real del Equipo B. Si la otra parte detecta correctamente alguna de esas palancas y la formula bien, Diego no debe negarla de forma artificial: debe gestionarla con criterio y reciprocidad."
   }
 }
