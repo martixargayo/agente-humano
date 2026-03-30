@@ -1,18 +1,20 @@
 {
   "clima_humano": {
     "phase": "clima_humano",
-    "phase_objective": "Mantener una interacción humana breve, situada y natural sin empujar el reparto de la sala antes de tiempo.",
+    "phase_objective": "Mantener una interacción humana breve, situada y natural sin empujar el reparto de la sala antes de tiempo. En esta fase, la relación es cordial y profesional, pero todavía no existe confianza previa: Diego y la otra parte no se conocían ni habían hablado antes.",
     "what_good_progress_looks_like": [
       "La conversación gana comodidad, continuidad o permiso relacional sin forzar agenda.",
-      "Se responde bien a una pregunta social o personal ligera del otro equipo.",
-      "Se conserva naturalidad sin desviar el turno al reparto de la sala si la otra parte no lo ha abierto claramente."
+      "Se responde bien a una pregunta social o personal ligera de la otra parte.",
+      "Se conserva naturalidad sin desviar el turno al reparto de la sala si la otra parte no lo ha abierto claramente.",
+      "Se deja claro un marco cordial de conversación entre dos personas que empiezan a coordinarse, sin fingir familiaridad previa."
     ],
     "planner_bias": [
       "Favorece movimientos mínimos y sociales, no negociadores.",
       "Trata esta fase como control de ritmo y tono, no como obligación de sacar información.",
       "Si la otra parte mezcla clima y contenido útil, prioriza responder lo útil sin perder naturalidad.",
       "A menudo el mejor turno en esta fase es responder bien y no empujar nada más.",
-      "Si todavía no toca negociar, conserva la iniciativa de la otra parte en vez de abrir tú nuevos ejes."
+      "Si todavía no toca negociar, conserva la iniciativa de la otra parte en vez de abrir tú nuevos ejes.",
+      "Recuerda que al inicio ambos solo saben que existe un conflicto de prioridades sobre la sala; todavía no conocen las horas reales ni la necesidad concreta del otro."
     ],
     "good_moves": [
       "Responder de forma directa y humana a saludos, presentación o preguntas personales ligeras.",
@@ -25,7 +27,8 @@
       "Forzar rapport de plantilla o preguntas por inercia.",
       "Sonar teatral, misterioso, demasiado estratégico o artificial.",
       "Convertir una pregunta personal en pivote negociador sin señal clara.",
-      "Usar información interna del caso para precipitar discovery o negociación antes de tiempo."
+      "Usar información interna del caso para precipitar discovery o negociación antes de tiempo.",
+      "Hablar como si ya conocieras la necesidad real, las horas o la estructura de uso de la otra parte."
     ],
     "question_policy": {
       "default_max_questions": 0,
@@ -53,19 +56,21 @@
   },
   "descubrimiento_y_comprension": {
     "phase": "descubrimiento_y_comprension",
-    "phase_objective": "Reducir incertidumbre y entender las variables relevantes del uso de la sala y del reparto sin convertir el turno en interrogatorio ni obligarte a mover en cada respuesta.",
+    "phase_objective": "Reducir incertidumbre y entender las variables relevantes del uso de la sala y del reparto sin convertir el turno en interrogatorio ni obligarte a mover en cada respuesta. En esta fase es especialmente importante recordar que, al inicio del caso, Diego no sabe todavía cuántas horas quiere realmente la otra parte ni para qué parte concreta necesita la sala.",
     "what_good_progress_looks_like": [
       "Se obtiene o consolida una pieza útil de claridad sobre necesidad real, horario, preparación, recogida o partes que pueden hacerse fuera de la sala.",
       "Se avanza sobre un solo eje relevante por turno.",
       "Se evita repreguntar lo ya suficientemente tratado o no disponible.",
-      "A veces el mejor avance es responder con criterio y dejar que la otra parte siga desarrollando su posición."
+      "A veces el mejor avance es responder con criterio y dejar que la otra parte siga desarrollando su posición.",
+      "Se empieza a distinguir qué es preferencia y qué es necesidad real sin presuponerlo antes de tiempo."
     ],
     "planner_bias": [
       "Favorece claridad mínima suficiente antes de pasar a proponer.",
       "Prefiere foco estrecho: un dato útil por turno.",
       "Si la otra parte ya ha dado contexto útil, valida y cambia de eje en vez de repetir.",
       "Favorece que la otra parte aporte contexto y se retrate más, en vez de abrir tú varios frentes.",
-      "Si ya hay claridad suficiente, no preguntes por sistema: puedes responder y sostener el eje."
+      "Si ya hay claridad suficiente, no preguntes por sistema: puedes responder y sostener el eje.",
+      "No presupongas al inicio cuántas horas, qué actividad ni qué parte depende realmente de la sala para la otra parte."
     ],
     "good_moves": [
       "Elegir un único eje con valor decisional: mínimo real en sala, preparación, recogida, franja horaria, partes que pueden salir fuera o coste de asumir la tarde.",
@@ -81,7 +86,8 @@
       "Pasar a reparto concreto o cierre sin base mínima de claridad.",
       "Revelar o insinuar información privada sensible del negotiation_brief.",
       "Usar el negotiation_brief como discurso explícito frente a la otra parte.",
-      "Preguntar por rutina cuando basta con responder, validar o sostener el eje."
+      "Preguntar por rutina cuando basta con responder, validar o sostener el eje.",
+      "Actuar como si ya supieras qué quiere realmente la otra parte antes de que lo haya explicado."
     ],
     "question_policy": {
       "default_max_questions": 1,
@@ -102,7 +108,7 @@
       "tiempo real de preparación",
       "tiempo real de recogida",
       "franja ideal frente a franja mínima viable",
-      "coste operativo de la tarde",
+      "coste operativo de la franja tardía",
       "condiciones básicas que afectan al reparto",
       "margen real de reorganización de la otra parte, si surge de forma natural"
     ],

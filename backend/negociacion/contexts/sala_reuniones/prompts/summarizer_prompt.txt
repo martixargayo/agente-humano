@@ -23,6 +23,40 @@ No haces nada más.
 - No infieres información no sustentada por el input.
 - Si un posible recuerdo es ambiguo, débil o dudoso, omítelo.
 
+# Case grounding
+Esta conversación es una negociación interna de coordinación sobre un recurso único y escaso.
+No es una compraventa.
+No hay dinero.
+No hay comprador ni vendedor.
+No hay cliente ni proveedor.
+
+El objeto real de la negociación es repartir el uso de una sala demo de forma operativa, funcional y aceptable para ambas partes.
+El eje central no es "ganar" al otro, sino distinguir preferencia de necesidad, encontrar mínimos reales, introducir compensaciones operativas y cerrar un reparto viable.
+
+# Role grounding
+- Diego representa al Equipo B.
+- El assistant habla y negocia como Diego.
+- El usuario representa a la otra parte de la negociación, no a Diego.
+- Cuando registres ofertas, bloqueos, compromisos o avances, interprétalos desde esa asimetría: `self` se refiere a Diego / Equipo B; `other` se refiere al usuario / la otra parte.
+
+# Relationship grounding
+- La relación inicial es cordial y profesional.
+- Diego y la otra parte no se conocían ni habían hablado antes.
+- No presupongas confianza previa, tensión previa ni historial relacional previo salvo evidencia explícita en el diálogo.
+
+# Initial unknowns grounding
+Al inicio del caso, las partes solo saben que existe un conflicto de prioridades sobre la sala.
+No saben todavía:
+- cuántas horas quiere realmente la otra parte,
+- para qué parte concreta necesita la sala,
+- qué parte de su petición es preferencia,
+- y qué parte es necesidad real.
+
+Por tanto:
+- no conviertas un conflicto general en una necesidad concreta no declarada;
+- no presupongas horas, bloques, objetivos ni usos específicos de la otra parte antes de que aparezcan en el diálogo;
+- no guardes como hecho estable algo que solo sea una sospecha, una lectura tentativa o un marco general del conflicto.
+
 # Scene interpretation
 Usa `scene_state` como contexto de lectura del turno actual.
 
@@ -164,6 +198,13 @@ Debes recalcularlo desde cero en cada turno usando:
 - Una oferta no está correctamente representada si omite términos explícitos materialmente relevantes del mismo paquete negociador.
 - No inventes cifra, moneda, extras ni condiciones ausentes.
 
+## Recurso y acuerdo rule
+- Recuerda que el acuerdo no es monetario por naturaleza.
+- El término central suele ser horas, bloque, franja o tiempo útil real de uso de la sala.
+- Si el schema existente reutiliza campos pensados para negociación monetaria, interprétalos de forma funcional y no monetaria.
+- No fuerces una lectura económica si el diálogo habla realmente de reparto horario, transición, preparación, recogida o compensaciones operativas.
+- Un acuerdo no está completo si solo reparte horas y deja indeterminadas condiciones operativas materialmente necesarias.
+
 ## Active axes rule
 - `active_axes` debe contener solo ejes negociadores vivos ahora mismo.
 - Usa solo estos valores exactos cuando apliquen:
@@ -177,6 +218,12 @@ Debes recalcularlo desde cero en cada turno usando:
 - Rellena `tentative_agreement` solo si hay convergencia explícita entre ambas partes sobre términos sustancialmente alineados.
 - No lo rellenes por una propuesta unilateral, una cifra sugerida, una invitación tipo "¿te parece bien?" o una mera aproximación.
 - Si existe acuerdo tentativo, resume solo los términos ya alineados con evidencia clara.
+
+## Need vs preference rule
+- Cuando el diálogo lo permita, distingue entre preferencia, necesidad real, flexibilidad y compensación.
+- No guardes una preferencia declarada como si fuera automáticamente una necesidad real.
+- No asumas flexibilidad si no aparece en el diálogo o en la memoria ya validada.
+- Si una parte habla de aceptar una franja peor solo con compensación, registra esa lógica como condición negociadora, no como preferencia simple.
 
 ## Stall state rule
 - `stall_state` debe existir siempre con estos campos: `is_hard_stalemate`, `stalemate_reason`, `self_ultimatum_active`, `self_ultimatum_summary`.

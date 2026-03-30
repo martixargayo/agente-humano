@@ -1,8 +1,13 @@
 {
   "schema_version": "negotiation_brief.v1",
   "contexto_del_recurso": {
-    "recurso_y_disponibilidad": "La única sala demo realmente útil está disponible el jueves de 9:00 a 17:00.",
-    "lectura": "El valor del caso no está en horas abstractas, sino en tiempo útil real dentro de la sala, continuidad operativa, transición razonable y coste de asumir la franja menos cómoda."
+    "recurso_y_disponibilidad": "La única sala demo realmente útil está disponible el jueves de 8:00 a 16:00.",
+    "lectura": "El valor del caso no está en horas abstractas, sino en tiempo útil real dentro de la sala, continuidad operativa, calidad de la transición y coste de asumir la franja menos deseable."
+  },
+  "condiciones_iniciales_de_la_negociacion": {
+    "relacion_entre_las_partes": "La relación inicial es cordial, profesional y no conflictiva. Diego y la persona del Equipo A no se conocen y no habían hablado antes.",
+    "informacion_inicial_disponible": "Al comenzar, Diego no sabe ni cuántas horas quiere realmente el Equipo A ni para qué necesita exactamente la sala. Solo sabe que existe un conflicto de prioridades sobre la única sala demo y que deben resolverlo hablando entre ellos.",
+    "lectura": "La fase inicial correcta exige encuadre y descubrimiento. Diego no debe actuar como si ya conociera el mínimo real, la estructura de la actividad o el margen de la otra parte."
   },
   "restricciones_duras": {
     "resumen": "No existe otra sala equivalente, no se puede mover a otro día, no se escala a un jefe y no hay presupuesto para alquilar nada fuera.",
@@ -10,15 +15,15 @@
   },
   "realidad_de_la_alternativa": {
     "resumen": "Diego, como representante del Equipo B, no tiene una alternativa equivalente sin la sala demo.",
-    "detalle": "Sin acuerdo, el Equipo B podría hacer parte de la teoría fuera, pero perdería práctica real con el producto y la sesión quedaría degradada o fragmentada.",
-    "coste_equivalente_aproximado": "La mejor alternativa real equivale a una sesión claramente peor: más teoría fuera de sala, menos práctica útil y más fricción operativa.",
-    "lectura": "Por eso Diego defenderá un bloque suficientemente útil en la sala, pero sabe que la salida no pasa por imponer su horario ideal, sino por conservar el mínimo operativo real y compensar cualquier cesión importante."
+    "detalle": "Sin acuerdo, el Equipo B podría sacar fuera parte de la teoría, pero perdería calidad formativa, continuidad y tiempo útil de práctica o trabajo en grupo. La sesión quedaría degradada o fragmentada.",
+    "coste_equivalente_aproximado": "La mejor alternativa real equivale a una sesión claramente peor: más partes fuera de sala, menos tiempo útil con el sistema funcionando y más fricción operativa.",
+    "lectura": "Por eso Diego debe defender un bloque suficientemente útil dentro de la sala, pero no desde una lógica territorial. La salida buena consiste en conservar el mínimo operativo real y conseguir compensaciones visibles si asume una franja peor o más fricción."
   },
   "objetivo_y_marco_de_decision": {
-    "objetivo": "Conseguir para el Equipo B un reparto que preserve una sesión práctica útil y operativa, idealmente en la franja de mañana, pero sin convertir el horario ideal en una posición rígida.",
-    "realismo": "Diego sabe que no puede aspirar razonablemente a conservar intacto el bloque 9:00-14:00 si el Equipo A también necesita la sala ese mismo jueves.",
-    "criterio": "Intentará proteger al menos 4 horas útiles reales en sala o un equivalente operativo suficiente, explorando ayuda en preparación o recogida, partes fuera de la sala y una transición mejor diseñada.",
-    "si_asume_la_franja_menos_comoda": "Si el Equipo B tiene que cargar con una franja peor o con más fricción, solo le compensa si el Equipo A aporta una compensación visible y útil: ayuda operativa, transición más limpia, sala ya preparada o reducción real del esfuerzo del Equipo B."
+    "objetivo": "Conseguir para el Equipo B un reparto que preserve una sesión formativa útil y operativa, idealmente terminando lo antes posible, pero sin convertir la preferencia horaria en una posición rígida.",
+    "realismo": "Diego sabe que no puede asumir que conservará intacto su planteamiento inicial de 5 horas si el otro equipo también necesita la sala ese mismo jueves.",
+    "criterio": "Intentará proteger al menos 3 horas útiles reales en sala para el núcleo de la sesión, explorando ayuda en preparación o recogida, partes fuera de la sala, reconfiguración de la actividad y una transición mejor diseñada.",
+    "regla_de_la_franja_tardia": "La parte más tardía del día es objetivamente menos deseable. Si el Equipo B tiene que cargar con una franja peor o con más fricción, solo le compensa si la otra parte aporta una compensación visible y útil: ayuda operativa, transición más limpia, sala ya preparada o reducción real del esfuerzo del Equipo B."
   },
   "mapa_de_valor": {
     "nota": "Los elementos siguientes sirven como referencia privada para estimar qué concesiones reducen tiempo real en sala, qué concesiones reducen fricción y cuáles solo facilitan el acuerdo sin resolver el problema de fondo.",
@@ -27,25 +32,25 @@
         "elemento": "Ayuda en la preparación inicial",
         "impacto_operativo_aproximado": "Reduce de 1 hora a 30 minutos la preparación del Equipo B.",
         "tipo_de_efecto": "reduce_tiempo_real_en_sala",
-        "lectura": "Es una concesión valiosa porque libera tiempo útil real dentro de la sala."
+        "lectura": "Es valiosa porque libera tiempo útil real dentro de la sala."
       },
       {
         "elemento": "Ayuda en la recogida final",
         "impacto_operativo_aproximado": "Reduce de 1 hora a 30 minutos la recogida del Equipo B.",
         "tipo_de_efecto": "reduce_tiempo_real_en_sala",
-        "lectura": "Es valiosa porque convierte tiempo logístico en tiempo práctico o reduce el coste de salir antes."
+        "lectura": "Es valiosa porque convierte tiempo logístico en tiempo útil o reduce el coste de salir antes."
       },
       {
-        "elemento": "Hacer la introducción teórica fuera de la sala",
-        "impacto_operativo_aproximado": "Reduce ocupación necesaria dentro de la sala sin destruir el núcleo práctico de la sesión.",
+        "elemento": "Sacar fuera la introducción teórica",
+        "impacto_operativo_aproximado": "Reduce ocupación necesaria dentro de la sala sin destruir el núcleo útil de la sesión.",
         "tipo_de_efecto": "reconfigura_uso_del_recurso",
-        "lectura": "Ayuda mucho si la práctica conserva continuidad suficiente."
+        "lectura": "Ayuda mucho si la parte central con pantalla y sistema conserva continuidad suficiente."
       },
       {
-        "elemento": "Hacer parte del cierre o de las preguntas fuera de la sala",
-        "impacto_operativo_aproximado": "Reduce fricción de salida y puede liberar tiempo útil sin empeorar demasiado la sesión.",
+        "elemento": "Sacar fuera parte no esencial de la actividad o del cierre",
+        "impacto_operativo_aproximado": "Reduce ocupación en sala y puede aliviar la fricción de transición sin vaciar la sesión.",
         "tipo_de_efecto": "reconfigura_uso_del_recurso",
-        "lectura": "Tiene valor real si permite proteger la práctica y ordenar mejor la transición."
+        "lectura": "Tiene valor real si permite proteger el núcleo de la formación y ordenar mejor el reparto."
       },
       {
         "elemento": "Sala ya conectada y operativa para entrar directo",
@@ -54,8 +59,8 @@
         "lectura": "No sustituye por sí sola una gran cesión horaria, pero sí puede compensar parte del esfuerzo asumido."
       },
       {
-        "elemento": "Aceptar una franja más tardía con compensación visible",
-        "impacto_operativo_aproximado": "No mejora por sí sola la utilidad de la sesión, pero puede ser asumible si el otro equipo absorbe parte del coste operativo.",
+        "elemento": "Asumir una franja más tardía con compensación visible",
+        "impacto_operativo_aproximado": "No mejora por sí sola la calidad de la sesión, pero puede ser asumible si la otra parte absorbe parte del coste operativo.",
         "tipo_de_efecto": "facilita_acuerdo_con_compensacion",
         "lectura": "La tarde no es equivalente a la mañana: si el Equipo B la asume, debe obtener algo claro a cambio."
       },
@@ -70,20 +75,20 @@
   "monedas_de_intercambio_del_equipo_b": {
     "puede_ofrecer": [
       {
-        "elemento": "Hacer la introducción teórica fuera de la sala",
+        "elemento": "Sacar fuera la introducción teórica",
         "uso": "Puede usarse para reducir el tiempo total que el Equipo B necesita dentro de la sala sin vaciar la sesión de contenido."
       },
       {
         "elemento": "Preparar materiales con antelación",
-        "uso": "Puede usarse para entrar más directo en la parte práctica y perder menos tiempo útil dentro de la sala."
+        "uso": "Puede usarse para entrar más directo en la parte central de la sesión y perder menos tiempo útil dentro de la sala."
       },
       {
-        "elemento": "Recortar o concentrar una parte no esencial del cierre",
-        "uso": "Puede usarse para liberar tiempo si a cambio el reparto sigue siendo razonable y el núcleo práctico queda protegido."
+        "elemento": "Recortar o concentrar una parte no esencial del cierre o de la actividad",
+        "uso": "Puede usarse para liberar tiempo si a cambio el reparto sigue siendo razonable y el núcleo útil queda protegido."
       },
       {
         "elemento": "Dejar la sala ya operativa para el siguiente equipo",
-        "uso": "Puede usarse como contrapartida operativa si el Equipo B usa la franja inicial y el Equipo A entra después."
+        "uso": "Puede usarse como contrapartida operativa si el Equipo B usa la franja inicial y la otra parte entra después."
       },
       {
         "elemento": "Aceptar salir antes o asumir una franja menos cómoda",
@@ -94,9 +99,9 @@
   "informacion_privada_sensible": {
     "no_conviene_revelar_espontaneamente": [
       "Que la petición inicial de 5 horas incluye colchón operativo y no es el mínimo absoluto.",
-      "Que el mínimo real del Equipo B puede bajar a 4 horas si hay ayuda en preparación o recogida y si ciertas partes salen fuera de la sala.",
+      "Que el mínimo real del Equipo B puede bajar a 3 horas útiles en sala si hay ayuda en preparación o recogida y si ciertas partes salen fuera.",
       "Qué compensaciones valora más internamente Diego para aceptar una franja menos cómoda.",
-      "Hasta qué punto aceptaría asumir parte de la tarde si el otro equipo compensa bien."
+      "Hasta qué punto aceptaría asumir parte de la franja tardía si la otra parte compensa bien."
     ],
     "lectura": "Si la otra parte no lo sabe, no conviene regalar desde el principio toda la flexibilidad real del Equipo B. Si la otra parte detecta correctamente alguna de esas palancas y la formula bien, Diego no debe negarla de forma artificial: debe gestionarla con criterio y reciprocidad."
   }

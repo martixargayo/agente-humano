@@ -2,6 +2,26 @@
   "phase_classifier_card": {
     "purpose": "Guiar al nodo phase_classifier para clasificar la fase conversacional dominante del turno actual con criterio estable, conservador en los bordes y sensible a transiciones reales.",
     "classifier_role": "Tu trabajo no es decidir qué responder, sino identificar en qué fase está realmente la conversación ahora mismo para que los siguientes nodos actúen con el marco correcto.",
+    "case_grounding": {
+      "negotiation_type": "Esta conversación es una negociación interna de coordinación sobre un recurso único y escaso.",
+      "not_this_case": [
+        "No es una compraventa.",
+        "No hay dinero.",
+        "No hay cliente y proveedor.",
+        "No hay comprador y vendedor."
+      ],
+      "core_logic": [
+        "La conversación busca repartir un recurso limitado de forma operativa, funcional y aceptable para ambas partes.",
+        "El progreso real aparece cuando las partes distinguen preferencia de necesidad, entienden qué parte exige realmente la sala e introducen compensaciones operativas visibles.",
+        "No debes clasificar el caso como si fuera un pulso territorial puro ni como una negociación distributiva simple."
+      ],
+      "role_and_relationship_grounding": [
+        "La conversación ocurre entre Diego, que representa al Equipo B, y la otra parte, que representa al Equipo A.",
+        "La relación inicial es cordial y profesional.",
+        "No se conocían ni habían hablado antes.",
+        "Al inicio ambos solo saben que existe un conflicto de prioridades sobre la sala; todavía no conocen cuántas horas ni para qué necesita exactamente la sala la otra parte."
+      ]
+    },
     "global_guidance": {
       "canonical_order": [
         "clima_humano",
@@ -23,7 +43,8 @@
         "Mantén la fase actual si la nueva señal todavía encaja razonablemente en ella.",
         "Solo cambia de fase cuando haya evidencia suficiente de que el objetivo conversacional realmente cambió.",
         "No adelantes de fase por una referencia superficial a la sala, al horario o al cierre si el turno aún cumple principalmente otra función.",
-        "No retrocedas solo porque aparezca cortesía o cordialidad si la negociación activa sigue en curso."
+        "No retrocedas solo porque aparezca cortesía o cordialidad si la negociación activa sigue en curso.",
+        "En el arranque, no interpretes como comprensión material real el simple hecho de que ambas partes sepan que existe un conflicto con la sala."
       ],
       "dominance_rule": "Si un turno mezcla varias funciones, elige la fase que mejor describe qué intenta avanzar realmente la conversación en ese momento. Da prioridad a la función negociadora dominante observable sobre matices de tono o formulación.",
       "inertia_rule": "En casos ambiguos, favorece continuidad de fase antes que un salto precipitado, salvo que existan señales estructurales claras de una fase posterior ya activa.",
@@ -271,14 +292,14 @@
         "¿Qué tal todo?",
         "¿Eres Diego?",
         "¿Eres Diego, del equipo de formación?",
-        "Encantado, sí, te escribí por lo de la sala"
+        "Encantado, sí, me dijeron que había conflicto con la sala"
       ],
       "move_to_descubrimiento_y_comprension": [
-        "¿Qué parte necesitáis de verdad dentro de la sala?",
-        "¿Cuánto tiempo de preparación os hace falta realmente?",
-        "¿Qué podríais hacer fuera de la sala?",
+        "Antes de mover nada, necesito entender qué parte necesitáis realmente dentro de la sala",
+        "¿Cuánto tiempo de preparación os hace falta de verdad?",
+        "¿Qué podríais sacar fuera de la sala?",
         "¿Necesitáis recoger del todo al final?",
-        "¿Qué parte de vuestra sesión es práctica y cuál no?"
+        "¿Qué parte de vuestra sesión depende realmente de la sala?"
       ],
       "move_to_propuesta_creativa": [
         "Si vosotros entráis después, nosotros podríamos hacer la introducción fuera",
@@ -288,14 +309,14 @@
       "move_to_concesiones_y_ajuste_final": [
         "Si salimos antes, necesito que vosotros os encarguéis de dejar todo listo",
         "Yo podría recortar media hora si vosotros asumís la recogida",
-        "Ni para ti ni para mí: nosotros hasta la 1 y vosotros desde la 1",
+        "Ni para ti ni para mí: nosotros hasta las 11 y vosotros desde las 11",
         "Eso es lo mínimo que puedo aceptar",
         "Puedo asumir esa franja si me compensas con esto",
         "Si no podéis moveros ahí, así no me encaja"
       ],
       "move_to_formalizacion_del_acuerdo": [
         "De acuerdo, acepto ese reparto",
-        "Perfecto, entonces lo dejamos así: nosotros de 9 a 13 y vosotros de 13 a 16 con la sala ya montada",
+        "Perfecto, entonces lo dejamos así: nosotros de 8 a 11 y vosotros de 11 a 14 con la sala ya montada",
         "De acuerdo, acepto el acuerdo",
         "Perfecto, queda cerrado con este reparto y estas condiciones",
         "Confirmo el acuerdo en ese horario y con esa transición"
@@ -327,6 +348,7 @@
       "Si aún falta un sí claro de alguna parte, no uses formalizacion_del_acuerdo.",
       "¿La parte todavía intenta conseguir acuerdo o ya está saliendo explícitamente de la negociación?",
       "¿Es un ultimátum condicional o una retirada real sin acuerdo?",
+      "¿Al inicio del intercambio se está aclarando el conflicto o ya se están explorando necesidades reales concretas?",
       "Si la respuesta correcta debería aceptar el cierre y despedirse, usa abandono_de_la_negociacion."
     ],
     "output_expectation": "Devuelve la fase que mejor represente la necesidad conversacional dominante del momento actual, con criterio estable y sin saltos precipitados."

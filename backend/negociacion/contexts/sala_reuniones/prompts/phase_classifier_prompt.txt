@@ -19,6 +19,45 @@ No reescribes el estado canónico.
 - No uses lenguaje orientado al usuario final.
 - No cambies de fase sin evidencia suficiente en el turno actual y la trayectoria reciente.
 
+# Case grounding
+Esta conversación es una negociación interna de coordinación sobre un recurso único y escaso.
+No es una compraventa.
+No hay dinero.
+No hay comprador y vendedor.
+No hay cliente y proveedor.
+
+La lógica del caso consiste en repartir un recurso limitado de forma operativa, funcional y aceptable para ambas partes.
+El progreso real aparece cuando la conversación distingue preferencia de necesidad, identifica qué parte depende realmente de la sala, reconfigura el uso del recurso e introduce compensaciones operativas visibles.
+
+No clasifiques este caso como si fuera:
+- una negociación comercial clásica,
+- una puja distributiva simple,
+- o un pulso territorial sin contenido operativo.
+
+# Role grounding
+- Diego representa al Equipo B.
+- El usuario representa a la otra parte de la negociación.
+- El clasificador no debe asumir simetría abstracta ni conocimiento previo completo entre ambas partes.
+- Al inicio, la conversación parte de conflicto general sobre la sala, no de conocimiento detallado sobre las necesidades concretas del otro.
+
+# Relationship grounding
+- La relación inicial es cordial y profesional.
+- Diego y la otra parte no se conocían ni habían hablado antes.
+- No presupongas familiaridad previa, confianza previa ni tensión previa acumulada salvo evidencia explícita en el diálogo.
+
+# Initial unknowns grounding
+Al inicio del caso, las partes solo saben que existe un conflicto de prioridades sobre la sala.
+Todavía no saben:
+- cuántas horas quiere realmente la otra parte,
+- para qué parte concreta necesita la sala,
+- qué parte de su petición es preferencia,
+- y qué parte es necesidad real.
+
+Por tanto:
+- no confundas el simple encuadre del conflicto con `descubrimiento_y_comprension` material ya avanzado;
+- no clasifiques como exploración sustantiva un turno que solo reconoce que existe el conflicto;
+- no adelantes fase hasta que aparezca claridad útil real sobre necesidades, límites, estructura de uso o condiciones operativas.
+
 # Scene interpretation
 - Usa `scene_state` para interpretar correctamente el marco espacial y temporal del turno actual.
 - Si `scene_state.copresent` es `true` y `scene_state.encounter_in_progress` es `true`, interpreta por defecto expresiones de presencia oíctica como "vienes", "quedas", "pasas", "vernos", "aquí", "ahora", "hoy", "has venido", "eras tú" o equivalentes como referencia al encuentro actual, no como coordinación futura, salvo evidencia explícita en contra.
@@ -44,6 +83,11 @@ No reescribes el estado canónico.
 - Existe además una fase excepcional y lateral llamada `abandono_de_la_negociacion`: no forma parte de la secuencia normal de fases, sino que se activa desde cualquier fase cuando una de las partes deja explícitamente de perseguir el acuerdo y el foco dominante pasa a aceptar o cerrar esa salida sin acuerdo.
 - No clasifiques como `abandono_de_la_negociacion` una contraoferta dura, un límite firme, una última oferta o un ultimátum condicional mientras la negociación siga viva.
 - Usa `abandono_de_la_negociacion` solo cuando el turno actual o la trayectoria inmediata muestren retirada explícita, cierre explícito sin acuerdo o aceptación clara de que la negociación se termina sin trato.
+- En el arranque, separa con cuidado:
+  1. encuadre cordial del conflicto,
+  2. exploración real de necesidades,
+  3. primera propuesta,
+  4. ajuste sobre posiciones ya abiertas.
 
 # Canonical phase guide
 
@@ -55,12 +99,14 @@ Se mantiene cuando:
 - el turno sigue siendo principalmente relacional;
 - se confirma quién es quién;
 - se confirma para qué es el encuentro actual;
-- se abre el tema principal solo de forma ligera o social.
+- se abre el tema principal solo de forma ligera o social;
+- todavía solo se está reconociendo que existe un conflicto con la sala, sin explorar necesidades reales.
 
 No subir solo porque:
 - se menciona superficialmente el asunto principal;
 - aparece una expresión como "vienes", "has venido", "aquí", "hoy" en copresencia;
-- hay una transición suave hacia el tema sin exploración material real.
+- hay una transición suave hacia el tema sin exploración material real;
+- se reconoce que hay conflicto de prioridades pero no se concreta todavía nada útil.
 
 ## descubrimiento_y_comprension
 Función dominante:
@@ -69,7 +115,8 @@ Función dominante:
 Se activa cuando:
 - el turno abre o prioriza una pregunta o aclaración con valor decisional real;
 - se explora información relevante del asunto principal;
-- la conversación pasa de encuadre a comprensión útil.
+- la conversación pasa de encuadre a comprensión útil;
+- empieza a distinguirse qué parte es preferencia y qué parte es necesidad real.
 
 ## propuesta_creativa
 Función dominante:
@@ -144,7 +191,7 @@ Si `scene_state.copresent = true` y `scene_state.encounter_in_progress = true`, 
 - "Perfecto, entonces vienes por la reunión, ¿no?"
 - "Hola, ¿vienes a hablar de esto?"
 - "Ah, eras tú."
-- "Vale, estamos aquí para hablar de eso."
+- "Vale, estamos aquí porque nos dijeron que había un conflicto con la sala."
 
 Lectura por defecto en esos casos:
 - encuadre presente
