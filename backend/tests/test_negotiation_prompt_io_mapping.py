@@ -180,6 +180,105 @@ class NegotiationPromptIOMappingTests(unittest.TestCase):
                 load_prompt_io_adapter(path)
             self.assertIn("duplicate_visible_input_name", str(ctx.exception))
 
+
+    def test_nested_input_path_is_rejected_in_v1(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "prompt_io_mapping.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "prompt_io_mapping.v1",
+                        "nodes": {
+                            "planner": {
+                                "inputs": {
+                                    "user_turn.raw_text": {"rename": "mensaje"}
+                                }
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaises(PromptIOMappingError) as ctx:
+                load_prompt_io_adapter(path)
+            self.assertIn("invalid_input_mapping", str(ctx.exception))
+            self.assertIn("unknown_fields", str(ctx.exception))
+            self.assertIn("user_turn.raw_text", str(ctx.exception))
+
+    def test_value_aliases_key_is_rejected_with_actionable_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "prompt_io_mapping.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "prompt_io_mapping.v1",
+                        "nodes": {
+                            "executor": {
+                                "outputs": {
+                                    "status": {
+                                        "rename": "delivery_status",
+                                        "value_aliases": {"deliver": "ok"},
+                                    }
+                                }
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaises(PromptIOMappingError) as ctx:
+                load_prompt_io_adapter(path)
+            self.assertIn("prompt_io_mapping_schema_invalid", str(ctx.exception))
+            self.assertIn("value_aliases", str(ctx.exception))
+
+    def test_runtime_wraps_invalid_mapping_with_prompt_io_error_context(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            mapping_path = tmp_path / "prompt_io_mapping.json"
+            mapping_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "prompt_io_mapping.v1",
+                        "nodes": {
+                            "planner": {
+                                "inputs": {
+                                    "current_phase": {
+                                        "rename": "fase_actual",
+                                        "value_aliases": {"clima_humano": "human_opening"},
+                                    }
+                                }
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            context = ResolvedNegotiationContext(
+                flow_id="negociacion",
+                context_id="baseline_current",
+                context_version="1.0.0",
+                public_slug="negociacion",
+                context_dir=tmp_path,
+                presentation_dir=tmp_path,
+                prompts_dir=Path("backend/negociacion/contexts/baseline_current/prompts"),
+                persona_path=Path("backend/negociacion/contexts/baseline_current/assets/persona.json"),
+                negotiation_brief_path=Path("backend/negociacion/contexts/baseline_current/assets/negotiation_brief.json"),
+                phase_cards_path=Path("backend/negociacion/contexts/baseline_current/assets/phase_cards.json"),
+                phase_classifier_card_path=Path("backend/negociacion/contexts/baseline_current/assets/phase_classifier_card.json"),
+                prompt_io_mapping_path=mapping_path,
+                resolution_source="official_context",
+            )
+
+            state = SessionState(session_id="s_invalid_alias", user_id="u_invalid_alias")
+            config = NegotiationTurnConfig(prompts_dir="backend/negociacion/contexts/baseline_current/prompts")
+            with patch("negociacion.orchestration.flow_config.resolve_context_for_prompts_dir", return_value=context):
+                with self.assertRaises(RuntimeError) as ctx:
+                    run_negotiation_cognitive_turn(state, "Hola", config)
+
+            self.assertIn("prompt_io_mapping_invalid", str(ctx.exception))
+            self.assertIn("prompt_io_mapping_schema_invalid", str(ctx.exception))
+
     def test_end_to_end_real_turn_uses_visible_aliases_but_keeps_internal_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
