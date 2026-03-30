@@ -71,6 +71,9 @@ from ..traces.constants import TRACE_VERSION
 from ..traces.models import EvalGrades, PromptArtifacts, SDKCompatibilityInfo, StructuredCallResult, TurnTrace
 from ..traces.context_meta import build_trace_context_meta
 from ..contexts import (
+    PromptIOAdapter,
+    PromptIOMappingError,
+    load_prompt_io_adapter,
     read_bound_context_from_session,
     resolve_context_for_prompts_dir,
     resolve_default_negotiation_context,
@@ -604,6 +607,17 @@ def build_executor_messages_from_payload_json(executor_prompt: str, payload_json
     ]
 
 
+def _adapt_payload_json_for_prompt(adapter: PromptIOAdapter, node: Literal["memory", "phase_classifier", "planner", "executor"], payload_json: str) -> str:
+    try:
+        payload_dict = json.loads(payload_json)
+    except Exception:
+        return payload_json
+    if not isinstance(payload_dict, dict):
+        return payload_json
+    adapted = adapter.adapt_input_payload(node, payload_dict)
+    return json.dumps(adapted, ensure_ascii=False, separators=(",", ":"))
+
+
 # ==================================================
 # B) Llamadas a OpenAI
 # ==================================================
@@ -710,6 +724,8 @@ def _call_structured(
     client: openai.OpenAI | None,
     model: str,
     messages: List[dict[str, str]],
+    node_name: Literal["memory", "phase_classifier", "planner", "executor"],
+    prompt_io_adapter: PromptIOAdapter,
     response_model: type[BaseModel],
     reasoning_effort: str,
     request_context: dict[str, str],
@@ -718,6 +734,7 @@ def _call_structured(
     if client is None:
         return StructuredCallResult(parsed_json=None, refusal=None, parse_error=None, exception_error="client_unavailable", response=None, source=StructuredCallSource.fallback, model_called=False, raw_output_text=None)
 
+    schema = prompt_io_adapter.output_schema(node_name, response_model) or response_model.model_json_schema()
     kwargs = {
         "model": model,
         "input": messages,
@@ -725,7 +742,7 @@ def _call_structured(
             "format": {
                 "type": "json_schema",
                 "name": response_model.__name__,
-                "schema": _normalize_schema_for_strict_json_schema(response_model.model_json_schema()),
+                "schema": _normalize_schema_for_strict_json_schema(schema),
                 "strict": True,
             }
         },
@@ -745,7 +762,10 @@ def _call_structured(
 
     output_text = getattr(response, "output_text", "")
     try:
-        parsed_json = json.loads(output_text or "{}")
+        parsed_json_raw = json.loads(output_text or "{}")
+        if not isinstance(parsed_json_raw, dict):
+            raise ValueError("structured_output_not_dict")
+        parsed_json = prompt_io_adapter.normalize_output_payload(node_name, parsed_json_raw)
         response_model.model_validate(parsed_json)
     except Exception as exc:
         return StructuredCallResult(parsed_json=None, refusal=None, parse_error=str(exc), exception_error=None, response=response, source=StructuredCallSource.parse_error, model_called=True, raw_output_text=output_text)
@@ -949,6 +969,7 @@ def _execute_memory_and_phase(
     phase_context_override: dict[str, str] | None = None,
     memory_threading_override: dict[str, object] | None = None,
     phase_threading_override: dict[str, object] | None = None,
+    prompt_io_adapter: PromptIOAdapter | None = None,
 ) -> tuple[StructuredCallResult, int, dict[str, object], StructuredCallResult, int, dict[str, object], dict[str, str]]:
     """Run memory+phase in parallel with explicit per-node threading isolation."""
 
@@ -971,12 +992,16 @@ def _execute_memory_and_phase(
     else:
         phase_context, phase_threading = _node_request_context("phase_classifier", request_context)
 
+    adapter = prompt_io_adapter or PromptIOAdapter.identity()
+
     def _run_memory_call(ctx: dict[str, str]) -> tuple[StructuredCallResult, int]:
         mem_start = time.perf_counter()
         call = _call_structured(
             client,
             config.model_memory,
             memory_messages,
+            "memory",
+            adapter,
             MemoryOutput,
             "low",
             ctx,
@@ -991,6 +1016,8 @@ def _execute_memory_and_phase(
             client,
             config.model_phase_classifier,
             phase_messages,
+            "phase_classifier",
+            adapter,
             PhaseClassifierOutput,
             "low",
             ctx,
@@ -1085,6 +1112,12 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
     user_turn = _build_user_turn(user_message, now_iso)
 
     prompts_dir = Path(config.prompts_dir)
+    resolved_context = resolve_context_for_prompts_dir(prompts_dir)
+    try:
+        prompt_io_adapter = load_prompt_io_adapter(resolved_context.prompt_io_mapping_path if resolved_context is not None else None)
+    except PromptIOMappingError as exc:
+        raise RuntimeError(f"prompt_io_mapping_invalid prompts_dir={prompts_dir} error={exc}") from exc
+
     memory_prompt = _read_text(prompts_dir / "summarizer_prompt.txt", "Identity: memory node\nOutput: MemoryOutput JSON estricto")
     phase_classifier_prompt = _read_text(prompts_dir / "phase_classifier_prompt.txt", "Clasifica la fase conversacional actual y devuelve SOLO current_phase en JSON estricto.")
     planner_prompt = _read_text(prompts_dir / "planner_prompt.txt", "[ROLE] planner\n[CONTRACT] return only PlannerOutput json\n[SUCCESS] strong intent, limits and safety")
@@ -1127,7 +1160,10 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
         memory_frozen = freeze_prompt_artifacts(
             developer_prompt_text=memory_prompt,
             payload=memory_input,
-            render_user_prompt=lambda payload_json: build_memory_messages_from_payload_json(memory_prompt, payload_json)[1]["content"],
+            render_user_prompt=lambda payload_json: build_memory_messages_from_payload_json(
+                memory_prompt,
+                _adapt_payload_json_for_prompt(prompt_io_adapter, "memory", payload_json),
+            )[1]["content"],
             model_target=memory_trace_meta.model_target,
             prompt_version=memory_trace_meta.prompt_version,
             input_schema_version=memory_input.schema_version,
@@ -1138,7 +1174,10 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
         phase_frozen = freeze_prompt_artifacts(
             developer_prompt_text=phase_classifier_prompt,
             payload=phase_input,
-            render_user_prompt=lambda payload_json: build_phase_classifier_messages_from_payload_json(phase_classifier_prompt, payload_json)[1]["content"],
+            render_user_prompt=lambda payload_json: build_phase_classifier_messages_from_payload_json(
+                phase_classifier_prompt,
+                _adapt_payload_json_for_prompt(prompt_io_adapter, "phase_classifier", payload_json),
+            )[1]["content"],
             model_target=phase_trace_meta.model_target,
             prompt_version=phase_trace_meta.prompt_version,
             input_schema_version=phase_input.schema_version,
@@ -1158,6 +1197,7 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
             phase_context_override=phase_context,
             memory_threading_override=memory_threading,
             phase_threading_override=phase_threading,
+            prompt_io_adapter=prompt_io_adapter,
         )
         if len(memory_phase_result) == 7:
             mem_call, mem_latency, mem_threading, phase_call, phase_latency, phase_threading, request_context = memory_phase_result
@@ -1179,7 +1219,10 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
         planner_frozen = freeze_prompt_artifacts(
             developer_prompt_text=planner_prompt,
             payload=planner_input,
-            render_user_prompt=lambda payload_json: build_planner_messages_from_payload_json(planner_prompt, payload_json)[1]["content"],
+            render_user_prompt=lambda payload_json: build_planner_messages_from_payload_json(
+                planner_prompt,
+                _adapt_payload_json_for_prompt(prompt_io_adapter, "planner", payload_json),
+            )[1]["content"],
             model_target=planner_trace_meta.model_target,
             prompt_version=planner_trace_meta.prompt_version,
             input_schema_version=planner_input.schema_version,
@@ -1187,7 +1230,17 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
             threading_info=planner_threading,
         )
         plan_start = time.perf_counter()
-        planner_call = _call_structured(client, config.model_planner, planner_frozen.messages, PlannerOutput, config.reasoning_effort_planner, planner_request_context, config.planner_store)
+        planner_call = _call_structured(
+            client,
+            config.model_planner,
+            planner_frozen.messages,
+            "planner",
+            prompt_io_adapter,
+            PlannerOutput,
+            config.reasoning_effort_planner,
+            planner_request_context,
+            config.planner_store,
+        )
         planner_output = _planner_fallback()
         if planner_call.source == StructuredCallSource.model and planner_call.parsed_json is not None:
             planner_output = PlannerOutput.model_validate(planner_call.parsed_json)
@@ -1206,7 +1259,10 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
         executor_frozen = freeze_prompt_artifacts(
             developer_prompt_text=executor_prompt,
             payload=executor_input,
-            render_user_prompt=lambda payload_json: build_executor_messages_from_payload_json(executor_prompt, payload_json)[1]["content"],
+            render_user_prompt=lambda payload_json: build_executor_messages_from_payload_json(
+                executor_prompt,
+                _adapt_payload_json_for_prompt(prompt_io_adapter, "executor", payload_json),
+            )[1]["content"],
             model_target=executor_trace_meta.model_target,
             prompt_version=executor_trace_meta.prompt_version,
             input_schema_version=executor_input.schema_version,
@@ -1214,7 +1270,17 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
             threading_info=executor_threading,
         )
         exe_start = time.perf_counter()
-        executor_call = _call_structured(client, config.model_executor, executor_frozen.messages, ExecutorOutput, "low", executor_request_context, config.executor_store)
+        executor_call = _call_structured(
+            client,
+            config.model_executor,
+            executor_frozen.messages,
+            "executor",
+            prompt_io_adapter,
+            ExecutorOutput,
+            "low",
+            executor_request_context,
+            config.executor_store,
+        )
         executor_output = _executor_fallback(planner_output)
         if executor_call.source == StructuredCallSource.model and executor_call.parsed_json is not None:
             executor_output = ExecutorOutput.model_validate(executor_call.parsed_json)

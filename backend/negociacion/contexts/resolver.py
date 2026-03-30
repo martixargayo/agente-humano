@@ -111,6 +111,7 @@ def _build_official_context(candidate_dir: Path, manifest_path: Path) -> Resolve
         negotiation_brief_path=required_paths['negotiation_brief_path'],
         phase_cards_path=required_paths['phase_cards_path'],
         phase_classifier_card_path=required_paths['phase_classifier_card_path'],
+        prompt_io_mapping_path=(candidate_dir / 'prompt_io_mapping.json') if (candidate_dir / 'prompt_io_mapping.json').exists() else None,
         resolution_source='official_context',
     )
 
@@ -128,6 +129,7 @@ def _build_legacy_fallback_context() -> ResolvedNegotiationContext:
         negotiation_brief_path=_LEGACY_PROMPTS_DIR / 'negotiation_brief.json',
         phase_cards_path=_LEGACY_PROMPTS_DIR / 'phase_cards.json',
         phase_classifier_card_path=_LEGACY_PROMPTS_DIR / 'phase_classifier_card.json',
+        prompt_io_mapping_path=None,
         resolution_source='legacy_fallback',
     )
 
