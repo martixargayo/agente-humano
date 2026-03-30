@@ -131,7 +131,7 @@ class PromptIOAdapter:
             return self._adapt_input_payload_v2(node, payload)
 
         node_cfg = self.config.nodes.get(node)
-        if node_cfg is None:
+        if node_cfg is None or not isinstance(node_cfg, NodePromptIOMapping):
             return payload
 
         adapted: dict[str, Any] = {}
@@ -148,7 +148,7 @@ class PromptIOAdapter:
             return self._normalize_output_payload_v2(node, payload)
 
         node_cfg = self.config.nodes.get(node)
-        if node_cfg is None:
+        if node_cfg is None or not isinstance(node_cfg, NodePromptIOMapping):
             return payload
 
         visible_to_canonical = _visible_to_canonical_output_map(node_cfg)
@@ -163,7 +163,7 @@ class PromptIOAdapter:
             return self._output_schema_v2(node, response_model)
 
         node_cfg = self.config.nodes.get(node)
-        if node_cfg is None:
+        if node_cfg is None or not isinstance(node_cfg, NodePromptIOMapping):
             return None
 
         schema = response_model.model_json_schema()
@@ -454,6 +454,13 @@ def _transform_schema_object_canonical_to_visible(
 
     def _walk(node: dict[str, Any], current_path: str) -> dict[str, Any]:
         target = _schema_deref(node, cloned)
+
+        if _schema_is_array(target):
+            items = target.get("items")
+            if isinstance(items, dict):
+                _walk(items, f"{current_path}[]")
+            return node
+
         properties = target.get("properties")
         if not isinstance(properties, dict):
             return node

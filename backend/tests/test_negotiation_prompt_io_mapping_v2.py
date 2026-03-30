@@ -119,6 +119,39 @@ class PromptIOMappingV2Tests(unittest.TestCase):
         )
         self.assertEqual(normalized["negotiation_state"]["active_axes"], ["price"])
 
+
+    def test_v2_output_schema_renames_nested_fields_inside_array_items(self) -> None:
+        from negociacion.nodes.memory_node import MemoryOutput
+
+        path = self._write_mapping(
+            {
+                "schema_version": "prompt_io_mapping.v2",
+                "nodes": {
+                    "memory": {
+                        "outputs": {
+                            "episodic_append[].event_summary": {"rename": "fact_summary"}
+                        }
+                    }
+                },
+            }
+        )
+        adapter = load_prompt_io_adapter(path)
+        schema = adapter.output_schema("memory", MemoryOutput)
+        assert schema is not None
+
+        episodic = schema["properties"]["episodic_append"]
+        items = episodic["items"]
+        if "$ref" in items:
+            ref = items["$ref"].split("#/")[-1].split("/")
+            resolved = schema
+            for part in ref:
+                resolved = resolved[part]
+            item_props = resolved["properties"]
+        else:
+            item_props = items["properties"]
+        self.assertIn("fact_summary", item_props)
+        self.assertNotIn("event_summary", item_props)
+
     def test_v2_error_on_hiding_required_nested_output(self) -> None:
         path = self._write_mapping(
             {
