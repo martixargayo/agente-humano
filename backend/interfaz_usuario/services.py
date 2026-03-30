@@ -285,6 +285,20 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
             },
             headers={"Retry-After": str(exc.retry_after_seconds)},
         ) from exc
+    except Exception as exc:
+        logger.exception(
+            "interfaz_usuario_turn_failed session=%s message_len=%s new_conversation=%s",
+            f"{user_id}:{session_id}",
+            len(message or ""),
+            new_conversation,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "turn_execution_failed",
+                "message": "No se pudo procesar el turno en este momento. Inténtalo de nuevo.",
+            },
+        ) from exc
 
     canonical = state.world_state.get("negotiation_canonical", {}) if isinstance(state.world_state, dict) else {}
     ui_state = canonical.get("ui_state", {}) if isinstance(canonical, dict) else {}
