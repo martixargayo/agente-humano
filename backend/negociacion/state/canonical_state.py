@@ -276,9 +276,12 @@ def _normalize_negotiation_brief_payload(payload: dict[str, object]) -> dict[str
     ):
         objective = dict(normalized["objetivo_y_marco_de_decision"])
         fallback = objective.get("si_asume_la_franja_menos_comoda")
+        if not isinstance(fallback, str):
+            fallback = objective.get("regla_de_la_franja_tardia")
         if isinstance(fallback, str):
             objective["por_encima_de_eso"] = fallback
             objective.pop("si_asume_la_franja_menos_comoda", None)
+            objective.pop("regla_de_la_franja_tardia", None)
             normalized["objetivo_y_marco_de_decision"] = objective
 
     if "monedas_de_intercambio_del_comprador" not in normalized and isinstance(
@@ -303,8 +306,14 @@ def _normalize_negotiation_brief_payload(payload: dict[str, object]) -> dict[str
             normalized["mapa_de_valor"] = value_map
 
     normalized.pop("contexto_del_recurso", None)
+    normalized.pop("condiciones_iniciales_de_la_negociacion", None)
     normalized.pop("restricciones_duras", None)
     normalized.pop("monedas_de_intercambio_del_equipo_b", None)
+    normalized.pop("naturaleza_del_caso", None)
+    normalized.pop("marco_relacional_inicial", None)
+    normalized.pop("situacion_inicial_de_informacion", None)
+    normalized.pop("realidad_operativa_del_equipo_b", None)
+    normalized.pop("filosofia_del_caso", None)
     return normalized
 
 
