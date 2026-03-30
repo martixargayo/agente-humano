@@ -1,382 +1,265 @@
 {
-  "schema_version": "prompt_io_mapping.v1",
+  "schema_version": "prompt_io_mapping.v2",
   "nodes": {
     "memory": {
       "inputs": {
-        "schema_version": { "hide": true },
-        "task_contract": { "hide": true },
-        "trace_meta": { "hide": true },
-
-        "user_turn": { "rename": "counterpart_current_turn" },
+        "task_contract": { "rename": "node_task_contract" },
+        "user_turn": { "rename": "current_other_turn" },
         "user_turn.raw_text": { "rename": "raw_message" },
         "user_turn.normalized_text": { "rename": "normalized_message" },
-
-        "recent_dialogue_short": { "rename": "recent_conversation" },
-        "memory_working_current": { "rename": "current_conversation_state" },
+        "recent_dialogue_short": { "rename": "recent_dialogue" },
+        "recent_dialogue_short[].text": { "rename": "utterance" },
+        "memory_working_current": { "rename": "live_conversation_state" },
         "memory_working_current.current_topic": { "rename": "current_focus" },
         "memory_working_current.pending_question": { "rename": "open_question" },
-        "memory_working_current.last_turn_summary": { "rename": "last_turn_summary" },
-
-        "recent_memory_episodic_short": { "rename": "recent_reusable_facts" },
-
+        "memory_working_current.last_turn_summary": { "rename": "latest_turn_summary" },
         "scene_state": { "rename": "current_scene" },
-        "scene_state.copresent": { "rename": "present_together" },
-        "scene_state.encounter_in_progress": { "rename": "current_meeting_in_progress" },
-        "scene_state.conversation_only": { "rename": "conversation_only_channel" }
+        "recent_memory_episodic_short": { "rename": "recent_durable_memory" },
+        "recent_memory_episodic_short[].event_type": { "rename": "memory_event_type" },
+        "recent_memory_episodic_short[].event_summary": { "rename": "memory_event_summary" },
+        "recent_memory_episodic_short[].turn_id": { "rename": "source_turn_id" },
+        "trace_meta": { "hide": true }
       },
       "outputs": {
-        "schema_version": { "hide": true },
+        "episodic_append": { "rename": "durable_memory_updates" },
+        "episodic_append[].event_type": { "rename": "memory_event_type" },
+        "episodic_append[].event_summary": { "rename": "memory_event_summary" },
+        "episodic_append[].turn_id": { "rename": "source_turn_id" },
 
-        "episodic_append": { "rename": "new_reusable_facts" },
-        "episodic_append.event_type": {
-          "rename": "fact_type",
-          "value_aliases": {
-            "offer": "proposal",
-            "commitment": "commitment",
-            "blocker": "constraint",
-            "avoidance": "avoidance",
-            "important_fact": "important_fact",
-            "topic_closure": "topic_closed"
-          }
-        },
-        "episodic_append.event_summary": { "rename": "fact_summary" },
-        "episodic_append.turn_id": { "hide": true },
-
-        "working_memory_new": { "rename": "updated_conversation_state" },
+        "working_memory_new": { "rename": "updated_live_conversation_state" },
         "working_memory_new.current_topic": { "rename": "current_focus" },
         "working_memory_new.pending_question": { "rename": "open_question" },
-        "working_memory_new.last_turn_summary": { "rename": "last_turn_summary" },
+        "working_memory_new.last_turn_summary": { "rename": "latest_turn_summary" },
 
-        "negotiation_state": { "rename": "current_room_coordination_state" },
-        "negotiation_state.status": {
-          "rename": "coordination_status",
-          "value_aliases": {
-            "tentative_agreement": "tentative_alignment"
-          }
-        },
-        "negotiation_state.active_axes": {
-          "rename": "active_coordination_axes",
-          "value_aliases": {
-            "price": "time_allocation",
-            "extras": "operational_support",
-            "paperwork": "coordination_details",
-            "closing_timing": "time_window",
-            "transfer_costs": "handover_load",
-            "delivery": "room_handover",
-            "risk": "execution_risk",
-            "warranty": "reliability_cover"
-          }
-        },
+        "negotiation_state": { "rename": "live_room_negotiation_state" },
+        "negotiation_state.status": { "rename": "room_allocation_status" },
+        "negotiation_state.active_axes": { "rename": "active_negotiation_axes" },
+        "negotiation_state.last_offer_self": { "rename": "latest_team_b_proposal" },
+        "negotiation_state.last_offer_other": { "rename": "latest_other_team_proposal" },
+        "negotiation_state.tentative_agreement": { "rename": "tentative_room_plan" },
+        "negotiation_state.stall_state": { "rename": "stalemate_state" },
+        "negotiation_state.blockers": { "rename": "active_constraints" },
+        "negotiation_state.next_open_loop": { "rename": "next_open_issue" },
 
-        "negotiation_state.last_offer_self": { "rename": "latest_diego_proposal" },
-        "negotiation_state.last_offer_other": { "rename": "latest_counterpart_proposal" },
+        "negotiation_state.last_offer_self.summary": { "rename": "proposal_summary" },
+        "negotiation_state.last_offer_self.price_amount": { "rename": "allocation_amount" },
+        "negotiation_state.last_offer_self.currency": { "rename": "allocation_unit" },
+        "negotiation_state.last_offer_self.extras": { "rename": "added_terms" },
+        "negotiation_state.last_offer_self.conditions": { "rename": "operating_conditions" },
+        "negotiation_state.last_offer_self.is_currently_active": { "rename": "currently_active" },
+        "negotiation_state.last_offer_self.source_turn_role": { "rename": "source_role" },
 
-        "negotiation_state.last_offer_self.summary": { "rename": "arrangement_summary" },
-        "negotiation_state.last_offer_other.summary": { "rename": "arrangement_summary" },
+        "negotiation_state.last_offer_other.summary": { "rename": "proposal_summary" },
+        "negotiation_state.last_offer_other.price_amount": { "rename": "allocation_amount" },
+        "negotiation_state.last_offer_other.currency": { "rename": "allocation_unit" },
+        "negotiation_state.last_offer_other.extras": { "rename": "added_terms" },
+        "negotiation_state.last_offer_other.conditions": { "rename": "operating_conditions" },
+        "negotiation_state.last_offer_other.is_currently_active": { "rename": "currently_active" },
+        "negotiation_state.last_offer_other.source_turn_role": { "rename": "source_role" },
 
-        "negotiation_state.last_offer_self.price_amount": { "rename": "time_amount" },
-        "negotiation_state.last_offer_other.price_amount": { "rename": "time_amount" },
+        "negotiation_state.tentative_agreement.summary": { "rename": "plan_summary" },
+        "negotiation_state.tentative_agreement.price_amount": { "rename": "allocation_amount" },
+        "negotiation_state.tentative_agreement.currency": { "rename": "allocation_unit" },
+        "negotiation_state.tentative_agreement.extras": { "rename": "added_terms" },
+        "negotiation_state.tentative_agreement.conditions": { "rename": "operating_conditions" },
 
-        "negotiation_state.last_offer_self.currency": { "hide": true },
-        "negotiation_state.last_offer_other.currency": { "hide": true },
-
-        "negotiation_state.last_offer_self.extras": { "rename": "additional_support" },
-        "negotiation_state.last_offer_other.extras": { "rename": "additional_support" },
-
-        "negotiation_state.last_offer_self.conditions": { "rename": "coordination_conditions" },
-        "negotiation_state.last_offer_other.conditions": { "rename": "coordination_conditions" },
-
-        "negotiation_state.last_offer_self.is_currently_active": { "rename": "still_active" },
-        "negotiation_state.last_offer_other.is_currently_active": { "rename": "still_active" },
-
-        "negotiation_state.last_offer_self.source_turn_role": { "rename": "source_side" },
-        "negotiation_state.last_offer_other.source_turn_role": { "rename": "source_side" },
-
-        "negotiation_state.tentative_agreement": { "rename": "tentative_alignment" },
-        "negotiation_state.tentative_agreement.summary": { "rename": "alignment_summary" },
-        "negotiation_state.tentative_agreement.price_amount": { "rename": "time_amount" },
-        "negotiation_state.tentative_agreement.currency": { "hide": true },
-        "negotiation_state.tentative_agreement.extras": { "rename": "additional_support" },
-        "negotiation_state.tentative_agreement.conditions": { "rename": "coordination_conditions" },
-
-        "negotiation_state.stall_state": { "rename": "stall_state" },
-        "negotiation_state.stall_state.is_hard_stalemate": { "rename": "is_hard_deadlock" },
-        "negotiation_state.stall_state.stalemate_reason": { "rename": "deadlock_reason" },
+        "negotiation_state.stall_state.is_hard_stalemate": { "rename": "hard_stalemate" },
+        "negotiation_state.stall_state.stalemate_reason": { "rename": "stalemate_reason" },
         "negotiation_state.stall_state.self_ultimatum_active": { "rename": "final_position_active" },
-        "negotiation_state.stall_state.self_ultimatum_summary": { "rename": "final_position_summary" },
-
-        "negotiation_state.blockers": { "rename": "operational_constraints" },
-        "negotiation_state.next_open_loop": { "rename": "next_open_coordination_point" }
+        "negotiation_state.stall_state.self_ultimatum_summary": { "rename": "final_position_summary" }
       }
     },
 
     "phase_classifier": {
       "inputs": {
-        "schema_version": { "hide": true },
-        "task_contract": { "hide": true },
-        "trace_meta": { "hide": true },
+        "task_contract": { "rename": "node_task_contract" },
+        "previous_phase": { "rename": "previous_phase" },
+        "recent_phase_history": { "rename": "recent_phase_history" },
+        "phase_classifier_card": { "rename": "phase_classification_guide" },
+        "phase_classifier_card.phase_classifier_card": { "rename": "guide" },
         "phase_classifier_card_source": { "hide": true },
-
-        "previous_phase": {
-          "rename": "previous_phase",
-          "value_aliases": {
-            "clima_humano": "human_opening",
-            "descubrimiento_y_comprension": "needs_discovery",
-            "propuesta_creativa": "first_structuring_proposal",
-            "concesiones_y_ajuste_final": "final_alignment",
-            "formalizacion_del_acuerdo": "agreement_confirmation",
-            "abandono_de_la_negociacion": "no_agreement_exit"
-          }
-        },
-
-        "recent_phase_history": {
-          "rename": "recent_phase_history",
-          "value_aliases": {
-            "clima_humano": "human_opening",
-            "descubrimiento_y_comprension": "needs_discovery",
-            "propuesta_creativa": "first_structuring_proposal",
-            "concesiones_y_ajuste_final": "final_alignment",
-            "formalizacion_del_acuerdo": "agreement_confirmation",
-            "abandono_de_la_negociacion": "no_agreement_exit"
-          }
-        },
-
-        "phase_classifier_card": { "rename": "phase_rules_for_this_context" },
-        "recent_turns": { "rename": "recent_turns" },
-
-        "current_user_turn": { "rename": "counterpart_current_turn" },
+        "recent_turns": { "rename": "recent_dialogue_window" },
+        "recent_turns[].text": { "rename": "utterance" },
+        "current_user_turn": { "rename": "current_other_turn" },
         "current_user_turn.raw_text": { "rename": "raw_message" },
         "current_user_turn.normalized_text": { "rename": "normalized_message" },
-
         "scene_state": { "rename": "current_scene" },
-        "scene_state.copresent": { "rename": "present_together" },
-        "scene_state.encounter_in_progress": { "rename": "current_meeting_in_progress" },
-        "scene_state.conversation_only": { "rename": "conversation_only_channel" }
+        "trace_meta": { "hide": true }
       },
       "outputs": {
-        "schema_version": { "hide": true },
-        "current_phase": {
-          "rename": "current_phase",
-          "value_aliases": {
-            "clima_humano": "human_opening",
-            "descubrimiento_y_comprension": "needs_discovery",
-            "propuesta_creativa": "first_structuring_proposal",
-            "concesiones_y_ajuste_final": "final_alignment",
-            "formalizacion_del_acuerdo": "agreement_confirmation",
-            "abandono_de_la_negociacion": "no_agreement_exit"
-          }
-        }
+        "current_phase": { "rename": "conversation_phase" }
       }
     },
 
     "planner": {
       "inputs": {
-        "schema_version": { "hide": true },
-        "task_contract": { "hide": true },
-        "trace_meta": { "hide": true },
-        "selected_memory": { "hide": true },
+        "task_contract": { "rename": "node_task_contract" },
 
-        "persona_policy": { "rename": "diego_private_operating_guidelines" },
-        "negotiation_brief": { "rename": "room_coordination_private_context" },
+        "persona_policy": { "rename": "diego_private_role" },
+        "persona_policy.identidad_operativa": { "rename": "operating_identity" },
+        "persona_policy.objetivo_privado": { "rename": "private_goal" },
+        "persona_policy.criterio_de_decision": { "rename": "decision_criteria" },
+        "persona_policy.disciplina_negociadora": { "rename": "negotiation_discipline" },
+        "persona_policy.limites_privados": { "rename": "private_limits" },
+        "persona_policy.principios_de_avance": { "rename": "progress_principles" },
 
-        "current_phase": {
-          "rename": "current_phase",
-          "value_aliases": {
-            "clima_humano": "human_opening",
-            "descubrimiento_y_comprension": "needs_discovery",
-            "propuesta_creativa": "first_structuring_proposal",
-            "concesiones_y_ajuste_final": "final_alignment",
-            "formalizacion_del_acuerdo": "agreement_confirmation",
-            "abandono_de_la_negociacion": "no_agreement_exit"
-          }
-        },
+        "negotiation_brief": { "rename": "case_private_context" },
+        "negotiation_brief.contexto_de_mercado": { "rename": "resource_context" },
+        "negotiation_brief.contexto_de_mercado.valor_estimado": { "rename": "estimated_availability" },
+        "negotiation_brief.contexto_de_mercado.lectura": { "rename": "interpretation" },
 
-        "phase_card": { "rename": "current_phase_guidance" },
-        "phase_card.phase": {
-          "rename": "phase_name",
-          "value_aliases": {
-            "clima_humano": "human_opening",
-            "descubrimiento_y_comprension": "needs_discovery",
-            "propuesta_creativa": "first_structuring_proposal",
-            "concesiones_y_ajuste_final": "final_alignment",
-            "formalizacion_del_acuerdo": "agreement_confirmation",
-            "abandono_de_la_negociacion": "no_agreement_exit"
-          }
-        },
+        "negotiation_brief.restricciones": { "rename": "constraints" },
+        "negotiation_brief.restricciones.resumen": { "rename": "summary" },
+        "negotiation_brief.restricciones.lectura": { "rename": "interpretation" },
 
-        "user_turn": { "rename": "counterpart_current_turn" },
+        "negotiation_brief.realidad_de_la_alternativa": { "rename": "fallback_reality" },
+        "negotiation_brief.realidad_de_la_alternativa.resumen": { "rename": "summary" },
+        "negotiation_brief.realidad_de_la_alternativa.detalle": { "rename": "detail" },
+        "negotiation_brief.realidad_de_la_alternativa.coste_equivalente_aproximado": { "rename": "approx_equivalent_cost" },
+        "negotiation_brief.realidad_de_la_alternativa.lectura": { "rename": "interpretation" },
+
+        "negotiation_brief.objetivo_y_marco_de_decision": { "rename": "goal_and_decision_frame" },
+        "negotiation_brief.objetivo_y_marco_de_decision.objetivo": { "rename": "goal" },
+        "negotiation_brief.objetivo_y_marco_de_decision.realismo": { "rename": "realism" },
+        "negotiation_brief.objetivo_y_marco_de_decision.criterio": { "rename": "decision_rule" },
+        "negotiation_brief.objetivo_y_marco_de_decision.por_encima_de_eso": { "rename": "beyond_that" },
+
+        "negotiation_brief.mapa_de_valor": { "rename": "value_map" },
+        "negotiation_brief.mapa_de_valor.nota": { "rename": "note" },
+        "negotiation_brief.mapa_de_valor.items": { "rename": "items" },
+        "negotiation_brief.mapa_de_valor.items[].elemento": { "rename": "element" },
+        "negotiation_brief.mapa_de_valor.items[].valor_aproximado_eur": { "rename": "approx_value" },
+        "negotiation_brief.mapa_de_valor.items[].tipo_de_efecto": { "rename": "effect_type" },
+        "negotiation_brief.mapa_de_valor.items[].lectura": { "rename": "interpretation" },
+
+        "negotiation_brief.monedas_de_intercambio_del_comprador": { "rename": "available_team_b_tradeoffs" },
+        "negotiation_brief.monedas_de_intercambio_del_comprador.puede_ofrecer": { "rename": "can_offer" },
+        "negotiation_brief.monedas_de_intercambio_del_comprador.puede_ofrecer[].elemento": { "rename": "element" },
+        "negotiation_brief.monedas_de_intercambio_del_comprador.puede_ofrecer[].uso": { "rename": "use_case" },
+
+        "negotiation_brief.informacion_privada_sensible": { "rename": "sensitive_private_information" },
+        "negotiation_brief.informacion_privada_sensible.no_conviene_revelar_espontaneamente": { "rename": "do_not_reveal_spontaneously" },
+        "negotiation_brief.informacion_privada_sensible.lectura": { "rename": "interpretation" },
+
+        "current_phase": { "rename": "conversation_phase" },
+        "phase_card": { "rename": "current_phase_guide" },
+
+        "user_turn": { "rename": "current_other_turn" },
         "user_turn.raw_text": { "rename": "raw_message" },
         "user_turn.normalized_text": { "rename": "normalized_message" },
 
-        "recent_dialogue_short": { "rename": "recent_conversation" },
+        "recent_dialogue_short": { "rename": "recent_dialogue" },
+        "recent_dialogue_short[].text": { "rename": "utterance" },
 
-        "memory_working": { "rename": "current_conversation_state" },
+        "memory_working": { "rename": "live_conversation_state" },
         "memory_working.current_topic": { "rename": "current_focus" },
         "memory_working.pending_question": { "rename": "open_question" },
-        "memory_working.last_turn_summary": { "rename": "last_turn_summary" },
+        "memory_working.last_turn_summary": { "rename": "latest_turn_summary" },
 
-        "negotiation_state": { "rename": "current_room_coordination_state" },
-        "negotiation_state.status": {
-          "rename": "coordination_status",
-          "value_aliases": {
-            "tentative_agreement": "tentative_alignment"
-          }
-        },
-        "negotiation_state.active_axes": {
-          "rename": "active_coordination_axes",
-          "value_aliases": {
-            "price": "time_allocation",
-            "extras": "operational_support",
-            "paperwork": "coordination_details",
-            "closing_timing": "time_window",
-            "transfer_costs": "handover_load",
-            "delivery": "room_handover",
-            "risk": "execution_risk",
-            "warranty": "reliability_cover"
-          }
-        },
-        "negotiation_state.last_offer_self": { "rename": "latest_diego_proposal" },
-        "negotiation_state.last_offer_other": { "rename": "latest_counterpart_proposal" },
-        "negotiation_state.last_offer_self.summary": { "rename": "arrangement_summary" },
-        "negotiation_state.last_offer_other.summary": { "rename": "arrangement_summary" },
-        "negotiation_state.last_offer_self.price_amount": { "rename": "time_amount" },
-        "negotiation_state.last_offer_other.price_amount": { "rename": "time_amount" },
-        "negotiation_state.last_offer_self.currency": { "hide": true },
-        "negotiation_state.last_offer_other.currency": { "hide": true },
-        "negotiation_state.last_offer_self.extras": { "rename": "additional_support" },
-        "negotiation_state.last_offer_other.extras": { "rename": "additional_support" },
-        "negotiation_state.last_offer_self.conditions": { "rename": "coordination_conditions" },
-        "negotiation_state.last_offer_other.conditions": { "rename": "coordination_conditions" },
-        "negotiation_state.tentative_agreement": { "rename": "tentative_alignment" },
-        "negotiation_state.tentative_agreement.summary": { "rename": "alignment_summary" },
-        "negotiation_state.tentative_agreement.price_amount": { "rename": "time_amount" },
-        "negotiation_state.tentative_agreement.currency": { "hide": true },
-        "negotiation_state.tentative_agreement.extras": { "rename": "additional_support" },
-        "negotiation_state.tentative_agreement.conditions": { "rename": "coordination_conditions" },
-        "negotiation_state.stall_state": { "rename": "stall_state" },
-        "negotiation_state.stall_state.is_hard_stalemate": { "rename": "is_hard_deadlock" },
-        "negotiation_state.stall_state.stalemate_reason": { "rename": "deadlock_reason" },
+        "negotiation_state": { "rename": "live_room_negotiation_state" },
+        "negotiation_state.status": { "rename": "room_allocation_status" },
+        "negotiation_state.active_axes": { "rename": "active_negotiation_axes" },
+        "negotiation_state.last_offer_self": { "rename": "latest_team_b_proposal" },
+        "negotiation_state.last_offer_other": { "rename": "latest_other_team_proposal" },
+        "negotiation_state.tentative_agreement": { "rename": "tentative_room_plan" },
+        "negotiation_state.stall_state": { "rename": "stalemate_state" },
+        "negotiation_state.blockers": { "rename": "active_constraints" },
+        "negotiation_state.next_open_loop": { "rename": "next_open_issue" },
+
+        "negotiation_state.last_offer_self.summary": { "rename": "proposal_summary" },
+        "negotiation_state.last_offer_self.price_amount": { "rename": "allocation_amount" },
+        "negotiation_state.last_offer_self.currency": { "rename": "allocation_unit" },
+        "negotiation_state.last_offer_self.extras": { "rename": "added_terms" },
+        "negotiation_state.last_offer_self.conditions": { "rename": "operating_conditions" },
+        "negotiation_state.last_offer_self.is_currently_active": { "rename": "currently_active" },
+        "negotiation_state.last_offer_self.source_turn_role": { "rename": "source_role" },
+
+        "negotiation_state.last_offer_other.summary": { "rename": "proposal_summary" },
+        "negotiation_state.last_offer_other.price_amount": { "rename": "allocation_amount" },
+        "negotiation_state.last_offer_other.currency": { "rename": "allocation_unit" },
+        "negotiation_state.last_offer_other.extras": { "rename": "added_terms" },
+        "negotiation_state.last_offer_other.conditions": { "rename": "operating_conditions" },
+        "negotiation_state.last_offer_other.is_currently_active": { "rename": "currently_active" },
+        "negotiation_state.last_offer_other.source_turn_role": { "rename": "source_role" },
+
+        "negotiation_state.tentative_agreement.summary": { "rename": "plan_summary" },
+        "negotiation_state.tentative_agreement.price_amount": { "rename": "allocation_amount" },
+        "negotiation_state.tentative_agreement.currency": { "rename": "allocation_unit" },
+        "negotiation_state.tentative_agreement.extras": { "rename": "added_terms" },
+        "negotiation_state.tentative_agreement.conditions": { "rename": "operating_conditions" },
+
+        "negotiation_state.stall_state.is_hard_stalemate": { "rename": "hard_stalemate" },
+        "negotiation_state.stall_state.stalemate_reason": { "rename": "stalemate_reason" },
         "negotiation_state.stall_state.self_ultimatum_active": { "rename": "final_position_active" },
         "negotiation_state.stall_state.self_ultimatum_summary": { "rename": "final_position_summary" },
-        "negotiation_state.blockers": { "rename": "operational_constraints" },
-        "negotiation_state.next_open_loop": { "rename": "next_open_coordination_point" },
 
-        "planner_state": { "rename": "conversation_planning_state" },
-        "planner_state.current_phase": {
-          "rename": "current_phase",
-          "value_aliases": {
-            "clima_humano": "human_opening",
-            "descubrimiento_y_comprension": "needs_discovery",
-            "propuesta_creativa": "first_structuring_proposal",
-            "concesiones_y_ajuste_final": "final_alignment",
-            "formalizacion_del_acuerdo": "agreement_confirmation",
-            "abandono_de_la_negociacion": "no_agreement_exit"
-          }
-        },
-        "planner_state.previous_phase": {
-          "rename": "previous_phase",
-          "value_aliases": {
-            "clima_humano": "human_opening",
-            "descubrimiento_y_comprension": "needs_discovery",
-            "propuesta_creativa": "first_structuring_proposal",
-            "concesiones_y_ajuste_final": "final_alignment",
-            "formalizacion_del_acuerdo": "agreement_confirmation",
-            "abandono_de_la_negociacion": "no_agreement_exit"
-          }
-        },
-        "planner_state.recent_phase_history": {
-          "rename": "recent_phase_history",
-          "value_aliases": {
-            "clima_humano": "human_opening",
-            "descubrimiento_y_comprension": "needs_discovery",
-            "propuesta_creativa": "first_structuring_proposal",
-            "concesiones_y_ajuste_final": "final_alignment",
-            "formalizacion_del_acuerdo": "agreement_confirmation",
-            "abandono_de_la_negociacion": "no_agreement_exit"
-          }
-        },
+        "planner_state": { "rename": "planning_state_snapshot" },
+        "planner_state.current_phase": { "rename": "current_phase" },
+        "planner_state.previous_phase": { "rename": "previous_phase" },
+        "planner_state.current_turn_goal": { "rename": "current_turn_goal" },
+        "planner_state.topics_touched_current_phase": { "rename": "topics_touched_in_current_phase" },
+        "planner_state.topics_touched_previous_phases": { "rename": "topics_touched_in_previous_phases" },
+        "planner_state.recent_phase_history": { "rename": "recent_phase_history" },
 
         "scene_state": { "rename": "current_scene" },
-        "scene_state.copresent": { "rename": "present_together" },
-        "scene_state.encounter_in_progress": { "rename": "current_meeting_in_progress" },
-        "scene_state.conversation_only": { "rename": "conversation_only_channel" }
+
+        "selected_memory": { "hide": true },
+        "trace_meta": { "hide": true }
       },
       "outputs": {
-        "schema_version": { "hide": true },
-
         "status": { "rename": "plan_status" },
-        "turn_goal": { "rename": "turn_objective" },
-        "decision": { "rename": "tactical_decision" },
-        "content_plan": { "rename": "response_content_plan" },
+        "turn_goal": { "output_alias": "next_turn_goal" },
+        "decision": { "output_alias": "next_move" },
+        "content_plan": { "rename": "response_plan" },
         "limits": { "rename": "response_limits" },
-        "memory_targets": { "rename": "memory_targets" },
-        "done_criteria": { "rename": "success_conditions" }
+        "memory_targets": { "rename": "memory_focus_targets" },
+        "done_criteria": { "rename": "completion_signals" }
       }
     },
 
     "executor": {
       "inputs": {
-        "schema_version": { "hide": true },
-        "task_contract": { "hide": true },
-        "trace_meta": { "hide": true },
+        "task_contract": { "rename": "node_task_contract" },
 
-        "persona_expressive": { "rename": "diego_speaking_style" },
+        "persona_expressive": { "rename": "diego_voice_profile" },
+        "persona_expressive.identidad_en_escena": { "rename": "scene_identity" },
+        "persona_expressive.marco_conversacional": { "rename": "conversation_frame" },
+        "persona_expressive.voz_y_estilo": { "rename": "voice_and_style" },
+        "persona_expressive.naturalidad": { "rename": "naturalness" },
+        "persona_expressive.huella_conversacional": { "rename": "conversational_signature" },
 
-        "current_phase": {
-          "rename": "current_phase",
-          "value_aliases": {
-            "clima_humano": "human_opening",
-            "descubrimiento_y_comprension": "needs_discovery",
-            "propuesta_creativa": "first_structuring_proposal",
-            "concesiones_y_ajuste_final": "final_alignment",
-            "formalizacion_del_acuerdo": "agreement_confirmation",
-            "abandono_de_la_negociacion": "no_agreement_exit"
-          }
-        },
+        "current_phase": { "rename": "conversation_phase" },
+        "phase_card": { "rename": "current_phase_guide" },
 
-        "phase_card": { "rename": "current_phase_guidance" },
-        "phase_card.phase": {
-          "rename": "phase_name",
-          "value_aliases": {
-            "clima_humano": "human_opening",
-            "descubrimiento_y_comprension": "needs_discovery",
-            "propuesta_creativa": "first_structuring_proposal",
-            "concesiones_y_ajuste_final": "final_alignment",
-            "formalizacion_del_acuerdo": "agreement_confirmation",
-            "abandono_de_la_negociacion": "no_agreement_exit"
-          }
-        },
-
-        "user_turn": { "rename": "counterpart_current_turn" },
+        "user_turn": { "rename": "current_other_turn" },
         "user_turn.raw_text": { "rename": "raw_message" },
         "user_turn.normalized_text": { "rename": "normalized_message" },
 
-        "recent_dialogue_short": { "rename": "recent_conversation" },
+        "recent_dialogue_short": { "rename": "recent_dialogue" },
+        "recent_dialogue_short[].text": { "rename": "utterance" },
 
         "planner_output": { "rename": "turn_plan" },
         "planner_output.status": { "rename": "plan_status" },
-        "planner_output.turn_goal": { "rename": "turn_objective" },
-        "planner_output.decision": { "rename": "tactical_decision" },
-        "planner_output.content_plan": { "rename": "response_content_plan" },
+        "planner_output.turn_goal": { "rename": "next_turn_goal" },
+        "planner_output.decision": { "rename": "next_move" },
+        "planner_output.content_plan": { "rename": "response_plan" },
         "planner_output.limits": { "rename": "response_limits" },
-        "planner_output.memory_targets": { "rename": "memory_targets" },
-        "planner_output.done_criteria": { "rename": "success_conditions" },
+        "planner_output.memory_targets": { "rename": "memory_focus_targets" },
+        "planner_output.done_criteria": { "rename": "completion_signals" },
 
         "scene_state": { "rename": "current_scene" },
-        "scene_state.copresent": { "rename": "present_together" },
-        "scene_state.encounter_in_progress": { "rename": "current_meeting_in_progress" },
-        "scene_state.conversation_only": { "rename": "conversation_only_channel" },
 
-        "selected_memory_for_reference": { "hide": true },
-        "response_limits": { "rename": "response_limits" }
+        "selected_memory_for_reference": { "rename": "memory_references" },
+        "selected_memory_for_reference[].memory_summary": { "rename": "reference_summary" },
+
+        "response_limits": { "rename": "output_constraints" },
+
+        "trace_meta": { "hide": true }
       },
       "outputs": {
-        "schema_version": { "hide": true },
-
         "status": { "rename": "delivery_status" },
         "spoken_text": { "output_alias": "final_reply" },
-        "memory_used": { "rename": "memory_used" },
-        "refusal_reason": { "rename": "refusal_reason" }
+        "memory_used": { "rename": "memory_references_used" }
       }
     }
   }
