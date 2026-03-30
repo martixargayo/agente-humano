@@ -21,6 +21,10 @@ const state = {
   dialogue: [], prompts: [], cases: [], overrides: { mode: "mirror", entries: [], workspace_version: 1 },
   copyTabs: new Set(["Chat", "Timeline", "Cambios"]),
   liveFollow: true, editing: false, busy: false, waitingReply: false,
+  pendingRequestId: null,
+  pendingSessionKey: null,
+  isRefreshing: false,
+  queuedRefresh: null,
   draftEntries: [], evalOut: "", lastKnownTurnId: "", pollTimer: null,
   chatDraft: "", activeTab: "Chat",
   defaultUserId: "u_optimizador",
@@ -103,7 +107,40 @@ function showToast(text, type = "ok") {
   setTimeout(() => el.remove(), 1800);
 }
 
-async function refresh({ autoSelect = false } = {}) {
+async function refresh(options = {}) {
+  const opts = { autoSelect: false, ...options };
+  if (state.isRefreshing) {
+    state.queuedRefresh = opts;
+    console.debug("[optimizer][refresh:queued]", { opts, selectedSessionKey: state.selectedSessionKey });
+    return;
+  }
+  state.isRefreshing = true;
+  console.debug("[optimizer][refresh:start]", {
+    opts,
+    selectedSessionKey: state.selectedSessionKey,
+    pendingRequestId: state.pendingRequestId,
+    pendingSessionKey: state.pendingSessionKey,
+  });
+  try {
+    await refreshCore(opts);
+  } finally {
+    state.isRefreshing = false;
+    console.debug("[optimizer][refresh:end]", {
+      selectedSessionKey: state.selectedSessionKey,
+      turns: state.turns.length,
+      waitingReply: state.waitingReply,
+      pendingRequestId: state.pendingRequestId,
+      pendingSessionKey: state.pendingSessionKey,
+    });
+    if (state.queuedRefresh) {
+      const queued = state.queuedRefresh;
+      state.queuedRefresh = null;
+      await refresh(queued);
+    }
+  }
+}
+
+async function refreshCore({ autoSelect = false } = {}) {
   const prevSelected = state.selectedTurnId;
   await loadContexts();
   state.sessions = (await api('/sessions')).items;
@@ -138,10 +175,6 @@ async function refresh({ autoSelect = false } = {}) {
   const latest = state.turns[state.turns.length - 1]?.turn_id || '';
   if (state.lastKnownTurnId && latest && latest !== state.lastKnownTurnId && !state.liveFollow) showToast('Nuevo turno disponible', 'warn');
   state.lastKnownTurnId = latest;
-  if (state.waitingReply && latest && latest !== prevSelected) {
-    state.waitingReply = false;
-    showToast('Respuesta lista');
-  }
 }
 
 
@@ -262,7 +295,8 @@ function renderTab() {
     byId("content").innerHTML = html;
     return;
   }
-  if (tab === "Chat") html += `<div class='panel'><div class='card' id='chatHistory'>${state.dialogue.map((d) => `<div class='msg ${d.role}'>${d.role === "user" ? "Usuario" : "IA"}: ${escapeHtml(d.text || "")}</div>`).join("")}${state.waitingReply ? "<div class='msg assistant pending'>IA: pensando...</div>" : ""}</div><div class='card'><textarea id='chatInput' placeholder='Escribe tu mensaje...'>${escapeHtml(state.chatDraft)}</textarea><div class='sendRow'><span class='hint'>El próximo mensaje se envía con contexto ${escapeHtml(selectedSession()?.base_context?.context_id || state.selectedContextId)} · versión v${state.overrides.workspace_version || 1}.</span><button id='sendBtn'>Enviar</button></div></div></div>`;
+  const showPending = Boolean(state.waitingReply && state.pendingSessionKey && state.pendingSessionKey === state.selectedSessionKey);
+  if (tab === "Chat") html += `<div class='panel'><div class='card' id='chatHistory'>${state.dialogue.map((d) => `<div class='msg ${d.role}'>${d.role === "user" ? "Usuario" : "IA"}: ${escapeHtml(d.text || "")}</div>`).join("")}${showPending ? "<div class='msg assistant pending'>IA: pensando...</div>" : ""}</div><div class='card'><textarea id='chatInput' placeholder='Escribe tu mensaje...'>${escapeHtml(state.chatDraft)}</textarea><div class='sendRow'><span class='hint'>El próximo mensaje se envía con contexto ${escapeHtml(selectedSession()?.base_context?.context_id || state.selectedContextId)} · versión v${state.overrides.workspace_version || 1}.</span><button id='sendBtn'>Enviar</button></div></div></div>`;
   if (tab === "Timeline") html += `<div class='card'>${(t.logs || []).map((l) => `<div class='timeline-item ${statusClass(l.source, l.status)}'><b>${l.node_name}</b> · ${l.status} · ${l.latency_ms}ms · ${l.source}</div>`).join("") || "Sin datos"}</div>`;
   if (tab === "Nodos") html += `<div class='grid2'>${Object.entries(t.nodes || {}).map(([k, v]) => `<div class='card'><h3>${k}</h3><pre>${escapeHtml(JSON.stringify(v, null, 2))}</pre></div>`).join("")}</div>`;
   if (tab === "Guardrails") html += `<div class='grid2'><div class='card'><h3>Input</h3><pre>${escapeHtml(JSON.stringify({decision:t.input_guardrail_decision,reasons:t.input_guardrail_reasons,triggered:t.input_guardrail_triggered,moderation:t.input_moderation_used},null,2))}</pre></div><div class='card'><h3>Output</h3><pre>${escapeHtml(JSON.stringify({decision:t.output_guardrail_decision,reasons:t.output_guardrail_reasons,triggered:t.output_guardrail_triggered,rewrite:t.output_guardrail_rewrite_applied,enforcement_mode:t.output_guardrail_enforcement_mode,enforcement_action:t.output_guardrail_enforcement_action,observed_not_applied_rules:t.output_guardrail_observed_not_applied_rules,enforced_rules:t.output_guardrail_enforced_rules,output_changed:t.output_guardrail_output_changed,moderation:t.output_moderation_used},null,2))}</pre></div></div>`;
@@ -363,6 +397,7 @@ function bindEvents() {
 
   byId('applyContextBtn')?.addEventListener('click', async () => {
     try {
+      console.debug("[optimizer][session:clean-start]", { context: state.selectedContextId, selectedSessionKey: state.selectedSessionKey });
       await ensureOptimizerSessionForContext(state.selectedContextId, { forceNew: true });
       state.sessionSelectionMode = "clean";
       await refresh({ autoSelect: false }); renderTopbar(); renderTab(); bindEvents();
@@ -381,6 +416,7 @@ function bindEvents() {
   byId('resumeLatestBtn')?.addEventListener('click', async () => {
     const latest = state.sessions[0];
     if (!latest) return showToast("No hay sesiones para reanudar", "warn");
+    console.debug("[optimizer][session:resume-latest]", { from: state.selectedSessionKey, to: latest.session_key });
     state.selectedSessionKey = latest.session_key;
     state.sessionSelectionMode = "resumed";
     await refresh({ autoSelect: false }); renderTopbar(); renderTab(); bindEvents();
@@ -418,10 +454,13 @@ function bindEvents() {
   byId("newConvBtn")?.addEventListener("click", async () => {
     const s = selectedSession(); if (!s) return;
     const payload = await api('/sandbox/new_conversation', { method: 'POST', body: JSON.stringify({ optimizer_session_id: state.optimizerSessionId, user_id: s.user_id, session_id: s.session_id, context_id: s.base_context?.context_id || state.selectedContextId }) });
+    console.debug("[optimizer][session:new-conversation]", { from: state.selectedSessionKey, to: payload.session_key, context: s.base_context?.context_id || state.selectedContextId });
     state.selectedSessionKey = payload.session_key || "";
     state.selectedConversation = "";
     state.selectedTurnId = "";
     state.waitingReply = false;
+    state.pendingRequestId = null;
+    state.pendingSessionKey = null;
     state.sessionSelectionMode = "clean";
     await refresh({ autoSelect: false }); renderTopbar(); renderTab(); bindEvents();
   });
@@ -430,7 +469,16 @@ function bindEvents() {
   });
   byId("resetOverridesBtn")?.addEventListener("click", async () => { await api(`/overrides/${state.optimizerSessionId}`, { method: "DELETE" }); state.editing = false; await refresh(); renderTopbar(); renderTab(); bindEvents(); });
 
-  byId("chatInput")?.addEventListener("input", (e) => { state.chatDraft = e.target.value; });
+  byId("chatInput")?.addEventListener("focus", (e) => {
+    console.debug("[optimizer][chat:focus]", { selectedSessionKey: state.selectedSessionKey, cursor: e.target.selectionStart });
+  });
+  byId("chatInput")?.addEventListener("blur", () => {
+    console.debug("[optimizer][chat:blur]", { selectedSessionKey: state.selectedSessionKey });
+  });
+  byId("chatInput")?.addEventListener("input", (e) => {
+    state.chatDraft = e.target.value;
+    console.debug("[optimizer][chat:input]", { selectedSessionKey: state.selectedSessionKey, length: state.chatDraft.length });
+  });
   byId("sendBtn")?.addEventListener("click", async () => { if (!state.chatDraft.trim()) return; const msg = state.chatDraft; state.chatDraft = ""; try { await sendChat(msg); } catch (_) { state.chatDraft = msg; renderTab(); bindEvents(); } });
 
   document.querySelectorAll(".evalBtn").forEach((b) => b.addEventListener("click", async () => {
@@ -462,17 +510,55 @@ function bindEvents() {
 async function sendChat(message, repeatFrom = null) {
   const s = selectedSession();
   if (!s) throw new Error("No hay sesión activa en optimizador");
+  const sentSessionKey = state.selectedSessionKey;
+  const requestId = `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+  console.debug("[optimizer][send:start]", {
+    requestId,
+    sentSessionKey,
+    sessionId: s.session_id,
+    contextId: s.base_context?.context_id || state.selectedContextId,
+    repeatFrom,
+  });
+  state.pendingRequestId = requestId;
+  state.pendingSessionKey = sentSessionKey;
   state.waitingReply = true;
   renderTab();
   try {
     const result = await api("/sandbox/turn", { method: "POST", body: JSON.stringify({ optimizer_session_id: state.optimizerSessionId, user_id: s.user_id, session_id: s.session_id, message, conversation_id: state.selectedConversation || null, scope_turn_id: state.selectedTurnId || null, repeat_from_turn_id: repeatFrom }) });
-    await refresh({ autoSelect: true });
-    if (result?.reply && !state.dialogue.some((d) => d.role === "assistant" && d.text === result.reply)) {
-      state.dialogue.push({ role: "assistant", text: result.reply });
+    console.debug("[optimizer][send:response]", {
+      requestId,
+      sentSessionKey,
+      activeSessionKey: state.selectedSessionKey,
+      turnId: result?.turn?.turn_id,
+      hasReply: Boolean(result?.reply),
+    });
+    if (state.selectedSessionKey !== sentSessionKey) {
+      console.debug("[optimizer][send:stale-response-ignored]", { requestId, sentSessionKey, activeSessionKey: state.selectedSessionKey });
+      if (state.pendingRequestId === requestId) {
+        state.waitingReply = false;
+        state.pendingRequestId = null;
+        state.pendingSessionKey = null;
+        console.debug("[optimizer][pending:off]", { requestId, reason: "stale_response_ignored" });
+      }
+      return;
+    }
+    await refresh({ autoSelect: false });
+    if (state.pendingRequestId === requestId) {
+      state.waitingReply = false;
+      state.pendingRequestId = null;
+      state.pendingSessionKey = null;
+      showToast('Respuesta lista');
+      console.debug("[optimizer][pending:off]", { requestId, reason: "response_received" });
     }
   } catch (e) {
-    state.waitingReply = false;
+    if (state.pendingRequestId === requestId) {
+      state.waitingReply = false;
+      state.pendingRequestId = null;
+      state.pendingSessionKey = null;
+      console.debug("[optimizer][pending:off]", { requestId, reason: "send_error" });
+    }
     showToast(`Chat falló: ${e.message || e}`, "err");
+    console.debug("[optimizer][send:error]", { requestId, sentSessionKey, activeSessionKey: state.selectedSessionKey, error: e?.message || String(e) });
     throw e;
   }
   renderTopbar(); renderTab(); bindEvents();
@@ -491,16 +577,27 @@ function startPolling() {
       const hasChanges = beforeSnapshot !== afterSnapshot;
       const hasNewTurn = prevTurnId !== state.lastKnownTurnId;
       state.lastUiSnapshot = afterSnapshot;
+      console.debug("[optimizer][poll:tick]", {
+        typingChat,
+        hasChanges,
+        hasNewTurn,
+        selectedSessionKey: state.selectedSessionKey,
+        waitingReply: state.waitingReply,
+        pendingRequestId: state.pendingRequestId,
+      });
 
       if (!hasChanges && !hasNewTurn) return;
 
-      if (state.activeTab === "Chat" && typingChat && !hasNewTurn) {
-        byId("chatHistory").innerHTML = state.dialogue.map((d) => `<div class='msg ${d.role}'>${d.role === "user" ? "Usuario" : "IA"}: ${escapeHtml(d.text || "")}</div>`).join("") + (state.waitingReply ? "<div class='msg assistant pending'>IA: pensando...</div>" : "");
+      if (state.activeTab === "Chat" && typingChat) {
+        const showPending = Boolean(state.waitingReply && state.pendingSessionKey && state.pendingSessionKey === state.selectedSessionKey);
+        byId("chatHistory").innerHTML = state.dialogue.map((d) => `<div class='msg ${d.role}'>${d.role === "user" ? "Usuario" : "IA"}: ${escapeHtml(d.text || "")}</div>`).join("") + (showPending ? "<div class='msg assistant pending'>IA: pensando...</div>" : "");
+        console.debug("[optimizer][poll:render]", { mode: "chatHistoryOnly", typingChat, hasNewTurn });
       } else {
         renderTopbar();
         renderTab();
         bindEvents();
         restoreInteractionState(interaction);
+        console.debug("[optimizer][poll:render]", { mode: "full", typingChat, hasNewTurn });
       }
     } catch (_) {}
   }, POLL_IDLE_MS);
