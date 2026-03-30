@@ -2495,8 +2495,25 @@ async function handleSend() {
   if (turnInFlight || voiceTurnInFlight || getActiveSessionBusyState()) return;
   const message = ui.textInput.value.trim();
   if (!message) return;
-  await runNegotiationTurnFromText(message);
-  ui.textInput.value = '';
+  try {
+    const turnCompleted = await runNegotiationTurnFromText(message);
+    if (turnCompleted !== false) ui.textInput.value = '';
+  } catch (err) {
+    if (err instanceof ApiError && err.errorCode === 'turn_execution_failed') {
+      console.warn('[text] turn_execution_failed', { status: err.status, errorCode: err.errorCode });
+      setStatusText('Hubo un problema temporal al procesar tu mensaje. Reintenta en unos segundos.');
+      return;
+    }
+    console.error('[text] Error procesando turno escrito', err);
+    if (isSessionBusyError(err)) {
+      setSessionBusyState(err, { source: 'turn' });
+      setStatusText('Sesión ocupada');
+      updateUi();
+      return;
+    }
+    const userMessage = err?.message || 'No se pudo procesar tu mensaje.';
+    setStatusText(userMessage);
+  }
 }
 
 $('bootstrap').onclick = async () => {
@@ -2751,7 +2768,6 @@ function bindRuntimeReadiness() {
 async function bootstrapEntryDeviceBackground() {
   await syncMicPermissionState();
   await refreshEntryDevices('bootstrap');
-  renderEntryCameraDevices();
   renderEntryDevices();
   renderEntryState();
 }

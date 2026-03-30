@@ -12,7 +12,7 @@ from negociacion.orchestration.flow_config import (
     _load_phase_classifier_card,
     build_negotiation_pipeline_config,
 )
-from negociacion.state.canonical_state import CanonicalState, build_default_canonical_state
+from negociacion.state.canonical_state import CanonicalState, build_default_canonical_state, parse_negotiation_brief_payload
 from negociacion.state.shared_types import NegotiationPhase, ThreadMode
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -88,7 +88,8 @@ class Phase2ContextRuntimeResolutionTests(unittest.TestCase):
         legacy_persona = json.loads((LEGACY_PROMPTS_DIR / "persona.json").read_text(encoding="utf-8"))
         legacy_brief = json.loads((LEGACY_PROMPTS_DIR / "negotiation_brief.json").read_text(encoding="utf-8"))
         self.assertEqual(state.persona.model_dump(mode="json"), legacy_persona)
-        self.assertEqual(state.negotiation_brief.model_dump(mode="json"), legacy_brief)
+        expected_brief = parse_negotiation_brief_payload(legacy_brief).model_dump(mode="json", exclude_none=True)
+        self.assertEqual(state.negotiation_brief.model_dump(mode="json", exclude_none=True), expected_brief)
 
     def test_resolver_has_explicit_legacy_fallback_when_official_baseline_is_unavailable(self) -> None:
         missing_dir = BASELINE_DIR.parent / "__missing_baseline_for_test__"
