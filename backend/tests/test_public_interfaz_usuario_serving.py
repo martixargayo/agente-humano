@@ -41,6 +41,8 @@ class PublicInterfazUsuarioServingTests(unittest.TestCase):
         self.assertEqual(app_js.status_code, 200)
         self.assertIn('function readPublicSlugFromUrl()', app_js.text)
         self.assertIn('function bootstrapPayload()', app_js.text)
+        self.assertIn("err.errorCode === 'turn_execution_failed'", app_js.text)
+        self.assertIn('Hubo un problema temporal al procesar tu mensaje.', app_js.text)
 
         self.assertEqual(feedback_js.status_code, 200)
         self.assertIn('global.FeedbackReportView = {', feedback_js.text)

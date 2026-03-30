@@ -2499,6 +2499,11 @@ async function handleSend() {
     const turnCompleted = await runNegotiationTurnFromText(message);
     if (turnCompleted !== false) ui.textInput.value = '';
   } catch (err) {
+    if (err instanceof ApiError && err.errorCode === 'turn_execution_failed') {
+      console.warn('[text] turn_execution_failed', { status: err.status, errorCode: err.errorCode });
+      setStatusText('Hubo un problema temporal al procesar tu mensaje. Reintenta en unos segundos.');
+      return;
+    }
     console.error('[text] Error procesando turno escrito', err);
     if (isSessionBusyError(err)) {
       setSessionBusyState(err, { source: 'turn' });
@@ -2508,7 +2513,6 @@ async function handleSend() {
     }
     const userMessage = err?.message || 'No se pudo procesar tu mensaje.';
     setStatusText(userMessage);
-    updateReplyText(userMessage);
   }
 }
 
