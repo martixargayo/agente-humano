@@ -25,6 +25,7 @@ const state = {
   chatDraft: "", activeTab: "Chat",
   defaultUserId: "u_optimizador",
   defaultSessionIdBase: "optimizador-main",
+  sessionSelectionMode: "none",
   lastUiSnapshot: "",
 };
 
@@ -33,7 +34,17 @@ const byId = (id) => document.getElementById(id);
 
 async function api(path, opts = {}) {
   const r = await fetch(`/api/optimizador${path}`, { headers: { "Content-Type": "application/json" }, ...opts });
-  if (!r.ok) throw new Error(await r.text());
+  if (!r.ok) {
+    let parsed = null;
+    const raw = await r.text();
+    try { parsed = JSON.parse(raw); } catch (_) {}
+    const detail = parsed?.detail;
+    const message = typeof detail === "string" ? detail : (raw || `HTTP ${r.status}`);
+    const err = new Error(message);
+    err.status = r.status;
+    err.payload = parsed;
+    throw err;
+  }
   return r.json();
 }
 
@@ -43,17 +54,28 @@ const escapeHtml = (s) => String(s ?? "").replaceAll("&", "&amp;").replaceAll("<
 const selectedSession = () => state.sessions.find((s) => s.session_key === state.selectedSessionKey) || null;
 const activeContext = () => state.contexts.find((c) => c.context_id === state.selectedContextId) || null;
 
+function normalizeContextId(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return state.selectedContextId || "baseline_current";
+  const byId = state.contexts.find((c) => c.context_id === raw);
+  if (byId) return byId.context_id;
+  const bySlug = state.contexts.find((c) => c.public_slug === raw);
+  if (bySlug) return bySlug.context_id;
+  return raw;
+}
+
 function buildDefaultSessionId(contextId = state.selectedContextId) {
   return `${state.defaultSessionIdBase}-${contextId || 'baseline_current'}`;
 }
 
 async function ensureOptimizerSessionForContext(contextId, { forceNew = false } = {}) {
-  const normalizedContextId = contextId || state.selectedContextId || 'baseline_current';
+  const normalizedContextId = normalizeContextId(contextId || state.selectedContextId || 'baseline_current');
   let sessionId = buildDefaultSessionId(normalizedContextId);
   if (forceNew) sessionId = `${sessionId}-${Date.now()}`;
   const payload = await api('/sessions/bootstrap', { method: 'POST', body: JSON.stringify({ user_id: state.defaultUserId, session_id: sessionId, context_id: normalizedContextId }) });
   state.selectedContextId = payload.base_context?.context_id || normalizedContextId;
   state.selectedSessionKey = payload.session_key;
+  state.sessionSelectionMode = forceNew ? "clean" : "explicit";
   return payload;
 }
 
@@ -85,18 +107,19 @@ async function refresh({ autoSelect = false } = {}) {
   const prevSelected = state.selectedTurnId;
   await loadContexts();
   state.sessions = (await api('/sessions')).items;
-  if (!state.sessions.length) {
-    await ensureOptimizerSessionForContext(state.selectedContextId);
-    state.sessions = (await api('/sessions')).items;
+  if (!state.selectedSessionKey && autoSelect && state.sessions[0]) {
+    state.selectedSessionKey = state.sessions[0].session_key;
+    state.sessionSelectionMode = "resumed";
   }
-  if (!state.selectedSessionKey && state.sessions[0]) state.selectedSessionKey = state.sessions[0].session_key;
   let s = selectedSession();
   if (!s) {
-    await ensureOptimizerSessionForContext(state.selectedContextId);
-    state.sessions = (await api('/sessions')).items;
-    s = selectedSession();
+    state.turns = [];
+    state.turn = null;
+    state.dialogue = [];
+    state.prompts = [];
+    state.selectedTurnId = "";
+    return;
   }
-  if (!s) return;
   state.selectedContextId = s.base_context?.context_id || state.selectedContextId;
   const base = `/sessions/${encodeURIComponent(s.user_id)}/${encodeURIComponent(s.session_id)}`;
   state.turns = (await api(`${base}/turns${state.selectedConversation ? `?conversation_id=${encodeURIComponent(state.selectedConversation)}` : ''}`)).items;
@@ -186,7 +209,8 @@ function renderTopbar() {
         ${state.contexts.map((c) => `<option value='${c.context_id}' ${c.context_id === state.selectedContextId ? 'selected' : ''}>${c.context_id}</option>`).join('')}
       </select>
     </label>
-    <button id='applyContextBtn' title='Crear o abrir una sesión del optimizer enlazada al contexto seleccionado.'>Usar contexto</button>
+    <button id='applyContextBtn' title='Crear una sesión nueva y limpia con el contexto seleccionado.'>Empezar limpio</button>
+    <button id='resumeLatestBtn' ${state.sessions.length ? "" : "disabled"} title='Reanuda explícitamente la sesión más reciente.'>Reanudar última</button>
     <select id='turnSelector' title='Elige el turno y versión para revisar las pestañas.'>
       ${state.turns.map((t) => `<option value='${t.turn_id}' ${t.turn_id === state.selectedTurnId ? 'selected' : ''}>Turno ${t.index} · v${t.version || 1}</option>`).join('')}
     </select>
@@ -195,6 +219,7 @@ function renderTopbar() {
     Contexto activo: <b>${escapeHtml(s?.base_context?.context_id || state.selectedContextId)}</b>
     · versión contexto: ${escapeHtml(s?.base_context?.context_version || ctx?.context_version || '-')}
     · sesión: ${escapeHtml(s?.session_id || '-')}
+    · modo sesión: ${escapeHtml(state.sessionSelectionMode)}
     · workspace v${ws}
     · selección: ${currentTurnOptionLabel()}
   </div>
@@ -208,9 +233,17 @@ function renderTopbar() {
 function toolbarHtml() {
   const s = selectedSession();
   const meta = s?.sandbox_meta || {};
+  if (!s) {
+    return `<div class='toolbar'>
+      <span class='badge'>Sin sesión activa</span>
+      <span class='badge'>Contexto seleccionado: ${escapeHtml(state.selectedContextId)}</span>
+      <span class='badge'>Pulsa "Empezar limpio" o "Reanudar última"</span>
+    </div>`;
+  }
   return `<div class='toolbar'>
     <span class='badge' title='Estás trabajando sobre una copia para hacer cambios sin tocar la conversación original.'>${state.overrides.mode === "sandbox" ? "Probar" : "Ver"}</span>
     <span class='badge' title='Si está activado, el optimizador se mueve solo al último turno nuevo.'>follow:${state.liveFollow ? "on" : "off"}</span>
+    ${state.sessionSelectionMode === "resumed" ? `<span class='badge' title='Esta sesión se reanudó explícitamente.'>sesión reanudada</span>` : ""}
     ${s?.is_sandbox ? `<span class='badge' title='Esta conversación es una copia creada para probar cambios.'>sandbox clonado · ${meta.source_session_id || "-"}</span>` : ""}
     <button id='toggleFollow' title='Activa o desactiva que el optimizador siga automáticamente los nuevos turnos.'>live follow</button>
     <button id='repeatBtn' title='Vuelve a ejecutar el último mensaje usando la versión actual de trabajo.'>Repetir</button>
@@ -224,6 +257,11 @@ function renderTab() {
   const tab = state.activeTab;
   const t = state.turn || {};
   let html = toolbarHtml();
+  if (!selectedSession()) {
+    html += `<div class='card'>No hay sesión activa. Selecciona un contexto y pulsa <b>Empezar limpio</b>, o usa <b>Reanudar última</b>.</div>`;
+    byId("content").innerHTML = html;
+    return;
+  }
   if (tab === "Chat") html += `<div class='panel'><div class='card' id='chatHistory'>${state.dialogue.map((d) => `<div class='msg ${d.role}'>${d.role === "user" ? "Usuario" : "IA"}: ${escapeHtml(d.text || "")}</div>`).join("")}${state.waitingReply ? "<div class='msg assistant pending'>IA: pensando...</div>" : ""}</div><div class='card'><textarea id='chatInput' placeholder='Escribe tu mensaje...'>${escapeHtml(state.chatDraft)}</textarea><div class='sendRow'><span class='hint'>El próximo mensaje se envía con contexto ${escapeHtml(selectedSession()?.base_context?.context_id || state.selectedContextId)} · versión v${state.overrides.workspace_version || 1}.</span><button id='sendBtn'>Enviar</button></div></div></div>`;
   if (tab === "Timeline") html += `<div class='card'>${(t.logs || []).map((l) => `<div class='timeline-item ${statusClass(l.source, l.status)}'><b>${l.node_name}</b> · ${l.status} · ${l.latency_ms}ms · ${l.source}</div>`).join("") || "Sin datos"}</div>`;
   if (tab === "Nodos") html += `<div class='grid2'>${Object.entries(t.nodes || {}).map(([k, v]) => `<div class='card'><h3>${k}</h3><pre>${escapeHtml(JSON.stringify(v, null, 2))}</pre></div>`).join("")}</div>`;
@@ -321,13 +359,31 @@ function bindEvents() {
     renderTabs(); renderTopbar(); renderTab(); bindEvents();
   };
 
-  byId('contextSelector')?.addEventListener('change', (e) => { state.selectedContextId = e.target.value; renderTopbar(); bindEvents(); });
+  byId('contextSelector')?.addEventListener('change', (e) => { state.selectedContextId = normalizeContextId(e.target.value); renderTopbar(); bindEvents(); });
 
   byId('applyContextBtn')?.addEventListener('click', async () => {
-    const current = selectedSession();
-    const requiresFresh = current?.base_context?.context_id && current.base_context.context_id !== state.selectedContextId;
-    await ensureOptimizerSessionForContext(state.selectedContextId, { forceNew: Boolean(requiresFresh) });
-    await refresh({ autoSelect: true }); renderTopbar(); renderTab(); bindEvents();
+    try {
+      await ensureOptimizerSessionForContext(state.selectedContextId, { forceNew: true });
+      state.sessionSelectionMode = "clean";
+      await refresh({ autoSelect: false }); renderTopbar(); renderTab(); bindEvents();
+    } catch (e) {
+      const detail = e?.payload?.detail || {};
+      if (e?.status === 409 && (detail.error === "session_context_conflict" || detail.error === "optimizer_context_conflict")) {
+        showToast("Conflicto de contexto en sesión actual. Creando sesión nueva limpia.", "warn");
+        await ensureOptimizerSessionForContext(state.selectedContextId, { forceNew: true });
+        state.sessionSelectionMode = "clean";
+        await refresh({ autoSelect: false }); renderTopbar(); renderTab(); bindEvents();
+        return;
+      }
+      showToast(`No se pudo iniciar sesión limpia: ${e.message || e}`, "err");
+    }
+  });
+  byId('resumeLatestBtn')?.addEventListener('click', async () => {
+    const latest = state.sessions[0];
+    if (!latest) return showToast("No hay sesiones para reanudar", "warn");
+    state.selectedSessionKey = latest.session_key;
+    state.sessionSelectionMode = "resumed";
+    await refresh({ autoSelect: false }); renderTopbar(); renderTab(); bindEvents();
   });
 
   byId("turnSelector")?.addEventListener("change", async (e) => {
@@ -361,8 +417,13 @@ function bindEvents() {
   });
   byId("newConvBtn")?.addEventListener("click", async () => {
     const s = selectedSession(); if (!s) return;
-    await api('/sandbox/new_conversation', { method: 'POST', body: JSON.stringify({ optimizer_session_id: state.optimizerSessionId, user_id: s.user_id, session_id: s.session_id, context_id: s.base_context?.context_id || state.selectedContextId }) });
-    await refresh({ autoSelect: true }); renderTopbar(); renderTab(); bindEvents();
+    const payload = await api('/sandbox/new_conversation', { method: 'POST', body: JSON.stringify({ optimizer_session_id: state.optimizerSessionId, user_id: s.user_id, session_id: s.session_id, context_id: s.base_context?.context_id || state.selectedContextId }) });
+    state.selectedSessionKey = payload.session_key || "";
+    state.selectedConversation = "";
+    state.selectedTurnId = "";
+    state.waitingReply = false;
+    state.sessionSelectionMode = "clean";
+    await refresh({ autoSelect: false }); renderTopbar(); renderTab(); bindEvents();
   });
   byId("saveCaseBtn")?.addEventListener("click", async () => {
     if (!state.selectedTurnId) return; await api("/cases", { method: "POST", body: JSON.stringify({ turn_id: state.selectedTurnId, family: "end_to_end", tags: ["manual"], notes: "guardado desde optimizador" }) }); showToast("Caso guardado");
@@ -447,7 +508,7 @@ function startPolling() {
 
 async function boot() {
   renderTabs();
-  await refresh({ autoSelect: true });
+  await refresh({ autoSelect: false });
   renderTopbar();
   renderTab();
   bindEvents();
