@@ -22,6 +22,7 @@ from .resolver import (
     resolve_default_negotiation_context,
     resolve_negotiation_context,
 )
+from .prompt_io_mapping import PromptIOAdapter, PromptIOMappingError, load_prompt_io_adapter
 from .session_binding import (
     NEGOTIATION_CONTEXT_WORLD_STATE_KEY,
     bind_context_to_session,
@@ -48,4 +49,7 @@ __all__ = [
     "resolve_negotiation_context",
     "resolve_public_context_selection",
     "resolve_public_slug_to_context_id",
+    "PromptIOAdapter",
+    "PromptIOMappingError",
+    "load_prompt_io_adapter",
 ]

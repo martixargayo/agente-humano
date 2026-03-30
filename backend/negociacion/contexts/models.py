@@ -27,4 +27,5 @@ class ResolvedNegotiationContext(BaseModel):
     negotiation_brief_path: Path
     phase_cards_path: Path
     phase_classifier_card_path: Path
+    prompt_io_mapping_path: Path | None = None
     resolution_source: str

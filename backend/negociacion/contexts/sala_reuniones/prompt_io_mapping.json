@@ -1,0 +1,57 @@
+{
+  "schema_version": "prompt_io_mapping.v1",
+  "nodes": {
+    "memory": {
+      "inputs": {
+        "user_turn": { "rename": "turno_actual_del_interlocutor" },
+        "recent_dialogue_short": { "rename": "historial_reciente_de_dialogo" },
+        "memory_working_current": { "rename": "estado_conversacional_actual" },
+        "recent_memory_episodic_short": { "rename": "hechos_recientes_recordados" },
+        "trace_meta": { "hide": true }
+      },
+      "outputs": {
+        "working_memory_new": { "rename": "estado_conversacional_actualizado" },
+        "negotiation_state": { "rename": "estado_negociacion_actual" }
+      }
+    },
+    "phase_classifier": {
+      "inputs": {
+        "recent_phase_history": { "rename": "historial_reciente_de_fases" },
+        "phase_classifier_card": { "rename": "criterios_de_fase" },
+        "current_user_turn": { "rename": "turno_actual_del_interlocutor" },
+        "trace_meta": { "hide": true }
+      },
+      "outputs": {
+        "current_phase": { "rename": "fase_actual" }
+      }
+    },
+    "planner": {
+      "inputs": {
+        "persona_policy": { "rename": "rol_privado_de_diego" },
+        "negotiation_brief": { "rename": "contexto_privado_del_caso" },
+        "phase_card": { "rename": "fase_actual_y_reglas" },
+        "memory_working": { "rename": "estado_conversacional_actual" },
+        "negotiation_state": { "rename": "estado_negociacion_actual" },
+        "selected_memory": { "hide": true },
+        "trace_meta": { "hide": true }
+      },
+      "outputs": {
+        "turn_goal": { "rename": "objetivo_del_turno" },
+        "decision": { "rename": "decision_tactica" },
+        "content_plan": { "rename": "plan_de_contenido" }
+      }
+    },
+    "executor": {
+      "inputs": {
+        "persona_expressive": { "rename": "como_habla_diego" },
+        "phase_card": { "rename": "fase_actual_y_reglas" },
+        "planner_output": { "rename": "plan_del_turno" },
+        "selected_memory_for_reference": { "rename": "referencias_de_memoria" },
+        "trace_meta": { "hide": true }
+      },
+      "outputs": {
+        "spoken_text": { "output_alias": "respuesta_final" }
+      }
+    }
+  }
+}
