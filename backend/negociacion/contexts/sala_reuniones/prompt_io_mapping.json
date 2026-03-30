@@ -72,11 +72,9 @@
 
     "phase_classifier": {
       "inputs": {
-        "task_contract": { "rename": "node_task_contract" },
         "previous_phase": { "rename": "previous_phase" },
         "recent_phase_history": { "rename": "recent_phase_history" },
         "phase_classifier_card": { "rename": "phase_classification_guide" },
-        "phase_classifier_card.phase_classifier_card": { "rename": "guide" },
         "phase_classifier_card_source": { "hide": true },
         "recent_turns": { "rename": "recent_dialogue_window" },
         "recent_turns[].text": { "rename": "utterance" },
@@ -95,7 +93,7 @@
       "inputs": {
         "task_contract": { "rename": "node_task_contract" },
 
-        "persona_policy": { "rename": "diego_private_role" },
+        "persona_policy": { "rename": "rol_privado_de_diego" },
         "persona_policy.identidad_operativa": { "rename": "operating_identity" },
         "persona_policy.objetivo_privado": { "rename": "private_goal" },
         "persona_policy.criterio_de_decision": { "rename": "decision_criteria" },
@@ -103,7 +101,7 @@
         "persona_policy.limites_privados": { "rename": "private_limits" },
         "persona_policy.principios_de_avance": { "rename": "progress_principles" },
 
-        "negotiation_brief": { "rename": "case_private_context" },
+        "negotiation_brief": { "rename": "contexto_privado_del_caso" },
         "negotiation_brief.contexto_de_mercado": { "rename": "resource_context" },
         "negotiation_brief.contexto_de_mercado.valor_estimado": { "rename": "estimated_availability" },
         "negotiation_brief.contexto_de_mercado.lectura": { "rename": "interpretation" },
@@ -142,7 +140,7 @@
         "negotiation_brief.informacion_privada_sensible.lectura": { "rename": "interpretation" },
 
         "current_phase": { "rename": "conversation_phase" },
-        "phase_card": { "rename": "current_phase_guide" },
+        "phase_card": { "rename": "fase_actual_y_reglas" },
 
         "user_turn": { "rename": "current_other_turn" },
         "user_turn.raw_text": { "rename": "raw_message" },
@@ -151,12 +149,12 @@
         "recent_dialogue_short": { "rename": "recent_dialogue" },
         "recent_dialogue_short[].text": { "rename": "utterance" },
 
-        "memory_working": { "rename": "live_conversation_state" },
+        "memory_working": { "rename": "estado_conversacional_actual" },
         "memory_working.current_topic": { "rename": "current_focus" },
         "memory_working.pending_question": { "rename": "open_question" },
         "memory_working.last_turn_summary": { "rename": "latest_turn_summary" },
 
-        "negotiation_state": { "rename": "live_room_negotiation_state" },
+        "negotiation_state": { "rename": "estado_negociacion_actual" },
         "negotiation_state.status": { "rename": "room_allocation_status" },
         "negotiation_state.active_axes": { "rename": "active_negotiation_axes" },
         "negotiation_state.last_offer_self": { "rename": "latest_team_b_proposal" },
@@ -258,7 +256,7 @@
       },
       "outputs": {
         "status": { "rename": "delivery_status" },
-        "spoken_text": { "output_alias": "final_reply" },
+        "spoken_text": { "output_alias": "respuesta_final" },
         "memory_used": { "rename": "memory_references_used" }
       }
     }

@@ -243,6 +243,20 @@ def run_sandbox_turn(
             },
             headers={"Retry-After": str(exc.retry_after_seconds)},
         ) from exc
+    except Exception as exc:
+        logger.exception(
+            "optimizador_turn_failed session=%s optimizer_session_id=%s message_len=%s",
+            f"{user_id}:{session_id}",
+            optimizer_session_id,
+            len(message or ""),
+        )
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "turn_execution_failed",
+                "message": "No se pudo procesar el turno en este momento. Inténtalo de nuevo.",
+            },
+        ) from exc
 
     traces = storage.resolve_traces(state)
     latest = traces[-1] if traces else None

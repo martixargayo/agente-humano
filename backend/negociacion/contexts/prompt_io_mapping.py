@@ -497,17 +497,35 @@ def _transform_schema_object_canonical_to_visible(
 
 def _schema_deref(node: Any, root: dict[str, Any]) -> dict[str, Any]:
     current = node
-    while isinstance(current, dict) and "$ref" in current:
-        ref = current.get("$ref")
-        if not isinstance(ref, str) or not ref.startswith("#/"):
+    while isinstance(current, dict):
+        if "$ref" in current:
+            ref = current.get("$ref")
+            if not isinstance(ref, str) or not ref.startswith("#/"):
+                break
+            parts = ref[2:].split("/")
+            resolved: Any = root
+            for part in parts:
+                if not isinstance(resolved, dict):
+                    return current
+                resolved = resolved.get(part)
+            current = resolved
+            continue
+
+        union_key = "anyOf" if isinstance(current.get("anyOf"), list) else ("oneOf" if isinstance(current.get("oneOf"), list) else None)
+        if union_key is None:
             break
-        parts = ref[2:].split("/")
-        resolved: Any = root
-        for part in parts:
-            if not isinstance(resolved, dict):
-                return current
-            resolved = resolved.get(part)
-        current = resolved
+        variants = current.get(union_key, [])
+        selected = None
+        for variant in variants:
+            if not isinstance(variant, dict):
+                continue
+            if variant.get("type") == "null":
+                continue
+            selected = variant
+            break
+        if selected is None:
+            break
+        current = selected
     return current if isinstance(current, dict) else {}
 
 
@@ -516,6 +534,17 @@ def _schema_is_array(node: dict[str, Any]) -> bool:
         return True
     if isinstance(node.get("items"), dict):
         return True
+    variants = node.get("anyOf") if isinstance(node.get("anyOf"), list) else node.get("oneOf")
+    if isinstance(variants, list):
+        for variant in variants:
+            if isinstance(variant, dict) and variant.get("type") == "array":
+                return True
+            if isinstance(variant, dict) and isinstance(variant.get("items"), dict):
+                return True
+    if isinstance(node.get("allOf"), list):
+        for variant in node.get("allOf"):
+            if isinstance(variant, dict) and (variant.get("type") == "array" or isinstance(variant.get("items"), dict)):
+                return True
     return False
 
 
