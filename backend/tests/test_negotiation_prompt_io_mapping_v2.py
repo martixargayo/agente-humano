@@ -152,6 +152,48 @@ class PromptIOMappingV2Tests(unittest.TestCase):
         self.assertIn("fact_summary", item_props)
         self.assertNotIn("event_summary", item_props)
 
+    def test_v2_nested_output_path_inside_nullable_object_is_supported(self) -> None:
+        path = self._write_mapping(
+            {
+                "schema_version": "prompt_io_mapping.v2",
+                "nodes": {
+                    "memory": {
+                        "outputs": {
+                            "negotiation_state.last_offer_self.summary": {"rename": "resumen_oferta_propia"}
+                        }
+                    }
+                },
+            }
+        )
+        adapter = load_prompt_io_adapter(path)
+        normalized = adapter.normalize_output_payload(
+            "memory",
+            {
+                "schema_version": "memory.v1",
+                "episodic_append": [],
+                "working_memory_new": {"current_topic": None, "pending_question": None, "last_turn_summary": "s"},
+                "negotiation_state": {
+                    "status": "inactive",
+                    "active_axes": [],
+                    "last_offer_self": {
+                        "resumen_oferta_propia": "oferta A",
+                        "price_amount": None,
+                        "currency": None,
+                        "extras": [],
+                        "conditions": [],
+                        "is_currently_active": True,
+                        "source_turn_role": None,
+                    },
+                    "last_offer_other": None,
+                    "tentative_agreement": None,
+                    "stall_state": {"is_hard_stalemate": False, "stalemate_reason": None, "self_ultimatum_active": False, "self_ultimatum_summary": None},
+                    "blockers": [],
+                    "next_open_loop": None,
+                },
+            },
+        )
+        self.assertEqual(normalized["negotiation_state"]["last_offer_self"]["summary"], "oferta A")
+
     def test_v2_error_on_hiding_required_nested_output(self) -> None:
         path = self._write_mapping(
             {

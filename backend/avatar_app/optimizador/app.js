@@ -43,7 +43,9 @@ async function api(path, opts = {}) {
     const raw = await r.text();
     try { parsed = JSON.parse(raw); } catch (_) {}
     const detail = parsed?.detail;
-    const message = typeof detail === "string" ? detail : (raw || `HTTP ${r.status}`);
+    const message = typeof detail === "string"
+      ? detail
+      : (typeof detail?.message === "string" ? detail.message : (raw || `HTTP ${r.status}`));
     const err = new Error(message);
     err.status = r.status;
     err.payload = parsed;
