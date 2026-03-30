@@ -91,6 +91,18 @@ class Phase2ContextRuntimeResolutionTests(unittest.TestCase):
         expected_brief = parse_negotiation_brief_payload(legacy_brief).model_dump(mode="json", exclude_none=True)
         self.assertEqual(state.negotiation_brief.model_dump(mode="json", exclude_none=True), expected_brief)
 
+    def test_canonical_state_build_supports_sala_reuniones_legacy_brief_shape(self) -> None:
+        state = build_default_canonical_state(
+            session_id="s_sala",
+            user_id="u_sala",
+            thread_mode=ThreadMode.conversation,
+            context_id="sala_reuniones",
+        )
+        self.assertEqual(state.negotiation_brief.schema_version, "negotiation_brief.v1")
+        self.assertIsNotNone(state.negotiation_brief.restricciones)
+        self.assertIn("única sala demo", state.negotiation_brief.contexto_de_mercado.valor_estimado)
+        self.assertGreaterEqual(len(state.negotiation_brief.monedas_de_intercambio_del_comprador.puede_ofrecer), 1)
+
     def test_resolver_has_explicit_legacy_fallback_when_official_baseline_is_unavailable(self) -> None:
         missing_dir = BASELINE_DIR.parent / "__missing_baseline_for_test__"
         ctx = resolve_negotiation_context(baseline_dir=missing_dir)

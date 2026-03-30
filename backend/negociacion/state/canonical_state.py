@@ -466,7 +466,7 @@ def build_default_canonical_state(
             policy=PersonaPolicy.model_validate(persona_defaults["policy"]),
             expressive=PersonaExpressive.model_validate(persona_defaults["expressive"]),
         ),
-        negotiation_brief=NegotiationBriefState.model_validate(negotiation_brief_defaults),
+        negotiation_brief=parse_negotiation_brief_payload(negotiation_brief_defaults),
         memory_episodic=[],
         memory_working=MemoryWorkingState(current_topic=None, pending_question=None, last_turn_summary=None),
         negotiation_state=NegotiationState(
