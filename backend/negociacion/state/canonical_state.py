@@ -238,10 +238,17 @@ class NegotiationBriefSensitiveInfo(BaseModel):
     lectura: str
 
 
+class NegotiationBriefRestrictions(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    resumen: str
+    lectura: str
+
+
 class NegotiationBriefState(BaseModel):
     model_config = ConfigDict(extra="forbid")
     schema_version: Literal["negotiation_brief.v1"]
     contexto_de_mercado: NegotiationBriefMarketContext
+    restricciones: NegotiationBriefRestrictions | None = None
     realidad_de_la_alternativa: NegotiationBriefAlternativeReality
     objetivo_y_marco_de_decision: NegotiationBriefObjectiveFrame
     mapa_de_valor: NegotiationBriefValueMap
@@ -249,8 +256,64 @@ class NegotiationBriefState(BaseModel):
     informacion_privada_sensible: NegotiationBriefSensitiveInfo
 
 
+def _normalize_negotiation_brief_payload(payload: dict[str, object]) -> dict[str, object]:
+    normalized = dict(payload)
+    if "restricciones" not in normalized and isinstance(normalized.get("restricciones_duras"), dict):
+        normalized["restricciones"] = normalized["restricciones_duras"]
+
+    if "contexto_de_mercado" not in normalized and isinstance(normalized.get("contexto_del_recurso"), dict):
+        contexto = normalized["contexto_del_recurso"]
+        lectura = contexto.get("lectura", "") if isinstance(contexto.get("lectura"), str) else ""
+        valor_estimado = contexto.get("recurso_y_disponibilidad", "")
+        if not isinstance(valor_estimado, str):
+            valor_estimado = ""
+        normalized["contexto_de_mercado"] = {"valor_estimado": valor_estimado, "lectura": lectura}
+
+    if (
+        "objetivo_y_marco_de_decision" in normalized
+        and isinstance(normalized["objetivo_y_marco_de_decision"], dict)
+        and "por_encima_de_eso" not in normalized["objetivo_y_marco_de_decision"]
+    ):
+        objective = dict(normalized["objetivo_y_marco_de_decision"])
+        fallback = objective.get("si_asume_la_franja_menos_comoda")
+        if isinstance(fallback, str):
+            objective["por_encima_de_eso"] = fallback
+            objective.pop("si_asume_la_franja_menos_comoda", None)
+            normalized["objetivo_y_marco_de_decision"] = objective
+
+    if "monedas_de_intercambio_del_comprador" not in normalized and isinstance(
+        normalized.get("monedas_de_intercambio_del_equipo_b"), dict
+    ):
+        normalized["monedas_de_intercambio_del_comprador"] = normalized["monedas_de_intercambio_del_equipo_b"]
+
+    if "mapa_de_valor" in normalized and isinstance(normalized["mapa_de_valor"], dict):
+        value_map = dict(normalized["mapa_de_valor"])
+        items = value_map.get("items")
+        if isinstance(items, list):
+            normalized_items = []
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                normalized_item = dict(item)
+                normalized_item.pop("impacto_operativo_aproximado", None)
+                if "valor_aproximado_eur" not in normalized_item:
+                    normalized_item["valor_aproximado_eur"] = None
+                normalized_items.append(normalized_item)
+            value_map["items"] = normalized_items
+            normalized["mapa_de_valor"] = value_map
+
+    normalized.pop("contexto_del_recurso", None)
+    normalized.pop("restricciones_duras", None)
+    normalized.pop("monedas_de_intercambio_del_equipo_b", None)
+    return normalized
+
+
+def parse_negotiation_brief_payload(payload: dict[str, object]) -> NegotiationBriefState:
+    return NegotiationBriefState.model_validate(_normalize_negotiation_brief_payload(payload))
+
+
 def _default_negotiation_brief_state() -> NegotiationBriefState:
-    return NegotiationBriefState.model_validate(_load_negotiation_brief_defaults())
+    return parse_negotiation_brief_payload(_load_negotiation_brief_defaults())
 
 
 class MemoryEpisodicItem(BaseModel):
@@ -403,7 +466,7 @@ def build_default_canonical_state(
             policy=PersonaPolicy.model_validate(persona_defaults["policy"]),
             expressive=PersonaExpressive.model_validate(persona_defaults["expressive"]),
         ),
-        negotiation_brief=NegotiationBriefState.model_validate(negotiation_brief_defaults),
+        negotiation_brief=parse_negotiation_brief_payload(negotiation_brief_defaults),
         memory_episodic=[],
         memory_working=MemoryWorkingState(current_topic=None, pending_question=None, last_turn_summary=None),
         negotiation_state=NegotiationState(
