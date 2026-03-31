@@ -108,6 +108,35 @@ Para pasar a `propuesta_creativa` debe haber algo más que una preferencia o pet
   3. primera propuesta,
   4. ajuste sobre posiciones ya abiertas.
 
+# Live-proposal adjustment rule
+Regla fuerte:
+- si en el intercambio reciente ya existe una propuesta viva del assistant o una estructura de reparto ya abierta,
+- y el turno actual del usuario pregunta, valida, mueve, aprieta o condiciona uno de sus términos,
+- entonces la fase dominante suele ser `concesiones_y_ajuste_final`, no `descubrimiento_y_comprension`.
+
+Esto aplica aunque:
+- el turno esté formulado como pregunta;
+- el tono sea cordial;
+- la modificación sea pequeña;
+- o el usuario no use la palabra "contraoferta".
+
+Ejemplos típicos:
+- "¿Y a ti te parece bien hacerlo al mediodía tu sesión?"
+- "¿Entonces serían 30 minutos para cada uno al inicio?"
+- "Si dejamos la recogida al final, ¿te encaja?"
+- "Vale, eso sí, pero yo necesitaría la mañana."
+
+# Question-form anti-pattern
+No clasifiques un turno como `descubrimiento_y_comprension` solo porque tenga forma de pregunta.
+
+Una pregunta puede estar:
+- explorando -> discovery
+- abriendo una propuesta -> propuesta_creativa
+- ajustando una propuesta viva -> concesiones_y_ajuste_final
+- confirmando acuerdo -> formalizacion_del_acuerdo
+
+Clasifica por función, no por signo de interrogación.
+
 # Canonical phase guide
 
 ## clima_humano
@@ -120,12 +149,6 @@ Se mantiene cuando:
 - se confirma para qué es el encuentro actual;
 - se abre el tema principal solo de forma ligera o social;
 - todavía solo se está reconociendo que existe un conflicto con la sala, sin explorar necesidades reales.
-
-No subir solo porque:
-- se menciona superficialmente el asunto principal;
-- aparece una expresión como "vienes", "has venido", "aquí", "hoy" en copresencia;
-- hay una transición suave hacia el tema sin exploración material real;
-- se reconoce que hay conflicto de prioridades pero no se concreta todavía nada útil.
 
 ## descubrimiento_y_comprension
 Función dominante:
@@ -142,6 +165,9 @@ También permanece aquí cuando:
 - todavía no existe propuesta de reparto entre ambos;
 - la conversación sigue necesitando distinguir entre bloque ideal y mínimo real.
 
+No usar cuando:
+- ya hay una propuesta viva sobre la mesa y el turno actual solo mueve uno de sus términos.
+
 ## propuesta_creativa
 Función dominante:
 - abrir la negociación sustantiva con una primera propuesta concreta, una primera estructura de avance o una primera condición negociable antes de que exista un ajuste claro entre dos posiciones ya vivas.
@@ -153,10 +179,8 @@ Se activa cuando:
 - todavía no domina el ajuste fino entre dos posiciones ya activas.
 
 No usar cuando:
-- solo una parte ha revelado lo que quiere para sí misma;
-- todavía no hay reparto, intercambio ni condición recíproca;
-- el turno busca principalmente informar de una necesidad o preferencia, no proponer un arreglo entre ambos;
-- ya existe al menos una posición negociadora viva de cada parte y el foco dominante ya no es abrir propuesta, sino estrechar distancia entre propuestas o condiciones ya puestas sobre la mesa.
+- ya existe al menos una posición negociadora viva de cada parte;
+- o el foco ya es mover términos de una propuesta previamente abierta.
 
 ## concesiones_y_ajuste_final
 Función dominante:
@@ -165,11 +189,13 @@ Función dominante:
 Se activa cuando:
 - el foco principal está en afinar diferencias, mover posiciones o ajustar condiciones;
 - ya existe al menos una oferta o posición negociadora viva de cada parte;
-- el turno actual o la trayectoria reciente muestran contraofertas, mínimos, recortes, cesiones cruzadas o fórmulas de aproximación como "ni para ti ni para mí".
+- el turno actual o la trayectoria reciente muestran contraofertas, mínimos, recortes, cesiones cruzadas o fórmulas de aproximación como "ni para ti ni para mí";
+- o el usuario está preguntando/negociando sobre un término concreto de una propuesta ya viva.
 
 No dejar de usar esta fase solo porque:
 - el lenguaje sea cordial;
 - la contraoferta esté formulada de manera elegante, condicional o creativa;
+- el turno tenga forma de pregunta;
 - parezca que el acuerdo está cerca si todavía no existe aceptación explícita.
 
 ## formalizacion_del_acuerdo
@@ -180,17 +206,6 @@ Se activa cuando:
 - ya existe aceptación explícita o acuerdo explícito sobre una propuesta concreta;
 - la conversación ya no gira sobre explorar o ajustar, sino sobre confirmar, resumir o cerrar operativamente un acuerdo ya alcanzado.
 
-No se activa cuando:
-- todavía falta que una de las partes acepte la última propuesta;
-- solo hay cercanía al cierre, buena disposición o sensación de acuerdo inminente;
-- el turno actual sigue intentando mover horas o cualquier condición sustancial;
-- el turno cierra la conversación porque una de las partes decide irse sin acuerdo.
-
-Lectura correcta:
-- esta es una fase post-acuerdo, no pre-acuerdo.
-- sirve para verbalizar, consolidar y operar un acuerdo ya producido.
-- si durante esta fase se reabren horas o condiciones, puedes volver a `concesiones_y_ajuste_final`.
-
 ## abandono_de_la_negociacion
 Función dominante:
 - aceptar, reconocer y cerrar conversacionalmente la salida explícita de una negociación que una de las partes da por terminada sin acuerdo.
@@ -199,55 +214,6 @@ Se activa cuando:
 - una parte expresa claramente que no quiere seguir negociando;
 - una parte da por cerrado el intento sin acuerdo;
 - la conversación ya no gira sobre explorar, ajustar o confirmar acuerdo, sino sobre aceptar la ruptura del trato y cerrar la conversación.
-
-No se activa cuando:
-- todavía hay una contraoferta o un límite condicional sobre la mesa;
-- el turno sigue intentando presión negociadora;
-- solo hay frustración, dureza o amenaza táctica de irse;
-- el cierre real es con acuerdo y no sin acuerdo.
-
-Lectura correcta:
-- esta es una fase excepcional y lateral, no una etapa normal de la secuencia principal.
-- sirve para detectar salida explícita sin acuerdo.
-- si después se reabre de forma real el reparto o las condiciones, puedes volver a `concesiones_y_ajuste_final`.
-
-# Copresent boundary examples
-Si `current_scene.copresent = true` y `current_scene.encounter_in_progress = true`, estos ejemplos tienden a seguir en `clima_humano` si su función dominante es solo encuadre, identidad o motivo del encuentro actual:
-- "¿Qué tal? ¿Has venido por lo de la sala?"
-- "Bien, ¿y tú? ¿Eras tú con quien hablaba?"
-- "Perfecto, entonces vienes por la reunión, ¿no?"
-- "Hola, ¿vienes a hablar de esto?"
-- "Ah, eras tú."
-- "Vale, estamos aquí porque nos dijeron que había un conflicto con la sala."
-
-Lectura por defecto en esos casos:
-- encuadre presente
-- confirmación de identidad
-- confirmación de propósito
-- transición inicial al asunto principal
-
-No leer por defecto como:
-- coordinación futura
-- cita posterior
-- avance material por sí solo
-- propuesta
-- ajuste
-- formalización
-
-# Early-case examples
-Ejemplos que normalmente deben quedarse en `descubrimiento_y_comprension`:
-- assistant: "¿Qué horas teníais reservadas?"
-- user: "Nos ocupará 4 horas y queríamos empezar a las 8."
-
-Lectura correcta:
-- la otra parte está respondiendo con su petición o marco inicial;
-- todavía no ha propuesto un reparto entre ambos;
-- sigue faltando distinguir mínimo real, preferencia y margen.
-
-Ejemplos que sí pueden subir a `propuesta_creativa`:
-- "Si vosotros cogéis la sala después de las 12, nosotros podríamos arrancar a las 8."
-- "Podríamos dejaros entrar a las 11 si nosotros tenemos la primera parte."
-- "Te propongo que nosotros hagamos la intro fuera y entremos más tarde."
 
 # Completion criteria
 Tu trabajo está completo solo cuando:

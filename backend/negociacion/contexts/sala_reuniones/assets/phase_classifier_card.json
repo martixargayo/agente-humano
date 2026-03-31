@@ -45,13 +45,15 @@
         "No adelantes de fase por una referencia superficial a la sala, al horario o al cierre si el turno aún cumple principalmente otra función.",
         "No retrocedas solo porque aparezca cortesía o cordialidad si la negociación activa sigue en curso.",
         "En el arranque, no interpretes como comprensión material real el simple hecho de que ambas partes sepan que existe un conflicto con la sala.",
-        "Una declaración unilateral del tipo 'necesitamos X horas y queremos empezar a Y hora' suele seguir siendo descubrimiento si todavía no propone una estructura de reparto entre ambas partes ni una condición negociable de intercambio."
+        "Una declaración unilateral del tipo 'necesitamos X horas y queremos empezar a Y hora' suele seguir siendo descubrimiento si todavía no propone una estructura de reparto entre ambas partes ni una condición negociable de intercambio.",
+        "No clasifiques como discovery un turno solo porque tenga forma de pregunta."
       ],
       "dominance_rule": "Si un turno mezcla varias funciones, elige la fase que mejor describe qué intenta avanzar realmente la conversación en ese momento. Da prioridad a la función negociadora dominante observable sobre matices de tono o formulación.",
       "inertia_rule": "En casos ambiguos, favorece continuidad de fase antes que un salto precipitado, salvo que existan señales estructurales claras de una fase posterior ya activa.",
       "multi_step_rule": "Si un solo turno mueve de forma clara la conversación varios pasos hacia adelante, clasifica la fase más avanzada que realmente haya quedado abierta y dominante.",
       "backward_rule": "Si una conversación avanzada reabre dudas materiales, reabre condiciones o vuelve a pedir claridad básica, puedes retroceder de fase si esa nueva necesidad pasa a dominar el intercambio.",
       "offer_exchange_rule": "Si ya existe al menos una oferta o posición negociadora viva de cada parte y el turno actual o la trayectoria reciente muestran contraofertas, mínimos, cesiones cruzadas, condiciones de cierre o fórmulas de aproximación como 'ni para ti ni para mí', la fase dominante pasa a 'concesiones_y_ajuste_final' aunque siga habiendo creatividad en cómo se empaqueta el trato.",
+      "term_adjustment_rule": "Si en la trayectoria reciente ya hay una propuesta viva sobre la mesa y el turno actual del usuario pregunta, valida, condiciona o mueve uno de sus términos concretos —por ejemplo franja, mediodía, 30 minutos, recogida, transición o ayuda operativa— la fase dominante suele ser 'concesiones_y_ajuste_final', aunque el mensaje esté formulado como pregunta cordial.",
       "packaging_rule": "No clasifiques como 'propuesta_creativa' un turno solo porque la contraoferta esté presentada de forma elegante, condicional o creativa. Si la función dominante ya es estrechar distancia entre posiciones existentes, clasifica como 'concesiones_y_ajuste_final'.",
       "opening_position_rule": "No clasifiques como 'propuesta_creativa' una mera exposición inicial del bloque deseado, del horario preferido o de la duración estimada de una sola parte si todavía no hay una estructura explícita de reparto, intercambio o condición entre ambas partes.",
       "agreement_activation_rule": "No clasifiques como 'formalizacion_del_acuerdo' por mera cercanía al cierre, buena disposición, propuesta pendiente de aceptación o invitación a cerrar. Usa 'formalizacion_del_acuerdo' solo cuando ya exista evidencia suficientemente clara de acuerdo explícito o aceptación explícita de una propuesta concreta, y el turno actual o la trayectoria inmediata estén confirmando, resumiendo u operacionalizando ese acuerdo ya alcanzado.",
@@ -70,17 +72,6 @@
           "preguntas personales ligeras",
           "confirmación de identidad",
           "encuadre social del contacto"
-        ],
-        "do_not_upgrade_because": [
-          "se menciona la sala de forma superficial",
-          "se menciona el jueves o el horario sin desarrollar el problema",
-          "se reconoce quién es quién",
-          "se confirma que existe necesidad de coordinarse",
-          "hay cordialidad mezclada con contexto de la sala"
-        ],
-        "upgrade_when": [
-          "el foco dominante pasa a obtener claridad útil sobre la sala o el reparto",
-          "se abre una pregunta o eje informativo con valor de decisión"
         ]
       },
       "descubrimiento_y_comprension": {
@@ -101,12 +92,8 @@
           "la conversación explora variables sin formular todavía una propuesta concreta",
           "solo una parte ha expuesto su bloque ideal, su duración o su hora preferida, pero aún no hay estructura explícita de reparto entre ambas partes"
         ],
-        "upgrade_to_propuesta_when": [
-          "aparece una propuesta concreta, condición operativa o estructura de intercambio entre ambas partes",
-          "el turno ya no solo explora, sino que pone algo negociable sobre la mesa en términos de reparto, cesión o secuencia de uso"
-        ],
-        "downgrade_to_clima_when": [
-          "la conversación abandona momentáneamente el eje de claridad y vuelve a una interacción predominantemente relacional o social"
+        "do_not_use_when": [
+          "ya existe una propuesta viva y el turno actual solo mueve o tantea uno de sus términos"
         ]
       },
       "propuesta_creativa": {
@@ -119,23 +106,11 @@
           "opción inicial de intercambio",
           "primera propuesta de compensación operativa simple"
         ],
-        "stay_when": [
-          "todavía se está formulando la primera propuesta o el primer marco negociable",
-          "solo una de las partes ha revelado posición negociadora y la otra aún no está realmente ajustando"
-        ],
         "do_not_use_when": [
           "ya existe al menos una posición negociadora viva de cada parte y el foco pasa a estrechar distancia",
           "ya hay contraofertas, mínimos, recortes o ajustes sucesivos",
           "el turno busca ajustar una propuesta previa más que abrir una nueva estructura",
           "el turno solo expresa una necesidad, duración estimada o preferencia horaria unilateral sin proponer todavía un reparto o una condición entre ambas partes"
-        ],
-        "upgrade_to_concesiones_when": [
-          "aparecen contraofertas o ajustes entre dos posiciones ya visibles",
-          "el foco dominante pasa de abrir propuesta a mover diferencias de horas, franjas o condiciones operativas",
-          "surgen mínimos, cesiones cruzadas o fórmulas de aproximación real"
-        ],
-        "downgrade_to_descubrimiento_when": [
-          "la propuesta se frena porque falta claridad material y la conversación vuelve a explorar información relevante antes de seguir"
         ]
       },
       "concesiones_y_ajuste_final": {
@@ -150,135 +125,22 @@
           "reparto de preparación o recogida",
           "ajuste de condiciones",
           "movimiento pequeño para acercar posiciones",
-          "intercambio explícito entre horario y compensación operativa"
+          "intercambio explícito entre horario y compensación operativa",
+          "pregunta o tanteo sobre un término concreto de una propuesta ya viva"
         ],
         "entry_signals": [
           "ya existe una oferta o posición viva de cada parte",
           "el foco dominante ya no es abrir una propuesta sino reducir distancia",
           "las franjas u otras condiciones se mueven sobre una propuesta previa ya establecida"
-        ],
-        "stay_when": [
-          "la conversación gira principalmente sobre cerrar diferencias y afinar condiciones",
-          "cada nuevo turno ajusta una posición previa en vez de abrir un marco nuevo",
-          "sigue habiendo negociación sustancial abierta aunque aparezcan frases cordiales o envoltorio creativo"
-        ],
-        "upgrade_to_formalizacion_when": [
-          "las posiciones ya están suficientemente alineadas y el turno pasa a resumir, confirmar o operacionalizar lo acordado"
-        ],
-        "downgrade_to_descubrimiento_when": [
-          "aparece una nueva incertidumbre material que bloquea seguir ajustando",
-          "se reabre información básica que condiciona la utilidad real del reparto"
-        ],
-        "downgrade_to_propuesta_when": [
-          "desaparece el ajuste entre posiciones vivas y la conversación vuelve claramente a explorar una estructura más abierta sin ajuste activo"
         ]
       },
       "formalizacion_del_acuerdo": {
-        "dominant_function": "Confirmar, resumir y dejar operativos unos términos que ya han sido aceptados de forma suficientemente explícita por una o ambas partes. Es una fase post-acuerdo: no sirve para acercarse al acuerdo, sino para verbalizarlo, consolidarlo y cerrar social u operativamente sobre una aceptación ya producida.",
-        "entry_signals": [
-          "una parte acepta explícitamente una propuesta concreta",
-          "una parte confirma de forma clara que acepta el reparto",
-          "tras una aceptación explícita previa, el turno actual resume o confirma los términos ya aceptados",
-          "el turno actual ya no intenta mover horas ni condiciones, sino confirmar un acuerdo ya alcanzado"
-        ],
-        "positive_signals": [
-          "de acuerdo, acepto esa distribución",
-          "acepto el reparto",
-          "perfecto, entonces lo dejamos así",
-          "queda cerrado de X a Y con estas condiciones",
-          "confirmo el acuerdo en X con Y",
-          "resumen de términos ya aceptados",
-          "confirmación final sobre acuerdo ya alcanzado",
-          "siguiente paso operativo después del acuerdo"
-        ],
-        "do_not_use_when": [
-          "todavía falta que una de las partes acepte explícitamente la última propuesta",
-          "hay una propuesta pendiente de respuesta o aceptación",
-          "solo hay aproximación, buena disposición o sensación de cierre cercano",
-          "se sigue intentando mover horas, preparación, recogida o cualquier condición sustancial",
-          "el turno cierra la conversación porque una de las partes decide irse sin acuerdo"
-        ],
-        "stay_when": [
-          "el foco principal es confirmar, resumir, agradecer o operacionalizar lo ya acordado",
-          "el acuerdo explícito ya existe y el intercambio solo lo consolida o lo cierra socialmente"
-        ],
-        "downgrade_to_concesiones_when": [
-          "durante la formalización se reabren horas o condiciones",
-          "aparece una renegociación de último momento",
-          "una de las partes deja de tratar los términos como aceptados y vuelve a ajustarlos"
-        ],
-        "downgrade_to_descubrimiento_when": [
-          "se descubre una duda relevante que impide formalizar con seguridad"
-        ]
+        "dominant_function": "Confirmar, resumir y dejar operativos unos términos que ya han sido aceptados de forma suficientemente explícita por una o ambas partes."
       },
       "abandono_de_la_negociacion": {
-        "dominant_function": "Aceptar, reconocer y cerrar conversacionalmente una salida explícita de la negociación sin acuerdo. Es una fase excepcional y lateral: no forma parte de la secuencia normal del canonical_order, sino que se activa cuando una de las partes deja claramente de perseguir el acuerdo.",
-        "entry_signals": [
-          "una parte dice de forma clara que no quiere seguir negociando",
-          "una parte da por terminada la negociación sin acuerdo",
-          "el turno actual ya no intenta ajustar horas ni condiciones, sino aceptar o cerrar la salida del otro",
-          "la trayectoria inmediata muestra que el foco pasó de negociar a despedirse o cerrar sin trato"
-        ],
-        "positive_signals": [
-          "lo dejamos aquí",
-          "gracias por tu tiempo, pero no seguimos",
-          "prefiero no continuar con la negociación",
-          "no vamos a llegar a un acuerdo",
-          "lo siento, me retiro",
-          "entendido, gracias igualmente",
-          "de acuerdo, lo dejamos entonces"
-        ],
-        "do_not_use_when": [
-          "todavía hay una contraoferta viva o una propuesta pendiente de respuesta",
-          "el mensaje es un ultimátum condicional y aún intenta obtener aceptación",
-          "solo hay frustración, dureza o una amenaza táctica de irse",
-          "todavía se busca mover horas, preparación, recogida o cualquier condición sustancial",
-          "el cierre real es con acuerdo y no sin acuerdo"
-        ],
-        "stay_when": [
-          "el foco principal es aceptar la salida, despedirse o cerrar la conversación sin reabrir el acuerdo",
-          "la negociación ya fue abandonada explícitamente y el intercambio solo lo reconoce o lo cierra socialmente"
-        ],
-        "downgrade_to_concesiones_when": [
-          "después del abandono una de las partes reabre explícitamente horas o condiciones y la otra vuelve a entrar en negociación real"
-        ],
-        "downgrade_to_descubrimiento_when": [
-          "el abandono aparente se revierte y el foco vuelve de forma clara a aclarar condiciones materiales antes de negociar"
-        ]
+        "dominant_function": "Aceptar, reconocer y cerrar conversacionalmente una salida explícita de la negociación sin acuerdo."
       }
     },
-    "boundary_rules": [
-      {
-        "from": "clima_humano",
-        "to": "descubrimiento_y_comprension",
-        "rule": "No cambies solo porque aparece una referencia a la sala o a la necesidad de coordinarse. Cambia solo cuando el turno abra o priorice una variable útil para entender la sala o el reparto."
-      },
-      {
-        "from": "descubrimiento_y_comprension",
-        "to": "propuesta_creativa",
-        "rule": "No cambies solo por una preferencia vaga, una duración deseada o una intención general. Cambia cuando aparezca una propuesta concreta, una condición o una estructura negociable entre ambas partes."
-      },
-      {
-        "from": "propuesta_creativa",
-        "to": "concesiones_y_ajuste_final",
-        "rule": "No cambies solo porque existe una propuesta. Cambia en cuanto ya haya una posición negociadora viva de cada parte y el foco dominante pase a ajustar diferencias mediante contraofertas, mínimos, recortes, cesiones cruzadas o fórmulas de aproximación como 'ni para ti ni para mí'. En ese punto, aunque el lenguaje siga siendo creativo o cordial, la fase dominante ya es 'concesiones_y_ajuste_final'."
-      },
-      {
-        "from": "concesiones_y_ajuste_final",
-        "to": "formalizacion_del_acuerdo",
-        "rule": "No cambies solo porque hay buena disposición, cercanía al cierre o una propuesta que parece razonable. Cambia solo cuando ya exista aceptación explícita o acuerdo explícito suficientemente claro sobre una propuesta concreta, y el foco pase de ajustar términos a confirmar, resumir o preparar el cierre operativo de ese acuerdo ya alcanzado."
-      },
-      {
-        "from": "concesiones_y_ajuste_final",
-        "to": "abandono_de_la_negociacion",
-        "rule": "Cambia solo cuando una de las partes deje explícitamente de perseguir el acuerdo y el foco dominante pase a aceptar, reconocer o cerrar esa salida sin acuerdo. No cambies por una contraoferta dura, un mínimo, una última oferta o un ultimátum condicional mientras la negociación siga viva."
-      },
-      {
-        "from": "formalizacion_del_acuerdo",
-        "to": "abandono_de_la_negociacion",
-        "rule": "Solo cambia si el acuerdo deja de tratarse como vigente y una de las partes da explícitamente por terminada la conversación sin trato efectivo. No uses esta transición por simples agradecimientos o cierre cordial de un acuerdo ya aceptado."
-      }
-    ],
     "anti_patterns": [
       "No subir de clima_humano a descubrimiento_y_comprension por una simple confirmación de identidad.",
       "No subir de descubrimiento_y_comprension a propuesta_creativa por una valoración genérica, una duración deseada o una preferencia horaria unilateral sin propuesta concreta.",
@@ -286,60 +148,20 @@
       "No mantener propuesta_creativa cuando ya existen posiciones vivas de ambas partes y el foco dominante es estrechar distancia con contraofertas, mínimos o concesiones cruzadas.",
       "No subir a formalizacion_del_acuerdo mientras siga habiendo negociación sustancial abierta.",
       "No subir a formalizacion_del_acuerdo por una propuesta pendiente de aceptación, una invitación a cerrar o una mera aproximación entre posiciones.",
-      "No subir a abandono_de_la_negociacion por una contraoferta dura, un límite firme o una última oferta si la otra parte todavía está intentando llegar a un acuerdo.",
-      "No subir a abandono_de_la_negociacion por un ultimátum condicional del tipo 'si no te encaja, lo dejamos' mientras el foco dominante siga siendo presionar para aceptación.",
-      "No usar formalizacion_del_acuerdo cuando el turno cierra sin acuerdo.",
-      "No bajar de una fase activa solo porque aparezca una frase cordial o una cortesía superficial.",
+      "No usar discovery solo porque el mensaje esté formulado como pregunta.",
+      "No tomar una pregunta sobre mediodía, 30 minutos o recogida dentro de una propuesta ya viva como si fuera exploración básica.",
       "No tomar como propuesta_creativa un mensaje como 'nos ocupará 4 horas y queríamos empezar a las 8' si todavía no propone una forma de repartirse la sala."
     ],
     "borderline_examples": {
-      "keep_clima_humano": [
-        "hola",
-        "¿Qué tal todo?",
-        "¿Eres Diego?",
-        "¿Eres Diego, del equipo de formación?",
-        "Encantado, sí, me dijeron que había conflicto con la sala"
-      ],
-      "move_to_descubrimiento_y_comprension": [
-        "Antes de mover nada, necesito entender qué parte necesitáis realmente dentro de la sala",
-        "¿Cuánto tiempo de preparación os hace falta de verdad?",
-        "¿Qué podríais sacar fuera de la sala?",
-        "¿Necesitáis recoger del todo al final?",
-        "¿Qué parte de vuestra sesión depende realmente de la sala?",
-        "Nosotros queremos hacer una actividad con el equipo que nos ocupará 4 horas y queríamos empezar a las 8"
-      ],
-      "move_to_propuesta_creativa": [
-        "Si vosotros entráis después, nosotros podríamos hacer la introducción fuera",
-        "Yo podría moverme si dejamos la sala preparada así",
-        "Te propongo hacerlo de esta manera"
-      ],
       "move_to_concesiones_y_ajuste_final": [
         "Si salimos antes, necesito que vosotros os encarguéis de dejar todo listo",
         "Yo podría recortar media hora si vosotros asumís la recogida",
         "Ni para ti ni para mí: nosotros hasta las 11 y vosotros desde las 11",
         "Eso es lo mínimo que puedo aceptar",
         "Puedo asumir esa franja si me compensas con esto",
-        "Si no podéis moveros ahí, así no me encaja"
-      ],
-      "move_to_formalizacion_del_acuerdo": [
-        "De acuerdo, acepto ese reparto",
-        "Perfecto, entonces lo dejamos así: nosotros de 8 a 11 y vosotros de 11 a 14 con la sala ya montada",
-        "De acuerdo, acepto el acuerdo",
-        "Perfecto, queda cerrado con este reparto y estas condiciones",
-        "Confirmo el acuerdo en ese horario y con esa transición"
-      ],
-      "move_to_abandono_de_la_negociacion": [
-        "Nada, lo dejamos aquí",
-        "Gracias por tu tiempo, pero no vamos a seguir",
-        "Prefiero no continuar con la negociación",
-        "Lo siento, me retiro",
-        "No me interesa seguir hablando del reparto",
-        "Entendido, lo dejamos entonces"
-      ],
-      "backward_examples": [
-        "Estábamos cerrando, pero antes necesito confirmar cuánto tiempo necesitáis de verdad para recoger",
-        "Parecía acordado, pero ese detalle cambia bastante el reparto",
-        "Volvamos un momento a qué parte necesita realmente la sala porque eso afecta todo"
+        "Si no podéis moveros ahí, así no me encaja",
+        "¿Y a ti te parece bien hacerlo al mediodía tu sesión?",
+        "¿Entonces serían 30 minutos para cada uno al inicio?"
       ]
     },
     "decision_test": [
@@ -350,14 +172,10 @@
       "¿Ya hay una posición negociadora viva de cada parte?",
       "¿El turno intenta abrir una propuesta o ajustar distancia entre propuestas ya abiertas?",
       "¿La otra parte solo ha expuesto su bloque ideal o ya ha propuesto una estructura de reparto entre ambas partes?",
-      "¿Si quitara el tono cordial o creativo, seguiría siendo claramente ajuste de reparto? Si sí, favorece concesiones_y_ajuste_final.",
+      "¿El turno actual mueve un término concreto de una propuesta ya viva? Si sí, favorece concesiones_y_ajuste_final.",
+      "¿Si quitara el tono cordial o el formato de pregunta, seguiría siendo claramente ajuste de reparto? Si sí, favorece concesiones_y_ajuste_final.",
       "¿Ya hubo aceptación explícita o acuerdo explícito sobre una propuesta concreta?",
-      "¿El turno actual está confirmando un acuerdo ya alcanzado o todavía intenta conseguirlo?",
-      "Si aún falta un sí claro de alguna parte, no uses formalizacion_del_acuerdo.",
-      "¿La parte todavía intenta conseguir acuerdo o ya está saliendo explícitamente de la negociación?",
-      "¿Es un ultimátum condicional o una retirada real sin acuerdo?",
-      "¿Al inicio del intercambio se está aclarando el conflicto o ya se están explorando necesidades reales concretas?",
-      "Si la respuesta correcta debería aceptar el cierre y despedirse, usa abandono_de_la_negociacion."
+      "¿El turno actual está confirmando un acuerdo ya alcanzado o todavía intenta conseguirlo?"
     ],
     "output_expectation": "Devuelve la fase que mejor represente la necesidad conversacional dominante del momento actual, con criterio estable y sin saltos precipitados."
   }
