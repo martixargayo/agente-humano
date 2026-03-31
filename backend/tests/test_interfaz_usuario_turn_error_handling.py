@@ -42,4 +42,6 @@ class InterfazUsuarioTurnErrorHandlingTests(unittest.TestCase):
         detail = payload.get("detail", {})
         self.assertEqual(detail.get("error"), "turn_execution_failed")
         self.assertIn("No se pudo procesar el turno", detail.get("message", ""))
-
+        self.assertTrue(str(detail.get("error_id", "")).startswith("iu_turn_"))
+        self.assertEqual(detail.get("cause"), "RuntimeError")
+        self.assertIn("boom", detail.get("diagnostic", ""))

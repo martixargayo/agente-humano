@@ -23,6 +23,18 @@ from ..contexts import list_official_negotiation_contexts
 
 logger = logging.getLogger(__name__)
 
+
+def _diagnostic_from_exception(exc: Exception) -> str:
+    chain: list[str] = []
+    current: BaseException | None = exc
+    while current is not None:
+        text = str(current).strip()
+        if text:
+            chain.append(text)
+        current = current.__cause__
+    joined = " | ".join(chain)
+    return joined[:600] if joined else type(exc).__name__
+
 def _apply_contextual_state_overrides(state: Any, config: Any, entries: list[dict[str, Any]]) -> None:
     persona_entry = next((entry for entry in entries if entry.get("category") == "contextual" and entry.get("key") == "persona"), None)
     if not persona_entry:
@@ -244,16 +256,24 @@ def run_sandbox_turn(
             headers={"Retry-After": str(exc.retry_after_seconds)},
         ) from exc
     except Exception as exc:
+        error_id = f"opt_turn_{uuid4().hex[:10]}"
+        diagnostic = _diagnostic_from_exception(exc)
         logger.exception(
-            "optimizador_turn_failed session=%s optimizer_session_id=%s message_len=%s",
+            "optimizador_turn_failed error_id=%s session=%s optimizer_session_id=%s message_len=%s cause=%s diagnostic=%s",
+            error_id,
             f"{user_id}:{session_id}",
             optimizer_session_id,
             len(message or ""),
+            type(exc).__name__,
+            diagnostic,
         )
         raise HTTPException(
             status_code=500,
             detail={
                 "error": "turn_execution_failed",
+                "error_id": error_id,
+                "cause": type(exc).__name__,
+                "diagnostic": diagnostic,
                 "message": "No se pudo procesar el turno en este momento. Inténtalo de nuevo.",
             },
         ) from exc
