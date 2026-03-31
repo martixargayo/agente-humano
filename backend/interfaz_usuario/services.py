@@ -32,6 +32,18 @@ from negociacion.optimizador.storage import resolve_traces
 logger = logging.getLogger(__name__)
 
 
+def _diagnostic_from_exception(exc: Exception) -> str:
+    chain: list[str] = []
+    current: BaseException | None = exc
+    while current is not None:
+        text = str(current).strip()
+        if text:
+            chain.append(text)
+        current = current.__cause__
+    joined = " | ".join(chain)
+    return joined[:600] if joined else type(exc).__name__
+
+
 def _resolve_bootstrap_context_id(*, context_id: str | None = None, public_slug: str | None = None) -> str:
     try:
         selection = resolve_public_context_selection(context_id=context_id, public_slug=public_slug)
@@ -286,16 +298,24 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
             headers={"Retry-After": str(exc.retry_after_seconds)},
         ) from exc
     except Exception as exc:
+        error_id = f"iu_turn_{uuid4().hex[:10]}"
+        diagnostic = _diagnostic_from_exception(exc)
         logger.exception(
-            "interfaz_usuario_turn_failed session=%s message_len=%s new_conversation=%s",
+            "interfaz_usuario_turn_failed error_id=%s session=%s message_len=%s new_conversation=%s cause=%s diagnostic=%s",
+            error_id,
             f"{user_id}:{session_id}",
             len(message or ""),
             new_conversation,
+            type(exc).__name__,
+            diagnostic,
         )
         raise HTTPException(
             status_code=500,
             detail={
                 "error": "turn_execution_failed",
+                "error_id": error_id,
+                "cause": type(exc).__name__,
+                "diagnostic": diagnostic,
                 "message": "No se pudo procesar el turno en este momento. Inténtalo de nuevo.",
             },
         ) from exc
