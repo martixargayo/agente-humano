@@ -62,7 +62,8 @@
       "Se avanza sobre un solo eje relevante por turno.",
       "Se evita repreguntar lo ya suficientemente tratado o no disponible.",
       "A veces el mejor avance es responder con criterio y dejar que la otra parte siga desarrollando su posición.",
-      "Se empieza a distinguir qué es preferencia y qué es necesidad real sin presuponerlo antes de tiempo."
+      "Se empieza a distinguir qué es preferencia y qué es necesidad real sin presuponerlo antes de tiempo.",
+      "Si la otra parte acaba de decir cuántas horas quiere y a qué hora preferiría empezar, el siguiente paso normal suele ser aclarar qué parte de eso es realmente fija, no lanzar todavía un reparto cerrado."
     ],
     "planner_bias": [
       "Favorece claridad mínima suficiente antes de pasar a proponer.",
@@ -70,14 +71,16 @@
       "Si la otra parte ya ha dado contexto útil, valida y cambia de eje en vez de repetir.",
       "Favorece que la otra parte aporte contexto y se retrate más, en vez de abrir tú varios frentes.",
       "Si ya hay claridad suficiente, no preguntes por sistema: puedes responder y sostener el eje.",
-      "No presupongas al inicio cuántas horas, qué actividad ni qué parte depende realmente de la sala para la otra parte."
+      "No presupongas al inicio cuántas horas, qué actividad ni qué parte depende realmente de la sala para la otra parte.",
+      "No conviertas una mera declaración unilateral del bloque deseado en una propuesta cerrable entre ambas partes."
     ],
     "good_moves": [
       "Elegir un único eje con valor decisional: mínimo real en sala, preparación, recogida, franja horaria, partes que pueden salir fuera o coste de asumir la tarde.",
       "Usar movimientos que extraigan claridad sin sonar inquisitivos.",
       "Condicionar suavemente el avance si falta una pieza importante.",
       "Explorar, si encaja de forma natural y no prematura, qué parte es preferencia y qué parte es necesidad real.",
-      "Responder con criterio y dejar espacio para que la otra parte amplíe o se retrate más cuando eso dé mejor posición que una nueva pregunta."
+      "Responder con criterio y dejar espacio para que la otra parte amplíe o se retrate más cuando eso dé mejor posición que una nueva pregunta.",
+      "Cuando la otra parte revele por primera vez su bloque ideal, pedir o provocar una precisión sobre la parte imprescindible antes de proponer reparto."
     ],
     "avoid": [
       "Hacer listas de preguntas o abrir varios frentes en el mismo turno.",
@@ -87,7 +90,8 @@
       "Revelar o insinuar información privada sensible del negotiation_brief.",
       "Usar el negotiation_brief como discurso explícito frente a la otra parte.",
       "Preguntar por rutina cuando basta con responder, validar o sostener el eje.",
-      "Actuar como si ya supieras qué quiere realmente la otra parte antes de que lo haya explicado."
+      "Actuar como si ya supieras qué quiere realmente la otra parte antes de que lo haya explicado.",
+      "Responder a la primera posición de la otra parte con un reparto espejo del día completo sin haber aclarado antes necesidad frente a preferencia."
     ],
     "question_policy": {
       "default_max_questions": 1,
@@ -134,7 +138,9 @@
       "Prefiere estructura única o reparto simple frente a bundle de horario + varias compensaciones en la primera propuesta propia.",
       "Reserva creatividad, tradeoffs y monedas del Equipo B para ajuste posterior, bloqueo o respuesta a una propuesta ya estructurada de la otra parte.",
       "No te precipites a anclar con propuesta propia si todavía puedes conseguir mejor información o mejor posicionamiento de la otra parte.",
-      "Usa el negotiation_brief para valorar internamente si una concesión reduce tiempo real en sala, reduce fricción o solo facilita el acuerdo sin resolver el problema de fondo."
+      "Usa el negotiation_brief para valorar internamente si una concesión reduce tiempo real en sala, reduce fricción o solo facilita el acuerdo sin resolver el problema de fondo.",
+      "No trates mañana temprana y franja tardía como equivalentes al diseñar una primera propuesta.",
+      "Evita repartir el día por mitades o copiar mecánicamente el bloque que acaba de pedir la otra parte salvo que haya una razón operativa clara para hacerlo."
     ],
     "good_moves": [
       "Hacer una primera propuesta simple y defendible de reparto o secuencia de uso.",
@@ -154,7 +160,8 @@
       "Sentirte obligado a hacer una propuesta propia creativa solo porque la fase ya es propositiva.",
       "Convertir las monedas del Equipo B en regalos no correspondidos.",
       "Revelar el marco interno de valoración del negotiation_brief.",
-      "Seguir tratando como apertura propositiva un intercambio que ya está en contraofertas y ajuste real entre dos posiciones vivas."
+      "Seguir tratando como apertura propositiva un intercambio que ya está en contraofertas y ajuste real entre dos posiciones vivas.",
+      "Responder a la primera exposición de la otra parte con una partición simétrica del día como si eso cerrara el problema por sí solo."
     ],
     "question_policy": {
       "default_max_questions": 1,
@@ -202,6 +209,7 @@
       "Si el horario o la franja no mejoran, intenta ganar valor en otras monedas del acuerdo: ayuda, transición, preparación, recogida o partes fuera de la sala.",
       "Usa el negotiation_brief para distinguir entre concesiones que reducen tiempo real o fricción y concesiones que solo facilitan el acuerdo.",
       "No asumas una franja peor por mera cordialidad si no entra compensación real o reducción clara de coste operativo.",
+      "La mañana temprana vale más que la franja tardía y debe tratarse así en los ajustes.",
       "Si la otra parte aún puede moverse más, no te precipites a cerrar ni a cargar tú con el siguiente movimiento.",
       "La colaboración negociadora no obliga a seguir cediendo: también puede consistir en sostener posición, condicionar o devolver la carga a la otra parte.",
       "Si ya hubo dos concesiones propias relevantes y consecutivas sin concesión relevante de la otra parte entre medias, por defecto no hagas una tercera concesión propia.",

@@ -201,7 +201,6 @@
 
         "scene_state": { "rename": "current_scene" },
 
-        "selected_memory": { "hide": true },
         "trace_meta": { "hide": true }
       },
       "outputs": {
