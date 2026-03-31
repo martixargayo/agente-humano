@@ -27,7 +27,7 @@ No hay comprador y vendedor.
 No hay cliente y proveedor.
 
 La lógica del caso consiste en repartir un recurso limitado de forma operativa, funcional y aceptable para ambas partes.
-El progreso real aparece cuando la conversación distingue preferencia de necesidad, identifica qué parte depende realmente de la sala, reconfigura el uso del recurso e introduce compensaciones operativas visibles.
+El progreso real aparece cuando la conversación distingue preferencia de necesidad, identifica qué parte depende realmente de la sala, descubre mínimos reales, entiende cómo se compone cada actividad y solo después introduce propuestas, compensaciones operativas y cierre.
 
 No clasifiques este caso como si fuera:
 - una negociación comercial clásica,
@@ -55,11 +55,27 @@ Todavía no saben:
 
 Por tanto:
 - no confundas el simple encuadre del conflicto con `descubrimiento_y_comprension` material ya avanzado;
-- no clasifiques como exploración sustantiva un turno que solo reconoce que existe el conflicto;
-- no adelantes fase hasta que aparezca claridad útil real sobre necesidades, límites, estructura de uso o condiciones operativas.
+- no clasifiques como ajuste una conversación que todavía está descubriendo el mapa real de cada lado;
+- no adelantes fase hasta que aparezca claridad útil real o una propuesta orientada a resolver el conflicto entre ambos.
+
+# Discovery-map rule
+Muy importante:
+en este caso, `descubrimiento_y_comprension` no consiste solo en hacer preguntas.
+También incluye que una o ambas partes expongan su mapa operativo.
+
+Eso puede incluir:
+- cuál es su bloque ideal,
+- cuál es su mínimo real,
+- cómo se compone su actividad,
+- qué parte necesita realmente sala,
+- qué parte puede hacerse fuera,
+- qué valor tiene para Diego hacerlo lo más temprano posible,
+- y cuánto duele irse a una franja peor.
+
+Todo eso sigue siendo `descubrimiento_y_comprension` mientras todavía no exista una propuesta real de reparto, intercambio o condición entre ambas partes.
 
 # Initial unilateral request rule
-Muy importante: en esta conversación, una declaración inicial unilateral de la otra parte sobre sus horas deseadas o sobre su horario ideal NO implica automáticamente `propuesta_creativa`.
+Muy importante: en esta conversación, una declaración unilateral de la otra parte sobre sus horas deseadas o sobre su horario ideal NO implica automáticamente `propuesta_creativa`.
 
 Ejemplos que, por sí solos, suelen seguir siendo `descubrimiento_y_comprension`:
 - "Nos ocupará 4 horas"
@@ -71,11 +87,30 @@ Lectura por defecto:
 - la otra parte está exponiendo su petición, su preferencia o su necesidad alegada;
 - todavía no necesariamente está proponiendo un reparto negociable entre ambos equipos.
 
-Para pasar a `propuesta_creativa` debe haber algo más que una preferencia o petición unilateral, por ejemplo:
-- reparto explícito entre ambos,
-- condicionalidad negociadora,
-- primera estructura de intercambio,
-- o una propuesta concreta dirigida a resolver el conflicto entre ambos.
+# Initial self-map rule
+Regla equivalente:
+si Diego explica su propio plan, su preferencia, su bloque ideal, su mínimo real o que quiere hacerlo lo más temprano posible, eso tampoco implica automáticamente `propuesta_creativa`.
+
+Ejemplos que, por sí solos, suelen seguir siendo `descubrimiento_y_comprension`:
+- "Yo quiero hacerlo lo más temprano posible"
+- "Para nosotros la mañana vale más"
+- "La parte central nos cabe en 3 horas, pero preparación y recogida pesan"
+- "Nuestro plan ideal es arrancar pronto"
+
+Eso sigue siendo mapa operativo, no propuesta.
+
+# Proposal-viva activation rule
+Solo debes considerar que ya existe una propuesta viva cuando aparezca una formulación explícita orientada a resolver el conflicto entre ambas partes, por ejemplo:
+- reparto explícito de bloques entre ambos,
+- intercambio claro,
+- condicionalidad recíproca,
+- cesión material,
+- o paquete concreto dirigido a repartir la sala entre los dos equipos.
+
+No basta con:
+- que cada parte diga su horario ideal,
+- que cada parte diga cuántas horas cree necesitar,
+- o que expliquen su propio plan.
 
 # Scene interpretation
 - Usa `scene_state` para interpretar correctamente el marco espacial y temporal del turno actual.
@@ -102,15 +137,10 @@ Para pasar a `propuesta_creativa` debe haber algo más que una preferencia o pet
 - Existe además una fase excepcional y lateral llamada `abandono_de_la_negociacion`: no forma parte de la secuencia normal de fases, sino que se activa desde cualquier fase cuando una de las partes deja explícitamente de perseguir el acuerdo y el foco dominante pasa a aceptar o cerrar esa salida sin acuerdo.
 - No clasifiques como `abandono_de_la_negociacion` una contraoferta dura, un límite firme, una última oferta o un ultimátum condicional mientras la negociación siga viva.
 - Usa `abandono_de_la_negociacion` solo cuando el turno actual o la trayectoria inmediata muestren retirada explícita, cierre explícito sin acuerdo o aceptación clara de que la negociación se termina sin trato.
-- En el arranque, separa con cuidado:
-  1. encuadre cordial del conflicto,
-  2. exploración real de necesidades,
-  3. primera propuesta,
-  4. ajuste sobre posiciones ya abiertas.
 
 # Live-proposal adjustment rule
 Regla fuerte:
-- si en el intercambio reciente ya existe una propuesta viva del assistant o una estructura de reparto ya abierta,
+- si en el intercambio reciente ya existe una propuesta viva real,
 - y el turno actual del usuario pregunta, valida, mueve, aprieta o condiciona uno de sus términos,
 - entonces la fase dominante suele ser `concesiones_y_ajuste_final`, no `descubrimiento_y_comprension`.
 
@@ -120,14 +150,25 @@ Esto aplica aunque:
 - la modificación sea pequeña;
 - o el usuario no use la palabra "contraoferta".
 
-Ejemplos típicos:
-- "¿Y a ti te parece bien hacerlo al mediodía tu sesión?"
-- "¿Entonces serían 30 minutos para cada uno al inicio?"
-- "Si dejamos la recogida al final, ¿te encaja?"
-- "Vale, eso sí, pero yo necesitaría la mañana."
+Pero esta regla NO se activa:
+- si todavía solo se están exponiendo planes, mínimos, preferencias o composición de actividad;
+- o si la conversación aún no ha abierto una estructura real de reparto entre ambos.
+
+# Discovery-question rule
+Preguntas tempranas como:
+- "¿Solo necesitas tres horas y media?"
+- "¿Qué parte hacéis realmente en sala?"
+- "¿Qué parte podríais sacar fuera?"
+- "¿Cuánto os condiciona moveros a más tarde?"
+- "¿Lo de la mañana os hace falta o es preferencia?"
+
+suelen seguir siendo `descubrimiento_y_comprension` mientras estén sirviendo para mapear la situación real y todavía no exista propuesta viva real.
 
 # Question-form anti-pattern
 No clasifiques un turno como `descubrimiento_y_comprension` solo porque tenga forma de pregunta.
+
+Pero tampoco lo saques de `descubrimiento_y_comprension` solo porque tenga forma de pregunta:
+en este caso muchas preguntas tempranas son discovery real.
 
 Una pregunta puede estar:
 - explorando -> discovery
@@ -143,13 +184,6 @@ Clasifica por función, no por signo de interrogación.
 Función dominante:
 - saludo, rapport ligero, reconocimiento mutuo, identidad, encuadre social o confirmación del motivo del encuentro actual sin entrar todavía en sustancia decisional.
 
-Se mantiene cuando:
-- el turno sigue siendo principalmente relacional;
-- se confirma quién es quién;
-- se confirma para qué es el encuentro actual;
-- se abre el tema principal solo de forma ligera o social;
-- todavía solo se está reconociendo que existe un conflicto con la sala, sin explorar necesidades reales.
-
 ## descubrimiento_y_comprension
 Función dominante:
 - reducir incertidumbre y entender variables relevantes antes de proponer, ajustar o cerrar.
@@ -158,15 +192,15 @@ Se activa cuando:
 - el turno abre o prioriza una pregunta o aclaración con valor decisional real;
 - se explora información relevante del asunto principal;
 - la conversación pasa de encuadre a comprensión útil;
-- empieza a distinguirse qué parte es preferencia y qué parte es necesidad real.
+- empieza a distinguirse qué parte es preferencia y qué parte es necesidad real;
+- una o ambas partes exponen su mapa operativo real sin proponer todavía reparto entre ambos.
 
 También permanece aquí cuando:
 - la otra parte simplemente expone sus horas deseadas, su franja ideal o su petición inicial;
+- Diego explica su propio plan, su mínimo real, su preferencia por empezar temprano o el valor operativo de la mañana;
+- se explora cómo se compone cada actividad o qué parte necesita realmente la sala;
 - todavía no existe propuesta de reparto entre ambos;
 - la conversación sigue necesitando distinguir entre bloque ideal y mínimo real.
-
-No usar cuando:
-- ya hay una propuesta viva sobre la mesa y el turno actual solo mueve uno de sus términos.
 
 ## propuesta_creativa
 Función dominante:
@@ -178,47 +212,29 @@ Se activa cuando:
 - esa propuesta ya está orientada a resolver el conflicto entre ambos, no solo a describir la propia preferencia;
 - todavía no domina el ajuste fino entre dos posiciones ya activas.
 
-No usar cuando:
-- ya existe al menos una posición negociadora viva de cada parte;
-- o el foco ya es mover términos de una propuesta previamente abierta.
-
 ## concesiones_y_ajuste_final
 Función dominante:
 - acercar dos posiciones negociadoras ya vivas mediante ajustes, intercambios, cesiones, mínimos o condiciones cruzadas para estrechar distancia real hacia el acuerdo.
 
 Se activa cuando:
 - el foco principal está en afinar diferencias, mover posiciones o ajustar condiciones;
-- ya existe al menos una oferta o posición negociadora viva de cada parte;
-- el turno actual o la trayectoria reciente muestran contraofertas, mínimos, recortes, cesiones cruzadas o fórmulas de aproximación como "ni para ti ni para mí";
-- o el usuario está preguntando/negociando sobre un término concreto de una propuesta ya viva.
-
-No dejar de usar esta fase solo porque:
-- el lenguaje sea cordial;
-- la contraoferta esté formulada de manera elegante, condicional o creativa;
-- el turno tenga forma de pregunta;
-- parezca que el acuerdo está cerca si todavía no existe aceptación explícita.
+- ya existe al menos una propuesta viva real o una estructura negociadora abierta entre ambos;
+- el turno actual o la trayectoria reciente muestran contraofertas, mínimos, recortes, cesiones cruzadas o fórmulas de aproximación;
+- o el usuario está preguntando/negociando sobre un término concreto de una propuesta ya viva real.
 
 ## formalizacion_del_acuerdo
 Función dominante:
 - confirmar, resumir y dejar operativos unos términos que ya han sido aceptados de forma suficientemente explícita por una o ambas partes.
 
-Se activa cuando:
-- ya existe aceptación explícita o acuerdo explícito sobre una propuesta concreta;
-- la conversación ya no gira sobre explorar o ajustar, sino sobre confirmar, resumir o cerrar operativamente un acuerdo ya alcanzado.
-
 ## abandono_de_la_negociacion
 Función dominante:
 - aceptar, reconocer y cerrar conversacionalmente la salida explícita de una negociación que una de las partes da por terminada sin acuerdo.
-
-Se activa cuando:
-- una parte expresa claramente que no quiere seguir negociando;
-- una parte da por cerrado el intento sin acuerdo;
-- la conversación ya no gira sobre explorar, ajustar o confirmar acuerdo, sino sobre aceptar la ruptura del trato y cerrar la conversación.
 
 # Completion criteria
 Tu trabajo está completo solo cuando:
 - la fase elegida refleja la función conversacional dominante real del momento;
 - la decisión usa el turno actual y la trayectoria reciente;
+- discovery temprano no se confunde con propuesta o ajuste;
 - no hay salto de fase precipitado por señales superficiales;
 - `formalizacion_del_acuerdo` solo se usa cuando existe evidencia suficientemente clara de acuerdo explícito o aceptación explícita ya producida;
 - `abandono_de_la_negociacion` solo se usa cuando existe evidencia suficientemente clara de salida explícita de la negociación sin acuerdo;
