@@ -25,12 +25,15 @@ const state = {
   pendingSessionKey: null,
   isRefreshing: false,
   queuedRefresh: null,
+  queuedNeedsAutoSelect: false,
   draftEntries: [], evalOut: "", lastKnownTurnId: "", pollTimer: null,
+  pollInFlight: false,
   chatDraft: "", activeTab: "Chat",
   defaultUserId: "u_optimizador",
   defaultSessionIdBase: "optimizador-main",
   sessionSelectionMode: "none",
   lastUiSnapshot: "",
+  lastCasesFetchAt: 0,
 };
 
 const $ = (q) => document.querySelector(q);
@@ -118,7 +121,8 @@ function showToast(text, type = "ok") {
 async function refresh(options = {}) {
   const opts = { autoSelect: false, ...options };
   if (state.isRefreshing) {
-    state.queuedRefresh = opts;
+    state.queuedRefresh = true;
+    state.queuedNeedsAutoSelect = state.queuedNeedsAutoSelect || Boolean(opts.autoSelect);
     console.debug("[optimizer][refresh:queued]", { opts, selectedSessionKey: state.selectedSessionKey });
     return;
   }
@@ -141,9 +145,10 @@ async function refresh(options = {}) {
       pendingSessionKey: state.pendingSessionKey,
     });
     if (state.queuedRefresh) {
-      const queued = state.queuedRefresh;
+      const nextOpts = { autoSelect: state.queuedNeedsAutoSelect };
       state.queuedRefresh = null;
-      await refresh(queued);
+      state.queuedNeedsAutoSelect = false;
+      await refresh(nextOpts);
     }
   }
 }
@@ -173,11 +178,22 @@ async function refreshCore({ autoSelect = false } = {}) {
   else if (prevSelected && state.turns.some((x) => x.turn_id === prevSelected)) state.selectedTurnId = prevSelected;
   else state.selectedTurnId = nextLast;
 
-  state.turn = state.selectedTurnId ? await api(`/turns/${state.selectedTurnId}`) : null;
-  state.dialogue = (await api(`${base}/dialogue`)).items;
-  state.cases = (await api('/cases')).items;
-  state.prompts = (await api(`/prompts?user_id=${encodeURIComponent(s.user_id)}&session_id=${encodeURIComponent(s.session_id)}`)).items;
-  state.overrides = await api(`/overrides/${state.optimizerSessionId}`);
+  const shouldRefreshCases = (Date.now() - state.lastCasesFetchAt) > 30000 || state.cases.length === 0;
+  const [turnPayload, dialoguePayload, promptsPayload, overridesPayload, casesPayload] = await Promise.all([
+    state.selectedTurnId ? api(`/turns/${state.selectedTurnId}`) : Promise.resolve(null),
+    api(`${base}/dialogue`),
+    api(`/prompts?user_id=${encodeURIComponent(s.user_id)}&session_id=${encodeURIComponent(s.session_id)}`),
+    api(`/overrides/${state.optimizerSessionId}`),
+    shouldRefreshCases ? api('/cases') : Promise.resolve(null),
+  ]);
+  state.turn = turnPayload;
+  state.dialogue = dialoguePayload.items;
+  state.prompts = promptsPayload.items;
+  state.overrides = overridesPayload;
+  if (casesPayload) {
+    state.cases = casesPayload.items;
+    state.lastCasesFetchAt = Date.now();
+  }
   if (!state.editing) state.draftEntries = structuredClone(state.overrides.entries || []);
 
   const latest = state.turns[state.turns.length - 1]?.turn_id || '';
@@ -573,8 +589,13 @@ async function sendChat(message, repeatFrom = null) {
 }
 
 function startPolling() {
-  if (state.pollTimer) clearInterval(state.pollTimer);
-  state.pollTimer = setInterval(async () => {
+  if (state.pollTimer) clearTimeout(state.pollTimer);
+  const runPoll = async () => {
+    if (state.pollInFlight || state.isRefreshing) {
+      state.pollTimer = setTimeout(runPoll, POLL_BUSY_MS);
+      return;
+    }
+    state.pollInFlight = true;
     const typingChat = byId("chatInput") === document.activeElement;
     const prevTurnId = state.lastKnownTurnId;
     const beforeSnapshot = state.lastUiSnapshot || buildUiSnapshot();
@@ -607,8 +628,13 @@ function startPolling() {
         restoreInteractionState(interaction);
         console.debug("[optimizer][poll:render]", { mode: "full", typingChat, hasNewTurn });
       }
-    } catch (_) {}
-  }, POLL_IDLE_MS);
+    } catch (_) {
+    } finally {
+      state.pollInFlight = false;
+      state.pollTimer = setTimeout(runPoll, POLL_IDLE_MS);
+    }
+  };
+  state.pollTimer = setTimeout(runPoll, POLL_IDLE_MS);
 }
 
 async function boot() {
