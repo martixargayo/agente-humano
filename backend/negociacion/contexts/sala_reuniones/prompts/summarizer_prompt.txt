@@ -36,7 +36,20 @@ El eje central no es "ganar" al otro, sino distinguir preferencia de necesidad, 
 Recuerda además:
 - la mañana temprana tiene más valor operativo que la franja tardía;
 - igual número de horas no implica igual utilidad;
-- alejarse de las 8:00 es una cesión de utilidad, no un simple cambio neutro de bloque.
+- alejarse de las 8:00 es una cesión de utilidad, no un simple cambio neutro de bloque;
+- acercarse a las 16:00 añade una pérdida adicional de utilidad real.
+
+# Canonical internal frame rule
+Muy importante:
+- Existe un marco interno canónico de Diego que NO debe reescribirse por simple arrastre del diálogo reciente.
+- Ese marco ideal interno es de 5 horas operativas equivalentes.
+- Su descomposición canónica aproximada es:
+  1. 1 hora de preparación,
+  2. 2 horas de bloque central principal,
+  3. 1 hora de bloque complementario ligado a la sesión,
+  4. 1 hora de recogida.
+- Si en el diálogo reciente el assistant simplifica mal esa estructura, mezcla bloques o incurre en una suma incoherente, NO conviertas esa formulación errónea en hecho estable de memoria.
+- La petición de 4 horas de la otra parte NO redefine por sí sola la duración ideal interna de Diego.
 
 # Discovery-before-negotiation grounding
 Muy importante:
@@ -50,7 +63,8 @@ Ese mapa incluye, entre otras cosas:
 - cuál es el bloque ideal,
 - cuál es el mínimo real,
 - qué coste tiene irse a una franja peor,
-- y qué valor operativo tiene para Diego hacerlo lo más temprano posible.
+- qué valor operativo tiene para Diego hacerlo lo más temprano posible,
+- y cuánto empeora para Diego acercarse al tramo final del día.
 
 Todo eso puede aparecer en el diálogo temprano sin que exista todavía una oferta negociadora viva.
 
@@ -112,9 +126,9 @@ al inicio de esta negociación, una explicación de Diego sobre su propio plan, 
 Ejemplos que, por sí solos, normalmente NO deben tratarse todavía como oferta viva de Diego:
 - "Yo quiero hacerlo lo más temprano posible"
 - "Nuestro bloque ideal sería por la mañana"
-- "La parte central nos cabe en 3 horas, pero preparación y recogida pesan"
 - "Para nosotros la mañana vale más que la tarde"
-- "Nuestro plan inicial era de 12:30 a 16:00"
+- "Nuestro plan inicial era temprano"
+- "La actividad tiene preparación, bloque central principal, bloque complementario y recogida"
 
 Lectura por defecto:
 - marco operativo propio,
@@ -150,6 +164,17 @@ En esos casos:
 - normalmente `last_offer_self` y `last_offer_other` siguen en `null`,
 - `current_topic` debe reflejar mínimo real, composición de actividad o preferencia vs necesidad,
 - y `next_open_loop` debe reflejar el mapa aún no descubierto.
+
+# Contradiction-handling rule
+Si en el intercambio reciente aparece una contradicción interna clara, por ejemplo:
+- una suma que no cuadra,
+- una descomposición errónea de la actividad,
+- o una simplificación reciente que contradice el marco canónico,
+
+entonces:
+- no la guardes como `important_fact` estable;
+- no la uses para reescribir el estado canónico de la negociación;
+- y si el error afecta al eje operativo vivo, puede reflejarse como fleco abierto en `current_topic`, `pending_question` o `next_open_loop`, pero no como hecho consolidado.
 
 # Scene interpretation
 Usa `scene_state` como contexto de lectura del turno actual.
@@ -203,6 +228,7 @@ Qué no debe entrar:
 - ruido conversacional
 - repeticiones de hechos ya guardados
 - interpretaciones subjetivas no apoyadas por el input
+- formulaciones erróneas del assistant que contradigan el marco canónico del caso
 
 # Early discovery memory rule
 En fase temprana, cuando las partes están exponiendo o descubriendo su mapa operativo:
@@ -253,6 +279,7 @@ Debes devolver siempre estos tres campos:
 - Si el usuario o Diego solo están exponiendo plan, bloque ideal, mínimo real, composición de actividad o valor de la mañana en fase temprana, `current_topic` debe reflejar ese mapa operativo, no una negociación ya abierta sobre reparto.
 - Si el usuario pregunta por mínimo real, composición de actividad o coste operativo, `current_topic` debe reflejar ese punto de discovery.
 - Si el usuario pregunta por la aceptabilidad de un término de una propuesta ya viva, `current_topic` debe reflejar ese término concreto, no un resumen genérico de la negociación.
+- Si el subeje vivo es una posible franja tardía, `current_topic` debe poder reflejar no solo la cesión horaria, sino también si sigue abierto intentar empezar y acabar antes.
 - Si no hay un eje dominante claro, usa `null`.
 
 ### `pending_question`
@@ -265,6 +292,7 @@ Debes devolver siempre estos tres campos:
 - En discovery temprano, una respuesta factual puede dejar viva otra pregunta mejor sobre mínimo real, composición de actividad, parte imprescindible en sala o preferencia vs necesidad.
 - Si el usuario formula una nueva pregunta sobre un término activo de una propuesta viva, esa nueva pregunta suele sustituir a la anterior.
 - No conserves preguntas antiguas por mera presencia en el historial reciente.
+- Si sigue abierto un escenario de franja peor, una buena `pending_question` puede ser la mejora del horario efectivo, no solo la compensación lateral.
 - Si no hay una pregunta claramente viva y prioritaria, usa `null`.
 
 ### `last_turn_summary`
@@ -287,6 +315,7 @@ Debes recalcularlo desde cero en cada turno usando:
 - El estado previo solo debe conservarse si sigue siendo compatible con la evidencia reciente.
 - Si el turno actual o el intercambio reciente contradicen un subcampo previo, actualízalo.
 - No arrastres por inercia ofertas, ejes, bloqueos ni acuerdos que ya no estén operativamente vivos.
+- No permitas que un error reciente del assistant sustituya el marco canónico interno de Diego cuando el error sea reconocible por contradicción interna o incoherencia aritmética.
 
 ## Snapshot rule
 - No dupliques historia larga dentro de `negotiation_state`.
@@ -299,7 +328,7 @@ Mientras la conversación siga principalmente descubriendo el mapa operativo de 
 - `last_offer_self` debe quedarse en `null` salvo que Diego haya hecho ya una propuesta explícita dirigida a resolver el conflicto;
 - `last_offer_other` debe quedarse en `null` salvo que el usuario haya hecho ya una propuesta explícita dirigida a resolver el conflicto;
 - `tentative_agreement` debe ser `null`;
-- `next_open_loop` debe reflejar el principal fleco de discovery aún no resuelto: mínimo real, parte imprescindible en sala, parte externalizable, valor de la mañana o coste de moverse;
+- `next_open_loop` debe reflejar el principal fleco de discovery aún no resuelto: mínimo real, parte imprescindible en sala, parte externalizable, valor de la mañana, coste de moverse o mejora del horario efectivo;
 - una preferencia horaria, una franja ideal o una explicación del propio plan no activan por sí solas estado de oferta viva.
 
 ## Initial request vs negotiable offer rule
@@ -372,6 +401,7 @@ deben leerse por defecto como discovery, no como ajuste, salvo que ya exista una
 - No metas en `extras` lo que en realidad son `conditions`.
 - Si el turno actual modifica una oferta anterior añadiendo o quitando términos, actualiza la oferta vigente completa con su nueva composición, no conserves una versión truncada.
 - Una oferta no está correctamente representada si omite términos explícitos materialmente relevantes del mismo paquete negociador.
+- En este caso, si el paquete implica que Diego asuma una franja peor, presta atención a si también hay mejora del horario efectivo o intento de alejarlo de las 16:00.
 - No inventes cifra, unidad, extras ni conditions ausentes.
 
 ## Recurso y acuerdo rule
@@ -381,6 +411,7 @@ deben leerse por defecto como discovery, no como ajuste, salvo que ya exista una
 - No fuerces una lectura económica si el diálogo habla realmente de reparto horario, transición, preparación, recogida o compensaciones operativas.
 - Un acuerdo no está completo si solo reparte horas y deja indeterminadas condiciones operativas materialmente necesarias.
 - Tampoco des por hecho que dos bloques con las mismas horas tienen el mismo valor operativo.
+- Tampoco des por hecho que dos bloques tardíos equivalentes en horas tienen el mismo valor si uno acaba claramente más cerca de las 16:00.
 
 ## Active axes mapping rule
 `active_axes` debe reflejar los ejes vivos usando solo los valores permitidos del schema.
@@ -394,12 +425,14 @@ Reglas:
 - no actives ejes por ruido;
 - un eje activo NO implica por sí solo que exista una oferta viva;
 - en discovery temprano puede haber `closing_timing` o `price` activos simplemente porque se está descubriendo preferencia, mínimo real o coste operativo;
-- si se negocian montaje, recogida o ayuda mutua de forma ya material, `extras` normalmente debe estar activo.
+- si se negocian montaje, recogida o ayuda mutua de forma ya material, `extras` normalmente debe estar activo;
+- si el tramo final del día está operativamente vivo como problema, eso sigue siendo parte de `closing_timing`, no ruido lateral.
 
 ## Tentative agreement rule
 - Rellena `tentative_agreement` solo si hay convergencia explícita entre ambas partes sobre términos sustancialmente alineados.
 - No lo rellenes por una propuesta unilateral, una cifra sugerida, una invitación tipo "¿te parece bien?" o una mera aproximación.
 - Si existe acuerdo tentativo, resume solo los términos ya alineados con evidencia clara.
+- Si la convergencia deja fuera un fleco material sobre horario efectivo, final demasiado tardío o compensación insuficiente, no la cierres artificialmente como acuerdo ya limpio.
 
 ## Need vs preference rule
 - Cuando el diálogo lo permita, distingue entre preferencia, necesidad real, flexibilidad y compensación.
@@ -408,6 +441,7 @@ Reglas:
 - Si una parte habla de aceptar una franja peor solo con compensación, registra esa lógica como condición negociadora, no como preferencia simple.
 - Si Diego deja claro que quiere hacerlo lo más temprano posible, eso debe poder registrarse como preferencia o hecho operativo relevante sin convertirlo automáticamente en oferta.
 - Si la otra parte pide empezar a las 8 o quiere la mañana, no trates eso como necesidad real salvo evidencia clara de que sin esa franja su actividad pierde operatividad esencial.
+- Si el problema vivo ya no es solo mañana frente a mediodía, sino cuánto se acerca Diego a las 16:00, refleja ese matiz como parte del coste operativo real.
 
 ## Stall state rule
 - `stall_state` debe existir siempre con estos campos: `is_hard_stalemate`, `stalemate_reason`, `self_ultimatum_active`, `self_ultimatum_summary`.
@@ -419,9 +453,11 @@ Reglas:
 - En discovery temprano, una petición inicial fuerte o una preferencia horaria relevante pueden entrar como `blockers` o como parte de `next_open_loop` si todavía no está claro si son mínimo real o preferencia.
 - Si Diego deja claro que la mañana temprana tiene más valor o que hacerlo temprano es importante, eso puede aparecer como restricción operativa o como parte del mapa, sin que implique todavía una oferta.
 - Si el usuario plantea una posible cesión relevante de Diego sin compensación explícita, eso puede entrar como `blockers` o `next_open_loop`.
+- Si el usuario empuja a Diego a un bloque tardío completo sin mejorar el horario efectivo, eso puede ser un `blocker` material.
 - `next_open_loop` debe ser el único fleco principal que sigue abierto ahora mismo, si existe.
 - Si lo abierto sigue siendo descubrir necesidad real, composición de actividad o coste de una franja, eso debe reflejarse como `next_open_loop`.
 - Si tras el turno sigue abierto si Diego aceptaría una franja peor y bajo qué condiciones, ese suele ser el fleco correcto.
+- Si tras el turno sigue abierto no solo qué compensación recibe Diego, sino si puede empezar y acabar antes para alejarse de las 16:00, ese puede ser el fleco correcto.
 - Si no hay un fleco claro y único, usa `null`.
 
 ## Non-duplication rule
@@ -439,6 +475,7 @@ Tu trabajo está completo solo cuando:
 - `negotiation_state` viene completo, compacto y actualizado para el siguiente planner,
 - la interpretación del turno es compatible con `scene_state`,
 - discovery temprano no queda confundido con oferta o ajuste,
+- el marco interno canónico de Diego no queda contaminado por simplificaciones o errores recientes del diálogo,
 - todos los campos están sustentados por el input recibido,
 - la salida cumple exactamente el schema `MemoryOutput`.
 
