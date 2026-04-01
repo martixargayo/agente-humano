@@ -20,11 +20,11 @@ def _is_redis_timeout_error(exc: Exception) -> bool:
 
 
 def _redis_timeout_retry_attempts() -> int:
-    return max(1, int(os.getenv("SESSION_REDIS_TIMEOUT_RETRY_ATTEMPTS", "3")))
+    return max(1, int(os.getenv("SESSION_REDIS_TIMEOUT_RETRY_ATTEMPTS", "6")))
 
 
 def _redis_timeout_retry_backoff_seconds() -> float:
-    return max(0.0, float(os.getenv("SESSION_REDIS_TIMEOUT_RETRY_BACKOFF_SECONDS", "0.12")))
+    return max(0.0, float(os.getenv("SESSION_REDIS_TIMEOUT_RETRY_BACKOFF_SECONDS", "0.25")))
 
 
 def _with_redis_timeout_retries(operation: str, fn):
@@ -35,6 +35,13 @@ def _with_redis_timeout_retries(operation: str, fn):
             return fn()
         except Exception as exc:
             if not _is_redis_timeout_error(exc) or attempt >= attempts:
+                if _is_redis_timeout_error(exc):
+                    logger.error(
+                        "session_lock_redis_timeout_exhausted operation=%s attempts=%s error=%s",
+                        operation,
+                        attempt,
+                        exc,
+                    )
                 raise
             logger.warning(
                 "session_lock_redis_timeout_retry operation=%s attempt=%s/%s error=%s",
