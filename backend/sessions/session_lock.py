@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
+import time
 import uuid
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
@@ -11,6 +12,39 @@ from typing import Any, Callable, Protocol
 logger = logging.getLogger(__name__)
 
 SESSION_LOCK_KEY_PREFIX = "session-lock"
+
+
+def _is_redis_timeout_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return "timeout" in text and "socket" in text
+
+
+def _redis_timeout_retry_attempts() -> int:
+    return max(1, int(os.getenv("SESSION_REDIS_TIMEOUT_RETRY_ATTEMPTS", "3")))
+
+
+def _redis_timeout_retry_backoff_seconds() -> float:
+    return max(0.0, float(os.getenv("SESSION_REDIS_TIMEOUT_RETRY_BACKOFF_SECONDS", "0.12")))
+
+
+def _with_redis_timeout_retries(operation: str, fn):
+    attempts = _redis_timeout_retry_attempts()
+    backoff = _redis_timeout_retry_backoff_seconds()
+    for attempt in range(1, attempts + 1):
+        try:
+            return fn()
+        except Exception as exc:
+            if not _is_redis_timeout_error(exc) or attempt >= attempts:
+                raise
+            logger.warning(
+                "session_lock_redis_timeout_retry operation=%s attempt=%s/%s error=%s",
+                operation,
+                attempt,
+                attempts,
+                exc,
+            )
+            if backoff > 0:
+                time.sleep(backoff * attempt)
 
 
 class SessionBusyError(RuntimeError):
@@ -119,7 +153,7 @@ return 0
     def acquire(self, *, user_id: str, session_id: str) -> SessionExecutionLease:
         key = session_lock_key(user_id=user_id, session_id=session_id, key_prefix=self._key_prefix)
         token = uuid.uuid4().hex
-        acquired = self._client.set(key, token, nx=True, ex=self._ttl_seconds)
+        acquired = _with_redis_timeout_retries("lock_set", lambda: self._client.set(key, token, nx=True, ex=self._ttl_seconds))
         if not acquired:
             logger.warning("session_lock_busy backend=redis key=%s ttl=%s", key, self._ttl_seconds)
             raise SessionBusyError(
@@ -159,7 +193,7 @@ return 0
             stop_event.set()
             if refresh_thread is not None:
                 refresh_thread.join(timeout=1.0)
-            deleted = self._client.eval(self._RELEASE_SCRIPT, 1, key, token)
+            deleted = _with_redis_timeout_retries("lock_release", lambda: self._client.eval(self._RELEASE_SCRIPT, 1, key, token))
             logger.info(
                 "session_lock_released backend=redis key=%s deleted=%s refresh_lost=%s",
                 key,
@@ -172,7 +206,10 @@ return 0
     def _heartbeat(self, key: str, token: str, stop_event: threading.Event, refresh_lost: threading.Event) -> None:
         while not stop_event.wait(self._refresh_seconds):
             try:
-                refreshed = self._client.eval(self._REFRESH_SCRIPT, 1, key, token, self._ttl_seconds)
+                refreshed = _with_redis_timeout_retries(
+                    "lock_refresh",
+                    lambda: self._client.eval(self._REFRESH_SCRIPT, 1, key, token, self._ttl_seconds),
+                )
             except Exception as exc:  # pragma: no cover - defensive runtime logging
                 logger.warning("session_lock_refresh_error key=%s error=%s", key, exc)
                 continue
