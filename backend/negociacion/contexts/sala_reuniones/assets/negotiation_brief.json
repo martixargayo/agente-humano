@@ -2,7 +2,7 @@
   "schema_version": "negotiation_brief.v1",
   "contexto_del_recurso": {
     "recurso_y_disponibilidad": "La única sala demo realmente útil está disponible el jueves de 8:00 a 16:00.",
-    "lectura": "El valor del caso no está en horas abstractas ni en repartir el día por mitades, sino en tiempo útil real dentro de la sala, continuidad operativa, calidad de la transición, coste de asumir una franja peor y momento real de finalización. La mañana temprana tiene más valor operativo que el tramo tardío del día, y acercarse a las 16:00 reduce utilidad porque empeora energía, atención, cierre y sensación de sesión completa."
+    "lectura": "El valor del caso no está en horas abstractas ni en repartir el día por mitades, sino en tiempo útil real dentro de la sala, continuidad operativa, calidad de la transición y coste de asumir una franja peor. La mañana temprana tiene más valor operativo que el tramo tardío del día."
   },
   "condiciones_iniciales_de_la_negociacion": {
     "relacion_entre_las_partes": "La relación inicial es cordial, profesional y no conflictiva. Diego y la persona del Equipo A no se conocen y no habían hablado antes.",
@@ -16,14 +16,14 @@
   "realidad_de_la_alternativa": {
     "resumen": "Diego, como representante del Equipo B, no tiene una alternativa equivalente sin la sala demo.",
     "detalle": "Sin acuerdo, el Equipo B podría sacar fuera parte de la teoría, pero perdería calidad formativa, continuidad y tiempo útil de práctica o trabajo en grupo. La sesión quedaría degradada o fragmentada.",
-    "coste_equivalente_aproximado": "La mejor alternativa real equivale a una sesión claramente peor: más partes fuera de sala, menos tiempo útil con el sistema funcionando, peor ritmo y más fricción operativa.",
-    "lectura": "Por eso Diego debe defender un bloque suficientemente útil dentro de la sala, pero no desde una lógica territorial. La salida buena consiste en conservar el mínimo operativo real, proteger el horario útil y conseguir compensaciones visibles si asume una franja peor o más fricción."
+    "coste_equivalente_aproximado": "La mejor alternativa real equivale a una sesión claramente peor: más partes fuera de sala, menos tiempo útil con el sistema funcionando y más fricción operativa.",
+    "lectura": "Por eso Diego debe defender un bloque suficientemente útil dentro de la sala, pero no desde una lógica territorial. La salida buena consiste en conservar el mínimo operativo real y conseguir compensaciones visibles si asume una franja peor o más fricción."
   },
   "objetivo_y_marco_de_decision": {
-    "objetivo": "Conseguir para el Equipo B un reparto que preserve una sesión formativa útil y operativa, idealmente empezando pronto y terminando cuanto antes, sin convertir la preferencia horaria en una posición rígida ciega pero sin regalar utilidad real.",
-    "realismo": "Diego sabe que no puede asumir que conservará intacto su planteamiento inicial de 5 horas si el otro equipo también necesita la sala ese mismo jueves. Pero su referencia inicial sí es de 5 horas totales de uso operativo: aproximadamente 1 hora de preparación, 2 horas de bloque central principal, 1 hora de bloque complementario ligado a la sesión y 1 hora de recogida. Ese marco ideal interno no debe reescribirse solo porque la otra parte pida 4 horas o porque en el diálogo aparezca una simplificación incorrecta.",
-    "criterio": "Intentará proteger al menos 3 horas útiles reales en sala para el núcleo y el bloque complementario de la sesión, explorando ayuda en preparación o recogida, partes fuera de la sala, reconfiguración de la actividad y una transición mejor diseñada. Antes de proponer un reparto, intentará entender qué parte de la petición de la otra parte es necesidad real y qué parte es preferencia. Si se ve empujado a una franja peor, no solo debe valorar qué recibe a cambio, sino también intentar desplazar el acuerdo hacia la izquierda: empezar antes y acabar antes siempre que sea posible.",
-    "regla_de_la_franja_tardia": "La mañana temprana es la franja de más valor y debe tratarse como un recurso premium para ambos equipos. A medida que el uso se aleja de las 8:00 y se acerca al tramo tardío del día, la utilidad baja. En especial, terminar cerca de las 16:00 tiene una penalización operativa adicional. Si el Equipo B tiene que cargar con una franja peor o con más fricción, no basta con recibir ayuda ligera: debe intentar además que la otra parte acabe lo antes posible para que el Equipo B empiece y termine antes. La ayuda en preparación o recogida compensa parte del coste, pero normalmente no basta por sí sola para justificar un bloque tardío completo como 12:00–16:00."
+    "objetivo": "Conseguir para el Equipo B un reparto que preserve una sesión formativa útil y operativa, idealmente empezando pronto y terminando cuanto antes, pero sin convertir la preferencia horaria en una posición rígida ciega.",
+    "realismo": "Diego sabe que no puede asumir que conservará intacto su planteamiento inicial de 5 horas si el otro equipo también necesita la sala ese mismo jueves. Pero su referencia inicial sí es de 5 horas totales de uso operativo: aproximadamente 1 hora de preparación, 3 horas de núcleo de sesión y 1 hora de recogida.",
+    "criterio": "Intentará proteger al menos 3 horas útiles reales en sala para el núcleo de la sesión, explorando ayuda en preparación o recogida, partes fuera de la sala, reconfiguración de la actividad y una transición mejor diseñada. Antes de proponer un reparto, intentará entender qué parte de la petición de la otra parte es necesidad real y qué parte es preferencia.",
+    "regla_de_la_franja_tardia": "La mañana temprana es la franja de más valor y debe tratarse como un recurso premium para ambos equipos. A medida que el uso se aleja de las 8:00 y se acerca al tramo tardío del día, la utilidad baja. Si el Equipo B tiene que cargar con una franja peor o con más fricción, solo le compensa si la otra parte aporta una compensación visible y útil: ayuda operativa, transición más limpia, sala ya preparada o reducción real del esfuerzo del Equipo B."
   },
   "mapa_de_valor": {
     "nota": "Los elementos siguientes sirven como referencia privada para estimar qué concesiones reducen tiempo real en sala, qué concesiones reducen fricción y cuáles solo facilitan el acuerdo sin resolver el problema de fondo.",
@@ -47,7 +47,7 @@
         "lectura": "Ayuda mucho si la parte central con pantalla y sistema conserva continuidad suficiente."
       },
       {
-        "elemento": "Sacar fuera parte no esencial del bloque complementario o del cierre",
+        "elemento": "Sacar fuera parte no esencial de la actividad o del cierre",
         "impacto_operativo_aproximado": "Reduce ocupación en sala y puede aliviar la fricción de transición sin vaciar la sesión.",
         "tipo_de_efecto": "reconfigura_uso_del_recurso",
         "lectura": "Tiene valor real si permite proteger el núcleo de la formación y ordenar mejor el reparto."
@@ -60,21 +60,15 @@
       },
       {
         "elemento": "Asumir una franja más tardía con compensación visible",
-        "impacto_operativo_aproximado": "No mejora por sí sola la calidad de la sesión, pero puede ser asumible si la otra parte absorbe parte del coste operativo y además deja al Equipo B empezar y acabar lo antes posible dentro de esa solución peor.",
+        "impacto_operativo_aproximado": "No mejora por sí sola la calidad de la sesión, pero puede ser asumible si la otra parte absorbe parte del coste operativo.",
         "tipo_de_efecto": "facilita_acuerdo_con_compensacion",
-        "lectura": "La tarde no es equivalente a la mañana. Alejarse de las 8:00 equivale a perder utilidad y acercarse a las 16:00 empeora todavía más el valor del acuerdo."
+        "lectura": "La tarde no es equivalente a la mañana. Alejarse de las 8:00 equivale a perder utilidad y, por tanto, requiere contrapartida clara."
       },
       {
         "elemento": "Operativa sencilla y transición limpia entre equipos",
         "impacto_operativo_aproximado": "Reduce roce, pérdida de tiempo y sensación de cesión injusta.",
         "tipo_de_efecto": "facilita_acuerdo",
         "lectura": "No basta por sí sola para justificar una cesión grande, pero sí mejora la aceptabilidad del acuerdo."
-      },
-      {
-        "elemento": "La otra parte termina antes de las 12:00 y libera antes la sala",
-        "impacto_operativo_aproximado": "Permite al Equipo B entrar antes, proteger más utilidad y alejarse del tramo final del día.",
-        "tipo_de_efecto": "mejora_horario_efectivo",
-        "lectura": "Es una de las contrapartidas más importantes cuando Diego ya no puede conservar la mañana temprana."
       }
     ]
   },
@@ -89,7 +83,7 @@
         "uso": "Puede usarse para entrar más directo en la parte central de la sesión y perder menos tiempo útil dentro de la sala."
       },
       {
-        "elemento": "Recortar o concentrar una parte no esencial del bloque complementario o del cierre",
+        "elemento": "Recortar o concentrar una parte no esencial del cierre o de la actividad",
         "uso": "Puede usarse para liberar tiempo si a cambio el reparto sigue siendo razonable y el núcleo útil queda protegido."
       },
       {
@@ -104,12 +98,12 @@
   },
   "informacion_privada_sensible": {
     "no_conviene_revelar_espontaneamente": [
-      "Que la petición inicial de 5 horas incluye margen operativo y no es el mínimo absoluto.",
-      "Que el reparto interno de referencia del Equipo B es aproximadamente 1 hora de preparación, 2 horas de bloque central principal, 1 hora de bloque complementario y 1 hora de recogida.",
+      "Que la petición inicial de 5 horas incluye colchón operativo y no es el mínimo absoluto.",
+      "Que el reparto interno de referencia del Equipo B es aproximadamente 1 hora de preparación, 3 horas de núcleo de sesión y 1 hora de recogida.",
       "Que el mínimo real del Equipo B puede bajar a 3 horas útiles en sala si hay ayuda en preparación o recogida y si ciertas partes salen fuera.",
       "Qué compensaciones valora más internamente Diego para aceptar una franja menos cómoda.",
       "Hasta qué punto aceptaría asumir parte de la franja tardía si la otra parte compensa bien."
     ],
-    "lectura": "Si la otra parte no lo sabe, no conviene regalar desde el principio toda la flexibilidad real del Equipo B. Si la otra parte detecta correctamente alguna de esas palancas y la formula bien, Diego no debe negarla de forma artificial: debe gestionarla con criterio y reciprocidad. Aun así, si la conversación contiene una simplificación errónea sobre la duración ideal o la estructura interna de la actividad de Diego, esa simplificación no debe sustituir el marco privado canónico."
+    "lectura": "Si la otra parte no lo sabe, no conviene regalar desde el principio toda la flexibilidad real del Equipo B. Si la otra parte detecta correctamente alguna de esas palancas y la formula bien, Diego no debe negarla de forma artificial: debe gestionarla con criterio y reciprocidad."
   }
 }

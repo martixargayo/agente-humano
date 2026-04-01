@@ -56,7 +56,7 @@
   },
   "descubrimiento_y_comprension": {
     "phase": "descubrimiento_y_comprension",
-    "phase_objective": "Reducir incertidumbre y entender el mapa operativo real del caso antes de proponer reparto. En esta fase, discovery incluye tanto preguntar como exponer con claridad cómo se compone la propia actividad, qué parte necesita realmente la sala, qué parte puede hacerse fuera, cuál es el bloque ideal, cuál es el mínimo real y qué coste tiene irse a una franja peor. También pertenece aquí dejar claro, al menos una vez, que Diego quiere hacerlo lo más temprano posible y que la mañana temprana vale más operativamente que la tarde. La estructura ideal interna de Diego es de 5 horas: 1 hora de preparación, 2 horas de bloque central principal, 1 hora de bloque complementario y 1 hora de recogida.",
+    "phase_objective": "Reducir incertidumbre y entender el mapa operativo real del caso antes de proponer reparto. En esta fase, discovery incluye tanto preguntar como exponer con claridad cómo se compone la propia actividad, qué parte necesita realmente la sala, qué parte puede hacerse fuera, cuál es el bloque ideal, cuál es el mínimo real y qué coste tiene irse a una franja peor. También pertenece aquí dejar claro, al menos una vez, que Diego quiere hacerlo lo más temprano posible y que la mañana temprana vale más operativamente que la tarde.",
     "what_good_progress_looks_like": [
       "Se obtiene o consolida una pieza útil de claridad sobre necesidad real, horario, preparación, recogida, composición de actividad o partes que pueden hacerse fuera de la sala.",
       "Se avanza sobre un solo eje relevante por turno.",
@@ -76,8 +76,7 @@
       "No conviertas una mera declaración unilateral del bloque deseado en una propuesta cerrable entre ambas partes.",
       "Discovery no es solo preguntar: también puede consistir en explicar con orden el propio mapa operativo de Diego.",
       "Es válido y útil en discovery dejar dicho que Diego quiere hacerlo lo más temprano posible y que la mañana vale más que la tarde.",
-      "Mientras siga faltando claridad real, evita responder con contraoferta o condición de cierre.",
-      "No dejes que una simplificación reciente del diálogo sustituya el marco interno correcto de la actividad de Diego."
+      "Mientras siga faltando claridad real, evita responder con contraoferta o condición de cierre."
     ],
     "good_moves": [
       "Elegir un único eje con valor decisional: mínimo real en sala, composición de actividad, preparación, recogida, franja horaria, partes que pueden salir fuera o coste de asumir la tarde.",
@@ -152,8 +151,7 @@
       "No te precipites a anclar con propuesta propia si todavía puedes conseguir mejor información o mejor posicionamiento de la otra parte.",
       "Usa el negotiation_brief para valorar internamente si una concesión reduce tiempo real en sala, reduce fricción o solo facilita el acuerdo sin resolver el problema de fondo.",
       "No trates mañana temprana y franja tardía como equivalentes al diseñar una primera propuesta.",
-      "Evita repartir el día por mitades o copiar mecánicamente el bloque que acaba de pedir la otra parte salvo que haya una razón operativa clara para hacerlo.",
-      "Si ya no puedes conservar la mañana temprana, una buena primera propuesta no solo busca compensación: también debe intentar alejar el acuerdo del tramo final del día."
+      "Evita repartir el día por mitades o copiar mecánicamente el bloque que acaba de pedir la otra parte salvo que haya una razón operativa clara para hacerlo."
     ],
     "good_moves": [
       "Hacer una primera propuesta simple y defendible de reparto o secuencia de uso.",
@@ -213,8 +211,7 @@
       "Se estrecha la distancia real entre posiciones.",
       "Cada concesión obtiene una contrapartida clara.",
       "El acuerdo queda más cerrable después del turno.",
-      "A veces el mejor resultado del turno es sostener posición o hacer que la otra parte concrete mejor su cesión.",
-      "Si Diego ya no puede conservar la mañana, el acuerdo mejora porque empieza antes y acaba antes que otras alternativas tardías."
+      "A veces el mejor resultado del turno es sostener posición o hacer que la otra parte concrete mejor su cesión."
     ],
     "planner_bias": [
       "Favorece mejoras pequeñas y siempre condicionadas.",
@@ -226,9 +223,7 @@
       "Si la otra parte aún puede moverse más, no te precipites a cerrar ni a cargar tú con el siguiente movimiento.",
       "La colaboración negociadora no obliga a seguir cediendo: también puede consistir en sostener posición, condicionar o devolver la carga a la otra parte.",
       "Si ya hubo dos concesiones propias relevantes y consecutivas sin concesión relevante de la otra parte entre medias, por defecto no hagas una tercera concesión propia.",
-      "En ese punto, favorece sostener posición, exigir reciprocidad, pedir concreción o condicionar cualquier nuevo movimiento propio a una cesión real de la otra parte.",
-      "Cuando Diego asume el mediodía o una franja peor, no basta con valorar qué recibe a cambio: también debe intentar alejarse todo lo posible de las 16:00. Hacer el turno malo pero acabar antes es mejor que hacer el turno malo y cerrar a las 16:00.",
-      "La ayuda en montaje y desmontaje compensa parte del coste, pero normalmente no basta por sí sola para justificar 12:00–16:00. Para aceptar algo así suele hacer falta un paquete más fuerte: compensación operativa real y/o mejora visible del horario efectivo."
+      "En ese punto, favorece sostener posición, exigir reciprocidad, pedir concreción o condicionar cualquier nuevo movimiento propio a una cesión real de la otra parte."
     ],
     "good_moves": [
       "Ajuste pequeño y defendible sobre horario, preparación, recogida o transición.",
@@ -244,8 +239,7 @@
       "Recordar con calma que ya te has movido bastante y que ahora le toca a la otra parte acercarse si quiere seguir ajustando.",
       "Condicionar cualquier nueva mejora propia a una cesión concreta de la otra parte.",
       "Sostener posición sin romper el tono negociador cuando la otra parte sigue rígida sin aportar nada nuevo.",
-      "Pedir reciprocidad de forma sobria y humana en vez de ofrecer una tercera cesión propia unilateral.",
-      "Si vas a moverte al mediodía, intentar que el otro equipo acabe antes y te libere antes la sala para empezar y terminar antes."
+      "Pedir reciprocidad de forma sobria y humana en vez de ofrecer una tercera cesión propia unilateral."
     ],
     "avoid": [
       "Concesiones gratis.",
@@ -262,16 +256,14 @@
       "Seguir negociando como si nada cuando la otra parte ya ha dado por terminada la negociación sin acuerdo.",
       "Hacer una tercera concesión propia cuando las dos concesiones propias relevantes anteriores no obtuvieron ninguna concesión relevante de la otra parte.",
       "Tomar como reciprocidad suficiente que la otra parte repita su bloque ideal, siga firme, mantenga interés o simplemente no rompa la conversación.",
-      "Confundir exposición temprana de planes con entrada en fase de ajuste.",
-      "Aceptar 12:00–16:00 solo porque la otra parte ayude en montaje y desmontaje, sin intentar además mover el inicio y el final hacia antes."
+      "Confundir exposición temprana de planes con entrada en fase de ajuste."
     ],
     "question_policy": {
       "default_max_questions": 1,
       "when_to_ask": [
         "Solo para confirmar una condición operativa que realmente acerque el cierre.",
         "Solo si la confirmación no puede sustituirse mejor por una formulación condicional.",
-        "Para hacer que la otra parte concrete qué contrapartida real ofrece si quiere que cedas más tiempo o asumas una franja peor.",
-        "Para explorar si puede liberar la sala antes y así mejorar tu horario efectivo."
+        "Para hacer que la otra parte concrete qué contrapartida real ofrece si quiere que cedas más tiempo o asumas una franja peor."
       ],
       "when_not_to_ask": [
         "Cuando el movimiento puede expresarse como propuesta o condición declarativa.",
@@ -286,8 +278,7 @@
       "reparto final de preparación, recogida o transición",
       "último ajuste para cerrar",
       "tiempo útil real frente a simple facilidad de acuerdo",
-      "contrapartidas de la otra parte con impacto operativo real",
-      "mejora del horario efectivo para evitar acabar a las 16:00"
+      "contrapartidas de la otra parte con impacto operativo real"
     ],
     "done_signals": [
       "La distancia entre ambos equipos se reduce de forma real.",
@@ -306,8 +297,7 @@
       "Dejar claro quién usa la sala, en qué franja, qué parte se hace fuera y cómo queda la transición.",
       "Dejar claras ayudas, preparación, recogida o compensaciones operativas pactadas.",
       "Cerrar con confirmación operativa simple si hace falta.",
-      "Responder de forma compacta y suficiente, sin añadir explicación, intención ni nueva pregunta si el acuerdo ya está claro.",
-      "Sonar como una persona cerrando algo cara a cara, no como un acta."
+      "Responder de forma compacta y suficiente, sin añadir explicación, intención ni nueva pregunta si el acuerdo ya está claro."
     ],
     "avoid": [
       "Reabrir horario o condiciones ya acordadas.",
@@ -316,8 +306,7 @@
       "Complicar el cierre con detalle innecesario.",
       "Revelar el razonamiento interno por el que el acuerdo te encaja.",
       "Usar el negotiation_brief para renegociar algo que ya está suficientemente cerrado.",
-      "Usar esta fase para aceptar que no habrá acuerdo o para despedirse tras un abandono sin trato.",
-      "Frases administrativas tipo 'la distribución queda', 'mantendremos la franja' o 'gestionamos el resto'."
+      "Usar esta fase para aceptar que no habrá acuerdo o para despedirse tras un abandono sin trato."
     ]
   },
   "abandono_de_la_negociacion": {
