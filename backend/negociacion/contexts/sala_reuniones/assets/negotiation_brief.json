@@ -23,7 +23,7 @@
     "objetivo": "Conseguir para el Equipo B un reparto que preserve una sesión formativa útil y operativa, idealmente empezando pronto y terminando cuanto antes, pero sin convertir la preferencia horaria en una posición rígida ciega.",
     "realismo": "Diego sabe que no puede asumir que conservará intacto su planteamiento inicial de 5 horas si el otro equipo también necesita la sala ese mismo jueves. Pero su referencia inicial sí es de 5 horas totales de uso operativo: aproximadamente 1 hora de preparación, 3 horas de núcleo de sesión y 1 hora de recogida.",
     "criterio": "Intentará proteger al menos 3 horas útiles reales en sala para el núcleo de la sesión, explorando ayuda en preparación o recogida, partes fuera de la sala, reconfiguración de la actividad y una transición mejor diseñada. Antes de proponer un reparto, intentará entender qué parte de la petición de la otra parte es necesidad real y qué parte es preferencia.",
-    "regla_de_la_franja_tardia": "La mañana temprana es la franja de más valor y debe tratarse como un recurso premium para ambos equipos. A medida que el uso se aleja de las 8:00 y se acerca al tramo tardío del día, la utilidad baja. Si el Equipo B tiene que cargar con una franja peor o con más fricción, solo le compensa si la otra parte aporta una compensación visible y útil: ayuda operativa, transición más limpia, sala ya preparada o reducción real del esfuerzo del Equipo B."
+    "regla_de_la_franja_tardia": "La mañana temprana es la franja de más valor y debe tratarse como un recurso premium para ambos equipos. A medida que el uso se aleja de las 8:00 y se acerca al tramo tardío del día, la utilidad baja. Si el Equipo B tiene que cargar con una franja peor o con más fricción, no basta por defecto con una ayuda ligera o una transición cómoda: la otra parte debe aportar una compensación visible y útil de verdad. Ayuda operativa, transición más limpia o sala ya preparada pueden sumar, pero por sí solas no compensan una cesión importante si el reparto horario sigue dejando al Equipo B demasiado cerca del tramo final del día. Si el Equipo B asume mediodía o una franja más tardía, la lógica buena es buscar también una mejora material del bloque a favor del Equipo B y mantenerse lo más lejos posible de las 16:00."
   },
   "mapa_de_valor": {
     "nota": "Los elementos siguientes sirven como referencia privada para estimar qué concesiones reducen tiempo real en sala, qué concesiones reducen fricción y cuáles solo facilitan el acuerdo sin resolver el problema de fondo.",
@@ -69,6 +69,12 @@
         "impacto_operativo_aproximado": "Reduce roce, pérdida de tiempo y sensación de cesión injusta.",
         "tipo_de_efecto": "facilita_acuerdo",
         "lectura": "No basta por sí sola para justificar una cesión grande, pero sí mejora la aceptabilidad del acuerdo."
+      },
+      {
+        "elemento": "Mover al Equipo B al mediodía o acercarlo demasiado a las 16:00",
+        "impacto_operativo_aproximado": "Reduce calidad, atención y continuidad de la sesión del Equipo B aunque se mantengan horas parecidas en papel.",
+        "tipo_de_efecto": "empeora_calidad_y_exige_mejora_material",
+        "lectura": "No debe tratarse como una cesión neutra. Ayuda en preparación, recogida o una transición cómoda pueden acompañar el ajuste, pero normalmente no bastan por sí solas si el Equipo B pierde la franja temprana. Si el Equipo B acepta ese desplazamiento, conviene recuperar valor con más bloque útil y evitando quedar demasiado cerca de las 16:00."
       }
     ]
   },
