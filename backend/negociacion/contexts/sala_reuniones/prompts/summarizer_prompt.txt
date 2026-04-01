@@ -65,6 +65,10 @@ Por tanto:
 - El usuario representa a la otra parte de la negociación, no a Diego.
 - Cuando registres ofertas, bloqueos, compromisos o avances, interprétalos desde esa asimetría: `self` se refiere a Diego / Equipo B; `other` se refiere al usuario / la otra parte.
 
+# Reference resolution rule
+- Si el usuario usa expresiones como "vosotros", "ustedes", "tu equipo", "vuestro equipo", "Equipo B" o equivalentes, interprétalas por defecto como referencia a Diego y al lado de Diego, salvo evidencia explícita en contra.
+- Si el usuario expone primero su propio bloque, duración, preferencia o necesidad y después pregunta "¿y vosotros?", "¿y ustedes?" o equivalente, interpreta por defecto que está pidiendo el mapa operativo de Diego, no formulando todavía una propuesta de reparto entre ambas partes.
+
 # Relationship grounding
 - La relación inicial es cordial y profesional.
 - Diego y la otra parte no se conocían ni habían hablado antes.
@@ -151,6 +155,17 @@ En esos casos:
 - `current_topic` debe reflejar mínimo real, composición de actividad o preferencia vs necesidad,
 - y `next_open_loop` debe reflejar el mapa aún no descubierto.
 
+# Mirror discovery rule
+Si el turno actual del usuario combina:
+- exposición de su propio bloque, horario, duración, preferencia o necesidad alegada,
+- y una pregunta por el bloque, horario, duración, preferencia o necesidad de Diego / Equipo B,
+
+por defecto eso sigue siendo discovery.
+En ese patrón:
+- no conviertas el turno en `offer` por defecto;
+- normalmente `last_offer_other` debe seguir en `null`;
+- y el foco operativo pasa a aclarar o registrar el mapa de Diego en el eje preguntado.
+
 # Scene interpretation
 Usa `scene_state` como contexto de lectura del turno actual.
 
@@ -170,6 +185,12 @@ Reglas fuertes:
 - `pending_question` debe actualizarse si el usuario introduce una nueva pregunta operativamente más viva que la anterior.
 - Si el turno actual no introduce una oferta nueva, no inventes una ni repitas una previa como si acabara de aparecer.
 - Si `last_turn_summary` o `current_topic` podrían haberse escrito igual antes de leer el turno actual, probablemente están mal.
+
+# Verb precision rule
+En discovery temprano:
+- prefiere verbos como "expone", "declara", "indica", "explica", "pregunta por" o "plantea como preferencia";
+- evita verbos como "propone", "ofrece" o "contraoferta" salvo que exista evidencia clara de estructura negociadora real.
+La precisión verbal importa porque un resumen demasiado ofertante puede contaminar fases posteriores.
 
 # Episodic memory policy
 `episodic_append` es un patch de append para la memoria duradera reciente.
@@ -252,6 +273,7 @@ Debes devolver siempre estos tres campos:
 - Si el usuario introduce una oferta, cifra, condición o bloqueo nuevo, normalmente `current_topic` debe moverse a ese eje.
 - Si el usuario o Diego solo están exponiendo plan, bloque ideal, mínimo real, composición de actividad o valor de la mañana en fase temprana, `current_topic` debe reflejar ese mapa operativo, no una negociación ya abierta sobre reparto.
 - Si el usuario pregunta por mínimo real, composición de actividad o coste operativo, `current_topic` debe reflejar ese punto de discovery.
+- Si el usuario pregunta por el mapa operativo de Diego / Equipo B después de exponer el suyo, `current_topic` debe reflejar ese eje pedido a Diego, no una propuesta de reparto ficticia.
 - Si el usuario pregunta por la aceptabilidad de un término de una propuesta ya viva, `current_topic` debe reflejar ese término concreto, no un resumen genérico de la negociación.
 - Si no hay un eje dominante claro, usa `null`.
 
@@ -264,6 +286,7 @@ Debes devolver siempre estos tres campos:
   4. el diálogo avanzó de forma que ya no conviene usarla como siguiente foco inmediato.
 - En discovery temprano, una respuesta factual puede dejar viva otra pregunta mejor sobre mínimo real, composición de actividad, parte imprescindible en sala o preferencia vs necesidad.
 - Si el usuario formula una nueva pregunta sobre un término activo de una propuesta viva, esa nueva pregunta suele sustituir a la anterior.
+- Si el usuario pregunta "¿y vosotros?", "¿y ustedes?" o equivalente sobre horas, bloque o preferencia, esa pregunta debe resolverse como pregunta viva sobre Diego / Equipo B, no como confirmación de reparto.
 - No conserves preguntas antiguas por mera presencia en el historial reciente.
 - Si no hay una pregunta claramente viva y prioritaria, usa `null`.
 
@@ -318,6 +341,12 @@ En esos casos:
 - o en `next_open_loop` si deja pendiente distinguir necesidad real vs preferencia,
 
 pero no lo conviertas todavía en oferta negociadora viva.
+
+## Mirror discovery in state rule
+Si el usuario expone su propio bloque, duración o preferencia y después pregunta por Diego / Equipo B:
+- por defecto eso no crea `last_offer_other`;
+- normalmente sigue siendo estado de discovery;
+- y el fleco abierto suele ser cuál es el mapa operativo de Diego en ese mismo eje.
 
 ## Initial self-position vs negotiable offer rule
 Regla equivalente para Diego:

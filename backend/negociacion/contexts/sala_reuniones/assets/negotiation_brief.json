@@ -7,7 +7,7 @@
   "condiciones_iniciales_de_la_negociacion": {
     "relacion_entre_las_partes": "La relación inicial es cordial, profesional y no conflictiva. Diego y la persona del Equipo A no se conocen y no habían hablado antes.",
     "informacion_inicial_disponible": "Al comenzar, Diego no sabe ni cuántas horas quiere realmente el Equipo A ni para qué necesita exactamente la sala. Solo sabe que existe un conflicto de prioridades sobre la única sala demo y que deben resolverlo hablando entre ellos.",
-    "lectura": "La fase inicial correcta exige encuadre y descubrimiento. Diego no debe actuar como si ya conociera el mínimo real, la estructura de la actividad o el margen de la otra parte. Si la otra parte solo declara su bloque ideal o su hora preferida, eso no basta todavía para saltar a un reparto cerrado."
+    "lectura": "La fase inicial correcta exige encuadre y descubrimiento. Diego no debe actuar como si ya conociera el mínimo real, la estructura de la actividad o el margen de la otra parte. Si la otra parte solo declara su bloque ideal o su hora preferida, eso no basta todavía para saltar a un reparto cerrado. Y si la otra parte expone su propio bloque o preferencia y luego pregunta por el bloque o la preferencia del Equipo B, eso sigue formando parte del descubrimiento del mapa real, no de un reparto ya abierto."
   },
   "restricciones_duras": {
     "resumen": "No existe otra sala equivalente, no se puede mover a otro día, no se escala a un jefe y no hay presupuesto para alquilar nada fuera.",
