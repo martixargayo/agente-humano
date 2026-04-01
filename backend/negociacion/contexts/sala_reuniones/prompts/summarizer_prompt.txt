@@ -19,7 +19,7 @@ No haces nada más.
 - No redactas la respuesta final.
 - No reescribes el estado canónico completo.
 - No guardas transcript bruto.
-- No inventas hechos, ofertas, compromisos, bloqueos, cierres ni motivaciones.
+- No inventas hechos, ofertas, bloqueos, cierres ni motivaciones.
 - No infieres información no sustentada por el input.
 - Si un posible recuerdo es ambiguo, débil o dudoso, omítelo.
 
@@ -118,7 +118,8 @@ Ejemplos que, por sí solos, normalmente NO deben tratarse todavía como oferta 
 - "Nuestro bloque ideal sería por la mañana"
 - "La parte central nos cabe en 3 horas, pero preparación y recogida pesan"
 - "Para nosotros la mañana vale más que la tarde"
-- "Nuestro plan inicial era de 12:30 a 16:00"
+- "Nuestro plan inicial eran 5 horas"
+- "Esas 5 horas se nos van entre preparar, hacer la sesión y recoger"
 
 Lectura por defecto:
 - marco operativo propio,
@@ -132,6 +133,11 @@ pero no todavía:
 - intercambio,
 - ni reparto vivo.
 
+# Explicit 5-hour map rule
+- Si Diego dice "5 horas" porque el usuario le ha preguntado cuánto necesita su equipo, trátalo por defecto como self-map / important_fact, no como oferta.
+- Si luego explica que esas 5 horas incluyen preparación, núcleo y recogida, sigue siendo por defecto discovery mientras no vaya unido a reparto, condición recíproca o intercambio explícito.
+- No eleves esa información a `last_offer_self` solo por el hecho de incluir una cifra.
+
 # Offer activation rule
 Solo debes leer algo como `offer` cuando haya evidencia clara de estructura negociable dirigida a la otra parte, por ejemplo:
 - reparto explícito de bloques entre ambos,
@@ -139,6 +145,14 @@ Solo debes leer algo como `offer` cuando haya evidencia clara de estructura nego
 - cesión, intercambio o aproximación entre posiciones,
 - respuesta a una propuesta previa con ajuste material,
 - o paquete explícito de horas/franja/condición orientado a resolver el conflicto entre ambos.
+
+# Operational-tradeoff activation rule
+- También puede existir `offer` o estructura negociadora viva cuando una parte liga de forma explícita horas, franja, preparación, recogida, transición o parte fuera de sala a una contrapartida del otro lado.
+- Ejemplos:
+  - "Si vosotros ayudáis con la recogida, nosotros podemos recortar."
+  - "Si la sala queda preparada, nos movemos ahí."
+  - "Si esa introducción sale fuera, entonces nos encaja."
+- En esos casos, aunque no haya todavía acuerdo, puede existir `last_offer_self` o `last_offer_other` según quién haya formulado ese paquete condicional.
 
 # Discovery question rule
 Preguntas tempranas sobre mínimo real, composición de actividad, partes en sala, partes fuera o coste de una franja peor deben leerse por defecto como discovery, no como ajuste.
@@ -229,7 +243,8 @@ Qué no debe entrar:
 En fase temprana, cuando las partes están exponiendo o descubriendo su mapa operativo:
 - usa por defecto `important_fact` para preferencias, bloques ideales, mínimos alegados, coste de una franja y composición de actividad;
 - no uses `offer` salvo que aparezca ya una estructura negociadora explícita;
-- no guardes como `topic_closure` algo que en realidad solo abrió un nuevo eje de discovery.
+- no guardes como `topic_closure` algo que en realidad solo abrió un nuevo eje de discovery;
+- trata por defecto "5 horas" y su desglose como `important_fact`, no como `offer`, salvo que vayan unidos a un intercambio real.
 
 # Deduplication rule for episodic memory
 No dupliques en `episodic_append` eventos ya presentes o claramente equivalentes a:
@@ -388,6 +403,7 @@ deben leerse por defecto como discovery, no como ajuste, salvo que ya exista una
 - Si aparece una nueva oferta del usuario o el usuario modifica una oferta anterior con suficiente nitidez, actualiza `last_offer_other`.
 - Para que exista `last_offer_self` o `last_offer_other`, debe haber evidencia de propuesta negociable real, no solo de deseo inicial, bloque ideal, explicación del plan o preferencia operativa.
 - Si una oferta fue reemplazada por otra más reciente de la misma parte, la anterior no debe quedar como vigente.
+- Un paquete condicional explícito sobre horas/franja y ayuda de preparación/recogida/transición sí puede ser oferta vigente aunque todavía no haya cierre.
 
 ## Offer structure rule
 - En `summary`, usa una frase breve, factual y suficientemente completa para reflejar el paquete real de la oferta vigente.
@@ -451,6 +467,7 @@ Reglas:
 - `next_open_loop` debe ser el único fleco principal que sigue abierto ahora mismo, si existe.
 - Si lo abierto sigue siendo descubrir necesidad real, composición de actividad o coste de una franja, eso debe reflejarse como `next_open_loop`.
 - Si tras el turno sigue abierto si Diego aceptaría una franja peor y bajo qué condiciones, ese suele ser el fleco correcto.
+- Si existe ya una estructura condicional viva, el open loop puede ser si la ayuda ofrecida basta o no para justificar el ajuste.
 - Si no hay un fleco claro y único, usa `null`.
 
 ## Non-duplication rule
@@ -468,6 +485,8 @@ Tu trabajo está completo solo cuando:
 - `negotiation_state` viene completo, compacto y actualizado para el siguiente planner,
 - la interpretación del turno es compatible con `scene_state`,
 - discovery temprano no queda confundido con oferta o ajuste,
+- la cifra visible de 5 horas y su desglose siguen tratándose como self-map mientras no haya intercambio real,
+- una condicionalidad explícita sobre horas/franja y ayuda operativa sí puede activar oferta viva cuando corresponda,
 - todos los campos están sustentados por el input recibido,
 - la salida cumple exactamente el schema `MemoryOutput`.
 

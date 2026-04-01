@@ -132,6 +132,8 @@ Ejemplos que, por sí solos, suelen seguir siendo `descubrimiento_y_comprension`
 - "Para nosotros la mañana vale más"
 - "La parte central nos cabe en 3 horas, pero preparación y recogida pesan"
 - "Nuestro plan ideal es arrancar pronto"
+- "Nosotros necesitaríamos 5 horas"
+- "Esas 5 horas se nos van entre preparar, hacer la parte central y recoger"
 
 Eso sigue siendo mapa operativo, no propuesta.
 
@@ -156,7 +158,8 @@ Solo debes considerar que ya existe una propuesta viva cuando aparezca una formu
 - intercambio claro;
 - condicionalidad recíproca;
 - cesión material;
-- paquete concreto dirigido a repartir la sala entre los dos equipos.
+- paquete concreto dirigido a repartir la sala entre ambas partes;
+- o vinculación explícita entre horas/franja y ayuda de preparación, recogida o transición.
 
 No basta con:
 - que cada parte diga su horario ideal;
@@ -177,6 +180,11 @@ Esto aplica aunque:
 Pero esta regla NO se activa:
 - si todavía solo se están exponiendo planes, mínimos, preferencias o composición de actividad;
 - o si la conversación aún no ha abierto una estructura real de reparto entre ambos.
+
+# Conditional-operational-tradeoff rule
+- Si una de las partes dice algo del tipo "si vosotros ayudáis con la recogida, nosotros podemos recortar", "si la sala queda preparada, nos movemos" o "si esa parte sale fuera, entonces podemos ajustar", eso ya puede ser `propuesta_creativa` o `concesiones_y_ajuste_final` según la trayectoria reciente.
+- Si es la primera estructura explícita de intercambio entre ambos, suele ser `propuesta_creativa`.
+- Si ya existían posiciones vivas y esto solo mueve términos, suele ser `concesiones_y_ajuste_final`.
 
 # Scene interpretation
 - Usa `scene_state` para interpretar correctamente el marco espacial y temporal del turno actual.
@@ -209,6 +217,8 @@ Permanece aquí cuando:
 - una o ambas partes exponen su mapa operativo real sin proponer todavía reparto entre ambos;
 - la otra parte expone sus horas deseadas, su franja ideal o su petición inicial;
 - Diego explica su propio plan, su mínimo real, su preferencia por empezar temprano o el valor operativo de la mañana;
+- Diego responde con "5 horas" a una pregunta por su referencia general;
+- Diego explica en qué se van esas 5 horas sin convertirlo todavía en intercambio entre ambas partes;
 - se explora cómo se compone cada actividad o qué parte necesita realmente la sala;
 - una parte expone su bloque y luego pregunta por el de Diego / Equipo B;
 - todavía no existe propuesta de reparto entre ambos.
@@ -235,6 +245,8 @@ Tu trabajo está completo solo cuando:
 - la decisión usa el turno actual y la trayectoria reciente;
 - discovery temprano no se confunde con propuesta o ajuste;
 - una exposición del propio bloque seguida de una pregunta por el bloque de Diego sigue tratándose como discovery salvo que exista reparto explícito entre ambos;
+- decir "5 horas" o explicar ese desglose no se confunde por sí solo con oferta viva;
+- una condicionalidad recíproca real sobre horas/franja/preparación/recogida sí puede activar propuesta o ajuste cuando corresponda;
 - no hay salto de fase precipitado por señales superficiales;
 - `formalizacion_del_acuerdo` solo se usa cuando existe evidencia suficientemente clara de acuerdo explícito o aceptación explícita ya producida;
 - `abandono_de_la_negociacion` solo se usa cuando existe evidencia suficientemente clara de salida explícita de la negociación sin acuerdo;

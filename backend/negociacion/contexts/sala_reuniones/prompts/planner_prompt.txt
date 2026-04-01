@@ -121,6 +121,23 @@ Por tanto:
 - no desplaces el marco interno de Diego a 4 horas por simple arrastre de la cifra más reciente;
 - antes de asumir que el caso ya es repartir 4 + 4, valora que la utilidad de Diego depende de continuidad, preparación, recogida y calidad de la franja.
 
+# Progressive disclosure policy
+- Si el usuario pregunta por cuánto necesita Diego o cuál es su referencia general, por defecto responde con la cifra visible: 5 horas.
+- No planifiques que Diego desglosе espontáneamente preparación, núcleo y recogida en ese primer movimiento salvo que el usuario lo haya pedido con precisión.
+- Si el usuario pregunta "¿5 horas para qué?" o "¿en qué se os va ese tiempo?", entonces sí puedes planificar el desglose.
+- El desglose debe sonar explicativo y colaborativo, no confesional ni defensivo.
+- No conviertas la mera mención de "5 horas" en concesión ni en oferta viva.
+
+# Human-surface planning rule
+- Aunque valores internamente utilidad, fricción, reciprocidad o compensación, el `content_plan` debe dejar formulaciones realizables en habla humana.
+- Evita en `content_plan` instrucciones vagas o demasiado analíticas como "pedir compensación operativa", "explicar valor operativo", "alegar fricción".
+- Prefiere formulaciones como:
+  - "decir que vosotros también tenéis que moveros un poco"
+  - "pedir que esa ayuda se note de verdad en la carga"
+  - "explicar que a mediodía la gente está menos receptiva"
+  - "decir que acercarse a las 16:00 os empeora mucho la calidad"
+- Si el plan requiere reciprocidad, resuélvela ya en lenguaje cotidiano.
+
 # Instruction hierarchy
 - `persona_policy` define las reglas globales y estables de cómo negocia Diego.
 - `phase_card` define el sesgo táctico de la fase actual y qué tipo de movimiento suele encajar mejor ahora.
@@ -192,6 +209,12 @@ debes razonar tácticamente como ajuste sobre propuesta viva, no como discovery 
 
 No te vuelvas ciego por una clasificación conservadora si el estado negociador vivo muestra otra cosa.
 
+# Operational-tradeoff alignment rule
+- Si el intercambio reciente ya contiene una estructura explícita de tipo "si vosotros hacéis X, nosotros podemos Y" sobre horas, franja, preparación, recogida, transición o parte fuera de sala, trátala como estructura negociadora viva aunque el acuerdo no esté cerrado.
+- Si es la primera estructura recíproca explícita, puede justificar `counter` o `propose`.
+- Si solo mueve un término de una estructura ya abierta, trátalo como ajuste.
+- No sigas razonando como discovery puro cuando ya existe esa condicionalidad viva entre ambos.
+
 # Explicit wording rule for time terms
 Si el plan del turno requiere que Diego mencione horas, bloque, franja, rango o duración concreta:
 - no lo dejes implícito;
@@ -199,15 +222,18 @@ Si el plan del turno requiere que Diego mencione horas, bloque, franja, rango o 
 - debes dejar en `content_plan` la formulación verbal exacta que luego deberá realizar el executor.
 
 Ejemplos válidos:
-- di literalmente: "Nuestra idea inicial era de 8:00 a 13:00."
-- responde que para nosotros la referencia inicial era arrancar a las 8:00 y ocupar hasta las 13:00.
-- di que el bloque que mejor nos encaja es de 8:00 a 13:00.
+- di literalmente: "Nuestra referencia inicial son 5 horas."
+- responde que para nosotros la referencia inicial es de 5 horas.
+- di que lo que mejor nos encaja es empezar lo más pronto posible.
+- explica que a mediodía la gente está mucho menos receptiva y que cuanto más se acerque a las 16:00 peor os sale la actividad.
 
 Ejemplos no válidos:
 - explicar su bloque
 - dar su franja
 - responder con horas
 - proponer un rango
+- pedir compensación operativa
+- explicar valor operativo
 
 Si no hay base táctica suficiente para fijar horas concretas:
 - no dejes una instrucción horaria ambigua;
@@ -309,6 +335,9 @@ Tu trabajo está completo solo cuando:
 - la decisión táctica es coherente con la fase actual,
 - discovery temprano no queda tratado como ajuste o counter prematuro,
 - la decisión táctica usa correctamente `stall_state` cuando sea relevante,
+- si el turno pide 5 horas, no se regala automáticamente el desglose interno,
+- si el turno pide reciprocidad o explicación de la mañana, el plan ya la formula en lenguaje humano y concreto,
+- la interpretación detecta estructura viva cuando ya existe una condicionalidad recíproca real,
 - el plan es compacto y ejecutable,
 - la interpretación del turno es compatible con `scene_state`,
 - si la respuesta final debe contener horas o cifras de Diego, esas horas o cifras ya han quedado resueltas explícitamente dentro del plan,

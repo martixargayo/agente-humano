@@ -70,8 +70,10 @@
       "discovery_map_rule": "En este caso, discovery incluye no solo preguntar sino también exponer el mapa operativo real: bloque ideal, mínimo real, composición de la actividad, parte imprescindible en sala, parte que puede salir fuera, valor de la mañana y coste operativo de una franja peor.",
       "opening_position_rule": "No clasifiques como 'propuesta_creativa' una mera exposición inicial del bloque deseado, del horario preferido, del mínimo real o de la duración estimada de una sola parte si todavía no hay una estructura explícita de reparto, intercambio o condición entre ambas partes.",
       "self_map_rule": "No clasifiques como 'propuesta_creativa' una explicación de Diego sobre cómo se compone su actividad, cuánto le condiciona la franja o que quiere hacerlo lo más temprano posible, salvo que esa explicación ya venga empaquetada como propuesta dirigida a la otra parte.",
+      "self_map_5h_rule": "Si Diego responde con '5 horas' a una pregunta del tipo '¿cuánto necesitáis?' o '¿cuál es vuestro bloque?', eso sigue siendo por defecto 'descubrimiento_y_comprension'. Tampoco cambia de fase por sí solo que luego explique que ese tiempo incluye preparación, núcleo y recogida, si todavía no hay reparto ni intercambio entre ambas partes.",
       "reciprocal_self_map_rule": "Si una parte expone su propio bloque, duración, franja ideal o necesidad alegada y después pregunta por el bloque, duración, franja o necesidad de Diego / Equipo B, la lectura por defecto sigue siendo 'descubrimiento_y_comprension'.",
       "proposal_viva_activation_rule": "Solo existe propuesta viva cuando aparece una formulación explícita orientada a resolver el conflicto entre ambos: reparto entre ambos, condicionalidad, intercambio, cesión material o paquete concreto dirigido a repartir la sala.",
+      "operational_tradeoff_activation_rule": "También puede existir propuesta viva o ajuste cuando una parte vincula de forma explícita horas, franja o bloque con ayuda en preparación, recogida, transición o parte fuera de sala, por ejemplo 'si vosotros ayudáis con la recogida, nosotros podemos recortar' o 'si la sala queda ya preparada, nos movemos ahí'.",
       "offer_exchange_rule": "Si ya existe al menos una propuesta viva real o una estructura negociadora clara entre ambas partes y el turno actual o la trayectoria reciente muestran contraofertas, mínimos, cesiones cruzadas, condiciones de cierre o fórmulas de aproximación, la fase dominante pasa a 'concesiones_y_ajuste_final'.",
       "term_adjustment_rule": "Si en la trayectoria reciente ya hay una propuesta viva real sobre la mesa y el turno actual del usuario pregunta, valida, condiciona o mueve uno de sus términos concretos —por ejemplo franja, mediodía, 30 minutos, recogida, transición o ayuda operativa— la fase dominante suele ser 'concesiones_y_ajuste_final'.",
       "agreement_activation_rule": "No clasifiques como 'formalizacion_del_acuerdo' por mera cercanía al cierre, buena disposición, propuesta pendiente de aceptación o invitación a cerrar.",
@@ -105,7 +107,9 @@
           "una de las partes revela por primera vez cuántas horas cree necesitar y en qué franja preferiría empezar",
           "Diego explica que quiere hacerlo lo más temprano posible o que la mañana tiene más valor operativo",
           "una de las partes expone su bloque ideal o su mínimo real sin proponer aún reparto entre ambos",
-          "una de las partes expone su bloque y luego pregunta por el bloque o la franja de Diego / Equipo B"
+          "una de las partes expone su bloque y luego pregunta por el bloque o la franja de Diego / Equipo B",
+          "Diego responde con 5 horas como referencia visible sin proponer todavía un reparto",
+          "Diego explica que esas 5 horas incluyen preparación, núcleo y recogida sin convertir eso aún en intercambio"
         ],
         "stay_when": [
           "todavía se está reuniendo o consolidando claridad útil",
@@ -125,7 +129,8 @@
           "si hacemos X entonces Y como apertura negociadora",
           "condición concreta para empezar a avanzar",
           "opción inicial de intercambio",
-          "primera propuesta de compensación operativa simple"
+          "primera propuesta de compensación operativa simple",
+          "primera vinculación explícita entre bloque horario y ayuda concreta de preparación, recogida o transición"
         ],
         "do_not_use_when": [
           "ya existe al menos una posición negociadora viva de cada parte y el foco pasa a estrechar distancia",
@@ -148,7 +153,8 @@
           "ajuste de condiciones",
           "movimiento pequeño para acercar posiciones",
           "intercambio explícito entre horario y compensación operativa",
-          "pregunta o tanteo sobre un término concreto de una propuesta ya viva"
+          "pregunta o tanteo sobre un término concreto de una propuesta ya viva",
+          "discusión sobre si la ayuda en recogida, preparación o transición basta para justificar un recorte o una franja peor"
         ],
         "entry_signals": [
           "ya existe una propuesta viva real o una estructura negociadora clara entre ambas partes",
@@ -167,6 +173,7 @@
       "No subir de clima_humano a descubrimiento_y_comprension por una simple confirmación de identidad.",
       "No subir de descubrimiento_y_comprension a propuesta_creativa por una valoración genérica, una duración deseada, un mínimo alegado o una preferencia horaria unilateral sin propuesta concreta.",
       "No subir de descubrimiento_y_comprension a propuesta_creativa cuando una parte expone su bloque y luego pregunta por el de Diego / Equipo B.",
+      "No subir de descubrimiento_y_comprension a propuesta_creativa solo porque Diego diga '5 horas' o explique para qué se le van esas 5 horas.",
       "No subir de propuesta_creativa a concesiones_y_ajuste_final si todavía no hay ajuste o intercambio real.",
       "No mantener propuesta_creativa cuando ya existen posiciones vivas de ambas partes y el foco dominante es estrechar distancia con contraofertas, mínimos o concesiones cruzadas.",
       "No subir a formalizacion_del_acuerdo mientras siga habiendo negociación sustancial abierta.",
@@ -185,7 +192,9 @@
         "¿Solo necesitas tres horas y media?",
         "¿Qué parte hacéis realmente dentro de la sala?",
         "Yo quiero hacerlo lo más temprano posible porque la mañana nos encaja mejor operativamente.",
-        "La parte central la necesitamos en sala, pero alguna introducción podría salir fuera."
+        "La parte central la necesitamos en sala, pero alguna introducción podría salir fuera.",
+        "Nosotros necesitaríamos 5 horas.",
+        "Esas 5 horas se nos van entre preparar, hacer la parte central y recoger al final."
       ],
       "move_to_propuesta_creativa": [
         "Si os parece, vosotros 8 a 11 y nosotros 11 a 14:30.",
