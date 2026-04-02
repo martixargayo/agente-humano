@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import HTTPException
-
 from sessions.state import SessionState
 
 from ..contexts import (
@@ -13,6 +11,7 @@ from ..contexts import (
     resolve_default_negotiation_context,
     resolve_negotiation_context,
 )
+from ..orchestration.context_errors import SessionContextConflictError
 
 
 def resolve_optimizer_context_payload(*, context_id: str | None = None) -> dict[str, Any]:
@@ -20,13 +19,7 @@ def resolve_optimizer_context_payload(*, context_id: str | None = None) -> dict[
     try:
         resolved = resolve_negotiation_context(normalized) if normalized is not None else resolve_default_negotiation_context()
     except NegotiationContextResolutionError as exc:
-        raise HTTPException(
-            status_code=404,
-            detail={
-                'error': 'unsupported_context_id',
-                'context_id': normalized,
-            },
-        ) from exc
+        raise ValueError(f"unsupported_context_id:{normalized}") from exc
     return {
         'flow_id': resolved.flow_id,
         'context_id': resolved.context_id,
@@ -52,14 +45,10 @@ def inherit_or_bind_sandbox_context(*, source_state: SessionState, target_state:
 
     requested = (requested_context_id or '').strip() or None
     if requested is not None and requested != source_context.context_id:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                'error': 'optimizer_context_conflict',
-                'source_session_id': source_state.session_id,
-                'existing_context_id': source_context.context_id,
-                'requested_context_id': requested,
-            },
+        raise SessionContextConflictError(
+            session_id=source_state.session_id,
+            existing_context_id=source_context.context_id,
+            requested_context_id=requested,
         )
 
     return ensure_optimizer_session_context(state=target_state, requested_context_id=source_context.context_id)

@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from fastapi import HTTPException
-
 from sessions.state import SessionState
 
+from ..orchestration.context_errors import SessionContextConflictError
 from .models import BoundNegotiationContext, ResolvedNegotiationContext
 from .resolver import resolve_default_negotiation_context, resolve_negotiation_context
 
@@ -47,14 +46,10 @@ def ensure_session_context(*, state: SessionState, requested_context_id: str | N
 
     if existing is not None:
         if normalized_requested is not None and normalized_requested != existing.context_id:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "error": "session_context_conflict",
-                    "session_id": state.session_id,
-                    "existing_context_id": existing.context_id,
-                    "requested_context_id": normalized_requested,
-                },
+            raise SessionContextConflictError(
+                session_id=state.session_id,
+                existing_context_id=existing.context_id,
+                requested_context_id=normalized_requested,
             )
         return existing
 

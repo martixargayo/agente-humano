@@ -26,8 +26,11 @@ from negociacion.contexts import (
 
 from .presentation_resolver import resolve_presentation_config_for_context
 from negociacion.orchestration.flow_config import build_negotiation_pipeline_config
+from negociacion.orchestration.context_errors import ContextContractError
 from negociacion.orchestration.turn_contract import TurnEntryContract, execute_turn_with_contract
 from negociacion.optimizador.storage import resolve_traces
+from negociacion.services.context_http import raise_http_from_context_error
+from negociacion.services.turn_context_factory import build_interfaz_usuario_turn_context
 
 logger = logging.getLogger(__name__)
 
@@ -92,60 +95,63 @@ def ensure_session(
     context_id: str | None = None,
     public_slug: str | None = None,
 ) -> dict[str, Any]:
-    normalized_user_id = _normalize_external_id(user_id)
-    normalized_session_id = _normalize_external_id(session_id)
-    if normalized_user_id is None or normalized_session_id is None:
-        generated_user_id, generated_session_id = _generate_public_session_identity()
-        normalized_user_id = normalized_user_id or generated_user_id
-        normalized_session_id = normalized_session_id or generated_session_id
+    try:
+        normalized_user_id = _normalize_external_id(user_id)
+        normalized_session_id = _normalize_external_id(session_id)
+        if normalized_user_id is None or normalized_session_id is None:
+            generated_user_id, generated_session_id = _generate_public_session_identity()
+            normalized_user_id = normalized_user_id or generated_user_id
+            normalized_session_id = normalized_session_id or generated_session_id
 
-    store = get_session_store()
-    existing_state = store.get(user_id=normalized_user_id, session_id=normalized_session_id)
-    state = existing_state or get_session_state(user_id=normalized_user_id, session_id=normalized_session_id)
-    ensure_session_surface(state=state, surface='interfaz_usuario')
-    existing_context = read_bound_context_from_session(state)
+        store = get_session_store()
+        existing_state = store.get(user_id=normalized_user_id, session_id=normalized_session_id)
+        state = existing_state or get_session_state(user_id=normalized_user_id, session_id=normalized_session_id)
+        ensure_session_surface(state=state, surface='interfaz_usuario')
+        existing_context = read_bound_context_from_session(state)
 
-    if existing_context is None:
-        resolved_context_id = _resolve_bootstrap_context_id(context_id=context_id, public_slug=public_slug)
-        ensure_session_context(state=state, requested_context_id=resolved_context_id)
-    elif public_slug is not None:
-        resolved_context_id = _resolve_bootstrap_context_id(context_id=context_id, public_slug=public_slug)
-        ensure_session_context(state=state, requested_context_id=resolved_context_id)
-    else:
-        ensure_session_context(state=state, requested_context_id=context_id)
+        if existing_context is None:
+            resolved_context_id = _resolve_bootstrap_context_id(context_id=context_id, public_slug=public_slug)
+            ensure_session_context(state=state, requested_context_id=resolved_context_id)
+        elif public_slug is not None:
+            resolved_context_id = _resolve_bootstrap_context_id(context_id=context_id, public_slug=public_slug)
+            ensure_session_context(state=state, requested_context_id=resolved_context_id)
+        else:
+            ensure_session_context(state=state, requested_context_id=context_id)
 
-    bound_context = ensure_session_context(state=state)
-    resolved_context = resolve_negotiation_context(bound_context.context_id)
-    presentation_config = resolve_presentation_config_for_context(bound_context.context_id)
+        bound_context = ensure_session_context(state=state)
+        resolved_context = resolve_negotiation_context(bound_context.context_id)
+        presentation_config = resolve_presentation_config_for_context(bound_context.context_id)
 
-    traces = resolve_traces(state)
-    canonical = state.world_state.get("negotiation_canonical", {}) if isinstance(state.world_state, dict) else {}
-    thread = canonical.get("openai_thread", {}) if isinstance(canonical, dict) else {}
-    ttl_scope = "bootstrap" if existing_state is None and len(traces) == 0 else "active"
-    session_bootstrap_state = "new" if existing_state is None and len(traces) == 0 else "rehydrated"
-    ttl_seconds = apply_session_ttl(state, scope=ttl_scope, reason="interfaz_usuario_bootstrap")
-    logger.info(
-        "interfaz_usuario_session_ready session=%s context=%s traces=%s ttl_scope=%s ttl_seconds=%s existing=%s",
-        f"{normalized_user_id}:{normalized_session_id}",
-        resolved_context.context_id,
-        len(traces),
-        ttl_scope,
-        ttl_seconds,
-        existing_state is not None,
-    )
-    return {
-        "user_id": normalized_user_id,
-        "session_id": normalized_session_id,
-        "trace_count": len(traces),
-        "last_updated": state.last_updated.isoformat(),
-        "session_bootstrap_state": session_bootstrap_state,
-        "existing_session": existing_state is not None,
-        "conversation_id": thread.get("conversation_id") if isinstance(thread, dict) else None,
-        "previous_response_id": thread.get("previous_response_id") if isinstance(thread, dict) else None,
-        "context_id": resolved_context.context_id,
-        "public_slug": resolved_context.public_slug,
-        "presentation_config": presentation_config.model_dump(mode="json"),
-    }
+        traces = resolve_traces(state)
+        canonical = state.world_state.get("negotiation_canonical", {}) if isinstance(state.world_state, dict) else {}
+        thread = canonical.get("openai_thread", {}) if isinstance(canonical, dict) else {}
+        ttl_scope = "bootstrap" if existing_state is None and len(traces) == 0 else "active"
+        session_bootstrap_state = "new" if existing_state is None and len(traces) == 0 else "rehydrated"
+        ttl_seconds = apply_session_ttl(state, scope=ttl_scope, reason="interfaz_usuario_bootstrap")
+        logger.info(
+            "interfaz_usuario_session_ready session=%s context=%s traces=%s ttl_scope=%s ttl_seconds=%s existing=%s",
+            f"{normalized_user_id}:{normalized_session_id}",
+            resolved_context.context_id,
+            len(traces),
+            ttl_scope,
+            ttl_seconds,
+            existing_state is not None,
+        )
+        return {
+            "user_id": normalized_user_id,
+            "session_id": normalized_session_id,
+            "trace_count": len(traces),
+            "last_updated": state.last_updated.isoformat(),
+            "session_bootstrap_state": session_bootstrap_state,
+            "existing_session": existing_state is not None,
+            "conversation_id": thread.get("conversation_id") if isinstance(thread, dict) else None,
+            "previous_response_id": thread.get("previous_response_id") if isinstance(thread, dict) else None,
+            "context_id": resolved_context.context_id,
+            "public_slug": resolved_context.public_slug,
+            "presentation_config": presentation_config.model_dump(mode="json"),
+        }
+    except ContextContractError as exc:
+        raise_http_from_context_error(exc)
 
 
 def create_new_conversation(*, user_id: str, base_session_id: str) -> dict[str, Any]:
@@ -258,7 +264,12 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
             ensure_session_surface(state=state, surface='interfaz_usuario')
             bound_context = ensure_session_context(state=state)
             apply_session_ttl(state, scope="active", reason="interfaz_usuario_turn_state_ready")
-            config = build_negotiation_pipeline_config(context_id=bound_context.context_id)
+            config = build_negotiation_pipeline_config(context_id=bound_context.context_id, stateful=True)
+            turn_context = build_interfaz_usuario_turn_context(
+                state=state,
+                entrypoint="/api/interfaz_usuario/negociacion/turn",
+                requested_context_id=bound_context.context_id,
+            )
             reply, _, meta = execute_turn_with_contract(
                 state=state,
                 user_message=message,
@@ -271,6 +282,7 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
                     new_conversation=new_conversation,
                     clone_used=False,
                 ),
+                turn_context=turn_context,
             )
             apply_session_ttl(state, scope="active", reason="interfaz_usuario_turn_completed")
     except SessionBusyError as exc:
@@ -298,6 +310,8 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
             headers={"Retry-After": str(exc.retry_after_seconds)},
         ) from exc
     except Exception as exc:
+        if isinstance(exc, ContextContractError):
+            raise_http_from_context_error(exc)
         error_id = f"iu_turn_{uuid4().hex[:10]}"
         diagnostic = _diagnostic_from_exception(exc)
         logger.exception(

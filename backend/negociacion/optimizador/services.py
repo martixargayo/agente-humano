@@ -13,6 +13,7 @@ from sessions.state import SessionState, get_session_state, get_session_store
 from sessions.surface_scope import ensure_session_surface
 
 from ..orchestration.flow_config import build_negotiation_pipeline_config
+from ..orchestration.context_errors import ContextContractError
 from ..orchestration.turn_contract import TurnEntryContract, execute_turn_with_contract
 from ..state.canonical_state import build_default_canonical_state
 from ..state.shared_types import ThreadMode
@@ -20,6 +21,8 @@ from ..traces.context_meta import build_trace_context_meta
 from . import context_bridge, datasets_bridge, evals_bridge, experiments_bridge, guardrails_bridge, session_bridge, storage, trace_reader
 from .prompts_bridge import list_prompts as _list_prompts
 from ..contexts import list_official_negotiation_contexts
+from ..services.context_http import raise_http_from_context_error
+from ..services.turn_context_factory import build_optimizador_turn_context
 
 logger = logging.getLogger(__name__)
 
@@ -75,34 +78,37 @@ def list_sessions() -> list[dict[str, Any]]:
 
 
 def ensure_session(*, user_id: str, session_id: str, context_id: str | None = None) -> dict[str, Any]:
-    store = get_session_store()
-    existing_state = store.get(user_id=user_id, session_id=session_id)
-    state = existing_state or get_session_state(user_id=user_id, session_id=session_id)
-    ensure_session_surface(state=state, surface='optimizador')
-    base_context = context_bridge.ensure_optimizer_session_context(state=state, requested_context_id=context_id)
-    traces = storage.resolve_traces(state)
-    meta = state.world_state.get("optimizador_sandbox_meta", {}) if isinstance(state.world_state, dict) else {}
-    ttl_scope = "bootstrap" if existing_state is None and len(traces) == 0 else "active"
-    ttl_seconds = apply_session_ttl(state, scope=ttl_scope, reason="optimizador_bootstrap")
-    logger.info(
-        "optimizador_session_ready session=%s context=%s traces=%s ttl_scope=%s ttl_seconds=%s existing=%s",
-        f"{user_id}:{session_id}",
-        base_context["context_id"],
-        len(traces),
-        ttl_scope,
-        ttl_seconds,
-        existing_state is not None,
-    )
-    return {
-        "session_key": storage.session_key(user_id, session_id),
-        "user_id": user_id,
-        "session_id": session_id,
-        "turn_count": len(traces),
-        "last_updated": state.last_updated.isoformat(),
-        "is_sandbox": bool(meta),
-        "sandbox_meta": meta if isinstance(meta, dict) else {},
-        "base_context": base_context,
-    }
+    try:
+        store = get_session_store()
+        existing_state = store.get(user_id=user_id, session_id=session_id)
+        state = existing_state or get_session_state(user_id=user_id, session_id=session_id)
+        ensure_session_surface(state=state, surface='optimizador')
+        base_context = context_bridge.ensure_optimizer_session_context(state=state, requested_context_id=context_id)
+        traces = storage.resolve_traces(state)
+        meta = state.world_state.get("optimizador_sandbox_meta", {}) if isinstance(state.world_state, dict) else {}
+        ttl_scope = "bootstrap" if existing_state is None and len(traces) == 0 else "active"
+        ttl_seconds = apply_session_ttl(state, scope=ttl_scope, reason="optimizador_bootstrap")
+        logger.info(
+            "optimizador_session_ready session=%s context=%s traces=%s ttl_scope=%s ttl_seconds=%s existing=%s",
+            f"{user_id}:{session_id}",
+            base_context["context_id"],
+            len(traces),
+            ttl_scope,
+            ttl_seconds,
+            existing_state is not None,
+        )
+        return {
+            "session_key": storage.session_key(user_id, session_id),
+            "user_id": user_id,
+            "session_id": session_id,
+            "turn_count": len(traces),
+            "last_updated": state.last_updated.isoformat(),
+            "is_sandbox": bool(meta),
+            "sandbox_meta": meta if isinstance(meta, dict) else {},
+            "base_context": base_context,
+        }
+    except ContextContractError as exc:
+        raise_http_from_context_error(exc)
 
 def list_conversations(user_id: str, session_id: str) -> list[dict[str, Any]]:
     return session_bridge.list_conversations(user_id, session_id)
@@ -143,37 +149,40 @@ def duplicate_sandbox_session(
 
 
 def new_conversation_session(*, optimizer_session_id: str, user_id: str, session_id: str, context_id: str | None = None) -> dict[str, Any]:
-    state = get_session_state(user_id=user_id, session_id=session_id)
-    ensure_session_surface(state=state, surface='optimizador')
-    new_session_id = f"{session_id}__newconv__{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}_{uuid4().hex[:6]}"
-    new_state = SessionState(user_id=user_id, session_id=new_session_id)
-    base_context = context_bridge.inherit_or_bind_sandbox_context(
-        source_state=state,
-        target_state=new_state,
-        requested_context_id=context_id,
-    )
-    new_state.world_state["optimizador_sandbox_meta"] = {
-        "optimizer_session_id": optimizer_session_id,
-        "source_user_id": user_id,
-        "source_session_id": session_id,
-        "source_conversation_id": None,
-        "clone_strategy": "new_conversation_clean_start",
-        "cloned_at": datetime.now(timezone.utc).isoformat(),
-        "preferred_conversation_id": None,
-        "base_context": base_context,
-    }
-    ensure_session_surface(state=new_state, surface='optimizador')
-    get_session_store().save(new_state)
-    apply_session_ttl(new_state, scope="active", reason="optimizador_new_conversation")
-    logger.info("optimizador_new_conversation_created source_session=%s new_session=%s", session_id, new_session_id)
-    _ = state
-    return {
-        "session_key": storage.session_key(user_id, new_session_id),
-        "user_id": user_id,
-        "session_id": new_session_id,
-        "sandbox_meta": new_state.world_state["optimizador_sandbox_meta"],
-        "base_context": base_context,
-    }
+    try:
+        state = get_session_state(user_id=user_id, session_id=session_id)
+        ensure_session_surface(state=state, surface='optimizador')
+        new_session_id = f"{session_id}__newconv__{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}_{uuid4().hex[:6]}"
+        new_state = SessionState(user_id=user_id, session_id=new_session_id)
+        base_context = context_bridge.inherit_or_bind_sandbox_context(
+            source_state=state,
+            target_state=new_state,
+            requested_context_id=context_id,
+        )
+        new_state.world_state["optimizador_sandbox_meta"] = {
+            "optimizer_session_id": optimizer_session_id,
+            "source_user_id": user_id,
+            "source_session_id": session_id,
+            "source_conversation_id": None,
+            "clone_strategy": "new_conversation_clean_start",
+            "cloned_at": datetime.now(timezone.utc).isoformat(),
+            "preferred_conversation_id": None,
+            "base_context": base_context,
+        }
+        ensure_session_surface(state=new_state, surface='optimizador')
+        get_session_store().save(new_state)
+        apply_session_ttl(new_state, scope="active", reason="optimizador_new_conversation")
+        logger.info("optimizador_new_conversation_created source_session=%s new_session=%s", session_id, new_session_id)
+        _ = state
+        return {
+            "session_key": storage.session_key(user_id, new_session_id),
+            "user_id": user_id,
+            "session_id": new_session_id,
+            "sandbox_meta": new_state.world_state["optimizador_sandbox_meta"],
+            "base_context": base_context,
+        }
+    except ContextContractError as exc:
+        raise_http_from_context_error(exc)
 
 
 def run_sandbox_turn(
@@ -204,7 +213,7 @@ def run_sandbox_turn(
             ensure_session_surface(state=state, surface='optimizador')
             base_context = context_bridge.ensure_optimizer_session_context(state=state)
             apply_session_ttl(state, scope="active", reason="optimizador_turn_state_ready")
-            base_config = build_negotiation_pipeline_config(context_id=base_context["context_id"])
+            base_config = build_negotiation_pipeline_config(context_id=base_context["context_id"], stateful=True)
             resolved_entries = experiments_bridge.resolve_entries(
                 optimizer_session_id=optimizer_session_id,
                 conversation_id=conversation_id,
@@ -213,6 +222,11 @@ def run_sandbox_turn(
             config, tempdir = experiments_bridge.apply_overrides(base_config, resolved_entries, context_id=base_context["context_id"])
             _apply_contextual_state_overrides(state, config, resolved_entries)
             clone_used, new_conversation = _resolve_optimizer_contract_flags(state)
+            turn_context = build_optimizador_turn_context(
+                state=state,
+                entrypoint="/api/optimizador/sandbox/turn",
+                requested_context_id=base_context["context_id"],
+            )
             try:
                 reply, _, meta = execute_turn_with_contract(
                     state=state,
@@ -226,6 +240,7 @@ def run_sandbox_turn(
                         new_conversation=new_conversation,
                         clone_used=clone_used,
                     ),
+                    turn_context=turn_context,
                 )
             finally:
                 if tempdir is not None:
@@ -256,6 +271,8 @@ def run_sandbox_turn(
             headers={"Retry-After": str(exc.retry_after_seconds)},
         ) from exc
     except Exception as exc:
+        if isinstance(exc, ContextContractError):
+            raise_http_from_context_error(exc)
         error_id = f"opt_turn_{uuid4().hex[:10]}"
         diagnostic = _diagnostic_from_exception(exc)
         logger.exception(

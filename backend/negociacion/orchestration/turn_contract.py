@@ -5,8 +5,12 @@ from typing import Any
 
 from sessions.state import SessionState
 
+from ..contexts import read_bound_context_from_session
 from ..traces.context_meta import build_trace_context_meta
+from .context_errors import MissingTurnContextError
 from .flow_config import NegotiationTurnConfig, run_negotiation_cognitive_turn
+from .turn_context_validator import validate_turn_context_pre_execution
+from .turn_execution_context import TurnExecutionContext
 
 
 @dataclass(frozen=True)
@@ -40,11 +44,28 @@ def execute_turn_with_contract(
     user_message: str,
     config: NegotiationTurnConfig,
     contract: TurnEntryContract,
+    turn_context: TurnExecutionContext | None = None,
 ) -> tuple[str, SessionState, dict[str, Any]]:
-    reply, updated_state = run_negotiation_cognitive_turn(state, user_message, config)
+    inferred_stateful = config.stateful or read_bound_context_from_session(state) is not None
+    if inferred_stateful and turn_context is None:
+        raise MissingTurnContextError(message="stateful_execute_turn_requires_turn_context")
+    if inferred_stateful and not config.stateful:
+        config = config.model_copy(update={"stateful": True})
+
+    validated = validate_turn_context_pre_execution(state=state, config=config, turn_context=turn_context)
+    reply, updated_state = run_negotiation_cognitive_turn(
+        state,
+        user_message,
+        config,
+        validated_context=validated,
+    )
 
     latest = _resolve_latest_trace(updated_state, config.memory_key)
-    context_meta = build_trace_context_meta(state=updated_state, overrides_applied=contract.overrides_applied).model_dump(mode="json")
+    context_meta = build_trace_context_meta(
+        state=updated_state,
+        overrides_applied=contract.overrides_applied,
+        validated_context=validated,
+    ).model_dump(mode="json")
     if latest is not None:
         latest.setdefault("context_meta", context_meta)
         latest["_entry_contract"] = {

@@ -13,7 +13,7 @@ from pathlib import Path
 # cargar variables del .env (en backend/.env)
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
@@ -41,9 +41,11 @@ from sessions.lifecycle import active_session_ttl_seconds, bootstrap_session_ttl
 from agent import run_agent
 
 configure_session_store_from_env()
-from negociacion import run_negotiation_agent
 from negociacion.orchestration.flow_config import set_tts_prefetch_hook
+from negociacion.orchestration.context_errors import ContextContractError
 from negociacion.optimizador import router as optimizador_router
+from negociacion.services.context_http import raise_http_from_context_error
+from negociacion.services.legacy_negociar_service import run_legacy_negociar_turn
 from interfaz_usuario import router as interfaz_usuario_router
 from comunicacion import router as comunicacion_router
 
@@ -502,6 +504,13 @@ class ChatRequest(BaseModel):
     message: str
 
 
+class NegociarRequest(BaseModel):
+    user_id: str
+    session_id: str
+    message: str
+    context_id: str | None = None
+
+
 class ChatResponse(BaseModel):
     reply: str
     finish_button_armed: bool = False
@@ -541,23 +550,25 @@ def chat_endpoint(payload: ChatRequest):
             detail=f"Error interno en el agente: {e}",
         )
 
-@app.post("/negociar", response_model=ChatResponse)
-def negociar_endpoint(payload: ChatRequest):
+@app.post("/negociar", response_model=ChatResponse, deprecated=True)
+def negociar_endpoint(payload: NegociarRequest, response: Response):
     try:
-        state = get_session_state(
+        result = run_legacy_negociar_turn(
             user_id=payload.user_id,
             session_id=payload.session_id,
+            message=payload.message,
+            context_id=payload.context_id,
         )
+        response.headers["X-Legacy-Negociar"] = "deprecated_use_interfaz_usuario_or_optimizador"
+        return ChatResponse(reply=result["reply"], finish_button_armed=bool(result["finish_button_armed"]))
 
-        reply, updated_state = run_negotiation_agent(state, payload.message)
-        finish_button_armed = False
-        negotiation_canonical = updated_state.world_state.get("negotiation_canonical", {}) if isinstance(updated_state.world_state, dict) else {}
-        if isinstance(negotiation_canonical, dict):
-            ui_state = negotiation_canonical.get("ui_state", {})
-            if isinstance(ui_state, dict):
-                finish_button_armed = bool(ui_state.get("finish_button_armed", False))
-        return ChatResponse(reply=reply, finish_button_armed=finish_button_armed)
-
+    except ContextContractError as exc:
+        raise_http_from_context_error(exc)
+        raise  # unreachable
+    except ValueError as exc:
+        if "missing_context_id_for_stateful_negociar" in str(exc):
+            raise HTTPException(status_code=400, detail={"error": "missing_context_id_for_stateful_negociar"}) from exc
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500,

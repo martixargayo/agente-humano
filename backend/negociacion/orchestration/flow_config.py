@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from importlib import metadata
 from pathlib import Path
-from typing import Any, Callable, List, Literal, Sequence, TypedDict
+from typing import TYPE_CHECKING, Any, Callable, List, Literal, Sequence, TypedDict
 
 import openai
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -70,6 +70,11 @@ from ..traces.builders import (
 from ..traces.constants import TRACE_VERSION
 from ..traces.models import EvalGrades, PromptArtifacts, SDKCompatibilityInfo, StructuredCallResult, TurnTrace
 from ..traces.context_meta import build_trace_context_meta
+from .context_errors import ImplicitContextForbiddenError
+from .context_errors import InvalidConfigContextError, MissingTurnContextError, StatefulContextRequiredError
+
+if TYPE_CHECKING:
+    from .turn_context_validator import ValidatedTurnContext
 from ..contexts import (
     PromptIOAdapter,
     PromptIOMappingError,
@@ -145,6 +150,8 @@ def _node_request_context(node_name: str, shared_context: dict[str, str]) -> tup
 class NegotiationTurnConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     memory_key: str = "negotiation_canonical"
+    context_id: str | None = None
+    stateful: bool = False
     prompts_dir: str
     model_memory: str = "gpt-5-nano"
     model_phase_classifier: str = "gpt-5-nano"
@@ -268,10 +275,12 @@ class StateRepository:
         traces.append(turn_trace.model_dump(mode="json"))
 
 
-def build_negotiation_pipeline_config(*, context_id: str | None = None) -> NegotiationTurnConfig:
+def build_negotiation_pipeline_config(*, context_id: str | None = None, stateful: bool = False) -> NegotiationTurnConfig:
     resolved_context = resolve_negotiation_context(context_id) if context_id else resolve_default_negotiation_context()
     return NegotiationTurnConfig(
         memory_key=NEGOTIATION_FLOW_DETAILS["memory_key"],
+        context_id=resolved_context.context_id,
+        stateful=stateful,
         prompts_dir=str(resolved_context.prompts_dir),
         model_memory=NEGOTIATION_FLOW_DETAILS["model_memory"],
         model_phase_classifier=NEGOTIATION_FLOW_DETAILS["model_phase_classifier"],
@@ -292,6 +301,19 @@ def build_negotiation_pipeline_config(*, context_id: str | None = None) -> Negot
         feature_eval_hooks=NEGOTIATION_FLOW_DETAILS["feature_eval_hooks"],
         enforce_sdk_compatibility=NEGOTIATION_FLOW_DETAILS["enforce_sdk_compatibility"],
     )
+
+
+def derive_config_context_id(config: NegotiationTurnConfig) -> str | None:
+    explicit = (config.context_id or "").strip() or None
+    from_prompts = resolve_context_for_prompts_dir(config.prompts_dir)
+    prompts_context_id = from_prompts.context_id if from_prompts is not None else None
+    if explicit is None:
+        return prompts_context_id
+    if prompts_context_id is None:
+        return explicit
+    if prompts_context_id != explicit:
+        return None
+    return explicit
 
 
 def _default_canonical_state(session_state: SessionState | None = None, thread_mode: ThreadMode = ThreadMode.conversation) -> CanonicalState:
@@ -1094,7 +1116,39 @@ def _read_text(path: Path, fallback: str) -> str:
 # Pipeline principal del turno
 # ==================================================
 
-def run_negotiation_cognitive_turn(state: SessionState, user_message: str, config: NegotiationTurnConfig) -> tuple[str, SessionState]:
+def run_negotiation_cognitive_turn(
+    state: SessionState,
+    user_message: str,
+    config: NegotiationTurnConfig,
+    *,
+    validated_context: "ValidatedTurnContext | None" = None,
+) -> tuple[str, SessionState]:
+    if config.stateful and not (config.context_id or "").strip():
+        raise ImplicitContextForbiddenError(message="stateful_runtime_requires_config_context")
+    if config.stateful:
+        if validated_context is None:
+            raise MissingTurnContextError(message="stateful_runtime_requires_validated_context")
+        if not validated_context.effective_context_id or not validated_context.config_context_id:
+            raise StatefulContextRequiredError(message="validated_context_missing_required_ids")
+        if validated_context.effective_context_id != config.context_id:
+            raise InvalidConfigContextError(
+                message="validated_effective_context_mismatch_config",
+                expected=config.context_id,
+                actual=validated_context.effective_context_id,
+            )
+        if validated_context.config_context_id != config.context_id:
+            raise InvalidConfigContextError(
+                message="validated_config_context_mismatch_config",
+                expected=config.context_id,
+                actual=validated_context.config_context_id,
+            )
+        resolved_for_prompts = resolve_context_for_prompts_dir(config.prompts_dir)
+        if resolved_for_prompts is None or resolved_for_prompts.context_id != config.context_id:
+            raise InvalidConfigContextError(
+                message="runtime_prompts_context_mismatch_config",
+                expected=config.context_id,
+                actual=resolved_for_prompts.context_id if resolved_for_prompts is not None else None,
+            )
     sdk_info = check_openai_sdk_compatibility(strict=config.enforce_sdk_compatibility)
 
     repo = StateRepository(memory_key=config.memory_key)
@@ -1321,7 +1375,7 @@ def run_negotiation_cognitive_turn(state: SessionState, user_message: str, confi
     output_triggered = bool(output_result.reasons)
     guardrails_triggered = input_result.decision != InputGuardrailDecision.allow or output_triggered
 
-    trace_context_meta = build_trace_context_meta(state=state)
+    trace_context_meta = build_trace_context_meta(state=state, validated_context=validated_context)
 
     turn_trace = TurnTrace(
         trace_version=TRACE_VERSION,
