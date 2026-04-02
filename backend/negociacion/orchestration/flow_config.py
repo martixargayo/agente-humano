@@ -103,12 +103,14 @@ MAX_RECENT_PHASE_HISTORY = 5
 
 # Centralized node threading contract:
 # - memory/phase are parallel + stateless to avoid conversation locks.
-# - planner/executor are stateful sequential stages.
+# - planner/executor are stateless-sequential because their prompts are already fully structured.
 NODE_THREADING_POLICIES: dict[str, str] = {
     "memory": "stateless_parallel",
     "phase_classifier": "stateless_parallel",
-    "planner": "stateful_sequential",
-    "executor": "stateful_sequential",
+    # Planner input already includes recent_dialogue_short + memory_working + negotiation_state + selected_memory.
+    # Keep it stateless to avoid duplicate context carry from Responses conversation history.
+    "planner": "stateless_sequential",
+    "executor": "stateless_sequential",
 }
 
 
@@ -126,7 +128,7 @@ def _request_context_mode(context: dict[str, str]) -> str:
 
 def _node_request_context(node_name: str, shared_context: dict[str, str]) -> tuple[dict[str, str], dict[str, object]]:
     policy = _node_threading_policy(node_name)
-    if policy == "stateless_parallel":
+    if policy.startswith("stateless"):
         effective: dict[str, str] = {}
     else:
         effective = dict(shared_context)
