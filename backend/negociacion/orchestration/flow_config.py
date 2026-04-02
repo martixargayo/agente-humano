@@ -70,6 +70,7 @@ from ..traces.builders import (
 from ..traces.constants import TRACE_VERSION
 from ..traces.models import EvalGrades, PromptArtifacts, SDKCompatibilityInfo, StructuredCallResult, TurnTrace
 from ..traces.context_meta import build_trace_context_meta
+from ..forensics.provider_probe import get_turn_probe, record_provider_call, record_side_effect_hook, set_turn_id
 from .context_errors import ImplicitContextForbiddenError
 from .context_errors import InvalidConfigContextError, MissingTurnContextError, StatefulContextRequiredError
 
@@ -774,7 +775,14 @@ def _call_structured(
     }
 
     try:
-        response = client.responses.create(**kwargs)
+        response = record_provider_call(
+            call_subtype="responses.create",
+            node_name=node_name,
+            model=model,
+            payload=kwargs,
+            request_context=request_context,
+            fn=lambda: client.responses.create(**kwargs),
+        )
     except Exception as exc:
         return StructuredCallResult(parsed_json=None, refusal=None, parse_error=None, exception_error=str(exc), response=None, source=StructuredCallSource.exception, model_called=True, raw_output_text=None)
 
@@ -1358,10 +1366,14 @@ def run_negotiation_cognitive_turn(
         reply = executor_output.spoken_text
 
     if _tts_prefetch_hook is not None:
+        hook_error: str | None = None
         try:
             _tts_prefetch_hook(reply)
         except Exception as exc:
+            hook_error = str(exc)
             logger.warning("tts_prefetch_hook_error=%s", exc)
+        finally:
+            record_side_effect_hook(hook_name="tts_prefetch_hook", payload={"reply_chars": len(reply or "")}, error=hook_error)
 
     add_message(state, role="assistant", content=reply)
     recent_dialogue.append(MemoryDialogueMessage(role="assistant", text=reply))
@@ -1376,6 +1388,9 @@ def run_negotiation_cognitive_turn(
     guardrails_triggered = input_result.decision != InputGuardrailDecision.allow or output_triggered
 
     trace_context_meta = build_trace_context_meta(state=state, validated_context=validated_context)
+
+    set_turn_id(turn_id)
+    turn_probe = get_turn_probe()
 
     turn_trace = TurnTrace(
         trace_version=TRACE_VERSION,
@@ -1441,6 +1456,8 @@ def run_negotiation_cognitive_turn(
         context_meta=trace_context_meta,
         logs=logs,
         nodes=nodes,
+        provider_calls=[event.__dict__ for event in (turn_probe.provider_calls if turn_probe is not None else [])],
+        side_effect_hooks=(turn_probe.side_effect_hooks if turn_probe is not None else []),
     )
 
     canonical_state.trace.turn_id = turn_trace.turn_id

@@ -23,6 +23,7 @@ from .prompts_bridge import list_prompts as _list_prompts
 from ..contexts import list_official_negotiation_contexts
 from ..services.context_http import raise_http_from_context_error
 from ..services.turn_context_factory import build_optimizador_turn_context
+from ..forensics.provider_probe import begin_turn_probe, end_turn_probe
 
 logger = logging.getLogger(__name__)
 
@@ -263,6 +264,7 @@ def run_sandbox_turn(
     state: SessionState | None = None
     base_context: dict[str, Any] | None = None
     post_commit_housekeeping_error: str | None = None
+    probe_snapshot = None
     try:
         with acquire_session_execution_lock(user_id=user_id, session_id=session_id):
             failing_stage = "touch_existing_session_if_present"
@@ -299,6 +301,13 @@ def run_sandbox_turn(
                 entrypoint="/api/optimizador/sandbox/turn",
                 requested_context_id=base_context["context_id"],
             )
+            probe_token = begin_turn_probe(
+                logical_user_message_id=logical_user_message_id,
+                logical_attempt_index=logical_attempt_index,
+                client_request_id=client_request_id,
+                backend_turn_attempt_id=backend_turn_attempt_id,
+            )
+            probe_snapshot = None
             try:
                 failing_stage = "execute_turn_with_contract"
                 reply, _, meta = execute_turn_with_contract(
@@ -316,6 +325,7 @@ def run_sandbox_turn(
                     turn_context=turn_context,
                 )
             finally:
+                probe_snapshot = end_turn_probe(probe_token)
                 if tempdir is not None:
                     tempdir.cleanup()
             failing_stage = "apply_session_ttl_turn_completed"
@@ -350,6 +360,13 @@ def run_sandbox_turn(
                     "trace_count_before": trace_count_before,
                     "trace_count_after": len(storage.resolve_traces(state)),
                     "model_calls_in_latest_trace": _count_model_calls_from_trace(latest_after),
+                    "provider_calls_in_latest_trace": len(latest_after.get("provider_calls", [])) if isinstance(latest_after, dict) else 0,
+                    "conversation_id_before": latest_after.get("conversation_id_before") if isinstance(latest_after, dict) else None,
+                    "conversation_id_after": latest_after.get("conversation_id_after") if isinstance(latest_after, dict) else None,
+                    "previous_response_id_before": latest_after.get("previous_response_id_before") if isinstance(latest_after, dict) else None,
+                    "previous_response_id_after": latest_after.get("previous_response_id_after") if isinstance(latest_after, dict) else None,
+                    "provider_calls_in_attempt": len(probe_snapshot.provider_calls) if probe_snapshot is not None else 0,
+                    "side_effect_hooks_in_attempt": len(probe_snapshot.side_effect_hooks) if probe_snapshot is not None else 0,
                     "attempt_started_at": attempt_started_at,
                     "attempt_finished_at": datetime.now(timezone.utc).isoformat(),
                 },
@@ -413,11 +430,15 @@ def run_sandbox_turn(
                     "failing_stage": classified["failing_stage"],
                     "error_category": classified["error_category"],
                     "retryable": classified["retryable"],
+                    "diagnostic": classified["diagnostic"],
+                    "error_id": error_id,
                     "session_id": session_id,
                     "context_id": (base_context or {}).get("context_id"),
                     "trace_count_before": trace_count_before,
                     "trace_count_after": len(storage.resolve_traces(state_for_attempt)),
                     "model_calls_in_latest_trace": _count_model_calls_from_trace(latest_after),
+                    "provider_calls_in_attempt": len(probe_snapshot.provider_calls) if probe_snapshot is not None else 0,
+                    "side_effect_hooks_in_attempt": len(probe_snapshot.side_effect_hooks) if probe_snapshot is not None else 0,
                     "attempt_started_at": attempt_started_at,
                     "attempt_finished_at": datetime.now(timezone.utc).isoformat(),
                 },

@@ -198,6 +198,10 @@ class TurnTrace(BaseModel):
     grades: EvalGrades
     context_meta: TraceContextMeta | None = None
 
+    # Forensic runtime instrumentation (diagnostic-only)
+    provider_calls: list[dict[str, object]] = Field(default_factory=list)
+    side_effect_hooks: list[dict[str, object]] = Field(default_factory=list)
+
     # Ordered execution timeline, useful for latency/status sequencing.
     # When input_guardrail_decision=="block", cognitive nodes may not run and logs can be empty by design.
     logs: List[RichNodeTrace] = Field(default_factory=list)
