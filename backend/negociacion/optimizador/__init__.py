@@ -33,6 +33,11 @@ def get_dialogue(user_id: str, session_id: str) -> dict:
     return {"items": services.get_dialogue(user_id, session_id)}
 
 
+@router.get("/sessions/{user_id}/{session_id}/attempts")
+def list_attempts(user_id: str, session_id: str) -> dict:
+    return {"items": services.list_attempt_traces(user_id, session_id)}
+
+
 @router.get("/turns/{turn_id}")
 def get_turn(turn_id: str) -> dict:
     turn = services.get_turn(turn_id)
@@ -123,6 +128,9 @@ def sandbox_turn(payload: SandboxTurnRequest) -> dict:
         conversation_id=payload.conversation_id,
         scope_turn_id=payload.scope_turn_id,
         repeat_from_turn_id=payload.repeat_from_turn_id,
+        client_request_id=payload.client_request_id,
+        logical_user_message_id=payload.logical_user_message_id,
+        logical_attempt_index=payload.logical_attempt_index,
     )
 
 

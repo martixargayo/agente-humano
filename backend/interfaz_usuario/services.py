@@ -47,6 +47,25 @@ def _diagnostic_from_exception(exc: Exception) -> str:
     return joined[:600] if joined else type(exc).__name__
 
 
+def _classify_exception(exc: Exception) -> dict[str, Any]:
+    diagnostic = _diagnostic_from_exception(exc)
+    normalized = diagnostic.lower()
+    is_socket_write_timeout = "timeout writing to socket" in normalized or (
+        "timeout" in normalized and "socket" in normalized and "write" in normalized
+    )
+    if is_socket_write_timeout:
+        return {
+            "diagnostic": diagnostic,
+            "error_category": "upstream_write_timeout",
+            "retryable": True,
+        }
+    return {
+        "diagnostic": diagnostic,
+        "error_category": "internal_turn_failure",
+        "retryable": False,
+    }
+
+
 def _resolve_bootstrap_context_id(*, context_id: str | None = None, public_slug: str | None = None) -> str:
     try:
         selection = resolve_public_context_selection(context_id=context_id, public_slug=public_slug)
@@ -232,6 +251,7 @@ def _should_auto_reset_for_fresh_opener(*, state: SessionState, message: str) ->
 
 
 def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: bool = False) -> dict[str, Any]:
+    post_commit_housekeeping_error: str | None = None
     try:
         with acquire_session_execution_lock(user_id=user_id, session_id=session_id):
             touch_ttl = touch_existing_session_if_present(
@@ -263,7 +283,6 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
             state = get_session_state(user_id=user_id, session_id=resolved_session_id)
             ensure_session_surface(state=state, surface='interfaz_usuario')
             bound_context = ensure_session_context(state=state)
-            apply_session_ttl(state, scope="active", reason="interfaz_usuario_turn_state_ready")
             config = build_negotiation_pipeline_config(context_id=bound_context.context_id, stateful=True)
             turn_context = build_interfaz_usuario_turn_context(
                 state=state,
@@ -284,7 +303,16 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
                 ),
                 turn_context=turn_context,
             )
-            apply_session_ttl(state, scope="active", reason="interfaz_usuario_turn_completed")
+            try:
+                apply_session_ttl(state, scope="active", reason="interfaz_usuario_turn_completed")
+            except Exception as post_commit_exc:
+                post_commit_housekeeping_error = _diagnostic_from_exception(post_commit_exc)
+                logger.warning(
+                    "interfaz_usuario_turn_post_commit_housekeeping_failed session=%s new_conversation=%s error=%s",
+                    f"{user_id}:{resolved_session_id}",
+                    new_conversation,
+                    post_commit_housekeeping_error,
+                )
     except SessionBusyError as exc:
         touch_existing_session_if_present(
             user_id=exc.user_id,
@@ -313,15 +341,17 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
         if isinstance(exc, ContextContractError):
             raise_http_from_context_error(exc)
         error_id = f"iu_turn_{uuid4().hex[:10]}"
-        diagnostic = _diagnostic_from_exception(exc)
+        classified = _classify_exception(exc)
         logger.exception(
-            "interfaz_usuario_turn_failed error_id=%s session=%s message_len=%s new_conversation=%s cause=%s diagnostic=%s",
+            "interfaz_usuario_turn_failed error_id=%s session=%s message_len=%s new_conversation=%s cause=%s error_category=%s retryable=%s diagnostic=%s",
             error_id,
             f"{user_id}:{session_id}",
             len(message or ""),
             new_conversation,
             type(exc).__name__,
-            diagnostic,
+            classified["error_category"],
+            classified["retryable"],
+            classified["diagnostic"],
         )
         raise HTTPException(
             status_code=500,
@@ -329,7 +359,9 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
                 "error": "turn_execution_failed",
                 "error_id": error_id,
                 "cause": type(exc).__name__,
-                "diagnostic": diagnostic,
+                "diagnostic": classified["diagnostic"],
+                "error_category": classified["error_category"],
+                "retryable": classified["retryable"],
                 "message": "No se pudo procesar el turno en este momento. Inténtalo de nuevo.",
             },
         ) from exc
@@ -351,4 +383,5 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
         "entry_contract": meta.get("entry_contract") or {},
         "auto_reset_applied": auto_reset_applied,
         "finish_button_armed": finish_button_armed,
+        "post_commit_housekeeping_error": post_commit_housekeeping_error,
     }

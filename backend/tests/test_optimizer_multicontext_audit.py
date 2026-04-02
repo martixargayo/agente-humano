@@ -20,7 +20,7 @@ TARGET_CONTEXT = 'validacion_multicontexto'
 BASELINE_CONTEXT = 'baseline_current'
 
 
-def fake_execute_turn_with_contract(*, state: SessionState, user_message: str, config: Any, contract: Any):
+def fake_execute_turn_with_contract(*, state: SessionState, user_message: str, config: Any, contract: Any, **_: Any):
     memory_key = config.memory_key
     traces = state.world_state.setdefault(f'{memory_key}_traces', [])
     idx = len(traces) + 1
@@ -91,9 +91,15 @@ class OptimizerIsolationAndContextTests(unittest.TestCase):
         self.client.post('/api/optimizador/sessions/bootstrap', json={'user_id': 'u_opt', 'session_id': 's_opt', 'context_id': TARGET_CONTEXT})
         captured: dict[str, Any] = {}
 
-        def capture_execute(*, state: SessionState, user_message: str, config: Any, contract: Any):
+        def capture_execute(*, state: SessionState, user_message: str, config: Any, contract: Any, **kwargs: Any):
             captured['prompts_dir'] = config.prompts_dir
-            return fake_execute_turn_with_contract(state=state, user_message=user_message, config=config, contract=contract)
+            return fake_execute_turn_with_contract(
+                state=state,
+                user_message=user_message,
+                config=config,
+                contract=contract,
+                **kwargs,
+            )
 
         with patch('negociacion.optimizador.services.execute_turn_with_contract', side_effect=capture_execute), patch(
             'negociacion.optimizador.services.experiments_bridge.resolve_entries', return_value=[]
@@ -170,6 +176,13 @@ class OptimizerIsolationAndContextTests(unittest.TestCase):
         self.assertIn('/contexts', js)
         self.assertIn('/prompts?user_id=', js)
         self.assertIn('Contexto activo', js)
+
+    def test_optimizer_chat_submit_keeps_focus_and_poll_does_not_rerender_composer(self) -> None:
+        js = Path('backend/avatar_app/optimizador/app.js').read_text(encoding='utf-8')
+        self.assertIn('sendBtn?.addEventListener("pointerdown"', js)
+        self.assertIn('e.preventDefault();', js)
+        self.assertIn('if (state.activeTab === "Chat") {', js)
+        self.assertIn('mode: "chatHistoryOnly"', js)
 
 
 if __name__ == '__main__':
