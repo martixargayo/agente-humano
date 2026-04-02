@@ -1,0 +1,185 @@
+{
+  "report_version": "runtime_broken_route_map.v1",
+  "routes": [
+    {
+      "route_id": "direct_execute_turn_contract",
+      "events": [
+        {
+          "ts": 2108205505661,
+          "step": "load_state.before",
+          "session_bound_context_id": "validacion_multicontexto"
+        },
+        {
+          "ts": 2108207224872,
+          "step": "load_state.after",
+          "persona_context_id": "validacion_multicontexto"
+        },
+        {
+          "ts": 2108256167986,
+          "step": "build_planner_input",
+          "persona_source_context_id": "validacion_multicontexto",
+          "phase_card_source_context_id": "sala_reuniones"
+        },
+        {
+          "ts": 2108261080990,
+          "step": "build_executor_input",
+          "persona_source_context_id": "validacion_multicontexto",
+          "phase_card_source_context_id": "sala_reuniones"
+        },
+        {
+          "ts": 2108264549510,
+          "step": "build_trace_context_meta",
+          "trace_context_id": "validacion_multicontexto"
+        }
+      ],
+      "result": {
+        "requested_context_id": "sala_reuniones",
+        "bound_context_id": "validacion_multicontexto",
+        "admitted": true
+      },
+      "first_mismatch": {
+        "ts": 2108205505661,
+        "step": "load_state.before",
+        "session_bound_context_id": "validacion_multicontexto"
+      }
+    },
+    {
+      "route_id": "pipeline_run_negotiation_agent_default",
+      "events": [
+        {
+          "ts": 2108266963992,
+          "step": "load_state.before",
+          "session_bound_context_id": "sala_reuniones"
+        },
+        {
+          "ts": 2108268301656,
+          "step": "load_state.after",
+          "persona_context_id": "sala_reuniones"
+        },
+        {
+          "ts": 2108274657234,
+          "step": "build_planner_input",
+          "persona_source_context_id": "sala_reuniones",
+          "phase_card_source_context_id": "baseline_current"
+        },
+        {
+          "ts": 2108278422787,
+          "step": "build_executor_input",
+          "persona_source_context_id": "sala_reuniones",
+          "phase_card_source_context_id": "baseline_current"
+        }
+      ],
+      "result": {
+        "requested_context_id": "baseline_current (implicit)",
+        "bound_context_id": "sala_reuniones",
+        "admitted": true
+      },
+      "first_mismatch": {
+        "ts": 2108266963992,
+        "step": "load_state.before",
+        "session_bound_context_id": "sala_reuniones"
+      }
+    },
+    {
+      "route_id": "api_negociar_legacy_endpoint",
+      "events": [
+        {
+          "ts": 2108301812000,
+          "step": "load_state.before",
+          "session_bound_context_id": "sala_reuniones"
+        },
+        {
+          "ts": 2108304323813,
+          "step": "load_state.after",
+          "persona_context_id": "sala_reuniones"
+        },
+        {
+          "ts": 2108315859756,
+          "step": "build_planner_input",
+          "persona_source_context_id": "sala_reuniones",
+          "phase_card_source_context_id": "baseline_current"
+        },
+        {
+          "ts": 2108320715446,
+          "step": "build_executor_input",
+          "persona_source_context_id": "sala_reuniones",
+          "phase_card_source_context_id": "baseline_current"
+        }
+      ],
+      "result": {
+        "admitted": true,
+        "status": 200,
+        "response": {
+          "reply": "ok",
+          "finish_button_armed": false
+        }
+      },
+      "first_mismatch": {
+        "ts": 2108301812000,
+        "step": "load_state.before",
+        "session_bound_context_id": "sala_reuniones"
+      }
+    },
+    {
+      "route_id": "interfaz_ensure_session_conflict",
+      "events": [],
+      "result": {
+        "admitted": false,
+        "status": 409,
+        "error": "{'error': 'session_context_conflict', 'session_id': 's_route_iu', 'existing_context_id': 'validacion_multicontexto', 'requested_context_id': 'sala_reuniones'}"
+      }
+    },
+    {
+      "route_id": "optimizer_ensure_session_conflict",
+      "events": [],
+      "result": {
+        "admitted": false,
+        "status": 409,
+        "error": "{'error': 'session_context_conflict', 'session_id': 's_route_opt', 'existing_context_id': 'validacion_multicontexto', 'requested_context_id': 'sala_reuniones'}"
+      }
+    }
+  ],
+  "static_inventory": {
+    "execute_turn_with_contract_callers": [
+      {
+        "file": "interfaz_usuario/services.py",
+        "line": 262,
+        "code": "reply, _, meta = execute_turn_with_contract("
+      },
+      {
+        "file": "negociacion/optimizador/services.py",
+        "line": 217,
+        "code": "reply, _, meta = execute_turn_with_contract("
+      }
+    ],
+    "run_negotiation_cognitive_turn_callers": [
+      {
+        "file": "negociacion/pipeline.py",
+        "line": 13,
+        "code": "return run_negotiation_cognitive_turn(state, user_message, config)"
+      },
+      {
+        "file": "negociacion/orchestration/turn_contract.py",
+        "line": 44,
+        "code": "reply, updated_state = run_negotiation_cognitive_turn(state, user_message, config)"
+      },
+      {
+        "file": "negociacion/evals/runners/run_end_to_end_mock_evals.py",
+        "line": 91,
+        "code": "reply, updated = run_negotiation_cognitive_turn(session, case[\"user_message\"], config)"
+      },
+      {
+        "file": "negociacion/evals/runners/run_end_to_end_live_evals.py",
+        "line": 36,
+        "code": "reply, updated = run_negotiation_cognitive_turn(session, case[\"user_message\"], config)"
+      }
+    ],
+    "run_negotiation_agent_callers": [
+      {
+        "file": "api/app.py",
+        "line": 552,
+        "code": "reply, updated_state = run_negotiation_agent(state, payload.message)"
+      }
+    ]
+  }
+}

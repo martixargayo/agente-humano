@@ -58,6 +58,14 @@ class TraceContextMeta(BaseModel):
     context_version: str | None = None
     official_context_used: bool = True
     context_scope: str | None = None
+    effective_context_id: str | None = None
+    session_bound_context_id: str | None = None
+    config_context_id: str | None = None
+    mismatch_detected: bool = False
+    mismatch_reason_code: str | None = None
+    context_reason_codes: list[str] = Field(default_factory=list)
+    context_source: str | None = None
+    execution_mode: str | None = None
 
 
 class PromptArtifacts(BaseModel):

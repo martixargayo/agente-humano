@@ -1,0 +1,205 @@
+{
+  "report_version": "context_skew_first_divergence.v1",
+  "scenarios": [
+    {
+      "scenario_id": "clean_validacion",
+      "requested_context_id": "validacion_multicontexto",
+      "bound_context_id": "validacion_multicontexto",
+      "requested_prompts_context": "validacion_multicontexto",
+      "events": [
+        {
+          "ts": 1789175087231,
+          "step": "load_state.before",
+          "requested_context_id": "validacion_multicontexto",
+          "requested_prompts_context": "validacion_multicontexto",
+          "session_bound_context_id": "validacion_multicontexto"
+        },
+        {
+          "ts": 1789178193725,
+          "step": "load_state.after",
+          "persona_context_id": "validacion_multicontexto",
+          "session_bound_context_id": "validacion_multicontexto"
+        },
+        {
+          "ts": 1789181298066,
+          "step": "build_phase_input",
+          "phase_classifier_card_source_context_id": "validacion_multicontexto",
+          "session_bound_context_id": "validacion_multicontexto"
+        },
+        {
+          "ts": 1789186619627,
+          "step": "build_planner_input",
+          "persona_source_context_id": "validacion_multicontexto",
+          "phase_card_source_context_id": "validacion_multicontexto",
+          "session_bound_context_id": "validacion_multicontexto"
+        },
+        {
+          "ts": 1789190011026,
+          "step": "build_executor_input",
+          "persona_source_context_id": "validacion_multicontexto",
+          "phase_card_source_context_id": "validacion_multicontexto",
+          "session_bound_context_id": "validacion_multicontexto"
+        },
+        {
+          "ts": 1789192762434,
+          "step": "build_trace_context_meta",
+          "trace_context_id": "validacion_multicontexto"
+        }
+      ],
+      "first_mismatch": null
+    },
+    {
+      "scenario_id": "clean_sala",
+      "requested_context_id": "sala_reuniones",
+      "bound_context_id": "sala_reuniones",
+      "requested_prompts_context": "sala_reuniones",
+      "events": [
+        {
+          "ts": 1789195630154,
+          "step": "load_state.before",
+          "requested_context_id": "sala_reuniones",
+          "requested_prompts_context": "sala_reuniones",
+          "session_bound_context_id": "sala_reuniones"
+        },
+        {
+          "ts": 1789197697451,
+          "step": "load_state.after",
+          "persona_context_id": "sala_reuniones",
+          "session_bound_context_id": "sala_reuniones"
+        },
+        {
+          "ts": 1789239035947,
+          "step": "build_phase_input",
+          "phase_classifier_card_source_context_id": "sala_reuniones",
+          "session_bound_context_id": "sala_reuniones"
+        },
+        {
+          "ts": 1789244283154,
+          "step": "build_planner_input",
+          "persona_source_context_id": "sala_reuniones",
+          "phase_card_source_context_id": "sala_reuniones",
+          "session_bound_context_id": "sala_reuniones"
+        },
+        {
+          "ts": 1789248681118,
+          "step": "build_executor_input",
+          "persona_source_context_id": "sala_reuniones",
+          "phase_card_source_context_id": "sala_reuniones",
+          "session_bound_context_id": "sala_reuniones"
+        },
+        {
+          "ts": 1789251090351,
+          "step": "build_trace_context_meta",
+          "trace_context_id": "sala_reuniones"
+        }
+      ],
+      "first_mismatch": null
+    },
+    {
+      "scenario_id": "forced_skew_validacion_to_sala",
+      "requested_context_id": "sala_reuniones",
+      "bound_context_id": "validacion_multicontexto",
+      "requested_prompts_context": "sala_reuniones",
+      "events": [
+        {
+          "ts": 1789254321047,
+          "step": "load_state.before",
+          "requested_context_id": "sala_reuniones",
+          "requested_prompts_context": "sala_reuniones",
+          "session_bound_context_id": "validacion_multicontexto"
+        },
+        {
+          "ts": 1789256443187,
+          "step": "load_state.after",
+          "persona_context_id": "validacion_multicontexto",
+          "session_bound_context_id": "validacion_multicontexto"
+        },
+        {
+          "ts": 1789293790085,
+          "step": "build_phase_input",
+          "phase_classifier_card_source_context_id": "sala_reuniones",
+          "session_bound_context_id": "validacion_multicontexto"
+        },
+        {
+          "ts": 1789297894604,
+          "step": "build_planner_input",
+          "persona_source_context_id": "validacion_multicontexto",
+          "phase_card_source_context_id": "sala_reuniones",
+          "session_bound_context_id": "validacion_multicontexto"
+        },
+        {
+          "ts": 1789301319672,
+          "step": "build_executor_input",
+          "persona_source_context_id": "validacion_multicontexto",
+          "phase_card_source_context_id": "sala_reuniones",
+          "session_bound_context_id": "validacion_multicontexto"
+        },
+        {
+          "ts": 1789303693678,
+          "step": "build_trace_context_meta",
+          "trace_context_id": "validacion_multicontexto"
+        }
+      ],
+      "first_mismatch": {
+        "ts": 1789254321047,
+        "step": "load_state.before",
+        "requested_context_id": "sala_reuniones",
+        "requested_prompts_context": "sala_reuniones",
+        "session_bound_context_id": "validacion_multicontexto"
+      }
+    },
+    {
+      "scenario_id": "forced_skew_sala_to_validacion",
+      "requested_context_id": "validacion_multicontexto",
+      "bound_context_id": "sala_reuniones",
+      "requested_prompts_context": "validacion_multicontexto",
+      "events": [
+        {
+          "ts": 1789307744598,
+          "step": "load_state.before",
+          "requested_context_id": "validacion_multicontexto",
+          "requested_prompts_context": "validacion_multicontexto",
+          "session_bound_context_id": "sala_reuniones"
+        },
+        {
+          "ts": 1789310499655,
+          "step": "load_state.after",
+          "persona_context_id": "sala_reuniones",
+          "session_bound_context_id": "sala_reuniones"
+        },
+        {
+          "ts": 1789313674294,
+          "step": "build_phase_input",
+          "phase_classifier_card_source_context_id": "validacion_multicontexto",
+          "session_bound_context_id": "sala_reuniones"
+        },
+        {
+          "ts": 1789317500407,
+          "step": "build_planner_input",
+          "persona_source_context_id": "sala_reuniones",
+          "phase_card_source_context_id": "validacion_multicontexto",
+          "session_bound_context_id": "sala_reuniones"
+        },
+        {
+          "ts": 1789320618965,
+          "step": "build_executor_input",
+          "persona_source_context_id": "sala_reuniones",
+          "phase_card_source_context_id": "validacion_multicontexto",
+          "session_bound_context_id": "sala_reuniones"
+        },
+        {
+          "ts": 1789322616700,
+          "step": "build_trace_context_meta",
+          "trace_context_id": "sala_reuniones"
+        }
+      ],
+      "first_mismatch": {
+        "ts": 1789307744598,
+        "step": "load_state.before",
+        "requested_context_id": "validacion_multicontexto",
+        "requested_prompts_context": "validacion_multicontexto",
+        "session_bound_context_id": "sala_reuniones"
+      }
+    }
+  ]
+}
