@@ -48,7 +48,7 @@ def run_input_guardrails(*, user_text: str, policy: GuardrailsPolicy, client: op
     reasons: list[str] = []
     decision = InputGuardrailDecision.allow
 
-    moderation = run_moderation_check(client=client, text=user_text, enabled=policy.allow_moderation_for_input and policy.moderation_enabled)
+    moderation = run_moderation_check(client=client, text=user_text, enabled=policy.allow_moderation_for_input and policy.moderation_enabled, stage="input")
     injection = _detect_injection(user_text, policy.injection_terms)
     pii = _detect_pii(user_text)
     task_fit = _detect_task_fit(user_text)

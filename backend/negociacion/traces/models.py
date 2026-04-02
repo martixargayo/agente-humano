@@ -155,6 +155,7 @@ class TurnTrace(BaseModel):
     executor_status_before_guardrail: str | None = None
     executor_reply_changed_by_guardrail: bool = False
     final_output_source: str = "executor_post_guardrail"
+    final_output_origin: str = "unknown"
 
     guardrails_triggered: bool
     guardrail_reasons: list[str]
@@ -201,6 +202,7 @@ class TurnTrace(BaseModel):
     # Forensic runtime instrumentation (diagnostic-only)
     provider_calls: list[dict[str, object]] = Field(default_factory=list)
     side_effect_hooks: list[dict[str, object]] = Field(default_factory=list)
+    stage_timings_ms: dict[str, int] = Field(default_factory=dict)
 
     # Ordered execution timeline, useful for latency/status sequencing.
     # When input_guardrail_decision=="block", cognitive nodes may not run and logs can be empty by design.

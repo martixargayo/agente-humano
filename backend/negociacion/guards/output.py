@@ -60,7 +60,7 @@ def run_output_guardrails(*, executor_output: ExecutorOutput, planner_output: Pl
     pii = _detect_pii(executor_output.spoken_text)
     overclaims = _detected_overclaims(executor_output.spoken_text, policy.overclaim_terms)
     contract = _planner_contract_signals(planner_output, executor_output)
-    moderation = run_moderation_check(client=client, text=executor_output.spoken_text, enabled=policy.allow_moderation_for_output and policy.moderation_enabled)
+    moderation = run_moderation_check(client=client, text=executor_output.spoken_text, enabled=policy.allow_moderation_for_output and policy.moderation_enabled, stage="output")
 
     if internal_terms:
         reasons.append("internal_language_guardrail")
