@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import logging
+import time
+from typing import Literal
 
 import openai
 
+from ..forensics.provider_probe import record_provider_call
 from .constants import HIGH_RISK_MODERATION_CATEGORIES
 from .models import ModerationSignals
 
@@ -12,7 +15,7 @@ logger = logging.getLogger(__name__)
 MODERATION_MODEL = "omni-moderation-latest"
 
 
-def run_moderation_check(*, client: openai.OpenAI | None, text: str, enabled: bool) -> ModerationSignals:
+def run_moderation_check(*, client: openai.OpenAI | None, text: str, enabled: bool, stage: Literal["input", "output"] = "input") -> ModerationSignals:
     if not enabled:
         return ModerationSignals(used=False, unavailable_reason="disabled")
     if client is None:
@@ -21,7 +24,17 @@ def run_moderation_check(*, client: openai.OpenAI | None, text: str, enabled: bo
         return ModerationSignals(used=False, unavailable_reason="empty_text")
 
     try:
-        response = client.moderations.create(model=MODERATION_MODEL, input=text)
+        payload = {"model": MODERATION_MODEL, "input": text}
+        started = time.perf_counter()
+        response = record_provider_call(
+            call_subtype="moderations.create",
+            node_name=f"{stage}_moderation",
+            model=MODERATION_MODEL,
+            payload=payload,
+            request_context={},
+            fn=lambda: client.moderations.create(**payload),
+        )
+        _ = int((time.perf_counter() - started) * 1000)  # keep explicit local timing for debugger/profiler inspection
         results = getattr(response, "results", None) or []
         if not results:
             return ModerationSignals(used=True, flagged_categories=[])

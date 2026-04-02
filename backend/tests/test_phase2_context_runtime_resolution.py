@@ -52,6 +52,7 @@ class Phase2ContextRuntimeResolutionTests(unittest.TestCase):
 
         phase_classifier_card, phase_classifier_card_source = _load_phase_classifier_card(str(ctx.prompts_dir))
         self.assertTrue(phase_classifier_card_source.endswith("backend/negociacion/contexts/baseline_current/assets/phase_classifier_card.json"))
+        self.assertNotIn("phase_classifier_card", phase_classifier_card)
         self.assertEqual(
             Path(phase_classifier_card_source),
             BASELINE_DIR / "assets" / "phase_classifier_card.json",
@@ -80,7 +81,7 @@ class Phase2ContextRuntimeResolutionTests(unittest.TestCase):
             phase_cards[sample_phase].as_dict()["phase_objective"],
             legacy_phase_cards_raw[sample_phase.value]["phase_objective"],
         )
-        self.assertEqual(phase_classifier_card, legacy_phase_classifier_card)
+        self.assertEqual(phase_classifier_card, legacy_phase_classifier_card["phase_classifier_card"])
         self.assertEqual(Path(phase_classifier_card_source), LEGACY_PROMPTS_DIR / "phase_classifier_card.json")
 
     def test_canonical_state_defaults_stay_logically_equal_to_legacy_baseline(self) -> None:

@@ -385,7 +385,7 @@ def _load_phase_classifier_card(prompts_dir: str) -> tuple[dict[str, object], st
         logger.warning("phase_classifier_card_invalid_shape path=%s", path)
         return _phase_classifier_card_fallback(path)
 
-    return raw, str(path)
+    return raw["phase_classifier_card"], str(path)
 
 
 def _load_phase_cards(prompts_dir: str) -> dict[NegotiationPhase, PhaseCard]:
@@ -837,7 +837,14 @@ def bootstrap_conversation_if_needed(client: openai.OpenAI | None, canonical_sta
         logger.info("conversation_bootstrap_skipped_no_client")
         return
     try:
-        conversation = client.conversations.create()
+        conversation = record_provider_call(
+            call_subtype="conversations.create",
+            node_name="conversation_bootstrap",
+            model=None,
+            payload={},
+            request_context={},
+            fn=lambda: client.conversations.create(),
+        )
         conversation_id = getattr(conversation, "id", None)
         if isinstance(conversation_id, str) and conversation_id:
             thread.conversation_id = conversation_id
@@ -1103,9 +1110,23 @@ def _planner_fallback(status: Literal["clarify", "refuse"] = "clarify", refusal_
     )
 
 
-def _executor_fallback(planner_output: PlannerOutput, status: str | None = None, refusal_reason: str | None = None) -> ExecutorOutput:
+def _looks_like_greeting(text: str | None) -> bool:
+    if not text:
+        return False
+    normalized = " ".join(text.strip().lower().split())
+    return normalized in {"hola", "buenas", "buenos días", "buenas tardes", "buenas noches", "hey", "hello"}
+
+
+def _executor_fallback(planner_output: PlannerOutput, status: str | None = None, refusal_reason: str | None = None, user_text: str | None = None) -> ExecutorOutput:
     resolved_status = status or ("refuse" if planner_output.status == "refuse" else "clarify" if planner_output.status == "clarify" else "deliver")
-    text = "No puedo ayudar con esa solicitud." if resolved_status == "refuse" else "Necesito un dato adicional para continuar." if resolved_status == "clarify" else "Entiendo. Te respondo de forma clara y directa."
+    if resolved_status == "refuse":
+        text = "No puedo ayudar con esa solicitud."
+    elif resolved_status == "clarify":
+        text = "¿Me compartes un poco más de contexto para ayudarte mejor?"
+    elif _looks_like_greeting(user_text):
+        text = "¡Hola! ¿En qué te ayudo?"
+    else:
+        text = "Entendido. Sigamos con ello."
     return ExecutorOutput(
         schema_version="executor.v1",
         status=resolved_status,
@@ -1167,6 +1188,7 @@ def run_negotiation_cognitive_turn(
 
     turn_started_perf = time.perf_counter()
     turn_started_at = datetime.now(timezone.utc).isoformat()
+    stage_timings_ms: dict[str, int] = {}
     turn_id = str(uuid.uuid4())
     now_iso = turn_started_at
     memory_trace_meta = TraceMeta(turn_id=turn_id, prompt_version=config.prompt_version_memory, schema_version="memory_input.v1", model_target=config.model_memory)
@@ -1195,7 +1217,9 @@ def run_negotiation_cognitive_turn(
         feature_moderation=config.feature_moderation,
     )
 
+    input_guardrails_started = time.perf_counter()
     input_result = run_input_guardrails(user_text=user_turn.normalized_text, policy=policy, client=client)
+    stage_timings_ms["input_guardrails"] = int((time.perf_counter() - input_guardrails_started) * 1000)
     output_result = _default_output_guardrail_result("not_executed")
 
     logs: list = []
@@ -1212,11 +1236,13 @@ def run_negotiation_cognitive_turn(
 
     if input_result.decision == InputGuardrailDecision.block:
         reply = build_input_block_response()
-        executor_output = _executor_fallback(planner_output, status="refuse", refusal_reason="input_guardrail_block")
+        executor_output = _executor_fallback(planner_output, status="refuse", refusal_reason="input_guardrail_block", user_text=user_turn.normalized_text)
         executor_output_before_guardrail = executor_output.model_copy(deep=True)
         executor_output = executor_output.model_copy(update={"spoken_text": reply})
     else:
+        request_context_started = time.perf_counter()
         request_context = refresh_request_context(client, canonical_state, config.thread_mode_default)
+        stage_timings_ms["request_context_initial"] = int((time.perf_counter() - request_context_started) * 1000)
 
         memory_input = build_memory_input(canonical_state, recent_dialogue, user_turn, memory_trace_meta)
         phase_input = build_phase_input(canonical_state, recent_dialogue, user_turn, phase_trace_meta, str(prompts_dir))
@@ -1248,6 +1274,7 @@ def run_negotiation_cognitive_turn(
             output_schema_version=PHASE_CLASSIFIER_OUTPUT_SCHEMA_VERSION,
             threading_info=phase_threading,
         )
+        memory_phase_started = time.perf_counter()
         memory_phase_result = _execute_memory_and_phase(
             client=client,
             config=config,
@@ -1269,6 +1296,9 @@ def run_negotiation_cognitive_turn(
             mem_call, mem_latency, phase_call, phase_latency, request_context = memory_phase_result
             mem_threading = _node_request_context("memory", request_context)[1]
             phase_threading = _node_request_context("phase_classifier", request_context)[1]
+        stage_timings_ms["memory_phase_parallel_wall"] = int((time.perf_counter() - memory_phase_started) * 1000)
+        stage_timings_ms["memory_call"] = mem_latency
+        stage_timings_ms["phase_classifier_call"] = phase_latency
 
         memory_patch = _resolve_memory_call_result(canonical_state, turn_id, mem_call)
         phase_output = _resolve_phase_call_result(canonical_state, phase_call)
@@ -1311,11 +1341,14 @@ def run_negotiation_cognitive_turn(
         elif planner_call.source == StructuredCallSource.refusal:
             planner_output = _planner_fallback(status="refuse", refusal_reason=planner_call.refusal)
         plan_latency = int((time.perf_counter() - plan_start) * 1000)
+        stage_timings_ms["planner_call"] = plan_latency
 
         apply_planner_output_to_state(canonical_state, planner_output)
         if planner_call.response is not None:
             update_thread_after_response(canonical_state.openai_thread, planner_call.response)
+        request_context_after_planner_started = time.perf_counter()
         request_context = refresh_request_context(client, canonical_state, config.thread_mode_default)
+        stage_timings_ms["request_context_after_planner"] = int((time.perf_counter() - request_context_after_planner_started) * 1000)
         logs.append(build_planner_node_trace(planner_frozen.payload_snapshot, planner_output, planner_call, plan_latency, planner_threading, planner_frozen.artifacts))
 
         executor_input = build_executor_input(canonical_state, recent_dialogue, planner_output, user_turn, executor_trace_meta, config.max_executor_recent_turns, config.prompts_dir)
@@ -1345,17 +1378,19 @@ def run_negotiation_cognitive_turn(
             executor_request_context,
             config.executor_store,
         )
-        executor_output = _executor_fallback(planner_output)
+        executor_output = _executor_fallback(planner_output, user_text=user_turn.normalized_text)
         if executor_call.source == StructuredCallSource.model and executor_call.parsed_json is not None:
             executor_output = ExecutorOutput.model_validate(executor_call.parsed_json)
         elif executor_call.source == StructuredCallSource.refusal:
-            executor_output = _executor_fallback(planner_output, status="refuse", refusal_reason=executor_call.refusal)
+            executor_output = _executor_fallback(planner_output, status="refuse", refusal_reason=executor_call.refusal, user_text=user_turn.normalized_text)
         exe_latency = int((time.perf_counter() - exe_start) * 1000)
+        stage_timings_ms["executor_call"] = exe_latency
 
         if executor_call.response is not None:
             update_thread_after_response(canonical_state.openai_thread, executor_call.response)
 
         executor_output_before_guardrail = executor_output.model_copy(deep=True)
+        output_guardrails_started = time.perf_counter()
         executor_output, output_result = run_output_guardrails(
             executor_output=executor_output,
             planner_output=planner_output,
@@ -1363,6 +1398,7 @@ def run_negotiation_cognitive_turn(
             policy=policy,
             client=client,
         )
+        stage_timings_ms["output_guardrails"] = int((time.perf_counter() - output_guardrails_started) * 1000)
         logs.append(build_executor_node_trace(executor_frozen.payload_snapshot, executor_output_before_guardrail, executor_output, executor_call, exe_latency, executor_output.status, guardrail_applied=output_result.rewrite_applied or output_result.status_before != output_result.status_after, status_before_guardrail=output_result.status_before, status_after_guardrail=output_result.status_after, threading_info=executor_threading, prompt_artifacts=executor_frozen.artifacts))
         nodes = {log.node.value: log for log in logs}
         reply = executor_output.spoken_text
@@ -1383,6 +1419,7 @@ def run_negotiation_cognitive_turn(
 
     turn_finished_at = datetime.now(timezone.utc).isoformat()
     total_latency_ms = int((time.perf_counter() - turn_started_perf) * 1000)
+    stage_timings_ms["total_turn"] = total_latency_ms
     grades = _evaluate_stub(planner_output, executor_output) if config.feature_eval_hooks else EvalGrades(planner_coherence="disabled", executor_naturalness="disabled", planner_executor_agreement=True, safety_compliance=True)
 
     combined_guardrail_reasons = sorted(set(input_result.reasons + output_result.reasons))
@@ -1393,6 +1430,15 @@ def run_negotiation_cognitive_turn(
 
     set_turn_id(turn_id)
     turn_probe = get_turn_probe()
+    executor_log = next((log for log in logs if log.node_name == "executor"), None)
+    if executor_log is not None and executor_log.final_output_source == "post_guardrail_output":
+        final_output_origin = "guardrail_rewrite" if output_result.rewrite_applied else "guardrail_status_adjustment"
+    elif executor_log is not None and executor_log.final_output_source == "fallback_output":
+        final_output_origin = "executor_fallback"
+    elif executor_log is not None and executor_log.final_output_source == "validated_output":
+        final_output_origin = "model"
+    else:
+        final_output_origin = "unknown"
 
     turn_trace = TurnTrace(
         trace_version=TRACE_VERSION,
@@ -1417,7 +1463,8 @@ def run_negotiation_cognitive_turn(
         executor_reply_text_before_guardrail=executor_output_before_guardrail.spoken_text,
         executor_status_before_guardrail=executor_output_before_guardrail.status,
         executor_reply_changed_by_guardrail=executor_output_before_guardrail.spoken_text != reply or executor_output_before_guardrail.status != executor_output.status,
-        final_output_source="executor_post_guardrail" if (output_result.rewrite_applied or output_result.status_before != output_result.status_after) else "executor_validated",
+        final_output_source=final_output_origin,
+        final_output_origin=final_output_origin,
         guardrails_triggered=guardrails_triggered,
         guardrail_reasons=combined_guardrail_reasons,
         guardrail_rewrite_applied=output_result.rewrite_applied,
@@ -1460,6 +1507,7 @@ def run_negotiation_cognitive_turn(
         nodes=nodes,
         provider_calls=[event.__dict__ for event in (turn_probe.provider_calls if turn_probe is not None else [])],
         side_effect_hooks=(turn_probe.side_effect_hooks if turn_probe is not None else []),
+        stage_timings_ms=stage_timings_ms,
     )
 
     canonical_state.trace.turn_id = turn_trace.turn_id
