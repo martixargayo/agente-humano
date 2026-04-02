@@ -44,6 +44,7 @@ configure_session_store_from_env()
 from negociacion.orchestration.flow_config import set_tts_prefetch_hook
 from negociacion.orchestration.context_errors import ContextContractError
 from negociacion.optimizador import router as optimizador_router
+from negociacion.forensics.provider_probe import record_provider_call, record_side_effect_hook
 from negociacion.services.context_http import raise_http_from_context_error
 from negociacion.services.legacy_negociar_service import run_legacy_negociar_turn
 from interfaz_usuario import router as interfaz_usuario_router
@@ -393,13 +394,21 @@ def _tts_cache_key(*, text: str, voice: str, fmt: TTSAudioFormat, speed: float) 
 
 
 def _sync_generate_tts_audio(text: str, voice: str, fmt: TTSAudioFormat, speed: float) -> bytes:
-    audio_resp = openai_client.audio.speech.create(
+    payload = {
+        "model": "gpt-4o-mini-tts",
+        "voice": voice,
+        "input": text,
+        "response_format": fmt,
+        "speed": speed,
+        "instructions": TTS_IDENTITY_INSTRUCTIONS,
+    }
+    audio_resp = record_provider_call(
+        call_subtype="audio.speech.create",
+        node_name="tts",
         model="gpt-4o-mini-tts",
-        voice=voice,
-        input=text,
-        response_format=fmt,
-        speed=speed,
-        instructions=TTS_IDENTITY_INSTRUCTIONS,
+        payload=payload,
+        request_context=None,
+        fn=lambda: openai_client.audio.speech.create(**payload),
     )
     return getattr(audio_resp, "content", None) or audio_resp.read()
 
@@ -440,6 +449,7 @@ def _schedule_tts_prefetch(text: str) -> None:
     normalized_text = text.strip()
     if not normalized_text:
         return
+    record_side_effect_hook(hook_name="tts_prefetch_schedule", payload={"text_chars": len(normalized_text)})
 
     fmt = _resolved_tts_format()
     speed = _resolved_tts_speed()
@@ -837,10 +847,23 @@ async def stt_google(file: UploadFile = File(...)):
 
     if openai_client is not None:
         try:
-            transcription = openai_client.audio.transcriptions.create(
+            transcription_payload = {
+                "model": OPENAI_STT_MODEL,
+                "filename": _guess_transcription_filename(file),
+                "audio_bytes": len(audio_bytes),
+                "language": GOOGLE_STT_LANGUAGE.split("-")[0],
+            }
+            transcription = record_provider_call(
+                call_subtype="audio.transcriptions.create",
+                node_name="stt",
                 model=OPENAI_STT_MODEL,
-                file=(_guess_transcription_filename(file), audio_bytes),
-                language=GOOGLE_STT_LANGUAGE.split("-")[0],
+                payload=transcription_payload,
+                request_context=None,
+                fn=lambda: openai_client.audio.transcriptions.create(
+                    model=OPENAI_STT_MODEL,
+                    file=(_guess_transcription_filename(file), audio_bytes),
+                    language=GOOGLE_STT_LANGUAGE.split("-")[0],
+                ),
             )
             text = (getattr(transcription, "text", "") or "").strip()
             if not text:
