@@ -38,6 +38,54 @@ def _diagnostic_from_exception(exc: Exception) -> str:
     joined = " | ".join(chain)
     return joined[:600] if joined else type(exc).__name__
 
+
+def _classify_exception(exc: Exception, *, failing_stage: str | None = None) -> dict[str, Any]:
+    diagnostic = _diagnostic_from_exception(exc)
+    normalized = diagnostic.lower()
+    is_socket_write_timeout = "timeout writing to socket" in normalized or (
+        "timeout" in normalized and "socket" in normalized and "write" in normalized
+    )
+    storage_stages = {
+        "acquire_session_execution_lock",
+        "touch_existing_session_if_present",
+        "get_session_state",
+        "apply_session_ttl_turn_completed",
+    }
+    if is_socket_write_timeout:
+        if failing_stage in storage_stages:
+            category = "session_storage_write_timeout"
+        else:
+            category = "upstream_write_timeout"
+        return {
+            "diagnostic": diagnostic,
+            "error_category": category,
+            "retryable": True,
+            "failing_stage": failing_stage or "unknown",
+        }
+    return {
+        "diagnostic": diagnostic,
+        "error_category": "internal_turn_failure",
+        "retryable": False,
+        "failing_stage": failing_stage or "unknown",
+    }
+
+
+def _count_model_calls_from_trace(trace: dict[str, Any] | None) -> int:
+    if not isinstance(trace, dict):
+        return 0
+    logs = trace.get("logs")
+    if not isinstance(logs, list):
+        return 0
+    return sum(1 for item in logs if isinstance(item, dict) and bool(item.get("model_called", False)))
+
+
+def _append_attempt_trace(state: SessionState, payload: dict[str, Any]) -> None:
+    traces = state.world_state.setdefault("optimizador_attempt_traces", [])
+    if not isinstance(traces, list):
+        traces = []
+        state.world_state["optimizador_attempt_traces"] = traces
+    traces.append(payload)
+
 def _apply_contextual_state_overrides(state: Any, config: Any, entries: list[dict[str, Any]]) -> None:
     persona_entry = next((entry for entry in entries if entry.get("category") == "contextual" and entry.get("key") == "persona"), None)
     if not persona_entry:
@@ -74,6 +122,16 @@ def _resolve_optimizer_contract_flags(state: SessionState) -> tuple[bool, bool]:
 
 def list_sessions() -> list[dict[str, Any]]:
     return session_bridge.list_sessions()
+
+
+def list_attempt_traces(user_id: str, session_id: str) -> list[dict[str, Any]]:
+    state = storage.get_optimizer_state(user_id, session_id)
+    if state is None or not isinstance(state.world_state, dict):
+        return []
+    raw = state.world_state.get("optimizador_attempt_traces", [])
+    if not isinstance(raw, list):
+        return []
+    return [item for item in raw if isinstance(item, dict)]
 
 
 
@@ -194,9 +252,20 @@ def run_sandbox_turn(
     conversation_id: str | None,
     scope_turn_id: str | None,
     repeat_from_turn_id: str | None,
+    client_request_id: str | None = None,
+    logical_user_message_id: str | None = None,
+    logical_attempt_index: int | None = None,
 ) -> dict[str, Any]:
+    failing_stage = "acquire_session_execution_lock"
+    backend_turn_attempt_id = f"opt_attempt_{uuid4().hex[:12]}"
+    attempt_started_at = datetime.now(timezone.utc).isoformat()
+    trace_count_before = 0
+    state: SessionState | None = None
+    base_context: dict[str, Any] | None = None
+    post_commit_housekeeping_error: str | None = None
     try:
         with acquire_session_execution_lock(user_id=user_id, session_id=session_id):
+            failing_stage = "touch_existing_session_if_present"
             touch_ttl = touch_existing_session_if_present(
                 user_id=user_id,
                 session_id=session_id,
@@ -204,15 +273,18 @@ def run_sandbox_turn(
                 reason="optimizador_turn_lock_acquired",
             )
             logger.info(
-                "optimizador_turn_started session=%s optimizer_session_id=%s ttl_seconds=%s",
+                "optimizador_turn_started session=%s optimizer_session_id=%s ttl_seconds=%s client_request_id=%s",
                 f"{user_id}:{session_id}",
                 optimizer_session_id,
                 touch_ttl,
+                client_request_id,
             )
+            failing_stage = "get_session_state"
             state = get_session_state(user_id=user_id, session_id=session_id)
             ensure_session_surface(state=state, surface='optimizador')
+            trace_count_before = len(storage.resolve_traces(state))
             base_context = context_bridge.ensure_optimizer_session_context(state=state)
-            apply_session_ttl(state, scope="active", reason="optimizador_turn_state_ready")
+            failing_stage = "build_pipeline_config"
             base_config = build_negotiation_pipeline_config(context_id=base_context["context_id"], stateful=True)
             resolved_entries = experiments_bridge.resolve_entries(
                 optimizer_session_id=optimizer_session_id,
@@ -228,6 +300,7 @@ def run_sandbox_turn(
                 requested_context_id=base_context["context_id"],
             )
             try:
+                failing_stage = "execute_turn_with_contract"
                 reply, _, meta = execute_turn_with_contract(
                     state=state,
                     user_message=message,
@@ -245,7 +318,42 @@ def run_sandbox_turn(
             finally:
                 if tempdir is not None:
                     tempdir.cleanup()
-            apply_session_ttl(state, scope="active", reason="optimizador_turn_completed")
+            failing_stage = "apply_session_ttl_turn_completed"
+            try:
+                apply_session_ttl(state, scope="active", reason="optimizador_turn_completed")
+            except Exception as post_commit_exc:
+                post_commit_housekeeping_error = _diagnostic_from_exception(post_commit_exc)
+                logger.warning(
+                    "optimizador_turn_post_commit_housekeeping_failed session=%s client_request_id=%s logical_user_message_id=%s logical_attempt_index=%s backend_turn_attempt_id=%s error=%s",
+                    f"{user_id}:{session_id}",
+                    client_request_id,
+                    logical_user_message_id,
+                    logical_attempt_index,
+                    backend_turn_attempt_id,
+                    post_commit_housekeeping_error,
+                )
+            latest_after = storage.resolve_traces(state)[-1] if storage.resolve_traces(state) else None
+            _append_attempt_trace(
+                state,
+                {
+                    "backend_turn_attempt_id": backend_turn_attempt_id,
+                    "client_request_id": client_request_id,
+                    "logical_user_message_id": logical_user_message_id,
+                    "logical_attempt_index": logical_attempt_index,
+                    "status": "success" if post_commit_housekeeping_error is None else "success_with_housekeeping_error",
+                    "failing_stage": None,
+                    "error_category": None,
+                    "retryable": False,
+                    "post_commit_housekeeping_error": post_commit_housekeeping_error,
+                    "session_id": session_id,
+                    "context_id": (base_context or {}).get("context_id"),
+                    "trace_count_before": trace_count_before,
+                    "trace_count_after": len(storage.resolve_traces(state)),
+                    "model_calls_in_latest_trace": _count_model_calls_from_trace(latest_after),
+                    "attempt_started_at": attempt_started_at,
+                    "attempt_finished_at": datetime.now(timezone.utc).isoformat(),
+                },
+            )
     except SessionBusyError as exc:
         touch_existing_session_if_present(
             user_id=exc.user_id,
@@ -274,23 +382,60 @@ def run_sandbox_turn(
         if isinstance(exc, ContextContractError):
             raise_http_from_context_error(exc)
         error_id = f"opt_turn_{uuid4().hex[:10]}"
-        diagnostic = _diagnostic_from_exception(exc)
+        classified = _classify_exception(exc, failing_stage=failing_stage)
         logger.exception(
-            "optimizador_turn_failed error_id=%s session=%s optimizer_session_id=%s message_len=%s cause=%s diagnostic=%s",
+            "optimizador_turn_failed error_id=%s session=%s optimizer_session_id=%s message_len=%s cause=%s error_category=%s retryable=%s failing_stage=%s client_request_id=%s logical_user_message_id=%s logical_attempt_index=%s backend_turn_attempt_id=%s diagnostic=%s",
             error_id,
             f"{user_id}:{session_id}",
             optimizer_session_id,
             len(message or ""),
             type(exc).__name__,
-            diagnostic,
+            classified["error_category"],
+            classified["retryable"],
+            classified["failing_stage"],
+            client_request_id,
+            logical_user_message_id,
+            logical_attempt_index,
+            backend_turn_attempt_id,
+            classified["diagnostic"],
         )
+        state_for_attempt = state or get_session_store().get(user_id=user_id, session_id=session_id)
+        if isinstance(state_for_attempt, SessionState):
+            latest_after = storage.resolve_traces(state_for_attempt)[-1] if storage.resolve_traces(state_for_attempt) else None
+            _append_attempt_trace(
+                state_for_attempt,
+                {
+                    "backend_turn_attempt_id": backend_turn_attempt_id,
+                    "client_request_id": client_request_id,
+                    "logical_user_message_id": logical_user_message_id,
+                    "logical_attempt_index": logical_attempt_index,
+                    "status": "failed",
+                    "failing_stage": classified["failing_stage"],
+                    "error_category": classified["error_category"],
+                    "retryable": classified["retryable"],
+                    "session_id": session_id,
+                    "context_id": (base_context or {}).get("context_id"),
+                    "trace_count_before": trace_count_before,
+                    "trace_count_after": len(storage.resolve_traces(state_for_attempt)),
+                    "model_calls_in_latest_trace": _count_model_calls_from_trace(latest_after),
+                    "attempt_started_at": attempt_started_at,
+                    "attempt_finished_at": datetime.now(timezone.utc).isoformat(),
+                },
+            )
         raise HTTPException(
             status_code=500,
             detail={
                 "error": "turn_execution_failed",
                 "error_id": error_id,
+                "backend_turn_attempt_id": backend_turn_attempt_id,
                 "cause": type(exc).__name__,
-                "diagnostic": diagnostic,
+                "diagnostic": classified["diagnostic"],
+                "error_category": classified["error_category"],
+                "retryable": classified["retryable"],
+                "failing_stage": classified["failing_stage"],
+                "client_request_id": client_request_id,
+                "logical_user_message_id": logical_user_message_id,
+                "logical_attempt_index": logical_attempt_index,
                 "message": "No se pudo procesar el turno en este momento. Inténtalo de nuevo.",
             },
         ) from exc
@@ -317,6 +462,8 @@ def run_sandbox_turn(
     return {
         "reply": reply,
         "turn": selected_turn,
+        "backend_turn_attempt_id": backend_turn_attempt_id,
+        "post_commit_housekeeping_error": post_commit_housekeeping_error,
         "turn_title": derive_turn_title(latest, turns) if latest else None,
         "effective_overrides": experiments_bridge.describe_effective_overrides(resolved_entries),
         "entry_contract": meta.get("entry_contract") if isinstance(meta, dict) else None,

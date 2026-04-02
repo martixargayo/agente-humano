@@ -85,3 +85,4 @@ class NegotiationTurnResponse(BaseModel):
     entry_contract: EntryContractPayload
     auto_reset_applied: bool = False
     finish_button_armed: bool = False
+    post_commit_housekeeping_error: str | None = None

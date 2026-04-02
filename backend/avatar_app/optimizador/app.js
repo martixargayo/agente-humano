@@ -34,6 +34,7 @@ const state = {
   sessionSelectionMode: "none",
   lastUiSnapshot: "",
   lastCasesFetchAt: 0,
+  retryLogicalMessage: null,
 };
 
 const $ = (q) => document.querySelector(q);
@@ -55,9 +56,16 @@ async function api(path, opts = {}) {
     if (detail && typeof detail === "object" && typeof detail.diagnostic === "string" && detail.diagnostic) {
       message = `${message} · ${detail.diagnostic}`;
     }
+    if (detail && typeof detail === "object" && typeof detail.failing_stage === "string" && detail.failing_stage) {
+      message = `${message} · stage:${detail.failing_stage}`;
+    }
+    if (detail && typeof detail === "object" && detail.retryable === true) {
+      message = `${message} · Error transitorio (reintentar)`;
+    }
     const err = new Error(message);
     err.status = r.status;
     err.payload = parsed;
+    err.detail = detail;
     throw err;
   }
   return r.json();
@@ -68,6 +76,10 @@ const escapeHtml = (s) => String(s ?? "").replaceAll("&", "&amp;").replaceAll("<
 
 const selectedSession = () => state.sessions.find((s) => s.session_key === state.selectedSessionKey) || null;
 const activeContext = () => state.contexts.find((c) => c.context_id === state.selectedContextId) || null;
+
+function newLogicalMessageId() {
+  return `lmsg_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
+}
 
 function normalizeContextId(value) {
   const raw = String(value || "").trim();
@@ -503,7 +515,30 @@ function bindEvents() {
     state.chatDraft = e.target.value;
     console.debug("[optimizer][chat:input]", { selectedSessionKey: state.selectedSessionKey, length: state.chatDraft.length });
   });
-  byId("sendBtn")?.addEventListener("click", async () => { if (!state.chatDraft.trim()) return; const msg = state.chatDraft; state.chatDraft = ""; try { await sendChat(msg); } catch (_) { state.chatDraft = msg; renderTab(); bindEvents(); } });
+  const sendBtn = byId("sendBtn");
+  sendBtn?.addEventListener("pointerdown", (e) => {
+    // Evita que el textarea pierda foco antes del click; así el poll no fuerza
+    // un re-render completo justo en el borde del submit.
+    e.preventDefault();
+  });
+  sendBtn?.addEventListener("click", async () => {
+    if (!state.chatDraft.trim()) return;
+    const msg = state.chatDraft;
+    const normalized = msg.trim();
+    const retry = state.retryLogicalMessage;
+    const logicalMessageId = retry && retry.message === normalized ? retry.logicalMessageId : newLogicalMessageId();
+    const logicalAttemptIndex = retry && retry.message === normalized ? retry.nextAttemptIndex : 1;
+    state.retryLogicalMessage = null;
+    state.chatDraft = "";
+    try {
+      await sendChat(msg, null, { logicalMessageId, logicalAttemptIndex });
+    } catch (_) {
+      state.retryLogicalMessage = { message: normalized, logicalMessageId, nextAttemptIndex: logicalAttemptIndex + 1 };
+      state.chatDraft = msg;
+      renderTab();
+      bindEvents();
+    }
+  });
 
   document.querySelectorAll(".evalBtn").forEach((b) => b.addEventListener("click", async () => {
     state.evalOut = JSON.stringify(await api(`/evals/${b.dataset.act}`, { method: "POST" }), null, 2);
@@ -531,7 +566,7 @@ function bindEvents() {
   });
 }
 
-async function sendChat(message, repeatFrom = null) {
+async function sendChat(message, repeatFrom = null, logicalMeta = null) {
   const s = selectedSession();
   if (!s) throw new Error("No hay sesión activa en optimizador");
   const sentSessionKey = state.selectedSessionKey;
@@ -548,7 +583,7 @@ async function sendChat(message, repeatFrom = null) {
   state.waitingReply = true;
   renderTab();
   try {
-    const result = await api("/sandbox/turn", { method: "POST", body: JSON.stringify({ optimizer_session_id: state.optimizerSessionId, user_id: s.user_id, session_id: s.session_id, message, conversation_id: state.selectedConversation || null, scope_turn_id: state.selectedTurnId || null, repeat_from_turn_id: repeatFrom }) });
+    const result = await api("/sandbox/turn", { method: "POST", body: JSON.stringify({ optimizer_session_id: state.optimizerSessionId, user_id: s.user_id, session_id: s.session_id, message, conversation_id: state.selectedConversation || null, scope_turn_id: state.selectedTurnId || null, repeat_from_turn_id: repeatFrom, client_request_id: requestId, logical_user_message_id: logicalMeta?.logicalMessageId || null, logical_attempt_index: logicalMeta?.logicalAttemptIndex || null }) });
     console.debug("[optimizer][send:response]", {
       requestId,
       sentSessionKey,
@@ -582,7 +617,15 @@ async function sendChat(message, repeatFrom = null) {
       console.debug("[optimizer][pending:off]", { requestId, reason: "send_error" });
     }
     showToast(`Chat falló: ${e.message || e}`, "err");
-    console.debug("[optimizer][send:error]", { requestId, sentSessionKey, activeSessionKey: state.selectedSessionKey, error: e?.message || String(e) });
+    console.debug("[optimizer][send:error]", {
+      requestId,
+      sentSessionKey,
+      activeSessionKey: state.selectedSessionKey,
+      error: e?.message || String(e),
+      errorCategory: e?.detail?.error_category || e?.payload?.detail?.error_category || null,
+      retryable: e?.detail?.retryable ?? e?.payload?.detail?.retryable ?? null,
+      cause: e?.detail?.cause || e?.payload?.detail?.cause || null,
+    });
     throw e;
   }
   renderTopbar(); renderTab(); bindEvents();
@@ -617,7 +660,7 @@ function startPolling() {
 
       if (!hasChanges && !hasNewTurn) return;
 
-      if (state.activeTab === "Chat" && typingChat) {
+      if (state.activeTab === "Chat") {
         const showPending = Boolean(state.waitingReply && state.pendingSessionKey && state.pendingSessionKey === state.selectedSessionKey);
         byId("chatHistory").innerHTML = state.dialogue.map((d) => `<div class='msg ${d.role}'>${d.role === "user" ? "Usuario" : "IA"}: ${escapeHtml(d.text || "")}</div>`).join("") + (showPending ? "<div class='msg assistant pending'>IA: pensando...</div>" : "");
         console.debug("[optimizer][poll:render]", { mode: "chatHistoryOnly", typingChat, hasNewTurn });

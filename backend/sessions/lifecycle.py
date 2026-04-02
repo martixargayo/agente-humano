@@ -13,6 +13,11 @@ SESSION_LIFECYCLE_WORLD_STATE_KEY = "_session_lifecycle"
 SessionTtlScope = Literal["bootstrap", "active", "finalized"]
 
 
+def _is_socket_timeout_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return "timeout" in text and "socket" in text
+
+
 def _ttl_from_env(name: str, default: int) -> int:
     return max(1, int(os.getenv(name, str(default))))
 
@@ -91,16 +96,35 @@ def touch_existing_session_if_present(
     scope: SessionTtlScope,
     reason: str,
 ) -> int | None:
-    state = get_session_store().get(user_id=user_id, session_id=session_id)
-    if state is None:
+    ttl_seconds = resolve_session_ttl(scope)
+    try:
+        # Ruta ligera: refrescar TTL sin lecturas/escrituras adicionales de estado.
+        # Evita I/O redundante (GET + SAVE + EXPIRE) en puntos de alta frecuencia
+        # como "*_turn_lock_acquired".
+        get_session_store().touch(user_id=user_id, session_id=session_id, ttl_seconds=ttl_seconds)
         logger.info(
-            "session_ttl_touch_skipped_missing session=%s scope=%s reason=%s",
+            "session_ttl_touch_applied_lightweight session=%s scope=%s ttl_seconds=%s reason=%s",
             f"{user_id}:{session_id}",
             scope,
+            ttl_seconds,
             reason,
         )
-        return None
-    return apply_session_ttl(state, scope=scope, reason=reason, persist=True)
+        return ttl_seconds
+    except Exception as exc:
+        if _is_socket_timeout_error(exc):
+            # No degradar a camino pesado ante timeout de socket: eso añade GET+SAVE
+            # y aumenta presión sobre la misma dependencia degradada.
+            raise
+        state = get_session_store().get(user_id=user_id, session_id=session_id)
+        if state is None:
+            logger.info(
+                "session_ttl_touch_skipped_missing session=%s scope=%s reason=%s",
+                f"{user_id}:{session_id}",
+                scope,
+                reason,
+            )
+            return None
+        return apply_session_ttl(state, scope=scope, reason=reason, persist=True)
 
 
 def mark_session_finalized(state: SessionState, *, reason: str) -> int:

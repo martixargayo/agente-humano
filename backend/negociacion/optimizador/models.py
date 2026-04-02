@@ -40,6 +40,9 @@ class SandboxTurnRequest(BaseModel):
     conversation_id: str | None = None
     scope_turn_id: str | None = None
     repeat_from_turn_id: str | None = None
+    client_request_id: str | None = None
+    logical_user_message_id: str | None = None
+    logical_attempt_index: int | None = None
 
 
 class SandboxCloneRequest(BaseModel):
