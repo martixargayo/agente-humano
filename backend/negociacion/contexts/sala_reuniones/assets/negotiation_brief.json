@@ -1,17 +1,39 @@
 {
   "schema_version": "negotiation_brief.v1",
   "contexto_del_recurso": {
-    "recurso_y_disponibilidad": "La única sala demo realmente útil está disponible el jueves de 8:00 a 16:00.",
-    "lectura": "El valor del caso no está en horas abstractas ni en repartir el día por mitades, sino en tiempo útil real dentro de la sala, continuidad operativa, calidad de la transición y coste de asumir una franja peor. La mañana temprana tiene más valor operativo que el tramo tardío del día."
+    "recurso_y_disponibilidad": "La única sala demo realmente útil está disponible el jueves de 08:00 a 16:00.",
+    "lectura": "El valor del caso no está en repartir horas abstractas ni en dividir el día por mitades, sino en preservar tiempo útil real dentro de la sala, continuidad suficiente de la sesión, calidad de la franja, calidad de la transición y reparto justo de la carga operativa. Igual número de horas no implica igual utilidad."
   },
   "condiciones_iniciales_de_la_negociacion": {
     "relacion_entre_las_partes": "La relación inicial es cordial, profesional y no conflictiva. Diego y la persona del Equipo A no se conocen y no habían hablado antes.",
     "informacion_inicial_disponible": "Al comenzar, Diego no sabe ni cuántas horas quiere realmente el Equipo A ni para qué necesita exactamente la sala. Solo sabe que existe un conflicto de prioridades sobre la única sala demo y que deben resolverlo hablando entre ellos.",
-    "lectura": "La fase inicial correcta exige encuadre y descubrimiento. Diego no debe actuar como si ya conociera el mínimo real, la estructura de la actividad o el margen de la otra parte. Si la otra parte solo declara su bloque ideal o su hora preferida, eso no basta todavía para saltar a un reparto cerrado. Y si la otra parte expone su propio bloque o preferencia y luego pregunta por el bloque o la preferencia del Equipo B, eso sigue formando parte del descubrimiento del mapa real, no de un reparto ya abierto."
+    "lectura": "La fase inicial correcta exige encuadre y descubrimiento. Diego no debe actuar como si ya conociera el mínimo real, la estructura exacta de la actividad o el margen de la otra parte. Si la otra parte solo expone su bloque ideal o su hora preferida, eso sigue siendo mapa operativo, no un reparto ya abierto. Si después pregunta por el bloque o preferencia del Equipo B, por defecto sigue siendo discovery, no una invitación automática a cerrar un reparto."
   },
   "restricciones_duras": {
     "resumen": "No existe otra sala equivalente, no se puede mover a otro día, no se escala a un jefe y no hay presupuesto para alquilar nada fuera.",
-    "lectura": "La única salida válida es un acuerdo operativo entre ambos equipos dentro del mismo jueves y usando la única sala demo disponible."
+    "lectura": "La única salida válida es un acuerdo operativo entre ambos equipos dentro del mismo jueves y usando la única sala demo disponible.",
+    "constraints": [
+      {
+        "id": "same_day_only",
+        "tipo": "hard_constraint",
+        "regla": "Todo el acuerdo debe resolverse el jueves."
+      },
+      {
+        "id": "single_room_only",
+        "tipo": "hard_constraint",
+        "regla": "Solo existe una sala demo realmente útil."
+      },
+      {
+        "id": "time_window",
+        "tipo": "hard_constraint",
+        "regla": "La ocupación real de la sala debe quedar completa entre 08:00 y 16:00."
+      },
+      {
+        "id": "no_external_escalation",
+        "tipo": "hard_constraint",
+        "regla": "La solución debe salir de la conversación entre ambos equipos, sin escalar ni traer recursos externos."
+      }
+    ]
   },
   "realidad_de_la_alternativa": {
     "resumen": "Diego, como representante del Equipo B, no tiene una alternativa equivalente sin la sala demo.",
@@ -19,62 +41,257 @@
     "coste_equivalente_aproximado": "La mejor alternativa real equivale a una sesión claramente peor: más partes fuera de sala, menos tiempo útil con el sistema funcionando y más fricción operativa.",
     "lectura": "Por eso Diego debe defender un bloque suficientemente útil dentro de la sala, pero no desde una lógica territorial. La salida buena consiste en conservar el mínimo operativo real y conseguir compensaciones visibles si asume una franja peor o más fricción."
   },
+  "modelo_operativo": {
+    "disponibilidad_dura": {
+      "start": "08:00",
+      "end": "16:00",
+      "lectura": "Toda la ocupación real de la sala, incluida preparación y desmontaje, tiene que caber dentro de esta ventana."
+    },
+    "duraciones_base_del_equipo_b": {
+      "preparacion_minutos": 60,
+      "nucleo_minutos": 180,
+      "recogida_minutos": 60,
+      "total_base_minutos": 300,
+      "lectura": "La referencia visible inicial del Equipo B sigue siendo equivalente a 5 horas de uso operativo, sin necesidad de desglosarlo espontáneamente."
+    },
+    "reglas_de_ayuda_operativa": [
+      {
+        "id": "prep_help_halves_not_more",
+        "elemento": "Ayuda en preparación inicial",
+        "efecto": "reduce_tiempo_en_sala",
+        "from_minutes": 60,
+        "to_minutes": 30,
+        "floor_minutes": 30,
+        "lectura": "La ayuda en preparación reduce la preparación de 60 a 30 minutos. No la reduce por debajo de 30."
+      },
+      {
+        "id": "teardown_help_halves_not_more",
+        "elemento": "Ayuda en recogida o desmontaje final",
+        "efecto": "reduce_tiempo_en_sala",
+        "from_minutes": 60,
+        "to_minutes": 30,
+        "floor_minutes": 30,
+        "lectura": "La ayuda en recogida o desmontaje reduce ese tramo de 60 a 30 minutos. No lo reduce por debajo de 30."
+      }
+    ],
+    "reglas_de_cierre_real": [
+      {
+        "id": "session_ends_after_teardown",
+        "regla": "Cuando se habla de la hora a la que la gente se va o a la que el Equipo B termina, se refiere al momento en que acaba la actividad y también ha terminado el desmontaje o recogida."
+      },
+      {
+        "id": "cannot_ignore_teardown",
+        "regla": "No se puede tratar la hora de fin del núcleo como si fuera automáticamente la hora real de liberación de la sala o de salida del equipo."
+      }
+    ],
+    "reglas_de_nucleo_y_continuidad": [
+      {
+        "id": "minimum_core_in_room",
+        "regla": "El objetivo privado de Diego es preservar al menos 180 minutos útiles reales en sala para el núcleo de la sesión."
+      },
+      {
+        "id": "core_should_remain_meaningful",
+        "regla": "Sacar partes fuera de la sala puede ayudar, pero no debe vaciar ni fragmentar en exceso el núcleo útil de la sesión."
+      },
+      {
+        "id": "full_inside_is_better",
+        "regla": "Poder hacer toda la sesión dentro de la sala tiene más valor que tener que mover partes a otro lugar."
+      }
+    ],
+    "reglas_de_calidad_horaria": [
+      {
+        "id": "morning_is_premium",
+        "tramo": "08:00-14:00",
+        "quality": "decreciente_conforme_avanza_el_dia",
+        "lectura": "Cuanto más cerca de las 08:00, mejor encaja para el Equipo B. Cuanto más tarde, peor."
+      },
+      {
+        "id": "14_16_low_quality",
+        "tramo": "14:00-16:00",
+        "quality": "muy_baja",
+        "lectura": "Entre las 14:00 y las 16:00 el valor de esas horas para el Equipo B es muy bajo y empeora el cómputo global del acuerdo."
+      },
+      {
+        "id": "late_hours_not_equal",
+        "regla": "Una hora tardía no compensa uno a uno una hora temprana. Horas extra dentro del tramo 14:00-16:00 no deben tratarse como equivalentes a horas tempranas."
+      }
+    ],
+    "reglas_de_compensacion": [
+      {
+        "id": "late_shift_requires_material_compensation",
+        "regla": "Si el Equipo B asume una franja peor, no basta por defecto con un gesto ligero o simbólico. Tiene que haber una compensación visible y útil de verdad."
+      },
+      {
+        "id": "logistics_help_not_enough_for_big_late_shift",
+        "regla": "Ayuda en preparación, ayuda en recogida o una transición cómoda pueden sumar, pero por sí solas no suelen compensar una cesión importante si el Equipo B pierde la franja temprana o queda demasiado cerca de las 16:00."
+      },
+      {
+        "id": "recover_value_if_shifted_later",
+        "regla": "Si el Equipo B acepta ir más tarde, debe intentar recuperar valor también en calidad de bloque, continuidad o tiempo útil, y mantenerse lo más lejos posible de las 16:00."
+      }
+    ]
+  },
   "objetivo_y_marco_de_decision": {
-    "objetivo": "Conseguir para el Equipo B un reparto que preserve una sesión formativa útil y operativa, idealmente empezando pronto y terminando cuanto antes, pero sin convertir la preferencia horaria en una posición rígida ciega.",
-    "realismo": "Diego sabe que no puede asumir que conservará intacto su planteamiento inicial de 5 horas si el otro equipo también necesita la sala ese mismo jueves. Pero su referencia inicial sí es de 5 horas totales de uso operativo: aproximadamente 1 hora de preparación, 3 horas de núcleo de sesión y 1 hora de recogida.",
+    "objetivo": "Conseguir para el Equipo B un reparto que preserve una sesión formativa útil y operativa, idealmente empezando pronto y terminando cuanto antes, sin convertir la preferencia horaria en una posición rígida ciega.",
+    "objetivo_profundo": "Maximizar la calidad real de la sesión del Equipo B y proteger también la calidad de su papel como organizador, no simplemente conservar horas en papel.",
+    "realismo": "Diego sabe que no puede asumir que conservará intacto su planteamiento inicial de 5 horas si el otro equipo también necesita la sala ese mismo jueves. Pero su referencia inicial sí equivale a 5 horas totales de uso operativo: aproximadamente 1 hora de preparación, 3 horas de núcleo de sesión y 1 hora de recogida.",
     "criterio": "Intentará proteger al menos 3 horas útiles reales en sala para el núcleo de la sesión, explorando ayuda en preparación o recogida, partes fuera de la sala, reconfiguración de la actividad y una transición mejor diseñada. Antes de proponer un reparto, intentará entender qué parte de la petición de la otra parte es necesidad real y qué parte es preferencia.",
-    "regla_de_la_franja_tardia": "La mañana temprana es la franja de más valor y debe tratarse como un recurso premium para ambos equipos. A medida que el uso se aleja de las 8:00 y se acerca al tramo tardío del día, la utilidad baja. Si el Equipo B tiene que cargar con una franja peor o con más fricción, no basta por defecto con una ayuda ligera o una transición cómoda: la otra parte debe aportar una compensación visible y útil de verdad. Ayuda operativa, transición más limpia o sala ya preparada pueden sumar, pero por sí solas no compensan una cesión importante si el reparto horario sigue dejando al Equipo B demasiado cerca del tramo final del día. Si el Equipo B asume mediodía o una franja más tardía, la lógica buena es buscar también una mejora material del bloque a favor del Equipo B y mantenerse lo más lejos posible de las 16:00."
+    "regla_de_la_franja_tardia": "La mañana temprana es la franja de más valor y debe tratarse como un recurso premium. A medida que el uso se aleja de las 08:00 y se acerca al tramo tardío del día, la utilidad baja. Entre las 14:00 y las 16:00 la calidad es muy baja. Si el Equipo B tiene que cargar con una franja peor o con más fricción, no basta por defecto con una ayuda ligera o una transición cómoda: la otra parte debe aportar una compensación visible y útil de verdad."
+  },
+  "modelo_privado_de_decision": {
+    "tipo": "jerarquia_ordinal_de_criterios",
+    "lectura": "No se debe fingir una fórmula matemática falsa. La evaluación debe seguir esta jerarquía práctica.",
+    "prioridades_ordenadas": [
+      {
+        "orden": 1,
+        "criterio": "validez_dura",
+        "regla": "La solución debe caber completa dentro de 08:00-16:00, incluyendo preparación y desmontaje."
+      },
+      {
+        "orden": 2,
+        "criterio": "viabilidad_minima_del_nucleo",
+        "regla": "La solución debe preservar un núcleo útil real y continuo suficiente en sala para que la sesión siga teniendo sentido."
+      },
+      {
+        "orden": 3,
+        "criterio": "calidad_de_la_franja",
+        "regla": "Se debe minimizar la exposición del Equipo B al tramo 14:00-16:00 y preferir soluciones más tempranas."
+      },
+      {
+        "orden": 4,
+        "criterio": "continuidad_y_sesion_completa",
+        "regla": "Es mejor mantener la sesión lo más completa y continua posible dentro de sala que partirla o expulsar demasiadas partes fuera."
+      },
+      {
+        "orden": 5,
+        "criterio": "carga_logistica_real",
+        "regla": "Ayuda real en preparación o desmontaje sí reduce coste y puede liberar tiempo útil, pero no equivale automáticamente a recuperar una buena franja."
+      },
+      {
+        "orden": 6,
+        "criterio": "justicia_y_reciprocidad_visible",
+        "regla": "Si el Equipo B asume una cesión importante, el otro equipo debe absorber también parte del coste o mover ficha de forma visible."
+      }
+    ],
+    "señales_que_suben_la_calidad": [
+      "Empezar antes.",
+      "Terminar antes.",
+      "Mantener al Equipo B lejos del tramo 14:00-16:00.",
+      "Preservar el núcleo útil entero dentro de la sala.",
+      "Conseguir ayuda real en preparación o desmontaje.",
+      "Lograr una transición limpia que reduzca pérdida de tiempo real.",
+      "Recibir horas adicionales de calidad razonable, no solo horas tardías de baja calidad."
+    ],
+    "señales_que_bajan_la_calidad": [
+      "Mover al Equipo B hacia mediodía o tarde sin compensación material.",
+      "Acercar demasiado al Equipo B a las 16:00.",
+      "Tratar horas tardías como equivalentes a horas tempranas.",
+      "Tener que mover una parte relevante de la clase fuera de la sala.",
+      "Fragmentar la sesión o vaciar su núcleo útil.",
+      "Cerrar un acuerdo que en papel parezca equilibrado pero que en práctica deje peor continuidad, peor atención o peor salida."
+    ]
   },
   "mapa_de_valor": {
     "nota": "Los elementos siguientes sirven como referencia privada para estimar qué concesiones reducen tiempo real en sala, qué concesiones reducen fricción y cuáles solo facilitan el acuerdo sin resolver el problema de fondo.",
     "items": [
       {
         "elemento": "Ayuda en la preparación inicial",
-        "impacto_operativo_aproximado": "Reduce de 1 hora a 30 minutos la preparación del Equipo B.",
-        "tipo_de_efecto": "reduce_tiempo_real_en_sala",
-        "lectura": "Es valiosa porque libera tiempo útil real dentro de la sala."
+        "effect_type": "reduce_tiempo_real_en_sala",
+        "time_effect_minutes": -30,
+        "quality_effect": "indirectamente_positivo",
+        "compensation_strength": "media",
+        "sufficient_alone_for_major_late_shift": false,
+        "lectura": "Es valiosa porque libera tiempo útil real dentro de la sala, pero por sí sola no suele compensar perder la franja temprana."
       },
       {
-        "elemento": "Ayuda en la recogida final",
-        "impacto_operativo_aproximado": "Reduce de 1 hora a 30 minutos la recogida del Equipo B.",
-        "tipo_de_efecto": "reduce_tiempo_real_en_sala",
-        "lectura": "Es valiosa porque convierte tiempo logístico en tiempo útil o reduce el coste de salir antes."
+        "elemento": "Ayuda en la recogida o desmontaje final",
+        "effect_type": "reduce_tiempo_real_en_sala",
+        "time_effect_minutes": -30,
+        "quality_effect": "indirectamente_positivo",
+        "compensation_strength": "media",
+        "sufficient_alone_for_major_late_shift": false,
+        "lectura": "Reduce carga final y puede evitar salir tan tarde, pero por sí sola no suele compensar una cesión fuerte de franja."
       },
       {
         "elemento": "Sacar fuera la introducción teórica",
-        "impacto_operativo_aproximado": "Reduce ocupación necesaria dentro de la sala sin destruir el núcleo útil de la sesión.",
-        "tipo_de_efecto": "reconfigura_uso_del_recurso",
-        "lectura": "Ayuda mucho si la parte central con pantalla y sistema conserva continuidad suficiente."
+        "effect_type": "reconfigura_uso_del_recurso",
+        "time_effect_minutes": null,
+        "quality_effect": "mixto",
+        "compensation_strength": "media",
+        "sufficient_alone_for_major_late_shift": false,
+        "lectura": "Puede aliviar ocupación en sala sin destruir el núcleo si se usa con criterio, pero sacrifica parte de la sesión completa dentro del recurso bueno."
       },
       {
         "elemento": "Sacar fuera parte no esencial de la actividad o del cierre",
-        "impacto_operativo_aproximado": "Reduce ocupación en sala y puede aliviar la fricción de transición sin vaciar la sesión.",
-        "tipo_de_efecto": "reconfigura_uso_del_recurso",
-        "lectura": "Tiene valor real si permite proteger el núcleo de la formación y ordenar mejor el reparto."
+        "effect_type": "reconfigura_uso_del_recurso",
+        "time_effect_minutes": null,
+        "quality_effect": "ligeramente_negativo_si_se_abusa",
+        "compensation_strength": "media",
+        "sufficient_alone_for_major_late_shift": false,
+        "lectura": "Tiene valor si protege el núcleo, pero sigue siendo peor que poder hacer toda la sesión dentro de la sala."
       },
       {
         "elemento": "Sala ya conectada y operativa para entrar directo",
-        "impacto_operativo_aproximado": "Reduce tiempo muerto, transición y coste de coordinación.",
-        "tipo_de_efecto": "reduce_friccion_operativa",
-        "lectura": "No sustituye por sí sola una gran cesión horaria, pero sí puede compensar parte del esfuerzo asumido."
-      },
-      {
-        "elemento": "Asumir una franja más tardía con compensación visible",
-        "impacto_operativo_aproximado": "No mejora por sí sola la calidad de la sesión, pero puede ser asumible si la otra parte absorbe parte del coste operativo.",
-        "tipo_de_efecto": "facilita_acuerdo_con_compensacion",
-        "lectura": "La tarde no es equivalente a la mañana. Alejarse de las 8:00 equivale a perder utilidad y, por tanto, requiere contrapartida clara."
+        "effect_type": "reduce_friccion_operativa",
+        "time_effect_minutes": null,
+        "quality_effect": "positivo",
+        "compensation_strength": "media_baja",
+        "sufficient_alone_for_major_late_shift": false,
+        "lectura": "Reduce tiempo muerto, transición y coordinación. Suma, pero no sustituye una franja buena."
       },
       {
         "elemento": "Operativa sencilla y transición limpia entre equipos",
-        "impacto_operativo_aproximado": "Reduce roce, pérdida de tiempo y sensación de cesión injusta.",
-        "tipo_de_efecto": "facilita_acuerdo",
-        "lectura": "No basta por sí sola para justificar una cesión grande, pero sí mejora la aceptabilidad del acuerdo."
+        "effect_type": "facilita_acuerdo",
+        "time_effect_minutes": null,
+        "quality_effect": "positivo_leve",
+        "compensation_strength": "baja",
+        "sufficient_alone_for_major_late_shift": false,
+        "lectura": "Mejora la aceptabilidad del acuerdo, pero no arregla por sí sola una mala franja."
+      },
+      {
+        "elemento": "Mantener toda la sesión del Equipo B dentro de la sala",
+        "effect_type": "sube_calidad_y_continuidad",
+        "time_effect_minutes": 0,
+        "quality_effect": "muy_positivo",
+        "compensation_strength": "alta",
+        "sufficient_alone_for_major_late_shift": null,
+        "lectura": "Sube la continuidad, la percepción de orden y la calidad real de la actividad."
+      },
+      {
+        "elemento": "Tener que mover una parte de la clase a otro lugar",
+        "effect_type": "baja_calidad_y_continuidad",
+        "time_effect_minutes": null,
+        "quality_effect": "negativo",
+        "compensation_strength": "requiere_compensacion",
+        "sufficient_alone_for_major_late_shift": null,
+        "lectura": "Reduce continuidad y calidad aunque en papel alivie ocupación."
+      },
+      {
+        "elemento": "Recibir más bloque útil en una franja de calidad razonable",
+        "effect_type": "recupera_valor_real",
+        "time_effect_minutes": null,
+        "quality_effect": "positivo",
+        "compensation_strength": "alta",
+        "sufficient_alone_for_major_late_shift": "depende_de_la_franja",
+        "lectura": "Más tiempo útil puede compensar parte del coste de moverse, siempre que no se concentre demasiado en el tramo 14:00-16:00."
+      },
+      {
+        "elemento": "Recibir horas extra dentro de 14:00-16:00",
+        "effect_type": "aparenta_compensar_pero_compensa_poco",
+        "time_effect_minutes": null,
+        "quality_effect": "muy_bajo",
+        "compensation_strength": "baja",
+        "sufficient_alone_for_major_late_shift": false,
+        "lectura": "Esas horas no deben tratarse como equivalentes a horas tempranas o medias. Añaden poco valor real."
       },
       {
         "elemento": "Mover al Equipo B al mediodía o acercarlo demasiado a las 16:00",
-        "impacto_operativo_aproximado": "Reduce calidad, atención y continuidad de la sesión del Equipo B aunque se mantengan horas parecidas en papel.",
-        "tipo_de_efecto": "empeora_calidad_y_exige_mejora_material",
-        "lectura": "No debe tratarse como una cesión neutra. Ayuda en preparación, recogida o una transición cómoda pueden acompañar el ajuste, pero normalmente no bastan por sí solas si el Equipo B pierde la franja temprana. Si el Equipo B acepta ese desplazamiento, conviene recuperar valor con más bloque útil y evitando quedar demasiado cerca de las 16:00."
+        "effect_type": "empeora_calidad_y_exige_mejora_material",
+        "time_effect_minutes": 0,
+        "quality_effect": "muy_negativo",
+        "compensation_strength": "exige_alta",
+        "sufficient_alone_for_major_late_shift": null,
+        "lectura": "No debe tratarse como una cesión neutra. Ayuda en preparación, recogida o una transición cómoda pueden acompañar el ajuste, pero normalmente no bastan por sí solas si el Equipo B pierde la franja temprana."
       }
     ]
   },
