@@ -381,11 +381,33 @@ def _load_phase_classifier_card(prompts_dir: str) -> tuple[dict[str, object], st
         logger.warning("phase_classifier_card_load_failed path=%s error=%s", path, exc)
         return _phase_classifier_card_fallback(path, exc)
 
-    if not isinstance(raw, dict) or not isinstance(raw.get("phase_classifier_card"), dict):
+    if not isinstance(raw, dict):
         logger.warning("phase_classifier_card_invalid_shape path=%s", path)
         return _phase_classifier_card_fallback(path)
 
-    return raw["phase_classifier_card"], str(path)
+    def _find_classifier_card(payload: object) -> dict[str, object] | None:
+        if isinstance(payload, dict):
+            for candidate_key in ("phase_classifier_card", "card", "phase_card", "classifier_card"):
+                candidate = payload.get(candidate_key)
+                if isinstance(candidate, dict):
+                    return candidate
+            for value in payload.values():
+                found = _find_classifier_card(value)
+                if found is not None:
+                    return found
+            if payload:
+                return payload
+        elif isinstance(payload, list):
+            for item in payload:
+                found = _find_classifier_card(item)
+                if found is not None:
+                    return found
+        return None
+
+    card = _find_classifier_card(raw)
+    if isinstance(card, dict):
+        return card, str(path)
+    return _phase_classifier_card_fallback(path)
 
 
 def _load_phase_cards(prompts_dir: str) -> dict[NegotiationPhase, PhaseCard]:
@@ -396,9 +418,41 @@ def _load_phase_cards(prompts_dir: str) -> dict[NegotiationPhase, PhaseCard]:
         logger.warning("phase_cards_load_failed path=%s error=%s", path, exc)
         raw = {}
 
+    if isinstance(raw, dict):
+        if isinstance(raw.get("phase_cards"), dict):
+            raw = raw["phase_cards"]
+        elif isinstance(raw.get("phases"), dict):
+            raw = raw["phases"]
+        elif isinstance(raw.get("cards"), dict):
+            raw = raw["cards"]
+        elif isinstance(raw.get("phases"), list):
+            raw = {
+                item.get("phase"): item
+                for item in raw["phases"]
+                if isinstance(item, dict) and isinstance(item.get("phase"), str)
+            }
+
+    def _find_phase_payload(payload: object, phase_name: str) -> dict[str, object] | None:
+        if isinstance(payload, dict):
+            direct = payload.get(phase_name)
+            if isinstance(direct, dict):
+                return direct
+            for value in payload.values():
+                found = _find_phase_payload(value, phase_name)
+                if found is not None:
+                    return found
+        elif isinstance(payload, list):
+            for item in payload:
+                if isinstance(item, dict) and item.get("phase") == phase_name:
+                    return item
+                found = _find_phase_payload(item, phase_name)
+                if found is not None:
+                    return found
+        return None
+
     cards: dict[NegotiationPhase, PhaseCard] = {}
     for phase in NegotiationPhase:
-        phase_raw = raw.get(phase.value, {}) if isinstance(raw, dict) else {}
+        phase_raw = _find_phase_payload(raw, phase.value) or {}
         if not isinstance(phase_raw, dict):
             phase_raw = {}
         phase_payload = dict(phase_raw)

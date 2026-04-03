@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
@@ -35,6 +36,10 @@ EMERGENCY_NEGOTIATION_BRIEF_DEFAULTS: dict[str, object] = {
     "contexto_de_mercado": {
         "valor_estimado": "El valor de mercado estimado de este modelo está en torno a 6000-6500 euros.",
         "lectura": "Ese rango refleja el valor base de mercado del coche, no el coste real de recurrir a la mejor alternativa disponible para Carlos.",
+    },
+    "restricciones": {
+        "resumen": "Existen límites operativos que condicionan el acuerdo.",
+        "lectura": "Las restricciones deben considerarse antes de cerrar condiciones finales.",
     },
     "realidad_de_la_alternativa": {
         "resumen": "Carlos no tiene una alternativa equivalente cómoda en la zona.",
@@ -117,13 +122,7 @@ def _load_persona_defaults(context_id: str | None = None) -> dict[str, dict[str,
         raw = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return EMERGENCY_PERSONA_DEFAULTS
-    if not isinstance(raw, dict):
-        return EMERGENCY_PERSONA_DEFAULTS
-    policy = raw.get("policy")
-    expressive = raw.get("expressive")
-    if not isinstance(policy, dict) or not isinstance(expressive, dict):
-        return EMERGENCY_PERSONA_DEFAULTS
-    return {"policy": policy, "expressive": expressive}
+    return _normalize_persona_payload(raw) if isinstance(raw, dict) else EMERGENCY_PERSONA_DEFAULTS
 
 
 def _load_negotiation_brief_defaults(context_id: str | None = None) -> dict[str, object]:
@@ -183,6 +182,196 @@ class PersonaState(BaseModel):
     model_config = ConfigDict(extra="forbid")
     policy: PersonaPolicy
     expressive: PersonaExpressive
+
+
+def _pick_text(payload: dict[str, object], keys: tuple[str, ...], fallback: str) -> str:
+    for key in keys:
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return fallback
+
+
+def _tokenize_path(path: str) -> list[str]:
+    return [part for part in re.split(r"[^a-z0-9]+", path.lower()) if part]
+
+
+def _collect_string_leaves(payload: object, prefix: str = "") -> list[tuple[str, str]]:
+    if isinstance(payload, dict):
+        collected: list[tuple[str, str]] = []
+        for key, value in payload.items():
+            if not isinstance(key, str):
+                continue
+            path = f"{prefix}.{key}" if prefix else key
+            collected.extend(_collect_string_leaves(value, path))
+        return collected
+    if isinstance(payload, list):
+        collected: list[tuple[str, str]] = []
+        for idx, value in enumerate(payload):
+            path = f"{prefix}[{idx}]" if prefix else f"[{idx}]"
+            collected.extend(_collect_string_leaves(value, path))
+        return collected
+    if isinstance(payload, str) and payload.strip():
+        return [(prefix, payload.strip())]
+    return []
+
+
+def _best_text_by_keywords(payload: object, *, keywords: tuple[str, ...], fallback: str) -> str:
+    leaves = _collect_string_leaves(payload)
+    if not leaves:
+        return fallback
+    scored: list[tuple[int, str]] = []
+    keyword_set = {k.lower() for k in keywords}
+    for path, value in leaves:
+        tokens = set(_tokenize_path(path))
+        score = len(tokens.intersection(keyword_set))
+        if score > 0:
+            scored.append((score, value))
+    if scored:
+        scored.sort(key=lambda item: item[0], reverse=True)
+        values = []
+        seen: set[str] = set()
+        for score, value in scored:
+            if value in seen:
+                continue
+            seen.add(value)
+            values.append(value)
+            if len(values) >= 2:
+                break
+        if values:
+            return " ".join(values).strip()
+    # graceful fallback: keep first meaningful text in subtree
+    return leaves[0][1]
+
+
+def _find_first_list_of_dicts(payload: object, *, required_keys: set[str]) -> list[dict[str, object]] | None:
+    if isinstance(payload, list):
+        dict_items = [item for item in payload if isinstance(item, dict)]
+        if dict_items and all(required_keys.issubset({str(k) for k in item.keys()}) for item in dict_items):
+            return [dict(item) for item in dict_items]
+        for item in payload:
+            found = _find_first_list_of_dicts(item, required_keys=required_keys)
+            if found is not None:
+                return found
+    elif isinstance(payload, dict):
+        for value in payload.values():
+            found = _find_first_list_of_dicts(value, required_keys=required_keys)
+            if found is not None:
+                return found
+    return None
+
+
+def _find_first_list_of_strings(payload: object, *, path_keywords: set[str], prefix: str = "") -> list[str] | None:
+    if isinstance(payload, list):
+        values = [item.strip() for item in payload if isinstance(item, str) and item.strip()]
+        if values and path_keywords.intersection(set(_tokenize_path(prefix))):
+            return values
+        for idx, item in enumerate(payload):
+            found = _find_first_list_of_strings(item, path_keywords=path_keywords, prefix=f"{prefix}[{idx}]")
+            if found is not None:
+                return found
+    elif isinstance(payload, dict):
+        for key, value in payload.items():
+            if not isinstance(key, str):
+                continue
+            child_prefix = f"{prefix}.{key}" if prefix else key
+            found = _find_first_list_of_strings(value, path_keywords=path_keywords, prefix=child_prefix)
+            if found is not None:
+                return found
+    return None
+
+
+def _normalize_persona_payload(raw: dict[str, object]) -> dict[str, dict[str, object]]:
+    policy_raw: dict[str, object] = {}
+    expressive_raw: dict[str, object] = {}
+
+    if isinstance(raw.get("policy"), dict):
+        policy_raw = raw["policy"]  # type: ignore[assignment]
+    elif isinstance(raw.get("persona_policy"), dict):
+        policy_raw = raw["persona_policy"]  # type: ignore[assignment]
+
+    if isinstance(raw.get("expressive"), dict):
+        expressive_raw = raw["expressive"]  # type: ignore[assignment]
+    elif isinstance(raw.get("persona_expressive"), dict):
+        expressive_raw = raw["persona_expressive"]  # type: ignore[assignment]
+
+    if not policy_raw and not expressive_raw:
+        return EMERGENCY_PERSONA_DEFAULTS
+
+    policy_fallback = EMERGENCY_PERSONA_DEFAULTS["policy"]
+    expressive_fallback = EMERGENCY_PERSONA_DEFAULTS["expressive"]
+
+    normalized_policy = {
+        "identidad_operativa": _best_text_by_keywords(
+            policy_raw,
+            keywords=("identidad", "operativa", "rol", "papel"),
+            fallback=str(policy_fallback["identidad_operativa"]),
+        ),
+        "objetivo_privado": _best_text_by_keywords(
+            policy_raw,
+            keywords=("objetivo", "meta", "finalidad", "privado"),
+            fallback=str(policy_fallback["objetivo_privado"]),
+        ),
+        "criterio_de_decision": _best_text_by_keywords(
+            policy_raw,
+            keywords=("criterio", "decision", "decidir"),
+            fallback=str(policy_fallback["criterio_de_decision"]),
+        ),
+        "disciplina_negociadora": _best_text_by_keywords(
+            policy_raw,
+            keywords=("disciplina", "negociadora", "regla", "concesion", "progresion"),
+            fallback=str(policy_fallback["disciplina_negociadora"]),
+        ),
+        "limites_privados": _best_text_by_keywords(
+            policy_raw,
+            keywords=("limite", "limites", "privado", "confidencial", "no", "revelar"),
+            fallback=str(policy_fallback["limites_privados"]),
+        ),
+        "principios_de_avance": _best_text_by_keywords(
+            policy_raw,
+            keywords=("principio", "avance", "progresion", "economia", "mapa"),
+            fallback=str(policy_fallback["principios_de_avance"]),
+        ),
+    }
+
+    voz_y_estilo = _best_text_by_keywords(
+        expressive_raw,
+        keywords=("voz", "estilo", "tono", "lenguaje", "forma"),
+        fallback=str(expressive_fallback["voz_y_estilo"]),
+    )
+
+    normalized_expressive = {
+        "identidad_en_escena": _best_text_by_keywords(
+            expressive_raw,
+            keywords=("identidad", "escena", "persona", "personaje"),
+            fallback=str(expressive_fallback["identidad_en_escena"]),
+        ),
+        "marco_conversacional": _best_text_by_keywords(
+            expressive_raw,
+            keywords=("marco", "conversacional", "contexto", "encuadre", "franja"),
+            fallback=str(expressive_fallback["marco_conversacional"]),
+        ),
+        "voz_y_estilo": voz_y_estilo,
+        "naturalidad": _best_text_by_keywords(
+            expressive_raw,
+            keywords=("naturalidad", "natural", "fluido", "no", "resuelto"),
+            fallback=str(expressive_fallback["naturalidad"]),
+        ),
+        "huella_conversacional": _best_text_by_keywords(
+            expressive_raw,
+            keywords=("huella", "discrepancia", "actitud", "tono"),
+            fallback=str(expressive_fallback["huella_conversacional"]),
+        ),
+    }
+    return {"policy": normalized_policy, "expressive": normalized_expressive}
+
+
+def parse_persona_payload(payload: dict[str, object]) -> PersonaState:
+    normalized = _normalize_persona_payload(payload)
+    return PersonaState(
+        policy=PersonaPolicy.model_validate(normalized["policy"]),
+        expressive=PersonaExpressive.model_validate(normalized["expressive"]),
+    )
 
 
 class NegotiationBriefMarketContext(BaseModel):
@@ -258,6 +447,71 @@ class NegotiationBriefState(BaseModel):
 
 def _normalize_negotiation_brief_payload(payload: dict[str, object]) -> dict[str, object]:
     normalized = dict(payload)
+    leaves = _collect_string_leaves(payload)
+    full_text_fallback = " ".join(value for _, value in leaves[:3]).strip()
+    normalized["schema_version"] = "negotiation_brief.v1"
+
+    if "contexto_de_mercado" not in normalized:
+        normalized["contexto_de_mercado"] = {
+            "valor_estimado": _best_text_by_keywords(
+                payload,
+                keywords=("valor", "mercado", "disponibilidad", "recurso", "franja"),
+                fallback=full_text_fallback,
+            ),
+            "lectura": _best_text_by_keywords(
+                payload,
+                keywords=("lectura", "contexto", "interpretacion"),
+                fallback=full_text_fallback,
+            ),
+        }
+
+    if "realidad_de_la_alternativa" not in normalized:
+        normalized["realidad_de_la_alternativa"] = {
+            "resumen": _best_text_by_keywords(
+                payload,
+                keywords=("alternativa", "realidad", "resumen", "batna"),
+                fallback=full_text_fallback,
+            ),
+            "detalle": _best_text_by_keywords(
+                payload,
+                keywords=("detalle", "alternativa", "coste"),
+                fallback=full_text_fallback,
+            ),
+            "coste_equivalente_aproximado": _best_text_by_keywords(
+                payload,
+                keywords=("coste", "equivalente", "aproximado", "alternativa"),
+                fallback=full_text_fallback,
+            ),
+            "lectura": _best_text_by_keywords(
+                payload,
+                keywords=("lectura", "alternativa"),
+                fallback=full_text_fallback,
+            ),
+        }
+
+    if "objetivo_y_marco_de_decision" not in normalized:
+        normalized["objetivo_y_marco_de_decision"] = {
+            "objetivo": _best_text_by_keywords(
+                payload,
+                keywords=("objetivo", "marco", "decision"),
+                fallback=full_text_fallback,
+            ),
+            "realismo": _best_text_by_keywords(
+                payload,
+                keywords=("realismo", "realidad", "alternativa"),
+                fallback=full_text_fallback,
+            ),
+            "criterio": _best_text_by_keywords(
+                payload,
+                keywords=("criterio", "regla", "decision"),
+                fallback=full_text_fallback,
+            ),
+            "por_encima_de_eso": _best_text_by_keywords(
+                payload,
+                keywords=("por", "encima", "franja", "tardia", "regla"),
+                fallback=full_text_fallback,
+            ),
+        }
     if "restricciones" not in normalized and isinstance(normalized.get("restricciones_duras"), dict):
         normalized["restricciones"] = normalized["restricciones_duras"]
 
@@ -289,9 +543,19 @@ def _normalize_negotiation_brief_payload(payload: dict[str, object]) -> dict[str
     ):
         normalized["monedas_de_intercambio_del_comprador"] = normalized["monedas_de_intercambio_del_equipo_b"]
 
-    if "mapa_de_valor" in normalized and isinstance(normalized["mapa_de_valor"], dict):
+    if "mapa_de_valor" not in normalized:
+        normalized["mapa_de_valor"] = {"nota": "", "items": []}
+    if isinstance(normalized["mapa_de_valor"], dict):
         value_map = dict(normalized["mapa_de_valor"])
+        if not isinstance(value_map.get("nota"), str) or not str(value_map.get("nota", "")).strip():
+            value_map["nota"] = _best_text_by_keywords(
+                payload,
+                keywords=("nota", "mapa", "valor", "lectura"),
+                fallback=full_text_fallback,
+            )
         items = value_map.get("items")
+        if not isinstance(items, list):
+            items = _find_first_list_of_dicts(payload, required_keys={"elemento"}) or []
         if isinstance(items, list):
             normalized_items = []
             for item in items:
@@ -301,9 +565,33 @@ def _normalize_negotiation_brief_payload(payload: dict[str, object]) -> dict[str
                 normalized_item.pop("impacto_operativo_aproximado", None)
                 if "valor_aproximado_eur" not in normalized_item:
                     normalized_item["valor_aproximado_eur"] = None
+                if "tipo_de_efecto" not in normalized_item:
+                    normalized_item["tipo_de_efecto"] = "facilita_acuerdo"
+                if "lectura" not in normalized_item:
+                    normalized_item["lectura"] = _best_text_by_keywords(item, keywords=("lectura", "uso", "impacto"), fallback="")
                 normalized_items.append(normalized_item)
             value_map["items"] = normalized_items
             normalized["mapa_de_valor"] = value_map
+
+    if "monedas_de_intercambio_del_comprador" not in normalized:
+        tradeoff_items = _find_first_list_of_dicts(payload, required_keys={"elemento", "uso"}) or []
+        normalized["monedas_de_intercambio_del_comprador"] = {"puede_ofrecer": tradeoff_items}
+
+    if "restricciones" not in normalized:
+        normalized["restricciones"] = {
+            "resumen": _best_text_by_keywords(payload, keywords=("restriccion", "dura", "limite", "no"), fallback=full_text_fallback),
+            "lectura": _best_text_by_keywords(payload, keywords=("restriccion", "lectura"), fallback=full_text_fallback),
+        }
+
+    if "informacion_privada_sensible" not in normalized:
+        sensitive_list = _find_first_list_of_strings(
+            payload,
+            path_keywords={"privada", "sensible", "revelar", "no", "conviene"},
+        ) or []
+        normalized["informacion_privada_sensible"] = {
+            "no_conviene_revelar_espontaneamente": sensitive_list,
+            "lectura": _best_text_by_keywords(payload, keywords=("privada", "sensible", "lectura"), fallback=full_text_fallback),
+        }
 
     normalized.pop("contexto_del_recurso", None)
     normalized.pop("condiciones_iniciales_de_la_negociacion", None)
@@ -314,7 +602,28 @@ def _normalize_negotiation_brief_payload(payload: dict[str, object]) -> dict[str
     normalized.pop("situacion_inicial_de_informacion", None)
     normalized.pop("realidad_operativa_del_equipo_b", None)
     normalized.pop("filosofia_del_caso", None)
-    return normalized
+    normalized.pop("condiciones_iniciales", None)
+    normalized.pop("objetivo_del_equipo_b", None)
+    normalized.pop("reglas_operativas_explicitas", None)
+    normalized.pop("glosario_operativo", None)
+    normalized.pop("franjas_y_valor_relativo", None)
+
+    default_brief = dict(EMERGENCY_NEGOTIATION_BRIEF_DEFAULTS)
+    canonical: dict[str, object] = {"schema_version": "negotiation_brief.v1"}
+    for key, default_value in default_brief.items():
+        if key == "schema_version":
+            continue
+        candidate = normalized.get(key)
+        if isinstance(default_value, dict) and isinstance(candidate, dict):
+            merged = dict(default_value)
+            for ck, cv in candidate.items():
+                if isinstance(cv, list) and not cv and isinstance(merged.get(ck), list):
+                    continue
+                merged[ck] = cv
+            canonical[key] = merged
+        else:
+            canonical[key] = candidate if candidate is not None else default_value
+    return canonical
 
 
 def parse_negotiation_brief_payload(payload: dict[str, object]) -> NegotiationBriefState:
@@ -471,10 +780,7 @@ def build_default_canonical_state(
             updated_at=timestamp,
         ),
         openai_thread=OpenAIThreadState(thread_mode=thread_mode, conversation_id=None, previous_response_id=None),
-        persona=PersonaState(
-            policy=PersonaPolicy.model_validate(persona_defaults["policy"]),
-            expressive=PersonaExpressive.model_validate(persona_defaults["expressive"]),
-        ),
+        persona=parse_persona_payload(persona_defaults),
         negotiation_brief=parse_negotiation_brief_payload(negotiation_brief_defaults),
         memory_episodic=[],
         memory_working=MemoryWorkingState(current_topic=None, pending_question=None, last_turn_summary=None),
