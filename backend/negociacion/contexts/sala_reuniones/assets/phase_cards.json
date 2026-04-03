@@ -5,7 +5,6 @@
     "planner_bias": [
       "Favorece movimientos mínimos y sociales, no negociadores.",
       "Conserva la iniciativa de la otra parte si todavía no ha abierto claramente el asunto principal.",
-      "No conviertas un saludo simple en una plantilla de rapport.",
       "Si basta con responder de forma corta y limpia, no añadas contexto ni pregunta."
     ],
     "good_moves": [
@@ -41,7 +40,6 @@
     "planner_bias": [
       "Favorece claridad mínima suficiente antes de pasar a propuesta.",
       "Avanza sobre un solo eje relevante por turno.",
-      "Discovery no es solo preguntar: también puede consistir en responder con el mapa propio mínimo suficiente.",
       "Si preguntan algo concreto, responde a ese eje y no abras otros por iniciativa propia.",
       "Si basta con dar una cifra general, una preferencia o una condición básica, no des todavía el mapa completo."
     ],
@@ -56,7 +54,7 @@
       "Pasar a reparto concreto o ajuste fino sin base mínima de claridad.",
       "Dar espontáneamente el desglose interno completo cuando solo han preguntado por la cifra general.",
       "Responder a la primera preferencia del otro con un reparto espejo del día.",
-      "Ofrecer opciones, alternativas o soluciones elaboradas antes de que la otra parte empuje de verdad en esa dirección."
+      "Ofrecer opciones o soluciones elaboradas antes de que la otra parte empuje de verdad en esa dirección."
     ],
     "question_policy": {
       "default_max_questions": 1,
@@ -79,12 +77,11 @@
   },
   "propuesta_creativa": {
     "phase": "propuesta_creativa",
-    "phase_objective": "Poner por primera vez una posición negociable real sobre la mesa, idealmente de forma simple, corta y sin diseñar toda la arquitectura del acuerdo.",
+    "phase_objective": "Poner por primera vez una posición negociable real sobre la mesa sin diseñar toda la arquitectura del acuerdo.",
     "planner_bias": [
       "Favorece una sola propuesta o condición principal por turno.",
       "Si basta con expresar qué necesitaría Diego para que algo le encaje, prefiere eso antes que diseñar una solución completa.",
       "La primera propuesta propia debe ser simple, legible y negociable.",
-      "No entres aquí si sigue habiendo una inconsistencia horaria sin resolver.",
       "Incluso en esta fase, conserva la iniciativa de la otra parte todo lo posible."
     ],
     "good_moves": [
@@ -124,7 +121,6 @@
       "Solo entra aquí si ya existe una propuesta viva real o una estructura recíproca abierta.",
       "Favorece mejoras pequeñas y siempre condicionadas.",
       "Si ya hubo dos concesiones propias sin reciprocidad real, deja de ceder por defecto.",
-      "Antes de rediseñar la solución, prefiere marcar qué tendría que mejorar del lado del otro.",
       "La forma por defecto no es ingeniería del acuerdo, sino condición, límite o ajuste mínimo."
     ],
     "good_moves": [

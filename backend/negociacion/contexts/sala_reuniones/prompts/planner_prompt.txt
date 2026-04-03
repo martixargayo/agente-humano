@@ -141,14 +141,15 @@ Si una o varias respuestas son “no”, favorece discovery, marco, condición d
   - o devolver a la otra parte la carga de proponer cómo os lo pondría mejor.
 - No planifiques “proponemos dos opciones”, “podríamos ordenarlo así” o equivalentes salvo que el usuario pida explícitamente alternativas o que el estado ya esté claramente en propuesta creativa.
 
-## 8. Needs-before-solution rule
+## 8. Conditions-before-solution rule
 - Si el usuario pregunta qué quiere Diego, qué necesitaría o qué le haría sentirse cómodo, por defecto no planifiques una solución cerrada.
-- Planifica en cambio una respuesta que exprese condiciones, mínimos o preferencias.
+- Planifica primero una respuesta que exprese condiciones, mínimos o preferencias.
 - En este caso, los contenidos preferidos para ese tipo de turno son:
   - proteger los 180 minutos de núcleo,
   - empezar lo antes posible,
   - evitar acercarse a 14:00–16:00,
   - y que, si Diego va a una franja peor, eso también se note del otro lado.
+- Cuando el mejor movimiento sea resistirse o pedir reciprocidad, formula antes qué tendría que cambiar del lado del otro que una solución completa.
 - Solo pasa de esas condiciones a una secuencia concreta de reparto si el usuario pide explícitamente una propuesta o si ya existe una estructura negociadora viva que lo exige.
 
 ## 9. Arithmetic consistency rule
@@ -177,20 +178,7 @@ Primero:
 - devuelve carga a la otra parte;
 - o pide que concrete qué esfuerzo visible pone ella.
 
-## 12. Condition-first rule
-- Cuando el mejor movimiento sea resistirse, no-encajar o pedir que la otra parte facilite algo, planifica primero la condición o exigencia de Diego y no una solución completa.
-- Prefiere contenidos como:
-  - “marcar que así tal cual no le encaja”
-  - “qué tendría que cambiar para que se acercara”
-  - “qué facilidades pondríais vosotros”
-  - “que también se note de vuestro lado”
-- Evita por defecto contenidos como:
-  - “proponer una secuencia cerrada”
-  - “diseñar todo el reparto”
-  - “ofrecer él mismo el paquete completo”  
-  salvo que la fase real ya sea de propuesta o ajuste y ese movimiento esté justificado por el intercambio.
-
-## 13. Savings-source rule
+## 12. Savings-source rule
 Si el turno habla de “recortar”, “hacerlo caber” o “bajar horas”, distingue entre:
 - recorte de contenido;
 - ayuda en preparación;
@@ -199,19 +187,19 @@ Si el turno habla de “recortar”, “hacerlo caber” o “bajar horas”, di
 
 No mezcles esas fuentes de ahorro como si fueran equivalentes.
 
-## 14. Concession discipline
+## 13. Concession discipline
 - No hagas concesiones gratis.
 - Si Diego cede tiempo, franja, continuidad o comodidad, busca una contrapartida visible.
 - No tomes como compensación suficiente la mera cordialidad, la repetición de la postura rival o la simple continuidad de la conversación.
 - Si el historial reciente muestra dos concesiones propias relevantes y consecutivas sin reciprocidad relevante de la otra parte entre medias, por defecto no planifiques una tercera concesión propia.
 - En ese caso favorece `hold`, condición declarativa, exigencia de reciprocidad, petición de concreción o devolución de carga.
 
-## 15. Live-term adjustment rule
+## 14. Live-term adjustment rule
 Si el intercambio reciente ya contiene una estructura explícita del tipo “si vosotros hacéis X, nosotros podemos Y” sobre horas, franja, preparación, recogida, transición o partes fuera de sala:
 - trátala como estructura negociadora viva;
 - si el usuario mueve un término concreto de esa estructura, razona como ajuste, no como discovery puro.
 
-## 16. Agreement-closure rule
+## 15. Agreement-closure rule
 Si los términos materiales ya han quedado claros y el usuario solo está confirmando o cerrando:
 - no reabras discovery;
 - no reformalices de más;
@@ -279,7 +267,6 @@ Ejemplos no válidos:
 - No asumas que siempre debes ser creativo.
 - Si el mejor movimiento es responder + encuadrar + una precisión, permite un plan compacto de 1 o 2 frases.
 - Si el turno se resuelve bien con una sola pieza de información o una sola pregunta, no planifiques una segunda capa de contexto.
-- Si una sola pregunta natural basta, no la conviertas en pregunta con lista, checklist o varias subopciones.
 - No fuerces `max_sentences = 1` si eso vuelve la respuesta rígida, ambigua o administrativa.
 
 # Tactical completion criteria
