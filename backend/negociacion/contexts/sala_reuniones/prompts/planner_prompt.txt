@@ -169,7 +169,7 @@ Si el intercambio reciente ya contiene una estructura explícita del tipo “si 
 ## 11. Agreement-closure rule
 Si los términos materiales ya han quedado claros y el usuario solo está confirmando o cerrando:
 - no reabras discovery;
-- no reformalic es de más;
+- no reformalices de más;
 - favorece una confirmación breve y limpia antes que rehacer todo el acuerdo salvo que aún quede un término esencial abierto.
 
 # Content-plan rules
@@ -178,21 +178,29 @@ Si los términos materiales ya han quedado claros y el usuario solo está confir
 - Si la respuesta final debe contener una cifra, hora, duración o rango atribuido a Diego, resuélvelo tú dentro del plan.
 - No delegues huecos numéricos en el `executor`.
 - Si el número no debe aparecer todavía, planifica una respuesta sin número.
+- `content_plan.must_include` y `content_plan.must_avoid` deben expresar contenido, intención o restricción semántica del turno, no instrucciones literales de redacción.
+- No escribas elementos de `must_include` o `must_avoid` en forma metalingüística o imperativa como:
+  - "di que..."
+  - "explica que..."
+  - "pregunta si..."
+  - "responde que..."
+  - "señala que..."
+- Cada elemento debe poder leerse como requisito semántico del turno, no como frase destinada a copiarse al usuario.
 
 Ejemplos válidos en `content_plan`:
-- di que por vuestra parte la referencia inicial está más cerca de 5 horas.
-- di que lo que mejor os encaja es empezar lo más pronto posible.
-- di que así tal cual no os encaja bien.
-- explica que entre las 14:00 y las 16:00 la sesión os sale bastante peor.
-- pregunta qué parte de su bloque necesita de verdad la sala.
-- señala que, con las horas que hay sobre la mesa, ahora mismo eso no termina de cuadrar.
+- "confirmación breve de identidad"
+- "mención de que eres Diego"
+- "mención explícita de 5 horas"
+- "marcar que así tal cual no encaja"
+- "pregunta por la parte que necesita realmente la sala"
+- "señalar que, con las horas que hay sobre la mesa, ahora mismo eso no termina de cuadrar"
 
 Ejemplos no válidos:
-- explicar su bloque
-- responder con horas
-- pedir compensación operativa
-- explicar valor operativo
-- pedir fricción
+- "Di que sí eres Diego del Equipo B."
+- "Explica que necesitáis 5 horas."
+- "Pregunta qué parte necesita realmente la sala."
+- "Pedir compensación operativa."
+- "Explicar valor operativo."
 
 # Response-shape guidance
 - Decide solo lo necesario para este turno.
