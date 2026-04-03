@@ -28,6 +28,8 @@ Las fases disponibles son exactamente:
 - No des por hecho acuerdo donde todavía hay condiciones abiertas.
 - No trates una posición dura o una contraoferta firme como abandono.
 - No trates una pregunta espejo tipo “¿y vosotros?” como propuesta por defecto.
+- No clasifiques como `clima_humano` un turno que ya abre de forma material el problema de la sala, aunque empiece con cortesía o rapport.
+- No clasifiques como `concesiones_y_ajuste_final` si no existe evidencia clara de propuesta viva previa en el intercambio reciente.
 - No expliques tu razonamiento.
 - Devuelve solo JSON válido según el schema del nodo.
 
@@ -35,6 +37,7 @@ Las fases disponibles son exactamente:
 - Usa el turno del usuario, el diálogo reciente, `negotiation_state`, `planner_state`, `scene_state` y la rúbrica de fases.
 - Si hay tensión entre una impresión superficial del último mensaje y el estado negociador acumulado, prioriza la lectura conjunta.
 - `negotiation_state` pesa especialmente para decidir si existe o no una propuesta viva real o un acuerdo materialmente cerrado.
+- Si `planner_state.previous_phase` o el tono reciente apuntan a una fase más temprana, pero el turno actual ya abrió trabajo material más avanzado, manda el trabajo conversacional real del turno actual.
 
 # Core classification principle
 La fase no se decide por el tema general.
@@ -66,6 +69,14 @@ Una fase superior solo gana si de verdad están cumplidas sus condiciones materi
 ## Rule 1: social first
 Si el turno es todavía social, de saludo, reconocimiento personal o apertura relacional breve, y no hay movimiento negociador real, la fase es `clima_humano`.
 
+## Rule 1b: material opening beats social wrapper
+Si el turno mezcla una apertura cordial breve con una pregunta o mención material sobre el problema de la sala, manda la parte material.
+En ese caso no es `clima_humano`, sino la fase material correspondiente, normalmente `descubrimiento_y_comprension`.
+
+Ejemplos:
+- "Encantado de hablar contigo, Diego, ¿te has enterado del problema de la sala del jueves?" -> `descubrimiento_y_comprension`
+- "Buenos días. Nosotros queríamos usar la sala de 8 a 12." -> `descubrimiento_y_comprension`
+
 ## Rule 2: “¿y vosotros?” no abre reparto por sí solo
 Si la otra parte expone su bloque, preferencia o necesidad y luego pregunta por Diego / vosotros / vuestro equipo, eso por defecto sigue siendo `descubrimiento_y_comprension`.
 Se está pidiendo el mapa operativo de Diego, no abriendo automáticamente propuesta.
@@ -84,6 +95,23 @@ Solo entra `propuesta_creativa` cuando aparece una primera estructura real de so
 ## Rule 5: ajuste exige propuesta viva previa
 Solo entra `concesiones_y_ajuste_final` cuando ya existe una propuesta viva real o una estructura negociadora recíproca abierta.
 Si todavía solo se explora flexibilidad, mínimo, composición o coste, aunque se hablen horas, sigue siendo `descubrimiento_y_comprension`.
+
+## Rule 5b: exploratory conditionals are not enough
+Una pregunta, tanteo o hipótesis sobre posibles ayudas, recortes o encaje no basta para entrar en `concesiones_y_ajuste_final` si todavía no existe una propuesta viva previa.
+
+Ejemplos que por defecto siguen siendo `descubrimiento_y_comprension`:
+- "Si os ayudamos con el montaje, ¿crees que podríais recortar algo?"
+- "¿Esas dos horas de preparación podrían reducirse si os ayudamos?"
+- "¿Hasta dónde podría bajar si parte sale fuera?"
+- "¿Y eso os encajaría mejor o peor?"
+
+## Rule 5c: asking about a possible move is not the same as moving a live term
+No confundas:
+- preguntar si algo sería posible,
+con
+- mover un término de una propuesta ya viva.
+
+Solo lo segundo es `concesiones_y_ajuste_final`.
 
 ## Rule 6: formalización exige acuerdo materialmente cerrado
 Solo entra `formalizacion_del_acuerdo` cuando:
@@ -115,7 +143,13 @@ Aunque aparezcan horas, bloques o preferencias, clasifica como `descubrimiento_y
 - entender qué parte necesita la sala,
 - entender qué puede salir fuera,
 - entender cuánto cuesta una franja peor,
+- entender cuánto reduce una ayuda operativa,
+- entender si algo sería posible en principio,
 - o exponer el mapa operativo de Diego.
+
+## Discovery lock before live proposal
+Mientras no puedas señalar una propuesta viva concreta en el intercambio reciente, no subas a `concesiones_y_ajuste_final`.
+En caso de duda entre `descubrimiento_y_comprension` y `concesiones_y_ajuste_final`, elige `descubrimiento_y_comprension`.
 
 ## Live-proposal override
 Aunque el lenguaje suene exploratorio, si ya hay una propuesta viva real y el turno mueve uno de sus términos concretos, clasifica como `concesiones_y_ajuste_final`.
@@ -134,7 +168,9 @@ No basta con:
 - decir “preferimos la mañana”;
 - decir “necesitamos 5 horas”;
 - describir la actividad;
-- o preguntar por flexibilidad.
+- preguntar por flexibilidad;
+- preguntar si una ayuda podría reducir algo;
+- o tantear si algo encajaría mejor.
 
 # What counts as material agreement
 Hay acuerdo materialmente cerrado solo si ya está claro, en sustancia:
@@ -164,6 +200,45 @@ Pero sí hace falta que el conflicto principal esté ya resuelto.
 
 ## `abandono_de_la_negociacion`
 Úsala cuando una parte sale explícitamente de la negociación sin acuerdo.
+
+# Mini examples
+
+Ejemplo 1
+Diálogo reciente:
+- "Hola"
+- "¿Eres Diego?"
+- "Sí, soy Diego."
+Turno actual:
+- "Encantado de hablar contigo, Diego, ¿te has enterado del problema de la sala del jueves?"
+Resultado correcto:
+- `descubrimiento_y_comprension`
+Resultado incorrecto:
+- `clima_humano`
+
+Ejemplo 2
+Turno actual:
+- "Nosotros queríamos usar la sala de 8 a 12. ¿Y vosotros?"
+Resultado correcto:
+- `descubrimiento_y_comprension`
+Resultado incorrecto:
+- `propuesta_creativa`
+
+Ejemplo 3
+Sin propuesta viva previa en el intercambio reciente.
+Turno actual:
+- "Si os ayudamos con el montaje, ¿crees que podríais reducir algo?"
+Resultado correcto:
+- `descubrimiento_y_comprension`
+Resultado incorrecto:
+- `concesiones_y_ajuste_final`
+
+Ejemplo 4
+Sí existe propuesta viva previa en el intercambio reciente:
+- "Si vosotros ayudáis con la recogida, nosotros podríamos bajar media hora."
+Turno actual:
+- "Vale, ¿entonces esa media hora saldría de la recogida?"
+Resultado correcto:
+- `concesiones_y_ajuste_final`
 
 # Output contract
 Devuelve solo JSON válido que cumpla exactamente el schema configurado para este nodo.

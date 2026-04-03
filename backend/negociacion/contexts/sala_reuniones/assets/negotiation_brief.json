@@ -20,10 +20,11 @@
   "reglas_operativas_explicitas": {
     "ventana_total": "Toda ocupación real de la sala debe caber completa dentro de 08:00-16:00.",
     "bloque_referencia_equipo_b": {
-      "preparacion_min": 60,
+      "montaje_o_preparacion_logistica_min": 60,
       "nucleo_min": 180,
-      "recogida_min": 60
+      "desmontaje_o_recogida_logistica_min": 60
     },
+    "lectura_clave_del_bloque": "De las 5 horas de referencia del Equipo B, 2 horas son logísticas: 60 minutos iniciales de montaje o preparación y 60 minutos finales de desmontaje o recogida. No deben reinterpretarse como cierre, introducción, presentación ni preguntas.",
     "minimo_util_real": {
       "nucleo_en_sala_min": 180
     },
@@ -32,7 +33,10 @@
       "ayuda_en_recogida_reduce_hasta_min": 30
     },
     "reglas_de_computo": [
-      "La hora de fin real del Equipo B no es cuando acaba el núcleo, sino cuando también ha terminado la recogida o desmontaje.",
+      "La ocupación real del Equipo B incluye un tramo logístico inicial de montaje o preparación, un tramo de núcleo y un tramo logístico final de desmontaje o recogida.",
+      "La hora de fin real del Equipo B no es cuando acaba el núcleo, sino cuando también ha terminado el desmontaje o la recogida y la sala queda liberada.",
+      "El tramo logístico inicial no debe reinterpretarse como introducción, presentación, preguntas ni contenido; es montaje o preparación de sala.",
+      "El tramo logístico final no debe reinterpretarse como cierre de contenido, preguntas finales ni presentación; es desmontaje, recogida y liberación real de la sala.",
       "Ayuda en preparación no reduce la preparación por debajo de 30 minutos.",
       "Ayuda en recogida no reduce la recogida por debajo de 30 minutos.",
       "No acredites ahorros mayores por simple buena voluntad o por descripción vaga."
@@ -40,12 +44,12 @@
     "regla_de_consistencia": "Si una propuesta u oferta no cuadra temporalmente con las horas ya explicitadas, esa inconsistencia debe resolverse antes de seguir negociando el ajuste fino."
   },
   "glosario_operativo": {
-    "preparacion": "Tiempo logístico previo para dejar la sesión lista en sala.",
+    "montaje_o_preparacion_logistica": "Tiempo logístico previo para montar, preparar y dejar la sesión lista en sala. No es introducción, no es presentación, no es turno de preguntas y no es contenido.",
     "nucleo": "Tiempo útil central de la actividad del Equipo B dentro de la sala.",
-    "cierre": "Parte final de contenido o dinámica; no equivale automáticamente a recogida.",
-    "recogida": "Tiempo logístico final para desmontar, recoger y dejar la sala liberada.",
-    "introduccion_fuera_de_sala": "Parte de contenido que puede salir de la sala sin ser lo mismo que preparación.",
-    "ayuda_logistica": "Apoyo en preparación o recogida; no equivale a recorte de contenido."
+    "cierre": "Parte final de contenido o dinámica; no equivale automáticamente a desmontaje o recogida.",
+    "desmontaje_o_recogida_logistica": "Tiempo logístico final para desmontar, recoger y dejar la sala liberada. No es cierre de contenido, no es presentación y no es turno de preguntas.",
+    "introduccion_fuera_de_sala": "Parte de contenido que puede salir de la sala sin ser lo mismo que montaje o preparación logística.",
+    "ayuda_logistica": "Apoyo en montaje o preparación y/o en desmontaje o recogida; no equivale a recorte de contenido."
   },
   "franjas_y_valor_relativo": {
     "manana_temprana": "Es la franja de más valor para el Equipo B.",

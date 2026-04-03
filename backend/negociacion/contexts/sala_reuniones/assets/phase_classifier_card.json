@@ -10,6 +10,7 @@
     "no_la_elijas_cuando": [
       "La otra parte ya ha abierto de verdad el problema de la sala.",
       "El turno ya está pidiendo o dando información útil sobre horas, actividad, bloque o necesidad.",
+      "El turno mezcla cortesía breve con apertura material del problema.",
       "Ya se está discutiendo una primera solución o un ajuste."
     ],
     "senales_tipicas": [
@@ -17,6 +18,10 @@
       "eres Diego",
       "buenos días",
       "apertura humana breve"
+    ],
+    "reglas_clave": [
+      "Si el turno empieza cordial pero ya abre el problema material, deja de ser clima_humano.",
+      "La cortesía inicial no debe tapar una apertura real de discovery."
     ]
   },
   "descubrimiento_y_comprension": {
@@ -26,8 +31,10 @@
       "Se está aclarando qué parte necesita de verdad la sala.",
       "Se está aclarando cuánto necesita cada parte y para qué.",
       "Se está explorando qué puede hacerse fuera y qué no.",
+      "Se está explorando si una ayuda, recorte o cambio sería posible en principio.",
       "La otra parte pregunta por el mapa operativo de Diego o de su equipo.",
-      "Se están comentando horas o preferencias, pero todavía no existe una propuesta viva real entre ambos."
+      "Se están comentando horas o preferencias, pero todavía no existe una propuesta viva real entre ambos.",
+      "El turno mezcla rapport breve con una pregunta material sobre el problema."
     ],
     "no_la_elijas_cuando": [
       "Ya hay una primera estructura real de solución entre ambos.",
@@ -39,12 +46,17 @@
       "¿en qué consiste vuestra actividad?",
       "¿qué parte necesita realmente la sala?",
       "¿y vosotros qué bloque teníais previsto?",
-      "nosotros queríamos empezar a las 8"
+      "nosotros queríamos empezar a las 8",
+      "¿esas dos horas de preparación podrían reducirse si os ayudamos?",
+      "si os ayudamos con el montaje, ¿podríais recortar algo?"
     ],
     "reglas_clave": [
       "La pregunta espejo '¿y vosotros?' sigue siendo discovery por defecto.",
       "Hablar de horas no basta para salir de discovery.",
-      "Explicar el mapa de Diego también cuenta como discovery."
+      "Explicar el mapa de Diego también cuenta como discovery.",
+      "Preguntar por una posible ayuda, recorte o encaje sigue siendo discovery si aún no existe propuesta viva previa.",
+      "Si dudas entre clima_humano y discovery, y el turno ya abre el problema material, elige discovery.",
+      "Si dudas entre discovery y ajuste, y no puedes señalar una propuesta viva concreta, elige discovery."
     ]
   },
   "propuesta_creativa": {
@@ -57,6 +69,7 @@
     ],
     "no_la_elijas_cuando": [
       "Todavía solo se está entendiendo la necesidad real, el mínimo o la composición de la actividad.",
+      "Todavía solo se está explorando si algo sería posible.",
       "Ya existe una propuesta viva y el turno actual solo mueve uno de sus términos.",
       "El acuerdo ya está materialmente cerrado."
     ],
@@ -67,7 +80,8 @@
     ],
     "reglas_clave": [
       "La primera propuesta debe ser una solución real, no solo una preferencia.",
-      "No confundas una explicación del propio bloque con una propuesta."
+      "No confundas una explicación del propio bloque con una propuesta.",
+      "No confundas una pregunta exploratoria con una primera propuesta."
     ]
   },
   "concesiones_y_ajuste_final": {
@@ -81,18 +95,20 @@
     "no_la_elijas_cuando": [
       "Todavía no ha habido una primera propuesta real.",
       "Solo se está preguntando por el mapa de Diego o por la composición de la actividad.",
+      "Solo se está explorando si una ayuda o un recorte serían posibles.",
       "El acuerdo ya está cerrado y solo queda confirmarlo."
     ],
     "senales_tipicas": [
       "si lo bajamos a 4 horas",
-      "si os ayudamos con la recogida",
+      "si os ayudamos con la recogida, entonces nosotros...",
       "así tal cual no me encaja",
       "si vosotros os quedáis con la mañana, necesito que..."
     ],
     "reglas_clave": [
       "Una resistencia fuerte no es abandono.",
       "Una condicionalidad sobre un término ya vivo suele ser ajuste, no discovery.",
-      "No entres aquí solo porque haya números; hace falta propuesta viva previa."
+      "No entres aquí solo porque haya números; hace falta propuesta viva previa.",
+      "Si no puedes señalar cuál es la propuesta viva que se está moviendo, probablemente no estás en ajuste."
     ]
   },
   "formalizacion_del_acuerdo": {
@@ -156,7 +172,9 @@
       "La fase se decide por el tipo de trabajo conversacional actual, no por palabras aisladas.",
       "La mera presencia de horas no basta para pasar a propuesta o ajuste.",
       "La mera cordialidad no basta para pasar a formalización.",
-      "La mera dureza no basta para pasar a abandono."
+      "La mera dureza no basta para pasar a abandono.",
+      "Si el turno mezcla rapport breve con apertura material del problema, normalmente manda discovery.",
+      "Si no existe propuesta viva previa claramente identificable, no debe clasificarse ajuste final."
     ]
   }
 }

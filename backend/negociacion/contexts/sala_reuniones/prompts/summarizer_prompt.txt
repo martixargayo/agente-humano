@@ -184,6 +184,16 @@ No arrastres campos anteriores por inercia.
 Si el foco conversacional cambió, `current_topic` debe cambiar.
 Si una pregunta anterior dejó de estar operativamente viva, `pending_question` debe actualizarse o pasar a `null`.
 
+# Working-memory resolution order
+Resuelve `working_memory_new` en este orden:
+1. identifica si el turno actual introduce una pregunta nueva dominante;
+2. actualiza `pending_question`;
+3. redacta `last_turn_summary` solo con lo nuevo del turno actual;
+4. fija `current_topic` según el eje dominante del turno actual;
+5. solo después actualiza `negotiation_state`.
+
+No uses el estado previo como ancla principal si el turno actual ya introduce un foco nuevo más claro.
+
 Debes devolver siempre estos tres campos:
 - `current_topic`
 - `pending_question`
@@ -212,6 +222,44 @@ Debes devolver siempre estos tres campos:
 - Si el usuario pregunta "¿y vosotros?" o equivalente sobre horas, bloque o preferencia, esa pregunta debe resolverse como pregunta viva sobre Diego / Equipo B, no como confirmación de reparto.
 - No conserves preguntas antiguas por mera presencia en el historial reciente.
 - Si no hay una pregunta claramente viva y prioritaria, usa `null`.
+
+## Hard replacement rule for pending_question
+Regla fuerte:
+- Si el turno actual del usuario contiene una pregunta directa nueva sobre el asunto activo, `pending_question` debe pasar por defecto a esa nueva pregunta.
+- No conserves la pregunta previa solo por estar presente en `memory_working_current`.
+- La pregunta previa solo puede mantenerse si el turno actual no introduce ninguna pregunta nueva material.
+
+## Auto-expiry of previous pending question
+- Si la pregunta previa era de identidad, saludo o encuadre inicial, y el turno actual ya abrió el problema material del caso, esa pregunta previa debe pasar a `null` o quedar reemplazada.
+- En particular, una pregunta como "¿Eres Diego?" no puede seguir viva si el turno actual pregunta por el problema de la sala, las horas, la actividad, el bloque o el encaje operativo.
+
+## Question dominance rule
+- Si un turno mezcla cortesía o rapport breve con una pregunta material nueva, manda la pregunta material nueva.
+- La cortesía inicial no debe seguir viva como `pending_question` si el turno ya introdujo un foco operativo más relevante.
+
+## Pending-question examples
+
+Ejemplo 1
+- Pregunta previa: "¿Eres Diego?"
+- Turno actual: "Encantado de hablar contigo Diego, ¿te has enterado del problema de la sala del jueves?"
+- Resultado correcto:
+  `pending_question = "¿Diego está al tanto del problema de la sala del jueves?"`
+- Resultado incorrecto:
+  `pending_question = "¿Eres Diego?"`
+
+Ejemplo 2
+- Pregunta previa: "¿Qué bloque teníais previsto?"
+- Turno actual: "¿En qué consiste vuestra actividad?"
+- Resultado correcto:
+  `pending_question = "¿En qué consiste la actividad del Equipo B?"`
+- No mantengas la pregunta anterior por inercia.
+
+Ejemplo 3
+- Pregunta previa: "¿En qué consiste vuestra actividad?"
+- Turno actual: "Vale, entiendo."
+- Resultado correcto:
+  `pending_question = null`
+- No conserves una pregunta vieja si el intercambio ya se movió o perdió prioridad.
 
 ## last_turn_summary
 - Debe ser una frase breve, factual y local al turno.
