@@ -34,7 +34,8 @@
       "Se está explorando si una ayuda, recorte o cambio sería posible en principio.",
       "La otra parte pregunta por el mapa operativo de Diego o de su equipo.",
       "Se están comentando horas o preferencias, pero todavía no existe una propuesta viva real entre ambos.",
-      "El turno mezcla rapport breve con una pregunta material sobre el problema."
+      "El turno mezcla rapport breve con una pregunta material sobre el problema.",
+      "Diego o la otra parte expresan qué quieren preservar, qué les encaja mejor o qué les iría peor, sin convertirlo todavía en un reparto concreto."
     ],
     "no_la_elijas_cuando": [
       "Ya hay una primera estructura real de solución entre ambos.",
@@ -48,20 +49,22 @@
       "¿y vosotros qué bloque teníais previsto?",
       "nosotros queríamos empezar a las 8",
       "¿esas dos horas de preparación podrían reducirse si os ayudamos?",
-      "si os ayudamos con el montaje, ¿podríais recortar algo?"
+      "si os ayudamos con el montaje, ¿podríais recortar algo?",
+      "para vosotros, ¿qué sería lo importante aquí?"
     ],
     "reglas_clave": [
       "La pregunta espejo '¿y vosotros?' sigue siendo discovery por defecto.",
       "Hablar de horas no basta para salir de discovery.",
       "Explicar el mapa de Diego también cuenta como discovery.",
       "Preguntar por una posible ayuda, recorte o encaje sigue siendo discovery si aún no existe propuesta viva previa.",
+      "Decir 'queremos mantener 180 minutos', 'preferimos empezar pronto' o '14 a 16 nos va peor' sigue siendo discovery si todavía no hay reparto concreto entre ambos.",
       "Si dudas entre clima_humano y discovery, y el turno ya abre el problema material, elige discovery.",
       "Si dudas entre discovery y ajuste, y no puedes señalar una propuesta viva concreta, elige discovery."
     ]
   },
   "propuesta_creativa": {
     "phase": "propuesta_creativa",
-    "objetivo": "Poner por primera vez una solución real, una secuencia de uso o una condición clara de reparto sobre la mesa.",
+    "objetivo": "Poner por primera vez una solución real, una secuencia de uso o una condición clara de reparto sobre la mesa, sin diseñar todavía más de lo necesario.",
     "elige_esta_fase_cuando": [
       "Aparece la primera propuesta real de reparto entre ambos lados.",
       "Aparece una primera secuencia concreta de uso de la sala.",
@@ -70,6 +73,7 @@
     "no_la_elijas_cuando": [
       "Todavía solo se está entendiendo la necesidad real, el mínimo o la composición de la actividad.",
       "Todavía solo se está explorando si algo sería posible.",
+      "Todavía solo se está diciendo qué quiere Diego o qué condición general necesitaría.",
       "Ya existe una propuesta viva y el turno actual solo mueve uno de sus términos.",
       "El acuerdo ya está materialmente cerrado."
     ],
@@ -81,7 +85,8 @@
     "reglas_clave": [
       "La primera propuesta debe ser una solución real, no solo una preferencia.",
       "No confundas una explicación del propio bloque con una propuesta.",
-      "No confundas una pregunta exploratoria con una primera propuesta."
+      "No confundas una pregunta exploratoria con una primera propuesta.",
+      "No confundas decir qué necesitaría Diego con haber formulado ya un reparto real."
     ]
   },
   "concesiones_y_ajuste_final": {
@@ -96,6 +101,7 @@
       "Todavía no ha habido una primera propuesta real.",
       "Solo se está preguntando por el mapa de Diego o por la composición de la actividad.",
       "Solo se está explorando si una ayuda o un recorte serían posibles.",
+      "Solo se está expresando una necesidad o una condición general sin tocar una propuesta viva concreta.",
       "El acuerdo ya está cerrado y solo queda confirmarlo."
     ],
     "senales_tipicas": [
@@ -108,7 +114,8 @@
       "Una resistencia fuerte no es abandono.",
       "Una condicionalidad sobre un término ya vivo suele ser ajuste, no discovery.",
       "No entres aquí solo porque haya números; hace falta propuesta viva previa.",
-      "Si no puedes señalar cuál es la propuesta viva que se está moviendo, probablemente no estás en ajuste."
+      "Si no puedes señalar cuál es la propuesta viva que se está moviendo, probablemente no estás en ajuste.",
+      "Expresar solo un límite general o lo que Diego querría preservar no basta para entrar aquí."
     ]
   },
   "formalizacion_del_acuerdo": {
@@ -117,7 +124,8 @@
     "elige_esta_fase_cuando": [
       "Ambas partes ya han aceptado en sustancia el reparto o la solución.",
       "Los términos materiales ya están claros.",
-      "El turno solo confirma, resume o deja claro lo ya acordado."
+      "El turno solo confirma, resume o deja claro lo ya acordado.",
+      "El usuario ya no reabre nada y solo cierra cordialmente una vez acordado todo."
     ],
     "no_la_elijas_cuando": [
       "Aún faltan compensaciones o condiciones importantes.",
@@ -128,11 +136,13 @@
     "senales_tipicas": [
       "perfecto, entonces queda así",
       "vale, lo dejamos así",
-      "por mí queda claro"
+      "por mí queda claro",
+      "gracias, nos vemos el jueves"
     ],
     "reglas_clave": [
       "No formalices por un simple 'vale' o 'perfecto' si aún hay algo material abierto.",
-      "No conviertas concesiones parciales en acuerdo cerrado."
+      "No conviertas concesiones parciales en acuerdo cerrado.",
+      "Si el acuerdo ya quedó claro y el usuario solo se despide, eso sigue siendo formalización."
     ]
   },
   "abandono_de_la_negociacion": {
@@ -174,7 +184,8 @@
       "La mera cordialidad no basta para pasar a formalización.",
       "La mera dureza no basta para pasar a abandono.",
       "Si el turno mezcla rapport breve con apertura material del problema, normalmente manda discovery.",
-      "Si no existe propuesta viva previa claramente identificable, no debe clasificarse ajuste final."
+      "Si no existe propuesta viva previa claramente identificable, no debe clasificarse ajuste final.",
+      "Expresar qué quiere Diego, qué intenta preservar o qué condición general necesitaría no basta por sí solo para clasificar propuesta o ajuste."
     ]
   }
 }

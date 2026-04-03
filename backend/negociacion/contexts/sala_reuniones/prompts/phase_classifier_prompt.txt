@@ -92,6 +92,18 @@ Solo entra `propuesta_creativa` cuando aparece una primera estructura real de so
 - una primera condición de solución,
 - o una primera formulación clara de “si X, entonces Y” orientada a resolver el conflicto.
 
+## Rule 4b: expresar necesidades o condiciones propias no basta
+Decir lo que Diego quiere, necesita o intentaría preservar no basta por sí solo para entrar en `propuesta_creativa`.
+
+Ejemplos que por defecto siguen siendo `descubrimiento_y_comprension` si todavía no hay estructura real entre ambos:
+- "Para nosotros lo importante es mantener los 180 minutos."
+- "Yo intentaría que esto quedara lo más temprano posible."
+- "La franja de 14 a 16 nos va bastante peor."
+- "Si nos vais a mover más tarde, eso tendría que notarse de vuestro lado."
+
+Eso puede ser encuadre, límite, necesidad o condición general.
+Solo sube de fase si ya está funcionando como propuesta real sobre un reparto concreto entre ambos.
+
 ## Rule 5: ajuste exige propuesta viva previa
 Solo entra `concesiones_y_ajuste_final` cuando ya existe una propuesta viva real o una estructura negociadora recíproca abierta.
 Si todavía solo se explora flexibilidad, mínimo, composición o coste, aunque se hablen horas, sigue siendo `descubrimiento_y_comprension`.
@@ -125,6 +137,16 @@ No uses `formalizacion_del_acuerdo` si:
 - se sigue negociando compensación,
 - o una de las partes todavía está preguntando si algo encaja.
 
+## Rule 6b: despedida tras acuerdo claro
+Si el acuerdo ya quedó materialmente cerrado y suficientemente repasado en el intercambio reciente, una despedida o cierre cordial del usuario cuenta como `formalizacion_del_acuerdo`, no como `clima_humano`.
+
+Ejemplo:
+- ya está claro quién usa qué franja y bajo qué condiciones;
+- el usuario dice "Ha sido un placer, gracias, nos vemos el jueves."
+
+Resultado correcto:
+- `formalizacion_del_acuerdo`
+
 ## Rule 7: dureza no es abandono
 No uses `abandono_de_la_negociacion` para:
 - una negativa concreta,
@@ -145,6 +167,7 @@ Aunque aparezcan horas, bloques o preferencias, clasifica como `descubrimiento_y
 - entender cuánto cuesta una franja peor,
 - entender cuánto reduce una ayuda operativa,
 - entender si algo sería posible en principio,
+- expresar qué quiere preservar Diego sin traducirlo aún a un reparto concreto,
 - o exponer el mapa operativo de Diego.
 
 ## Discovery lock before live proposal
@@ -170,7 +193,9 @@ No basta con:
 - describir la actividad;
 - preguntar por flexibilidad;
 - preguntar si una ayuda podría reducir algo;
-- o tantear si algo encajaría mejor.
+- tantear si algo encajaría mejor;
+- decir qué intentaría preservar Diego;
+- o decir bajo qué condición general le costaría menos aceptar algo, si todavía no hay una estructura concreta entre ambos.
 
 # What counts as material agreement
 Hay acuerdo materialmente cerrado solo si ya está claro, en sustancia:
@@ -190,13 +215,13 @@ Pero sí hace falta que el conflicto principal esté ya resuelto.
 Úsala cuando la conversación está entendiendo el mapa real del caso o exponiendo el mapa de Diego, antes de una primera propuesta real.
 
 ## `propuesta_creativa`
-Úsala cuando aparece la primera solución real sobre la mesa.
+Úsala cuando aparece por primera vez una solución real o una condición de reparto realmente aplicada entre ambos, no solo una necesidad o preferencia de Diego.
 
 ## `concesiones_y_ajuste_final`
 Úsala cuando esa solución ya viva se está moviendo, estrechando o condicionando.
 
 ## `formalizacion_del_acuerdo`
-Úsala cuando el acuerdo ya está hecho en lo material y solo queda confirmarlo o resumirlo.
+Úsala cuando el acuerdo ya está hecho en lo material y solo queda confirmarlo, resumirlo o cerrarlo cordialmente.
 
 ## `abandono_de_la_negociacion`
 Úsala cuando una parte sale explícitamente de la negociación sin acuerdo.
@@ -233,12 +258,30 @@ Resultado incorrecto:
 - `concesiones_y_ajuste_final`
 
 Ejemplo 4
+Sin propuesta viva previa en el intercambio reciente.
+Turno actual:
+- "Para nosotros lo importante sería mantener los 180 minutos y no irnos tan tarde."
+Resultado correcto:
+- `descubrimiento_y_comprension`
+Resultado incorrecto:
+- `propuesta_creativa`
+
+Ejemplo 5
 Sí existe propuesta viva previa en el intercambio reciente:
 - "Si vosotros ayudáis con la recogida, nosotros podríamos bajar media hora."
 Turno actual:
 - "Vale, ¿entonces esa media hora saldría de la recogida?"
 Resultado correcto:
 - `concesiones_y_ajuste_final`
+
+Ejemplo 6
+Ya existe acuerdo materialmente cerrado en el intercambio reciente.
+Turno actual:
+- "Perfecto, gracias por todo. Nos vemos el jueves."
+Resultado correcto:
+- `formalizacion_del_acuerdo`
+Resultado incorrecto:
+- `clima_humano`
 
 # Output contract
 Devuelve solo JSON válido que cumpla exactamente el schema configurado para este nodo.
