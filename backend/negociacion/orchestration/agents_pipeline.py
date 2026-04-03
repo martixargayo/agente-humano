@@ -42,8 +42,8 @@ class NegotiationPipelineConfig:
     memory_key: str
     prompts_dir: Path
     planner_schema_path: Path
-    planner_model: str = "gpt-5-nano"
-    summarizer_model: str = "gpt-5-nano"
+    planner_model: str = "o4-mini"
+    summarizer_model: str = "o4-mini"
     executor_model: str = "gpt-5-nano"
     context_limit: int = 6
     keep_last_n_turns: int = 3

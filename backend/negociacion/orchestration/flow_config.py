@@ -156,7 +156,7 @@ class NegotiationTurnConfig(BaseModel):
     context_id: str | None = None
     stateful: bool = False
     prompts_dir: str
-    model_memory: str = "gpt-5-nano"
+    model_memory: str = "o4-mini"
     model_phase_classifier: str = "gpt-5-nano"
     model_planner: str = "o4-mini"
     model_executor: str = "gpt-5-nano"
@@ -210,7 +210,7 @@ LEGACY_PROMPTS_DIR = BASE_DIR.parent / "prompts"
 NEGOTIATION_FLOW_DETAILS: FlowDetails = {
     "flow_name": "negociacion",
     "memory_key": "negotiation_canonical",
-    "model_memory": "gpt-5-nano",
+    "model_memory": "o4-mini",
     "model_phase_classifier": "gpt-5-nano",
     "model_planner": "o4-mini",
     "model_executor": "gpt-5-nano",
