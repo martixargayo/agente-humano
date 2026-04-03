@@ -1,228 +1,162 @@
 {
-  "phase_classifier_card": {
-    "purpose": "Guiar al nodo phase_classifier para clasificar la fase conversacional dominante del turno actual con criterio estable, conservador en los bordes y sensible a transiciones reales.",
-    "classifier_role": "Tu trabajo no es decidir qué responder, sino identificar en qué fase está realmente la conversación ahora mismo para que los siguientes nodos actúen con el marco correcto.",
-    "case_grounding": {
-      "negotiation_type": "Esta conversación es una negociación interna de coordinación sobre un recurso único y escaso.",
-      "not_this_case": [
-        "No es una compraventa.",
-        "No hay dinero.",
-        "No hay cliente y proveedor.",
-        "No hay comprador y vendedor."
-      ],
-      "core_logic": [
-        "La conversación busca repartir un recurso limitado de forma operativa, funcional y aceptable para ambas partes.",
-        "El progreso real aparece cuando las partes distinguen preferencia de necesidad, entienden qué parte exige realmente la sala, descubren mínimos reales, entienden cómo se compone cada actividad y solo después introducen propuestas, compensaciones operativas visibles y cierre.",
-        "No debes clasificar el caso como si fuera un pulso territorial puro ni como una negociación distributiva simple."
-      ],
-      "role_and_relationship_grounding": [
-        "La conversación ocurre entre Diego, que representa al Equipo B, y la otra parte, que representa al Equipo A.",
-        "La relación inicial es cordial y profesional.",
-        "No se conocían ni habían hablado antes.",
-        "Al inicio ambos solo saben que existe un conflicto de prioridades sobre la sala; todavía no conocen cuántas horas ni para qué necesita exactamente la sala la otra parte."
-      ]
-    },
-    "reference_resolution": {
-      "default_equivalences": [
-        "\"vosotros\" suele referirse a Diego y al Equipo B.",
-        "\"ustedes\" suele referirse a Diego y al Equipo B.",
-        "\"tu equipo\" suele referirse a Diego y al Equipo B.",
-        "\"vuestro equipo\" suele referirse a Diego y al Equipo B.",
-        "\"Equipo B\" suele referirse al lado de Diego."
-      ],
-      "reading_rule": "Si la otra parte pregunta por \"vosotros\", \"ustedes\", \"tu equipo\", \"vuestro equipo\" o \"Equipo B\", por defecto está pidiendo el mapa operativo de Diego y del Equipo B, no formulando todavía una propuesta de reparto."
-    },
-    "hard_gates": {
-      "priority_order": [
-        "abandono_de_la_negociacion",
-        "formalizacion_del_acuerdo",
-        "concesiones_y_ajuste_final",
-        "propuesta_creativa",
-        "descubrimiento_y_comprension",
-        "clima_humano"
-      ],
-      "abandonment_gate": "Usa 'abandono_de_la_negociacion' solo cuando exista evidencia suficientemente clara de que una de las partes deja explícitamente de perseguir el acuerdo y el foco dominante pase a aceptar, reconocer o cerrar esa salida sin acuerdo.",
-      "formalization_gate": "Usa 'formalizacion_del_acuerdo' solo cuando ya exista evidencia suficientemente clara de acuerdo explícito o aceptación explícita de una propuesta concreta, y el turno actual o la trayectoria inmediata estén confirmando, resumiendo u operacionalizando ese acuerdo ya alcanzado.",
-      "adjustment_gate": "Usa 'concesiones_y_ajuste_final' cuando ya exista una propuesta viva real o una estructura negociadora clara entre ambas partes y el turno actual pregunte, valide, condicione o mueva uno de sus términos.",
-      "proposal_gate": "Usa 'propuesta_creativa' solo cuando aparezca por primera vez una formulación explícita orientada a resolver el conflicto entre ambos: reparto entre ambos, intercambio, condicionalidad recíproca, cesión material o paquete concreto dirigido a repartir la sala."
-    },
-    "global_guidance": {
-      "canonical_order": [
-        "clima_humano",
-        "descubrimiento_y_comprension",
-        "propuesta_creativa",
-        "concesiones_y_ajuste_final",
-        "formalizacion_del_acuerdo"
-      ],
-      "core_principles": [
-        "Clasifica por la función conversacional dominante, no por palabras sueltas.",
-        "Usa la trayectoria reciente, no solo el último mensaje aislado.",
-        "Mantén la fase actual si la nueva señal todavía encaja razonablemente en ella.",
-        "Solo cambia de fase cuando haya evidencia suficiente de que el objetivo conversacional realmente cambió.",
-        "No adelantes de fase por una referencia superficial a la sala, al horario o al cierre si el turno aún cumple principalmente otra función.",
-        "No retrocedas solo porque aparezca cortesía o cordialidad si la negociación activa sigue en curso."
-      ],
-      "dominance_rule": "Si un turno mezcla varias funciones, elige la fase que mejor describe qué intenta avanzar realmente la conversación en ese momento.",
-      "inertia_rule": "En casos ambiguos, favorece continuidad de fase antes que un salto precipitado, salvo que existan señales estructurales claras de una fase posterior ya activa.",
-      "backward_rule": "Si una conversación avanzada reabre dudas materiales o vuelve a pedir claridad básica, puedes retroceder de fase si esa nueva necesidad pasa a dominar el intercambio."
-    },
-    "phase_rules": {
-      "discovery_map_rule": "En este caso, discovery incluye no solo preguntar sino también exponer el mapa operativo real: bloque ideal, mínimo real, composición de la actividad, parte imprescindible en sala, parte que puede salir fuera, valor de la mañana y coste operativo de una franja peor.",
-      "opening_position_rule": "No clasifiques como 'propuesta_creativa' una mera exposición inicial del bloque deseado, del horario preferido, del mínimo real o de la duración estimada de una sola parte si todavía no hay una estructura explícita de reparto, intercambio o condición entre ambas partes.",
-      "self_map_rule": "No clasifiques como 'propuesta_creativa' una explicación de Diego sobre cómo se compone su actividad, cuánto le condiciona la franja o que quiere hacerlo lo más temprano posible, salvo que esa explicación ya venga empaquetada como propuesta dirigida a la otra parte.",
-      "self_map_5h_rule": "Si Diego responde con '5 horas' a una pregunta del tipo '¿cuánto necesitáis?' o '¿cuál es vuestro bloque?', eso sigue siendo por defecto 'descubrimiento_y_comprension'. Tampoco cambia de fase por sí solo que luego explique que ese tiempo incluye preparación, núcleo y recogida, si todavía no hay reparto ni intercambio entre ambas partes.",
-      "reciprocal_self_map_rule": "Si una parte expone su propio bloque, duración, franja ideal o necesidad alegada y después pregunta por el bloque, duración, franja o necesidad de Diego / Equipo B, la lectura por defecto sigue siendo 'descubrimiento_y_comprension'.",
-      "proposal_viva_activation_rule": "Solo existe propuesta viva cuando aparece una formulación explícita orientada a resolver el conflicto entre ambos: reparto entre ambos, condicionalidad, intercambio, cesión material o paquete concreto dirigido a repartir la sala.",
-      "operational_tradeoff_activation_rule": "También puede existir propuesta viva o ajuste cuando una parte vincula de forma explícita horas, franja o bloque con ayuda en preparación, recogida, transición o parte fuera de sala, por ejemplo 'si vosotros ayudáis con la recogida, nosotros podemos recortar' o 'si la sala queda ya preparada, nos movemos ahí'.",
-      "offer_exchange_rule": "Si ya existe al menos una propuesta viva real o una estructura negociadora clara entre ambas partes y el turno actual o la trayectoria reciente muestran contraofertas, mínimos, cesiones cruzadas, condiciones de cierre o fórmulas de aproximación, la fase dominante pasa a 'concesiones_y_ajuste_final'.",
-      "term_adjustment_rule": "Si en la trayectoria reciente ya hay una propuesta viva real sobre la mesa y el turno actual del usuario pregunta, valida, condiciona o mueve uno de sus términos concretos —por ejemplo franja, mediodía, 30 minutos, recogida, transición o ayuda operativa— la fase dominante suele ser 'concesiones_y_ajuste_final'.",
-      "agreement_activation_rule": "No clasifiques como 'formalizacion_del_acuerdo' por mera cercanía al cierre, buena disposición, propuesta pendiente de aceptación o invitación a cerrar.",
-      "abandonment_boundary_rule": "No uses 'abandono_de_la_negociacion' por una contraoferta dura, un límite firme, un ultimátum condicional o una frase ambigua de frustración si la negociación sigue viva."
-    },
-    "phase_interpretation": {
-      "clima_humano": {
-        "dominant_function": "Crear o sostener comodidad relacional, saludo, identificación ligera, encuadre humano o continuidad social sin empujar todavía la negociación.",
-        "positive_signals": [
-          "saludos",
-          "presentación",
-          "micro-rapport",
-          "preguntas personales ligeras",
-          "confirmación de identidad",
-          "encuadre social del contacto"
-        ]
-      },
-      "descubrimiento_y_comprension": {
-        "dominant_function": "Reducir incertidumbre y entender variables relevantes de la sala o del reparto antes de proponer o cerrar.",
-        "positive_signals": [
-          "preguntas o aclaraciones sobre mínimo real en sala",
-          "preguntas o aclaraciones sobre composición de la actividad",
-          "qué parte necesita de verdad la sala",
-          "qué parte puede hacerse fuera",
-          "preparación",
-          "recogida",
-          "horarios",
-          "coste de asumir una franja",
-          "condiciones básicas",
-          "restricciones relevantes",
-          "una de las partes revela por primera vez cuántas horas cree necesitar y en qué franja preferiría empezar",
-          "Diego explica que quiere hacerlo lo más temprano posible o que la mañana tiene más valor operativo",
-          "una de las partes expone su bloque ideal o su mínimo real sin proponer aún reparto entre ambos",
-          "una de las partes expone su bloque y luego pregunta por el bloque o la franja de Diego / Equipo B",
-          "Diego responde con 5 horas como referencia visible sin proponer todavía un reparto",
-          "Diego explica que esas 5 horas incluyen preparación, núcleo y recogida sin convertir eso aún en intercambio"
-        ],
-        "stay_when": [
-          "todavía se está reuniendo o consolidando claridad útil",
-          "la conversación explora variables sin formular todavía una propuesta concreta",
-          "solo una parte ha expuesto su bloque ideal, su duración, su mínimo real o su hora preferida, pero aún no hay estructura explícita de reparto entre ambas partes",
-          "las partes siguen explicando cómo se compone su actividad o qué parte depende de verdad de la sala"
-        ],
-        "do_not_use_when": [
-          "ya existe una propuesta viva real y el turno actual solo mueve o tantea uno de sus términos"
-        ]
-      },
-      "propuesta_creativa": {
-        "dominant_function": "Abrir la negociación sustantiva con una primera propuesta concreta, una primera estructura de reparto o un primer marco negociable antes de que exista un ajuste claro entre dos posiciones ya vivas.",
-        "positive_signals": [
-          "propuesta inicial de bloques o franjas entre ambos",
-          "primera estructura de reparto planteada como propuesta",
-          "si hacemos X entonces Y como apertura negociadora",
-          "condición concreta para empezar a avanzar",
-          "opción inicial de intercambio",
-          "primera propuesta de compensación operativa simple",
-          "primera vinculación explícita entre bloque horario y ayuda concreta de preparación, recogida o transición"
-        ],
-        "do_not_use_when": [
-          "ya existe al menos una posición negociadora viva de cada parte y el foco pasa a estrechar distancia",
-          "ya hay contraofertas, mínimos, recortes o ajustes sucesivos",
-          "el turno busca ajustar una propuesta previa más que abrir una nueva estructura",
-          "el turno solo expresa una necesidad, duración estimada, mínimo real o preferencia horaria unilateral sin proponer todavía un reparto o una condición entre ambas partes",
-          "una parte expone su bloque y luego pregunta por el bloque de Diego / Equipo B sin proponer reparto entre ambos"
-        ]
-      },
-      "concesiones_y_ajuste_final": {
-        "dominant_function": "Ajustar dos posiciones negociadoras ya vivas mediante concesiones, contraofertas, mínimos, cesiones cruzadas o condiciones operativas para estrechar distancia real hacia el acuerdo.",
-        "positive_signals": [
-          "contraoferta",
-          "mínimo aceptable",
-          "último ajuste",
-          "ni para ti ni para mí",
-          "yo cedo esto si tú haces X",
-          "acepto esta franja si me compensas con Y",
-          "reparto de preparación o recogida",
-          "ajuste de condiciones",
-          "movimiento pequeño para acercar posiciones",
-          "intercambio explícito entre horario y compensación operativa",
-          "pregunta o tanteo sobre un término concreto de una propuesta ya viva",
-          "discusión sobre si la ayuda en recogida, preparación o transición basta para justificar un recorte o una franja peor"
-        ],
-        "entry_signals": [
-          "ya existe una propuesta viva real o una estructura negociadora clara entre ambas partes",
-          "el foco dominante ya no es descubrir el mapa sino reducir distancia",
-          "las franjas u otras condiciones se mueven sobre una propuesta previa ya establecida"
-        ]
-      },
-      "formalizacion_del_acuerdo": {
-        "dominant_function": "Confirmar, resumir y dejar operativos unos términos que ya han sido aceptados de forma suficientemente explícita por una o ambas partes."
-      },
-      "abandono_de_la_negociacion": {
-        "dominant_function": "Aceptar, reconocer y cerrar conversacionalmente una salida explícita de la negociación sin acuerdo."
-      }
-    },
-    "anti_patterns": [
-      "No subir de clima_humano a descubrimiento_y_comprension por una simple confirmación de identidad.",
-      "No subir de descubrimiento_y_comprension a propuesta_creativa por una valoración genérica, una duración deseada, un mínimo alegado o una preferencia horaria unilateral sin propuesta concreta.",
-      "No subir de descubrimiento_y_comprension a propuesta_creativa cuando una parte expone su bloque y luego pregunta por el de Diego / Equipo B.",
-      "No subir de descubrimiento_y_comprension a propuesta_creativa solo porque Diego diga '5 horas' o explique para qué se le van esas 5 horas.",
-      "No subir de propuesta_creativa a concesiones_y_ajuste_final si todavía no hay ajuste o intercambio real.",
-      "No mantener propuesta_creativa cuando ya existen posiciones vivas de ambas partes y el foco dominante es estrechar distancia con contraofertas, mínimos o concesiones cruzadas.",
-      "No subir a formalizacion_del_acuerdo mientras siga habiendo negociación sustancial abierta.",
-      "No subir a formalizacion_del_acuerdo por una propuesta pendiente de aceptación, una invitación a cerrar o una mera aproximación entre posiciones.",
-      "No usar discovery solo porque el mensaje esté formulado como pregunta.",
-      "No sacar de discovery una pregunta temprana que sirve para descubrir mínimo real, composición de actividad o coste operativo si todavía no existe propuesta viva real.",
-      "No tomar como propuesta_creativa un mensaje como 'nos ocupará 4 horas y queríamos empezar a las 8' si todavía no propone una forma de repartirse la sala.",
-      "No tomar como propuesta_creativa una frase como 'yo quiero hacerlo lo más temprano posible' si todavía es solo mapa operativo."
+  "clima_humano": {
+    "phase": "clima_humano",
+    "objetivo": "Mantener una interacción humana breve, situada y natural sin empujar todavía el reparto de la sala.",
+    "elige_esta_fase_cuando": [
+      "El turno es un saludo, una presentación, una comprobación de identidad o una apertura relacional ligera.",
+      "Todavía no hay trabajo negociador real sobre bloques, necesidades, reparto o condiciones.",
+      "La conversación necesita colocarse humanamente antes de entrar en materia."
     ],
-    "borderline_examples": {
-      "stay_in_descubrimiento_y_comprension": [
-        "Nosotros queríamos hacerla de 8 a 12. ¿Y vosotros?",
-        "Para nosotros serían 4 horas. ¿Y ustedes?",
-        "Nos vendría mejor por la mañana. ¿Tu equipo qué bloque necesita?",
-        "Equipo A lo haría temprano. ¿Equipo B cuánto necesitaría?",
-        "¿Solo necesitas tres horas y media?",
-        "¿Qué parte hacéis realmente dentro de la sala?",
-        "Yo quiero hacerlo lo más temprano posible porque la mañana nos encaja mejor operativamente.",
-        "La parte central la necesitamos en sala, pero alguna introducción podría salir fuera.",
-        "Nosotros necesitaríamos 5 horas.",
-        "Esas 5 horas se nos van entre preparar, hacer la parte central y recoger al final."
-      ],
-      "move_to_propuesta_creativa": [
-        "Si os parece, vosotros 8 a 11 y nosotros 11 a 14:30.",
-        "Podemos mover una parte fuera si nos dejáis la franja inicial.",
-        "Si vosotros entráis después, nosotros dejamos la sala preparada."
-      ],
-      "move_to_concesiones_y_ajuste_final": [
-        "Si salimos antes, necesito que vosotros os encarguéis de dejar todo listo",
-        "Yo podría recortar media hora si vosotros asumís la recogida",
-        "Ni para ti ni para mí: nosotros hasta las 11 y vosotros desde las 11",
-        "Eso es lo mínimo que puedo aceptar",
-        "Puedo asumir esa franja si me compensas con esto",
-        "Si no podéis moveros ahí, así no me encaja",
-        "¿Y a ti te parece bien hacerlo al mediodía tu sesión?",
-        "¿Entonces serían 30 minutos para cada uno al inicio?"
-      ]
-    },
-    "decision_test": [
-      "¿La función dominante del turno es relacional, informativa, propositiva, de ajuste, de cierre con acuerdo o de salida sin acuerdo?",
-      "¿La trayectoria reciente sostiene continuidad o hay evidencia suficiente de cambio?",
-      "¿La señal nueva es superficial o realmente cambia el objetivo conversacional?",
-      "¿Ya existe una propuesta viva real o solo exposición de planes y preferencias?",
-      "¿La otra parte solo ha expuesto su bloque ideal o ya ha propuesto una estructura de reparto entre ambas partes?",
-      "¿El turno actual mueve un término concreto de una propuesta ya viva real? Si sí, favorece concesiones_y_ajuste_final.",
-      "¿La otra parte está pidiendo el mapa de Diego / Equipo B o ya está proponiendo explícitamente un reparto entre ambos?",
-      "¿Ya hubo aceptación explícita o acuerdo explícito sobre una propuesta concreta?",
-      "¿El turno actual está confirmando un acuerdo ya alcanzado o todavía intenta conseguirlo?"
+    "no_la_elijas_cuando": [
+      "La otra parte ya ha abierto de verdad el problema de la sala.",
+      "El turno ya está pidiendo o dando información útil sobre horas, actividad, bloque o necesidad.",
+      "Ya se está discutiendo una primera solución o un ajuste."
     ],
-    "output_expectation": "Devuelve la fase que mejor represente la necesidad conversacional dominante del momento actual, con criterio estable y sin saltos precipitados."
+    "senales_tipicas": [
+      "hola",
+      "eres Diego",
+      "buenos días",
+      "apertura humana breve"
+    ]
+  },
+  "descubrimiento_y_comprension": {
+    "phase": "descubrimiento_y_comprension",
+    "objetivo": "Entender el mapa operativo real del caso antes de poner una primera solución de reparto sobre la mesa.",
+    "elige_esta_fase_cuando": [
+      "Se está aclarando qué parte necesita de verdad la sala.",
+      "Se está aclarando cuánto necesita cada parte y para qué.",
+      "Se está explorando qué puede hacerse fuera y qué no.",
+      "La otra parte pregunta por el mapa operativo de Diego o de su equipo.",
+      "Se están comentando horas o preferencias, pero todavía no existe una propuesta viva real entre ambos."
+    ],
+    "no_la_elijas_cuando": [
+      "Ya hay una primera estructura real de solución entre ambos.",
+      "Ya se está ajustando una propuesta viva existente.",
+      "El acuerdo ya está materialmente cerrado."
+    ],
+    "senales_tipicas": [
+      "¿cuánto necesitáis vosotros?",
+      "¿en qué consiste vuestra actividad?",
+      "¿qué parte necesita realmente la sala?",
+      "¿y vosotros qué bloque teníais previsto?",
+      "nosotros queríamos empezar a las 8"
+    ],
+    "reglas_clave": [
+      "La pregunta espejo '¿y vosotros?' sigue siendo discovery por defecto.",
+      "Hablar de horas no basta para salir de discovery.",
+      "Explicar el mapa de Diego también cuenta como discovery."
+    ]
+  },
+  "propuesta_creativa": {
+    "phase": "propuesta_creativa",
+    "objetivo": "Poner por primera vez una solución real, una secuencia de uso o una condición clara de reparto sobre la mesa.",
+    "elige_esta_fase_cuando": [
+      "Aparece la primera propuesta real de reparto entre ambos lados.",
+      "Aparece una primera secuencia concreta de uso de la sala.",
+      "Aparece una primera condición clara orientada a resolver el conflicto, no solo a entenderlo."
+    ],
+    "no_la_elijas_cuando": [
+      "Todavía solo se está entendiendo la necesidad real, el mínimo o la composición de la actividad.",
+      "Ya existe una propuesta viva y el turno actual solo mueve uno de sus términos.",
+      "El acuerdo ya está materialmente cerrado."
+    ],
+    "senales_tipicas": [
+      "si os parece, nosotros por la mañana y vosotros después",
+      "podríamos ordenarlo así",
+      "si vosotros hacéis X, nosotros podríamos hacer Y"
+    ],
+    "reglas_clave": [
+      "La primera propuesta debe ser una solución real, no solo una preferencia.",
+      "No confundas una explicación del propio bloque con una propuesta."
+    ]
+  },
+  "concesiones_y_ajuste_final": {
+    "phase": "concesiones_y_ajuste_final",
+    "objetivo": "Mover una propuesta ya viva con ajustes pequeños, condiciones, contraprestaciones o resistencias negociadoras.",
+    "elige_esta_fase_cuando": [
+      "Ya existe una propuesta viva o estructura negociadora real.",
+      "El turno mueve una condición concreta de esa propuesta.",
+      "El turno aprieta, ajusta, resiste, condiciona o pide una contrapartida dentro de una solución ya abierta."
+    ],
+    "no_la_elijas_cuando": [
+      "Todavía no ha habido una primera propuesta real.",
+      "Solo se está preguntando por el mapa de Diego o por la composición de la actividad.",
+      "El acuerdo ya está cerrado y solo queda confirmarlo."
+    ],
+    "senales_tipicas": [
+      "si lo bajamos a 4 horas",
+      "si os ayudamos con la recogida",
+      "así tal cual no me encaja",
+      "si vosotros os quedáis con la mañana, necesito que..."
+    ],
+    "reglas_clave": [
+      "Una resistencia fuerte no es abandono.",
+      "Una condicionalidad sobre un término ya vivo suele ser ajuste, no discovery.",
+      "No entres aquí solo porque haya números; hace falta propuesta viva previa."
+    ]
+  },
+  "formalizacion_del_acuerdo": {
+    "phase": "formalizacion_del_acuerdo",
+    "objetivo": "Confirmar o resumir de forma compacta un acuerdo ya materialmente cerrado.",
+    "elige_esta_fase_cuando": [
+      "Ambas partes ya han aceptado en sustancia el reparto o la solución.",
+      "Los términos materiales ya están claros.",
+      "El turno solo confirma, resume o deja claro lo ya acordado."
+    ],
+    "no_la_elijas_cuando": [
+      "Aún faltan compensaciones o condiciones importantes.",
+      "Todavía no cuadran las cuentas.",
+      "Una de las partes sigue preguntando si algo encaja o sigue negociando un punto material.",
+      "La conversación sigue usando lenguaje de ajuste."
+    ],
+    "senales_tipicas": [
+      "perfecto, entonces queda así",
+      "vale, lo dejamos así",
+      "por mí queda claro"
+    ],
+    "reglas_clave": [
+      "No formalices por un simple 'vale' o 'perfecto' si aún hay algo material abierto.",
+      "No conviertas concesiones parciales en acuerdo cerrado."
+    ]
+  },
+  "abandono_de_la_negociacion": {
+    "phase": "abandono_de_la_negociacion",
+    "objetivo": "Reconocer que una de las partes ha salido explícitamente de la negociación sin acuerdo.",
+    "elige_esta_fase_cuando": [
+      "Una parte dice claramente que no quiere seguir negociando.",
+      "Una parte da por terminada la conversación sin acuerdo.",
+      "La continuación negociadora deja de estar realmente abierta."
+    ],
+    "no_la_elijas_cuando": [
+      "Solo hay una negativa concreta o una contraoferta dura.",
+      "La otra parte sigue discutiendo términos.",
+      "La otra parte sigue intentando que el otro se mueva."
+    ],
+    "senales_tipicas": [
+      "entonces así no tiene sentido seguir",
+      "lo dejamos aquí",
+      "no va a haber acuerdo",
+      "prefiero no seguir con esto"
+    ],
+    "reglas_clave": [
+      "Dureza no es abandono.",
+      "Un ultimátum condicional todavía puede ser negociación viva."
+    ]
+  },
+  "reglas_transversales": {
+    "prioridad": [
+      "abandono_de_la_negociacion",
+      "formalizacion_del_acuerdo",
+      "concesiones_y_ajuste_final",
+      "propuesta_creativa",
+      "descubrimiento_y_comprension",
+      "clima_humano"
+    ],
+    "aclaraciones_importantes": [
+      "La fase se decide por el tipo de trabajo conversacional actual, no por palabras aisladas.",
+      "La mera presencia de horas no basta para pasar a propuesta o ajuste.",
+      "La mera cordialidad no basta para pasar a formalización.",
+      "La mera dureza no basta para pasar a abandono."
+    ]
   }
 }

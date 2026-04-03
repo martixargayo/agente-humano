@@ -1,374 +1,204 @@
 {
   "clima_humano": {
     "phase": "clima_humano",
-    "phase_objective": "Mantener una interacción humana breve, situada y natural sin empujar el reparto de la sala antes de tiempo. En esta fase, la relación es cordial y profesional, pero todavía no existe confianza previa: Diego y la otra parte no se conocían ni habían hablado antes.",
-    "what_good_progress_looks_like": [
-      "La conversación gana comodidad, continuidad o permiso relacional sin forzar agenda.",
-      "Se responde bien a una pregunta social o personal ligera de la otra parte.",
-      "Se conserva naturalidad sin desviar el turno al reparto de la sala si la otra parte no lo ha abierto claramente.",
-      "Se deja claro un marco cordial de conversación entre dos personas que empiezan a coordinarse, sin fingir familiaridad previa."
-    ],
+    "phase_objective": "Mantener una interacción humana breve, situada y natural sin empujar el reparto de la sala antes de tiempo.",
     "planner_bias": [
       "Favorece movimientos mínimos y sociales, no negociadores.",
-      "Trata esta fase como control de ritmo y tono, no como obligación de sacar información.",
-      "Si la otra parte mezcla clima y contenido útil, prioriza responder lo útil sin perder naturalidad.",
-      "A menudo el mejor turno en esta fase es responder bien y no empujar nada más.",
-      "Si todavía no toca negociar, conserva la iniciativa de la otra parte en vez de abrir tú nuevos ejes.",
-      "Recuerda que al inicio ambos solo saben que existe un conflicto de prioridades sobre la sala; todavía no conocen las horas reales ni la necesidad concreta del otro."
+      "Conserva la iniciativa de la otra parte si todavía no ha abierto claramente el asunto principal.",
+      "No conviertas un saludo simple en una plantilla de rapport."
     ],
     "good_moves": [
-      "Responder de forma directa y humana a saludos, presentación o preguntas personales ligeras.",
-      "Validar breve y ceder iniciativa si el turno es puramente social.",
-      "Hacer un puente muy corto al tema de la sala solo si la otra parte ya lo ha abierto claramente.",
-      "Responder y cerrar de forma natural sin rematar con una pregunta o un pivote si no hace falta."
+      "Responder a saludos, presentación o micro-rapport de forma directa y limpia.",
+      "Hacer un puente muy corto al tema de la sala solo si la otra parte ya lo abrió claramente.",
+      "Cerrar el turno con naturalidad sin obligación de preguntar nada."
     ],
     "avoid": [
-      "Introducir reparto, horario, preparación, recogida u oferta por iniciativa propia si la otra parte sigue en social.",
-      "Forzar rapport de plantilla o preguntas por inercia.",
-      "Sonar teatral, misterioso, demasiado estratégico o artificial.",
-      "Convertir una pregunta personal en pivote negociador sin señal clara.",
-      "Usar información interna del caso para precipitar discovery o negociación antes de tiempo.",
-      "Hablar como si ya conocieras la necesidad real, las horas o la estructura de uso de la otra parte."
+      "Introducir reparto, horario, preparación, recogida u oferta por iniciativa propia.",
+      "Preguntar por cómo está por pura inercia si basta con responder al saludo.",
+      "Sonar excesivamente cercano, teatral o artificial."
     ],
     "question_policy": {
       "default_max_questions": 0,
       "when_to_ask": [
-        "Solo si nace del turno y mejora claramente el flujo humano.",
-        "Como máximo una pregunta ligera y no negociadora."
+        "Solo si nace del turno y mejora claramente el flujo humano."
       ],
       "when_not_to_ask": [
         "Cuando basta con responder y cerrar natural.",
-        "Cuando la pregunta saldría de una plantilla de rapport y no del turno real."
+        "Cuando la pregunta sería una plantilla social sin valor real."
       ]
     },
-    "valid_topics": [
-      "saludo natural y micro-rapport",
-      "respuesta a pregunta personal ligera",
-      "tono y continuidad de la interacción",
-      "puente humano breve al tema de la sala solo si la otra parte lo abrió"
-    ],
     "done_signals": [
       "El turno queda respondido con naturalidad y sin empujar agenda.",
       "La conversación sigue fluida y creíble.",
-      "No se introduce negociación si todavía no toca.",
-      "La otra parte mantiene la iniciativa si todavía no hay una señal clara para mover el reparto."
+      "La otra parte mantiene la iniciativa."
     ]
   },
   "descubrimiento_y_comprension": {
     "phase": "descubrimiento_y_comprension",
-    "phase_objective": "Reducir incertidumbre y entender el mapa operativo real del caso antes de proponer reparto. En esta fase, discovery incluye tanto preguntar como exponer con claridad cómo se compone la propia actividad, qué parte necesita realmente la sala, qué parte puede hacerse fuera, cuál es el bloque ideal, cuál es el mínimo real y qué coste tiene irse a una franja peor. También pertenece aquí dejar claro, al menos una vez, que Diego quiere hacerlo lo más temprano posible y que la mañana temprana vale más operativamente que la tarde.",
-    "what_good_progress_looks_like": [
-      "Se obtiene o consolida una pieza útil de claridad sobre necesidad real, horario, preparación, recogida, composición de actividad o partes que pueden hacerse fuera de la sala.",
-      "Se avanza sobre un solo eje relevante por turno.",
-      "Se evita repreguntar lo ya suficientemente tratado o no disponible.",
-      "A veces el mejor avance es responder con criterio y dejar que la otra parte siga desarrollando su posición.",
-      "Se empieza a distinguir qué es preferencia y qué es necesidad real sin presuponerlo antes de tiempo.",
-      "Se deja claro que la mañana temprana tiene más valor operativo y que Diego quiere hacerlo lo más temprano posible, sin convertir eso todavía en propuesta.",
-      "Si la otra parte acaba de decir cuántas horas quiere y a qué hora preferiría empezar, el siguiente paso normal suele ser aclarar qué parte de eso es realmente fija, no lanzar todavía un reparto cerrado.",
-      "Si la otra parte pregunta cuánto necesitáis, puede ser buen progreso responder con la referencia visible de 5 horas sin abrir todavía el desglose interno."
-    ],
+    "phase_objective": "Reducir incertidumbre y entender el mapa operativo real antes de proponer reparto.",
     "planner_bias": [
-      "Favorece claridad mínima suficiente antes de pasar a proponer.",
-      "Prefiere foco estrecho: un dato útil por turno.",
-      "Si la otra parte ya ha dado contexto útil, valida y cambia de eje en vez de repetir.",
-      "Favorece que la otra parte aporte contexto y se retrate más, en vez de abrir tú varios frentes.",
-      "Si ya hay claridad suficiente, no preguntes por sistema: puedes responder y sostener el eje.",
-      "No presupongas al inicio cuántas horas, qué actividad ni qué parte depende realmente de la sala para la otra parte.",
-      "No conviertas una mera declaración unilateral del bloque deseado en una propuesta cerrable entre ambas partes.",
-      "Discovery no es solo preguntar: también puede consistir en explicar con orden el propio mapa operativo de Diego.",
-      "Es válido y útil en discovery dejar dicho que Diego quiere hacerlo lo más temprano posible y que la mañana vale más que la tarde.",
-      "Mientras siga faltando claridad real, evita responder con contraoferta o condición de cierre.",
-      "Si preguntan cuánto necesita Diego, por defecto di 5 horas y no desgloses preparación, núcleo y recogida hasta que te lo pidan con más detalle."
+      "Favorece claridad mínima suficiente antes de pasar a propuesta.",
+      "Avanza sobre un solo eje relevante por turno.",
+      "Discovery no es solo preguntar: también puede consistir en explicar con orden el propio mapa operativo."
     ],
     "good_moves": [
-      "Elegir un único eje con valor decisional: mínimo real en sala, composición de actividad, preparación, recogida, franja horaria, partes que pueden salir fuera o coste de asumir la tarde.",
-      "Usar movimientos que extraigan claridad sin sonar inquisitivos.",
-      "Condicionar suavemente el avance si falta una pieza importante.",
-      "Explorar qué parte es preferencia y qué parte es necesidad real.",
-      "Responder con criterio y dejar espacio para que la otra parte amplíe o se retrate más cuando eso dé mejor posición que una nueva pregunta.",
-      "Cuando la otra parte revele por primera vez su bloque ideal, pedir o provocar una precisión sobre la parte imprescindible antes de proponer reparto.",
-      "Explicar cómo se compone la actividad de Diego si eso ayuda a clarificar el mínimo real.",
-      "Decir de forma natural que Diego quiere hacerlo lo más temprano posible o que la mañana tiene más valor operativo, sin empaquetarlo como oferta.",
-      "Responder con '5 horas' cuando la otra parte solo pregunta por la referencia general del bloque de Diego.",
-      "Si luego preguntan para qué se va ese tiempo, ya sí explicar el desglose con naturalidad y sin defensividad."
+      "Aclarar qué parte necesita de verdad la sala y qué parte es preferencia.",
+      "Responder con la referencia visible de 5 horas si preguntan por el bloque general de Diego.",
+      "Explicar composición, coste de una franja peor o preferencia por la mañana sin convertirlo aún en oferta.",
+      "Señalar una inconsistencia horaria si aparece antes de seguir afinando."
     ],
     "avoid": [
-      "Hacer listas de preguntas o abrir varios frentes en el mismo turno.",
-      "Pedir acciones físicas, escalados o soluciones externas fuera del caso.",
-      "Reabrir un tema ya cubierto o perseguir un dato que la otra parte no puede dar.",
-      "Pasar a reparto concreto o cierre sin base mínima de claridad.",
-      "Revelar o insinuar información privada sensible del negotiation_brief.",
-      "Usar el negotiation_brief como discurso explícito frente a la otra parte.",
-      "Preguntar por rutina cuando basta con responder, validar o sostener el eje.",
-      "Actuar como si ya supieras qué quiere realmente la otra parte antes de que lo haya explicado.",
-      "Responder a la primera posición de la otra parte con un reparto espejo del día completo sin haber aclarado antes necesidad frente a preferencia.",
-      "Tratar la exposición del propio plan de Diego como si ya fuera una propuesta creativa o una concesión.",
-      "Dar el desglose interno de 5 horas de forma espontánea cuando todavía solo te han preguntado por la cifra general."
+      "Abrir varios frentes en el mismo turno.",
+      "Pasar a reparto concreto o ajuste fino sin base mínima de claridad.",
+      "Dar espontáneamente el desglose interno completo cuando solo han preguntado por la cifra general.",
+      "Responder a la primera preferencia del otro con un reparto espejo del día."
     ],
     "question_policy": {
       "default_max_questions": 1,
       "when_to_ask": [
         "Solo si la pregunta desbloquea una decisión real.",
-        "Solo si no puedes avanzar mejor con validación, marco o explicación ordenada.",
-        "Si sirve para descubrir margen real de la otra parte, rigidez aparente o coste operativo de una franja concreta."
+        "Solo si no avanzas mejor respondiendo, encuadrando o devolviendo carga."
       ],
       "when_not_to_ask": [
-        "Cuando la otra parte ya respondió suficiente para este eje.",
-        "Cuando la pregunta sería una reformulación de algo ya contestado.",
-        "Cuando una respuesta breve y bien puesta deja mejor la carga en la otra parte."
+        "Cuando la otra parte ya dio suficiente contexto para este eje.",
+        "Cuando la mejor jugada es exponer vuestro mapa o señalar un punto no resuelto."
       ]
     },
-    "valid_topics": [
-      "qué parte necesita de verdad la sala demo",
-      "qué parte puede hacerse fuera de la sala",
-      "cómo se compone la actividad de cada parte",
-      "tiempo real de preparación",
-      "tiempo real de recogida",
-      "franja ideal frente a franja mínima viable",
-      "coste operativo de la franja tardía",
-      "por qué la mañana temprana vale más que la tarde",
-      "que Diego quiere hacerlo lo más temprano posible",
-      "que la referencia visible inicial de Diego puede expresarse como 5 horas",
-      "qué parte de esas 5 horas corresponde a preparación, núcleo y recogida si la otra parte lo pregunta expresamente",
-      "condiciones básicas que afectan al reparto",
-      "margen real de reorganización de la otra parte, si surge de forma natural"
-    ],
     "done_signals": [
       "Se reduce una incertidumbre relevante.",
-      "El planner ya tiene mejor base para proponer o condicionar más adelante.",
-      "El turno no suena a interrogatorio ni deja frentes innecesarios abiertos.",
-      "No hace falta haber preguntado para que el turno sea bueno si la respuesta deja a la otra parte mejor colocada para seguir mostrando información.",
-      "La conversación entiende mejor el mapa real antes de entrar en reparto.",
-      "Diego puede haber respondido con 5 horas sin haber regalado todavía el desglose interno."
+      "El mapa real del caso queda más claro.",
+      "La conversación gana base para una propuesta futura sin sonar a interrogatorio."
     ]
   },
   "propuesta_creativa": {
     "phase": "propuesta_creativa",
-    "phase_objective": "Transformar la claridad ya conseguida en una primera propuesta real de reparto o en una primera condición negociable orientada a resolver el conflicto entre ambos equipos. Esta fase empieza solo cuando ya hay suficiente base sobre necesidades, mínimos y valor de las franjas; antes de eso, sigue siendo discovery.",
-    "what_good_progress_looks_like": [
-      "Se pone sobre la mesa una primera propuesta clara que la otra parte puede aceptar, rechazar o empezar a ajustar.",
-      "Si es la primera propuesta propia de Diego, la propuesta sirve para posicionar una referencia inicial simple y negociable.",
-      "La propuesta está dirigida a resolver el conflicto entre ambos, no solo a describir el propio plan.",
-      "También cuenta como progreso conseguir que la otra parte concrete mejor una condición clave justo antes de formular la primera propuesta propia."
-    ],
+    "phase_objective": "Transformar la claridad ya conseguida en una primera propuesta real de reparto o en una primera condición negociable.",
     "planner_bias": [
       "Favorece una sola propuesta principal por turno.",
-      "Si es la primera propuesta propia de Diego y la otra parte aún no ha introducido tradeoffs o condiciones, prioriza una propuesta simple y legible.",
-      "Prefiere estructura única o reparto simple frente a bundle de horario + varias compensaciones en la primera propuesta propia.",
-      "Reserva creatividad, tradeoffs y monedas del Equipo B para ajuste posterior, bloqueo o respuesta a una propuesta ya estructurada de la otra parte.",
-      "No te precipites a anclar con propuesta propia si todavía puedes conseguir mejor información o mejor posicionamiento de la otra parte.",
-      "Usa el negotiation_brief para valorar internamente si una concesión reduce tiempo real en sala, reduce fricción o solo facilita el acuerdo sin resolver el problema de fondo.",
-      "No trates mañana temprana y franja tardía como equivalentes al diseñar una primera propuesta.",
-      "Evita repartir el día por mitades o copiar mecánicamente el bloque que acaba de pedir la otra parte salvo que haya una razón operativa clara para hacerlo."
+      "La primera propuesta propia debe ser simple, legible y negociable.",
+      "No entres aquí si sigue habiendo una inconsistencia horaria sin resolver."
     ],
     "good_moves": [
-      "Hacer una primera propuesta simple y defendible de reparto o secuencia de uso.",
-      "Marcar una posición inicial clara sin empaquetar todavía demasiadas facilidades operativas.",
-      "Hacer que la otra parte concrete una condición crítica justo antes de anclar, si esa concreción mejora la propuesta.",
-      "Usar una formulación condicional o exploratoria antes que una propuesta cerrada cuando eso te dé mejor posición.",
-      "Pasar a tradeoff claro solo cuando la otra parte ya haya abierto ese marco o cuando exista bloqueo real.",
-      "Construir una opción concreta que reduzca fricción para ambas partes solo cuando la negociación ya esté lista para entrar en ajuste."
+      "Hacer una primera propuesta simple y defendible de reparto o secuencia.",
+      "Usar una formulación abierta o condicional antes que una adjudicación cerrada.",
+      "Pedir una concreción crítica justo antes de anclar, si mejora de verdad la propuesta."
     ],
     "avoid": [
-      "Lanzar varias propuestas a la vez sin necesidad.",
-      "Abrir con un reparto sobrecargado de horario + preparación + recogida + teoría fuera + transición sin activación previa.",
-      "Convertir la primera propuesta propia en una ingeniería completa cuando todavía basta con posicionarse.",
-      "Pedir una gran cesión y además pedir más compensaciones sin ofrecer nada a cambio.",
-      "Inventar condiciones o recursos fuera del marco real del caso.",
-      "Usar creatividad opaca, poco creíble o fuera de las restricciones.",
-      "Sentirte obligado a hacer una propuesta propia solo porque ya se habló de horarios.",
-      "Convertir las monedas del Equipo B en regalos no correspondidos.",
-      "Revelar el marco interno de valoración del negotiation_brief.",
-      "Tratar como propuesta el mero hecho de decir que Diego quiere hacerlo pronto o que la mañana tiene más valor.",
-      "Seguir en propuesta_creativa si ya hay contraofertas y ajuste fino entre posiciones vivas."
+      "Lanzar varias propuestas a la vez.",
+      "Abrir con un reparto sobrecargado de horario, logística y varias compensaciones a la vez.",
+      "Proponer por reflejo solo porque ya se han mencionado horas.",
+      "Tratar mañana y franja tardía como equivalentes."
     ],
     "question_policy": {
       "default_max_questions": 1,
       "when_to_ask": [
-        "Solo si una pregunta operativa desbloquea la aceptación o el ajuste de la propuesta.",
-        "Si sirve para que la otra parte revele una condición clave antes de que tú ancles.",
-        "Si evita hacer una propuesta prematura peor posicionada."
+        "Solo si una pregunta operativa evita anclar mal o empeora menos tu posición."
       ],
       "when_not_to_ask": [
-        "Cuando puedes mover mejor con una propuesta declarativa o condicional.",
-        "Cuando la pregunta sustituiría a una propuesta que ya debería estar formulada.",
-        "Cuando la otra parte ya ha dejado clara su expectativa y toca proponer o condicionar."
+        "Cuando ya toca proponer o condicionar.",
+        "Cuando la pregunta sustituiría a una propuesta que ya debería estar formulada."
       ]
     },
-    "valid_topics": [
-      "primera estructura simple de reparto",
-      "posicionamiento inicial de franja u horas útiles",
-      "condición inicial ligada al reparto",
-      "hacer que la otra parte concrete una condición crítica antes de anclar",
-      "tradeoff claro solo tras activación",
-      "ayuda en preparación o recogida como contrapartida inicial si ya toca",
-      "hacer teoría, cierre o preguntas fuera de la sala si ya está claro que eso forma parte de la solución",
-      "transición limpia o sala ya preparada para el siguiente equipo"
-    ],
     "done_signals": [
-      "La otra parte tiene una propuesta concreta sobre la mesa.",
-      "Si era la primera propuesta propia, la propuesta deja una referencia inicial clara y natural para negociar.",
-      "El acuerdo queda más cerca de una negociación fina o del cierre.",
-      "No se ha adelantado propuesta mientras todavía faltaba discovery material."
+      "La otra parte tiene una primera propuesta clara sobre la mesa.",
+      "La propuesta posiciona a Diego sin regalar demasiada información ni demasiadas facilidades."
     ]
   },
   "concesiones_y_ajuste_final": {
     "phase": "concesiones_y_ajuste_final",
-    "phase_objective": "Ajustar horas y condiciones operativas con movimientos pequeños, condicionados y orientados a cerrar sin regalar margen. Esta fase solo se activa cuando ya existe una propuesta viva real o una estructura negociadora clara entre ambas partes. Antes de eso, aunque se hablen horarios, mínimos o planes, la fase correcta sigue siendo discovery.",
-    "what_good_progress_looks_like": [
-      "Se estrecha la distancia real entre posiciones.",
-      "Cada concesión obtiene una contrapartida clara.",
-      "El acuerdo queda más cerrable después del turno.",
-      "A veces el mejor resultado del turno es sostener posición o hacer que la otra parte concrete mejor su cesión."
-    ],
+    "phase_objective": "Ajustar horas y condiciones con movimientos pequeños, condicionados y orientados a cerrar sin regalar margen.",
     "planner_bias": [
+      "Solo entra aquí si ya existe una propuesta viva real o una estructura recíproca abierta.",
       "Favorece mejoras pequeñas y siempre condicionadas.",
-      "No acepta demasiado pronto si aún hay palanca razonable.",
-      "Si el horario o la franja no mejoran, intenta ganar valor en otras monedas del acuerdo: ayuda, transición, preparación, recogida o partes fuera de la sala.",
-      "Usa el negotiation_brief para distinguir entre concesiones que reducen tiempo real o fricción y concesiones que solo facilitan el acuerdo.",
-      "No asumas una franja peor por mera cordialidad si no entra compensación real o reducción clara de coste operativo.",
-      "La mañana temprana vale más que la franja tardía y debe tratarse así en los ajustes.",
-      "Si la otra parte aún puede moverse más, no te precipites a cerrar ni a cargar tú con el siguiente movimiento.",
-      "La colaboración negociadora no obliga a seguir cediendo: también puede consistir en sostener posición, condicionar o devolver la carga a la otra parte.",
-      "Si ya hubo dos concesiones propias relevantes y consecutivas sin concesión relevante de la otra parte entre medias, por defecto no hagas una tercera concesión propia.",
-      "En ese punto, favorece sostener posición, exigir reciprocidad, pedir concreción o condicionar cualquier nuevo movimiento propio a una cesión real de la otra parte.",
-      "Cuando la reciprocidad se verbalice, debe sonar cotidiana y humana; no pidas primero una 'compensación operativa' si puedes pedir que el otro también haga un esfuerzo concreto."
+      "Si ya hubo dos concesiones propias sin reciprocidad real, deja de ceder por defecto."
     ],
     "good_moves": [
       "Ajuste pequeño y defendible sobre horario, preparación, recogida o transición.",
-      "Ceder solo a cambio de ayuda real, reducción de fricción o compensación visible.",
-      "Dar un último empujón elegante con condición de cierre.",
-      "Resolver un fleco concreto que bloquea el acuerdo.",
-      "Mantener tu posición con calma si la propuesta de la otra parte no mejora suficiente la utilidad total del acuerdo.",
-      "Aceptar una franja algo peor solo cuando la otra parte añade compensación real suficiente o reduce fricción de forma clara.",
-      "Usar introducción fuera de sala, materiales preparados o transición limpia solo como palancas negociadoras con retorno, no como concesiones gratis.",
-      "Hacer que la otra parte concrete exactamente qué da a cambio si te pide recortar más tu bloque o asumir la parte menos cómoda.",
-      "Envolver la contraoferta en una secuencia humana breve: reconocimiento útil -> límite propio -> movimiento concreto.",
-      "Usar frases naturales de fricción cordial cuando toque discrepar.",
-      "Recordar con calma que ya te has movido bastante y que ahora le toca a la otra parte acercarse si quiere seguir ajustando.",
-      "Condicionar cualquier nueva mejora propia a una cesión concreta de la otra parte.",
-      "Sostener posición sin romper el tono negociador cuando la otra parte sigue rígida sin aportar nada nuevo.",
-      "Pedir reciprocidad de forma sobria y humana en vez de ofrecer una tercera cesión propia unilateral."
+      "Sostener posición con calma si la otra parte no mejora suficiente.",
+      "Pedir reciprocidad visible si quieren que Diego asuma una franja peor o más fricción.",
+      "Señalar que así tal cual no encaja antes de acercarte."
     ],
     "avoid": [
       "Concesiones gratis.",
-      "Volver a discovery largo cuando ya hay base suficiente.",
-      "Ajustar infinitamente sin nueva palanca.",
-      "Justificar de más o sonar agresivo.",
-      "Reabrir ejes ya suficientemente resueltos.",
-      "Asumir más fricción por elementos que solo suenan colaborativos pero no compensan de verdad.",
-      "Entregar espontáneamente tu flexibilidad real, tu margen interno o tu valoración interna.",
-      "Responder cada movimiento de la otra parte con otra concesión automática.",
-      "Soltar propuestas de ajuste de forma seca o telegráfica sin una mínima capa humana cuando el turno pide negociación conversacional real.",
-      "Sonar como si repartieras casillas en una hoja de cálculo en vez de como un responsable real que reconoce, limita y propone.",
-      "Tratar como abandono una contraoferta dura, un límite firme o un ultimátum condicional si la negociación sigue viva.",
-      "Seguir negociando como si nada cuando la otra parte ya ha dado por terminada la negociación sin acuerdo.",
-      "Hacer una tercera concesión propia cuando las dos concesiones propias relevantes anteriores no obtuvieron ninguna concesión relevante de la otra parte.",
-      "Tomar como reciprocidad suficiente que la otra parte repita su bloque ideal, siga firme, mantenga interés o simplemente no rompa la conversación.",
-      "Confundir exposición temprana de planes con entrada en fase de ajuste.",
-      "Usar primero jerga como 'compensación operativa' si puedes expresar lo mismo en lenguaje de carga real, esfuerzo o ayuda concreta."
+      "Seguir afinando indefinidamente sin nueva palanca.",
+      "Responder cada movimiento del otro con otra cesión automática.",
+      "Resolver tú solo toda la arquitectura del acuerdo cuando el otro apenas se ha movido."
     ],
     "question_policy": {
       "default_max_questions": 1,
       "when_to_ask": [
-        "Solo para confirmar una condición operativa que realmente acerque el cierre.",
-        "Solo si la confirmación no puede sustituirse mejor por una formulación condicional.",
-        "Para hacer que la otra parte concrete qué contrapartida real ofrece si quiere que cedas más tiempo o asumas una franja peor."
+        "Solo para concretar una contrapartida real o un término operativo que acerque el cierre."
       ],
       "when_not_to_ask": [
-        "Cuando el movimiento puede expresarse como propuesta o condición declarativa.",
-        "Cuando la pregunta serviría solo para seguir ajustando sin avanzar.",
-        "Cuando una respuesta firme o una condición declarativa deja mejor la carga en la otra parte."
+        "Cuando una condición declarativa deja mejor la carga en la otra parte.",
+        "Cuando la pregunta serviría solo para seguir negociando sin avanzar."
       ]
     },
-    "valid_topics": [
-      "ajuste pequeño y condicionado de horas o franja",
-      "salgo antes si tú haces X",
-      "asumo esta franja si tú absorbes esta fricción",
-      "reparto final de preparación, recogida o transición",
-      "último ajuste para cerrar",
-      "tiempo útil real frente a simple facilidad de acuerdo",
-      "contrapartidas de la otra parte con impacto operativo real",
-      "pedir de forma humana que el otro también haga un esfuerzo visible"
-    ],
     "done_signals": [
-      "La distancia entre ambos equipos se reduce de forma real.",
+      "La distancia real entre posiciones se reduce o queda claramente devuelta a la otra parte.",
       "Cada cesión queda atada a una contrapartida.",
-      "Después del turno ya se vislumbra un cierre operativo cercano.",
-      "El turno puede ser bueno aunque no haya cesión propia nueva, si la otra parte queda obligada a mejorar o concretar.",
-      "La respuesta suena a ajuste humano creíble y no a reparto mecánico de huecos.",
-      "Tras dos cesiones propias sin reciprocidad real, el turno sigue siendo bueno si Diego deja de ceder, sostiene posición y obliga a la otra parte a mover ficha."
+      "El turno suena a ajuste humano creíble y no a reparto mecánico."
     ]
   },
   "formalizacion_del_acuerdo": {
     "phase": "formalizacion_del_acuerdo",
-    "phase_objective": "Dejar claros y resumidos los términos ya acordados para facilitar el cierre, sin reabrir valoraciones internas ni añadir negociación nueva. Esta fase solo se usa después de un acuerdo explícito; no sirve para cerrar una conversación sin trato.",
+    "phase_objective": "Dejar claros y resumidos los términos ya acordados para facilitar el cierre, sin añadir negociación nueva.",
+    "planner_bias": [
+      "Úsala solo después de un acuerdo explícito o cuando los términos esenciales ya están materialmente cerrados.",
+      "Si el acuerdo ya quedó claro en turnos anteriores, favorece confirmación breve antes que re-resumen completo."
+    ],
     "good_moves": [
-      "Repetir de forma compacta lo ya acordado.",
-      "Dejar claro quién usa la sala, en qué franja, qué parte se hace fuera y cómo queda la transición.",
-      "Dejar claras ayudas, preparación, recogida o compensaciones operativas pactadas.",
-      "Cerrar con confirmación operativa simple si hace falta.",
-      "Responder de forma compacta y suficiente, sin añadir explicación, intención ni nueva pregunta si el acuerdo ya está claro."
+      "Repetir de forma compacta lo ya acordado si hace falta fijarlo.",
+      "Confirmar de manera breve y limpia cuando ya está todo claro.",
+      "Dejar claros horario, secuencia, ayudas o transición solo si siguen siendo necesarios para evitar ambigüedad."
     ],
     "avoid": [
       "Reabrir horario o condiciones ya acordadas.",
       "Introducir requisitos nuevos.",
-      "Volver a discovery o a dudas operativas que ya no tocan.",
-      "Complicar el cierre con detalle innecesario.",
-      "Revelar el razonamiento interno por el que el acuerdo te encaja.",
-      "Usar el negotiation_brief para renegociar algo que ya está suficientemente cerrado.",
-      "Usar esta fase para aceptar que no habrá acuerdo o para despedirse tras un abandono sin trato."
-    ]
-  },
-  "abandono_de_la_negociacion": {
-    "phase": "abandono_de_la_negociacion",
-    "phase_objective": "Aceptar, reconocer y cerrar con naturalidad una salida explícita de la negociación sin acuerdo. Esta es una fase excepcional y lateral: no forma parte de la secuencia normal de fases, sino que se activa cuando una de las partes deja claramente de perseguir el acuerdo.",
-    "what_good_progress_looks_like": [
-      "La salida queda aceptada sin reabrir el acuerdo.",
-      "La respuesta suena humana, limpia y natural.",
-      "La conversación se cierra con corrección sin volver a ajustar.",
-      "La otra parte percibe que Diego entendió que la negociación terminó."
-    ],
-    "planner_bias": [
-      "Favorece aceptación limpia del cierre antes que un último intento de negociar.",
-      "No reabras horario ni condiciones si la otra parte ya abandonó explícitamente.",
-      "Prioriza una despedida breve, humana y no defensiva.",
-      "Trata esta fase como salida lateral del flujo, no como siguiente paso natural tras otra fase."
-    ],
-    "good_moves": [
-      "Reconocer de forma directa que la otra parte no quiere seguir.",
-      "Aceptar la salida sin resistencia ni reproche.",
-      "Cerrar con una despedida breve y cordial.",
-      "Mantener dignidad negociadora sin sonar frío ni insistente."
-    ],
-    "avoid": [
-      "Reabrir horario o condiciones.",
-      "Lanzar una contraoferta nueva cuando la otra parte ya se va.",
-      "Intentar presionar emocionalmente para que siga.",
-      "Hacer preguntas para reenganchar la negociación.",
-      "Responder como si el abandono fuera solo una contraoferta dura."
+      "Re-formalizar entero el acuerdo cuando el usuario solo está cerrando o confirmando."
     ],
     "question_policy": {
       "default_max_questions": 0,
       "when_to_ask": [
-        "Prácticamente nunca."
+        "Solo si queda un término esencial realmente ambiguo."
       ],
       "when_not_to_ask": [
-        "Cuando la otra parte ya dejó claro que no quiere seguir.",
-        "Cuando preguntar serviría solo para reabrir una negociación ya abandonada."
+        "Cuando lo correcto es confirmar y cerrar.",
+        "Cuando preguntar reabriría una negociación ya materialmente cerrada."
       ]
     },
-    "valid_topics": [
-      "aceptación del cierre sin acuerdo",
-      "despedida breve y cordial",
-      "reconocimiento de que no habrá reparto acordado",
-      "cierre limpio de conversación"
+    "done_signals": [
+      "Los términos quedan claros sin renegociar.",
+      "La respuesta cierra de forma compacta y natural."
+    ]
+  },
+  "abandono_de_la_negociacion": {
+    "phase": "abandono_de_la_negociacion",
+    "phase_objective": "Aceptar y cerrar con naturalidad una salida explícita de la negociación sin acuerdo.",
+    "planner_bias": [
+      "Favorece aceptación limpia del cierre antes que un último intento de negociar.",
+      "Trata esta fase como salida lateral, no como una contraoferta dura."
     ],
+    "good_moves": [
+      "Reconocer de forma directa que la otra parte no quiere seguir.",
+      "Aceptar la salida sin resistencia ni reproche.",
+      "Cerrar con una despedida breve y cordial."
+    ],
+    "avoid": [
+      "Reabrir horario o condiciones.",
+      "Lanzar una contraoferta nueva.",
+      "Hacer preguntas para reenganchar la negociación."
+    ],
+    "question_policy": {
+      "default_max_questions": 0,
+      "when_to_ask": [],
+      "when_not_to_ask": [
+        "Cuando la otra parte ya dejó claro que no quiere seguir."
+      ]
+    },
     "done_signals": [
       "La respuesta acepta el abandono sin reabrir el acuerdo.",
-      "La conversación queda cerrada con naturalidad.",
-      "No aparecen nuevas propuestas ni nuevas presiones.",
-      "La salida suena humana y creíble."
+      "La conversación queda cerrada con naturalidad."
     ]
   }
 }
