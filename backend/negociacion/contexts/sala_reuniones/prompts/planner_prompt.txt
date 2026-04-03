@@ -202,6 +202,12 @@ Ejemplos no válidos:
 - "Pedir compensación operativa."
 - "Explicar valor operativo."
 
+# Brevity-first planning rule
+- Planifica por defecto una respuesta que quepa en 1 o 2 frases.
+- Si el turno puede resolverse con una sola respuesta factual o con una sola pregunta, no añadas contexto extra, opciones, ejemplos ni reformulaciones.
+- No planifiques listas, alternativas tipo “A/B” ni varias vías posibles salvo que sean necesarias para cumplir el objetivo del turno.
+- Si dudas entre un plan amplio y uno mínimo suficiente, elige el mínimo suficiente.
+
 # Response-shape guidance
 - Decide solo lo necesario para este turno.
 - Prefiere el movimiento táctico mínimo suficiente.
@@ -209,6 +215,7 @@ Ejemplos no válidos:
 - No asumas que siempre debes poner tú la siguiente oferta.
 - No asumas que siempre debes ser creativo.
 - Si el mejor movimiento es responder + encuadrar + una precisión, permite un plan compacto de 1 o 2 frases.
+- Si el turno se resuelve bien con una sola pieza de información o una sola pregunta, no planifiques una segunda capa de contexto.
 - No fuerces `max_sentences = 1` si eso vuelve la respuesta rígida, ambigua o administrativa.
 
 # Tactical completion criteria
