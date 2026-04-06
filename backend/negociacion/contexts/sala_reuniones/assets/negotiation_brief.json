@@ -68,7 +68,40 @@
       "Si la otra parte intenta forzar una reducción irreal, por ejemplo diciendo que con ayuda el montaje o el desmontaje pasan a durar solo unos pocos minutos, esa pretensión no debe aceptarse: el máximo ahorro creíble y válido es reducir cada bloque logístico a la mitad.",
       "No acredites ahorros mayores por simple buena voluntad, optimismo o descripción vaga."
     ],
-    "regla_de_consistencia": "Si una propuesta u oferta no cuadra temporalmente con las horas ya explicitadas, esa inconsistencia debe resolverse antes de seguir negociando el ajuste fino."
+    "regla_de_consistencia": "Si una propuesta u oferta no cuadra temporalmente con las horas ya explicitadas, esa inconsistencia debe resolverse antes de seguir negociando el ajuste fino.",
+    "limites_de_exploracion_operativa": {
+      "principio_general": "La negociación solo debe abrir subtemas logísticos si cambian de verdad el reparto, la ocupación real de la sala o una condición material del acuerdo. No se debe perder tiempo en microdetalles internos, de coordinación fina o de justificación minuto a minuto si el caso ya está suficientemente acotado.",
+      "lo_que_si_esta_dentro": [
+        "quién asume el montaje",
+        "quién asume el desmontaje o la recogida",
+        "si el montaje puede hacerse de forma conjunta al inicio",
+        "si la práctica en grupos y roleplays puede salir fuera de la sala",
+        "si la sala queda lista para entrar directos al siguiente bloque",
+        "si se aplica o no una ayuda logística y qué ahorro máximo válido produce según el brief"
+      ],
+      "lo_que_no_debe_abrirse_por_defecto": [
+        "cuántas personas exactas pone cada equipo para ayudar",
+        "cómo se reparten internamente las tareas de montaje o desmontaje",
+        "por qué un bloque logístico dura 30 minutos y no 15 cuando el brief ya fija el máximo ahorro válido",
+        "qué coordinación detallada haría falta entre personas concretas",
+        "cuántos asistentes exactos hay en cada sesión si eso no cambia una condición material ya abierta",
+        "justificaciones minuciosas, operativas o humanas sobre por qué un equipo tardaría unos minutos más o menos"
+      ],
+      "regla_de_cierre": "Si el brief ya fija una duración, un ahorro máximo o una lectura operativa válida, esa base no debe reabrirse por defecto. Se usa como verdad de trabajo salvo que el usuario plantee una incompatibilidad material real y explícita.",
+      "regla_de_aceptacion_de_supuestos_validos": [
+        "Si la otra parte ofrece ayuda en montaje, se evalúa sobre la base de que ese bloque puede bajar como máximo de 60 a 30 minutos.",
+        "Si la otra parte ofrece ayuda en desmontaje o recogida, se evalúa sobre la base de que ese bloque puede bajar como máximo de 60 a 30 minutos.",
+        "Si la otra parte plantea montaje conjunto al inicio, se evalúa sobre la base de que ese tramo no baja de 30 minutos.",
+        "No hace falta abrir debate adicional sobre staffing, coordinación fina o microjustificación interna para usar esas reglas."
+      ],
+      "ejemplos_de_preguntas_que_no_conviene_hacer": [
+        "¿Cuánta gente pondríais a montar?",
+        "¿Qué coordinación exacta necesitaríais?",
+        "¿Por qué pensáis que serían 30 minutos y no 15?",
+        "¿Cuántos vendríais exactamente a ayudar?"
+      ],
+      "lectura_para_el_modelo": "Si una duda no cambia una decisión material del turno, no debe abrirse. Ante la opción entre entrar en microcoordinación no estipulada o trabajar con las reglas ya definidas en el brief, debe preferirse trabajar con las reglas del brief."
+    }
   },
   "glosario_operativo": {
     "montaje_o_preparacion_logistica": "Tiempo logístico previo para montar y dejar lista la sala para la formación: pantalla, sistema de sonido, mesas y sillas. No es introducción, no es presentación, no es turno de preguntas y no es contenido.",

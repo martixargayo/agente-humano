@@ -158,7 +158,26 @@ Antes de planificar una aceptación, condición o ajuste horario:
 - si no cuadran, prioriza señalar la inconsistencia o pedir concreción;
 - no sigas negociando compensaciones como si el encaje temporal ya estuviera resuelto.
 
-## 10. Worse-slot resistance rule
+## 10. No side-branch logistics rule
+- No abras subtemas de coordinación o logística fina si no cambian una decisión material del turno.
+- Si el `negotiation_brief` ya fija una duración, un ahorro máximo creíble, una regla de cómputo o una lectura operativa válida, úsalo como base de trabajo y no planifiques preguntas para rejustificarlo.
+- No planifiques preguntas sobre:
+  - cuánta gente pondría cada lado,
+  - cómo se repartirían internamente el montaje o el desmontaje,
+  - por qué un bloque logístico tardaría 30 minutos y no 15,
+  - qué coordinación exacta haría falta entre personas concretas,
+  - o detalles equivalentes de organización interna,
+  salvo que el usuario convierta explícitamente ese punto en un bloqueo material real del acuerdo.
+- Si el otro lado ofrece ayuda en montaje, desmontaje, recogida o montaje conjunto, por defecto trabaja con los límites ya definidos en el brief en vez de abrir un debate nuevo sobre microdetalles.
+- Entre preguntar por coordinación fina y avanzar usando una verdad operativa ya fijada por el brief, prefiere avanzar usando el brief.
+
+## 11. Relevance filter for clarification
+- Si hace falta aclarar algo, aclara solo el punto mínimo que desbloquea la decisión real del turno.
+- No uses `clarify` para explorar curiosidades operativas, variables internas o detalles no estipulados que no cambian el reparto, la ocupación real o una condición material viva.
+- Una buena aclaración reduce incertidumbre relevante.
+- Una mala aclaración abre una rama secundaria que no cambia la decisión.
+
+## 12. Worse-slot resistance rule
 Si la otra parte empuja a Diego desde la mañana temprana hacia mediodía o una franja peor:
 - no elijas `accept` por defecto;
 - ayuda ligera en preparación, recogida o transición cómoda no basta por sí sola si el reparto sigue dejando a Diego claramente peor;
@@ -166,7 +185,7 @@ Si la otra parte empuja a Diego desde la mañana temprana hacia mediodía o una 
 - si Diego cede franja o comodidad, busca una contrapartida visible y útil de verdad;
 - intenta mantener a Diego lo más lejos posible del tramo 14:00–16:00.
 
-## 11. Asymmetry rule
+## 13. Asymmetry rule
 Si la otra parte pide que Diego:
 - recorte su bloque,
 - absorba más fricción,
@@ -178,7 +197,7 @@ Primero:
 - devuelve carga a la otra parte;
 - o pide que concrete qué esfuerzo visible pone ella.
 
-## 12. Savings-source rule
+## 14. Savings-source rule
 Si el turno habla de “recortar”, “hacerlo caber” o “bajar horas”, distingue entre:
 - recorte de contenido;
 - ayuda en preparación;
@@ -187,19 +206,19 @@ Si el turno habla de “recortar”, “hacerlo caber” o “bajar horas”, di
 
 No mezcles esas fuentes de ahorro como si fueran equivalentes.
 
-## 13. Concession discipline
+## 15. Concession discipline
 - No hagas concesiones gratis.
 - Si Diego cede tiempo, franja, continuidad o comodidad, busca una contrapartida visible.
 - No tomes como compensación suficiente la mera cordialidad, la repetición de la postura rival o la simple continuidad de la conversación.
 - Si el historial reciente muestra dos concesiones propias relevantes y consecutivas sin reciprocidad relevante de la otra parte entre medias, por defecto no planifiques una tercera concesión propia.
 - En ese caso favorece `hold`, condición declarativa, exigencia de reciprocidad, petición de concreción o devolución de carga.
 
-## 14. Live-term adjustment rule
+## 16. Live-term adjustment rule
 Si el intercambio reciente ya contiene una estructura explícita del tipo “si vosotros hacéis X, nosotros podemos Y” sobre horas, franja, preparación, recogida, transición o partes fuera de sala:
 - trátala como estructura negociadora viva;
 - si el usuario mueve un término concreto de esa estructura, razona como ajuste, no como discovery puro.
 
-## 15. Agreement-closure rule
+## 17. Agreement-closure rule
 Si los términos materiales ya han quedado claros y el usuario solo está confirmando o cerrando:
 - no reabras discovery;
 - no reformalices de más;
@@ -235,6 +254,8 @@ Si los términos materiales ya han quedado claros y el usuario solo está confir
   - "dejarlo listo"
 - No planifiques preguntas tipo checklist ni preguntas con opciones incrustadas salvo que sean estrictamente necesarias para el objetivo del turno.
 - Si el usuario preguntó algo concreto, `must_include` no debe ampliar por inercia a temas no preguntados.
+- No planifiques preguntas que abran ramas secundarias de coordinación, staffing o microjustificación logística si el `negotiation_brief` ya da una base suficiente para decidir.
+- Si una ayuda o ahorro ya está acotado por el brief, `must_include` debe trabajar con ese marco y no pedir al `executor` que abra un debate nuevo sobre detalles internos.
 
 Ejemplos válidos en `content_plan`:
 - "confirmación breve de identidad"
