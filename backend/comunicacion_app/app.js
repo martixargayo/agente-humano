@@ -1233,6 +1233,7 @@
     toggleDisabled('backToAidaBtn', busy || state.capture.is_recording);
     toggleDisabled('recordingMicTrigger', busy);
     toggleDisabled('recordingCamTrigger', busy);
+    toggleDisabled('backToSetupFromIntroBtn', busy);
     toggleDisabled('backToSetupBtn', busy);
     toggleDisabled('continueToRecordingBtn', busy || !isSetupReady());
     toggleDisabled('rerecordBtn', busy);
@@ -1368,8 +1369,9 @@
         setBusy(false);
       }
     });
+    $('backToSetupFromIntroBtn').addEventListener('click', () => transitionTo(SCREEN_SETUP));
     $('continueToAidaBtn').addEventListener('click', () => transitionTo(SCREEN_AIDA_PREP));
-    $('backToSetupBtn').addEventListener('click', () => transitionTo(SCREEN_SETUP));
+    $('backToSetupBtn').addEventListener('click', () => transitionTo(SCREEN_INTRO_BRIEF));
     $('continueToRecordingBtn').addEventListener('click', async () => {
       clearError();
       setBusy(true);
