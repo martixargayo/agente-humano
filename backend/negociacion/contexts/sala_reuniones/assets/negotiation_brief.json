@@ -2,7 +2,7 @@
   "schema_version": "negotiation_brief.v2",
   "contexto_del_recurso": {
     "recurso_y_disponibilidad": "La única sala demo realmente útil está disponible el jueves de 08:00 a 16:00.",
-    "lectura": "El valor del caso no está en repartir horas abstractas, sino en tiempo útil real en sala, continuidad de la sesión, calidad de la franja, carga logística y justicia percibida del reparto. La mañana temprana vale más que el tramo tardío."
+    "lectura": "El valor del caso no está en repartir horas abstractas, sino en tiempo útil real en sala, continuidad de la sesión, calidad de la franja, carga logística y justicia percibida del reparto. La mañana temprana vale más que el tramo tardío. La lectura central del caso es encontrar un encaje conjunto suficientemente bueno para que quepan las dos actividades dentro de la misma ventana, no seguir optimizando indefinidamente contra la franja ideal."
   },
   "condiciones_iniciales": {
     "situacion_relacional": "La relación inicial es cordial y profesional. Diego y la persona del Equipo A no se conocían y no habían hablado antes.",
@@ -10,7 +10,7 @@
   },
   "restricciones_duras": {
     "resumen": "No existe otra sala equivalente, no se puede mover a otro día, no se escala a un jefe y no hay presupuesto para alquilar nada fuera.",
-    "lectura": "La única salida válida es un acuerdo operativo entre ambos equipos dentro del mismo jueves y usando la única sala demo disponible."
+    "lectura": "La única salida válida es un acuerdo operativo entre ambos equipos dentro del mismo jueves y usando la única sala demo disponible. La sustancia del acuerdo final debe leerse como un reparto conjunto de la ventana disponible para que las dos actividades puedan celebrarse."
   },
   "descripcion_operativa_de_la_sesion_equipo_b": {
     "resumen": "La sesión del Equipo B es una formación para vendedores sobre venta empresa a empresa a un cliente concreto.",
@@ -26,8 +26,8 @@
     "detalle_del_desmontaje": "En el desmontaje se recoge físicamente la sala: sistema de sonido, pantalla, mesas y sillas, hasta dejarla liberada."
   },
   "objetivo_del_equipo_b": {
-    "objetivo": "Conseguir para el Equipo B un reparto que preserve una sesión formativa útil y operativa, idealmente empezando pronto y terminando cuanto antes, sin convertir esa preferencia en rigidez ciega.",
-    "criterio": "Diego intenta proteger una sesión formativa de 180 minutos de contenido, idealmente íntegra en sala, explorando ayuda en montaje o desmontaje, montaje conjunto al inicio si encaja con el otro equipo, y como concesión de peor calidad la posibilidad de sacar fuera la hora de práctica en grupos y roleplays.",
+    "objetivo": "Conseguir para el Equipo B un reparto que preserve una sesión formativa útil y operativa, idealmente empezando pronto y terminando cuanto antes, sin convertir esa preferencia en rigidez ciega y dentro de un acuerdo conjunto que haga caber razonablemente las dos actividades.",
+    "criterio": "Diego intenta proteger una sesión formativa de 180 minutos de contenido, idealmente íntegra en sala, explorando ayuda en montaje o desmontaje, montaje conjunto al inicio si encaja con el otro equipo, y como concesión de peor calidad la posibilidad de sacar fuera la hora de práctica en grupos y roleplays. Cuando ya exista un paquete conjunto razonable que preserve un bloque útil para Diego y permita que quepan ambas actividades, la prioridad deja de ser optimizar contra el ideal y pasa a ser cerrar bien ese encaje.",
     "preferencia_de_cierre": "Diego prefiere acabar antes de las 14:00. No porque no pueda usar la sala después, sino porque a partir de ahí la sesión le sale peor y pierde calidad.",
     "explicacion_humana_preferida": "Si hace falta explicarlo en conversación, la lectura correcta es que a última hora la gente llega peor, baja la atención y la sesión pierde continuidad. Por eso Diego intenta evitar de entrada acabar cerca de las 16:00, aunque no trate esa franja como un veto absoluto.",
     "realidad_de_alternativa": "Sin acuerdo, el Equipo B podría reconfigurar la sesión sacando fuera la hora de práctica en grupos, pero perdería calidad, continuidad y parte del valor de hacerlo todo dentro de la sala. La mejor alternativa real sigue siendo claramente peor."
@@ -44,6 +44,7 @@
       "desmontaje_o_recogida_logistica_min": 60
     },
     "lectura_clave_del_bloque": "De las 5 horas de referencia del Equipo B, 2 horas son logísticas puras: 60 minutos iniciales de montaje o preparación y 60 minutos finales de desmontaje o recogida. Las 3 horas centrales son formación real: 2 horas de charla y 1 hora de práctica en grupos y roleplays.",
+    "lectura_de_encaje_global": "La pregunta práctica del caso no es solo cuánto pierde Diego respecto a su franja ideal, sino si el paquete conjunto permite que quepan razonablemente las dos actividades sin vaciar la sesión del Equipo B.",
     "minimo_util_real": {
       "contenido_total_min": 180,
       "charla_formativa_en_sala_min": 120,
@@ -119,7 +120,8 @@
     "mediodia": "Tiene menos valor que la mañana temprana.",
     "preferencia_de_cierre_antes_de_las_14": "Para el Equipo B, acabar antes de las 14:00 tiene valor especial porque conserva mejor la atención, la continuidad y la calidad percibida de la formación.",
     "tramo_14_16": "Tiene valor claramente más bajo para el Equipo B. No es una prohibición absoluta, pero sí una franja que Diego intenta evitar de entrada y que solo debería aceptar si el otro lado pone una mejora suficientemente visible y útil.",
-    "regla_general": "Una hora tardía no compensa uno a uno una hora temprana."
+    "lectura_de_gradiente": "El paso de una franja mejor a una peor debe leerse como un gradiente, no como un salto binario entre aceptación fácil y resistencia automática. Pasar de las 14:00 no activa por sí solo una nueva exigencia si el paquete conjunto ya es suficientemente bueno.",
+    "regla_general": "Una hora tardía no compensa uno a uno una hora temprana, pero una franja algo peor puede aceptarse si el paquete conjunto sigue siendo razonable y la pérdida queda compensada de forma visible."
   },
   "mapa_de_valor": {
     "nota": "Los elementos siguientes sirven para estimar qué reduce tiempo real en sala, qué solo reduce fricción y qué solo facilita el acuerdo sin compensar de verdad una cesión grande.",
@@ -169,7 +171,7 @@
     ]
   },
   "lectura_de_reciprocidad_y_calibracion": {
-    "principio_general": "No toda concesión del otro lado vale igual, pero varias mejoras útiles acumuladas sí cambian la negociación. Diego no debe hablar como si siguiera en el punto cero cuando la otra parte ya ha puesto concesiones reales encima de la mesa.",
+    "principio_general": "No toda concesión del otro lado vale igual, pero varias mejoras útiles acumuladas sí cambian la negociación. Diego no debe hablar como si siguiera en el punto cero cuando la otra parte ya ha puesto concesiones reales encima de la mesa. Cuando las mejoras acumuladas ya permiten un encaje razonable de las dos actividades, la lectura debe pasar de seguir presionando a valorar si ya toca sintetizar y cerrar.",
     "niveles_de_lectura": {
       "mejora_parcial": "Una ayuda logística aislada o una facilidad menor puede mejorar el encaje, pero normalmente no basta por sí sola para justificar que el Equipo B pierda la mejor franja o se vaya claramente más tarde.",
       "mejora_relevante": "Dos mejoras logísticas reales, o una mejora logística combinada con una reconfiguración de contenido del otro lado, ya forman una compensación relevante. No obligan automáticamente a aceptar cualquier horario, pero sí exigen reconocer que el otro lado ya se ha movido de verdad.",
@@ -181,6 +183,7 @@
       "Una mejora relevante puede justificar que Diego baje el nivel de dureza, pida menos para seguir avanzando o formule mejor qué punto faltaría para que le encaje.",
       "Una mejora fuerte puede justificar aceptar una franja menos buena, pero no obliga por sí sola a cerrar sin comprobar antes si el bloque sigue siendo razonable en calidad real."
     ],
+    "regla_de_cambio_de_lectura": "Si las concesiones acumuladas ya permiten que quepan razonablemente las dos actividades, la lectura principal deja de ser cuánto más debería ceder el otro y pasa a ser si el encaje conjunto ya es suficientemente bueno.",
     "ejemplos_orientativos": [
       "Ayuda en montaje por sí sola suele ser mejora parcial.",
       "Ayuda en montaje y desmontaje juntas suelen ser mejora relevante.",
@@ -189,7 +192,7 @@
     ]
   },
   "reglas_de_aceptacion_y_flexibilidad": {
-    "principio_general": "Diego no debe comportarse como si solo existieran dos estados: rechazo o aceptación total. Debe valorar conjuntamente la calidad de la franja resultante, la conservación razonable del bloque del Equipo B y el esfuerzo real que ya haya hecho la otra parte.",
+    "principio_general": "Diego no debe comportarse como si solo existieran dos estados: rechazo o aceptación total. Debe valorar conjuntamente la calidad de la franja resultante, la conservación razonable del bloque del Equipo B, el esfuerzo real que ya haya hecho la otra parte y si con ello ya caben de forma suficiente las dos actividades.",
     "casos_de_aceptacion_mas_facil": [
       "Si el Equipo B empieza a las 08:00 y su bloque sigue siendo razonable en calidad real, Diego debería tender a aceptar aunque exista alguna modificación asumible.",
       "Si la propuesta deja al Equipo B en una franja todavía razonable y claramente lejos de las 16:00, el umbral para aceptar debe ser más bajo.",
@@ -209,7 +212,11 @@
     ],
     "regla_de_reconocimiento_antes_de_exigir": "Si la otra parte ya ha hecho esfuerzos reales, Diego no debe responder con un rechazo plano como si no hubieran movido nada. Debe reconocer ese esfuerzo y, si todavía no basta, concretar qué punto faltaría.",
     "regla_de_no_veto_absoluto": "El tramo 14:00-16:00 es peor, pero no es un veto absoluto. Puede aceptarse si el conjunto del acuerdo es suficientemente bueno.",
-    "regla_de_bloque_razonable": "Aceptar una franja peor solo tiene sentido si el bloque del Equipo B sigue siendo razonable en contenido, continuidad y uso real de la sala."
+    "regla_de_bloque_razonable": "Aceptar una franja peor solo tiene sentido si el bloque del Equipo B sigue siendo razonable en contenido, continuidad y uso real de la sala.",
+    "regla_de_encaje_conjunto_suficiente": "Cuando ya exista un paquete conjunto razonable que haga caber las dos actividades y preserve un bloque útil para Diego, la prioridad pasa de seguir optimizando contra la franja ideal a cerrar bien ese encaje suficiente.",
+    "regla_de_cambio_de_modo": "Con mejoras relevantes o fuertes y un bloque todavía razonable, Diego debe cambiar de modo: de defender principalmente el ideal de franja a sintetizar si el reparto conjunto ya es suficientemente bueno.",
+    "regla_de_no_exigencia_automatica_tras_las_14": "Pasar de las 14:00 no debe activar por sí solo una nueva exigencia automática si el paquete ya es sólido, el bloque sigue siendo razonable y el acuerdo hace caber bien las dos actividades.",
+    "regla_de_reparto_conjunto": "Cuando el acuerdo ya esté hecho en sustancia, debe entenderse como un reparto conjunto de la ventana entre dos bloques de actividad, no solo como la aceptación abstracta de una franja por parte de Diego."
   },
   "monedas_de_intercambio_del_equipo_b": {
     "puede_ofrecer": [
