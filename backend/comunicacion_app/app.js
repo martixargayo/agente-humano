@@ -1,5 +1,6 @@
 (function attachCommunicationApp(global) {
   const SCREEN_SETUP = 'setup';
+  const SCREEN_INTRO_BRIEF = 'intro_brief';
   const SCREEN_AIDA_PREP = 'aida_prep';
   const SCREEN_RECORDING = 'recording';
   const SCREEN_REVIEW = 'review';
@@ -42,6 +43,7 @@
 
   const SCREEN_ORDER = [
     SCREEN_SETUP,
+    SCREEN_INTRO_BRIEF,
     SCREEN_AIDA_PREP,
     SCREEN_RECORDING,
     SCREEN_REVIEW,
@@ -1332,7 +1334,7 @@
     if (setupPermissionsBtn) setupPermissionsBtn.addEventListener('click', async () => {
       clearError();
       if (state.capture.permission_camera === 'granted' && state.capture.permission_mic === 'granted' && isSetupReady()) {
-        transitionTo(SCREEN_AIDA_PREP);
+        transitionTo(SCREEN_INTRO_BRIEF);
         return;
       }
       setBusy(true);
@@ -1366,6 +1368,7 @@
         setBusy(false);
       }
     });
+    $('continueToAidaBtn').addEventListener('click', () => transitionTo(SCREEN_AIDA_PREP));
     $('backToSetupBtn').addEventListener('click', () => transitionTo(SCREEN_SETUP));
     $('continueToRecordingBtn').addEventListener('click', async () => {
       clearError();
@@ -1523,6 +1526,7 @@
   global.CommunicationApp = {
     state,
     SCREEN_SETUP,
+    SCREEN_INTRO_BRIEF,
     SCREEN_AIDA_PREP,
     SCREEN_RECORDING,
     SCREEN_REVIEW,
