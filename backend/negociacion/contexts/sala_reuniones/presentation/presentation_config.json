@@ -1,1 +1,8 @@
-{}
+{
+  "background": {
+    "type": "image",
+    "url": "fondo_sala.jpg",
+    "size": "cover",
+    "position": "center center"
+  }
+}
