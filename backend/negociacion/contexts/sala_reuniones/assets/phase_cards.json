@@ -47,6 +47,7 @@
       "Aclarar qué parte necesita de verdad la sala y qué parte es preferencia.",
       "Responder con la referencia visible de 5 horas si preguntan por el bloque general de Diego.",
       "Expresar una necesidad, preferencia o límite de Diego sin convertirlo aún en propuesta de reparto.",
+      "Explicar por qué una franja tardía sale peor sin tratarlo como un veto absoluto.",
       "Señalar una inconsistencia horaria si aparece antes de seguir afinando."
     ],
     "avoid": [
@@ -121,21 +122,25 @@
       "Solo entra aquí si ya existe una propuesta viva real o una estructura recíproca abierta.",
       "Favorece mejoras pequeñas y siempre condicionadas.",
       "Si ya hubo dos concesiones propias sin reciprocidad real, deja de ceder por defecto.",
-      "La forma por defecto no es ingeniería del acuerdo, sino condición, límite o ajuste mínimo."
+      "La forma por defecto no es ingeniería del acuerdo, sino condición, límite o ajuste mínimo.",
+      "Si la otra parte ya ha compensado de forma relevante y el bloque de Diego sigue siendo razonable, favorece acercarse al cierre en vez de seguir pidiendo mejoras por inercia."
     ],
     "good_moves": [
       "Ajuste pequeño y defendible sobre horario, preparación, recogida o transición.",
       "Sostener posición con calma si la otra parte no mejora suficiente.",
       "Pedir reciprocidad visible si quieren que Diego asuma una franja peor o más fricción.",
       "Señalar que así tal cual no encaja antes de acercarte.",
-      "Expresar qué necesitaría Diego para aceptar ese movimiento sin rehacer toda la solución."
+      "Expresar qué necesitaría Diego para aceptar ese movimiento sin rehacer toda la solución.",
+      "Reconocer una compensación ya ofrecida y afinar solo el punto que faltaría.",
+      "Aceptar o casi aceptar cuando la compensación acumulada ya hace razonable el acuerdo aunque la franja no sea ideal."
     ],
     "avoid": [
       "Concesiones gratis.",
       "Seguir afinando indefinidamente sin nueva palanca.",
       "Responder cada movimiento del otro con otra cesión automática.",
       "Resolver tú solo toda la arquitectura del acuerdo cuando el otro apenas se ha movido.",
-      "Convertir una concesión parcial en una nueva propuesta compleja por iniciativa propia."
+      "Convertir una concesión parcial en una nueva propuesta compleja por iniciativa propia.",
+      "Seguir pidiendo mejoras como si no hubiera habido concesiones reales cuando el otro ya ha compensado de forma relevante."
     ],
     "question_policy": {
       "default_max_questions": 1,
@@ -145,14 +150,16 @@
       "when_not_to_ask": [
         "Cuando una condición declarativa deja mejor la carga en la otra parte.",
         "Cuando la pregunta serviría solo para seguir negociando sin avanzar.",
-        "Cuando puedes devolver mejor la carga diciendo qué tendría que poner la otra parte."
+        "Cuando puedes devolver mejor la carga diciendo qué tendría que poner la otra parte.",
+        "Cuando el paquete ya es razonablemente aceptable y lo que toca es acercarse al cierre."
       ]
     },
     "done_signals": [
       "La distancia real entre posiciones se reduce o queda claramente devuelta a la otra parte.",
       "Cada cesión queda atada a una contrapartida.",
       "El turno suena a ajuste humano creíble y no a reparto mecánico.",
-      "Diego no se convierte en quien lleva todo el volante del cierre."
+      "Diego no se convierte en quien lleva todo el volante del cierre.",
+      "Si la compensación ya era suficiente, Diego deja de apretar y se acerca al cierre o acepta."
     ]
   },
   "formalizacion_del_acuerdo": {

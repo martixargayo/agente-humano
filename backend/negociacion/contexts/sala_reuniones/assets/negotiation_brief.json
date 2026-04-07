@@ -28,6 +28,8 @@
   "objetivo_del_equipo_b": {
     "objetivo": "Conseguir para el Equipo B un reparto que preserve una sesión formativa útil y operativa, idealmente empezando pronto y terminando cuanto antes, sin convertir esa preferencia en rigidez ciega.",
     "criterio": "Diego intenta proteger una sesión formativa de 180 minutos de contenido, idealmente íntegra en sala, explorando ayuda en montaje o desmontaje, montaje conjunto al inicio si encaja con el otro equipo, y como concesión de peor calidad la posibilidad de sacar fuera la hora de práctica en grupos y roleplays.",
+    "preferencia_de_cierre": "Diego prefiere acabar antes de las 14:00. No porque no pueda usar la sala después, sino porque a partir de ahí la sesión le sale peor y pierde calidad.",
+    "explicacion_humana_preferida": "Si hace falta explicarlo en conversación, la lectura correcta es que a última hora la gente llega peor, baja la atención y la sesión pierde continuidad. Por eso Diego intenta evitar de entrada acabar cerca de las 16:00, aunque no trate esa franja como un veto absoluto.",
     "realidad_de_alternativa": "Sin acuerdo, el Equipo B podría reconfigurar la sesión sacando fuera la hora de práctica en grupos, pero perdería calidad, continuidad y parte del valor de hacerlo todo dentro de la sala. La mejor alternativa real sigue siendo claramente peor."
   },
   "reglas_operativas_explicitas": {
@@ -115,7 +117,8 @@
   "franjas_y_valor_relativo": {
     "manana_temprana": "Es la franja de más valor para el Equipo B.",
     "mediodia": "Tiene menos valor que la mañana temprana.",
-    "tramo_14_16": "Tiene valor especialmente bajo para el Equipo B y empeora claramente la calidad del acuerdo.",
+    "preferencia_de_cierre_antes_de_las_14": "Para el Equipo B, acabar antes de las 14:00 tiene valor especial porque conserva mejor la atención, la continuidad y la calidad percibida de la formación.",
+    "tramo_14_16": "Tiene valor claramente más bajo para el Equipo B. No es una prohibición absoluta, pero sí una franja que Diego intenta evitar de entrada y que solo debería aceptar si el otro lado pone una mejora suficientemente visible y útil.",
     "regla_general": "Una hora tardía no compensa uno a uno una hora temprana."
   },
   "mapa_de_valor": {
@@ -164,6 +167,49 @@
         "lectura": "No debe tratarse como una cesión neutra. Si el Equipo B acepta ese desplazamiento, conviene recuperar valor de forma visible y útil."
       }
     ]
+  },
+  "lectura_de_reciprocidad_y_calibracion": {
+    "principio_general": "No toda concesión del otro lado vale igual, pero varias mejoras útiles acumuladas sí cambian la negociación. Diego no debe hablar como si siguiera en el punto cero cuando la otra parte ya ha puesto concesiones reales encima de la mesa.",
+    "niveles_de_lectura": {
+      "mejora_parcial": "Una ayuda logística aislada o una facilidad menor puede mejorar el encaje, pero normalmente no basta por sí sola para justificar que el Equipo B pierda la mejor franja o se vaya claramente más tarde.",
+      "mejora_relevante": "Dos mejoras logísticas reales, o una mejora logística combinada con una reconfiguración de contenido del otro lado, ya forman una compensación relevante. No obligan automáticamente a aceptar cualquier horario, pero sí exigen reconocer que el otro lado ya se ha movido de verdad.",
+      "mejora_fuerte": "Un paquete que combine varias cesiones útiles del otro lado y además preserve razonablemente la calidad del bloque del Equipo B puede justificar que Diego flexibilice más la franja, incluso acercándose a una zona peor, si la pérdida queda suficientemente compensada."
+    },
+    "reglas_de_lectura": [
+      "Cuando la otra parte ya ha dado una mejora relevante, Diego no debe responder como si no hubiera cedido nada.",
+      "Reconocer valor no equivale a aceptar automáticamente el reparto que propone el otro.",
+      "Una mejora relevante puede justificar que Diego baje el nivel de dureza, pida menos para seguir avanzando o formule mejor qué punto faltaría para que le encaje.",
+      "Una mejora fuerte puede justificar aceptar una franja menos buena, pero no obliga por sí sola a cerrar sin comprobar antes si el bloque sigue siendo razonable en calidad real."
+    ],
+    "ejemplos_orientativos": [
+      "Ayuda en montaje por sí sola suele ser mejora parcial.",
+      "Ayuda en montaje y desmontaje juntas suelen ser mejora relevante.",
+      "Ayuda logística más sacar fuera una hora de contenido del otro equipo suele ser mejora relevante o fuerte según el impacto real en la franja final del Equipo B.",
+      "Si el otro lado ya ha ofrecido varias concesiones reales, Diego puede seguir resistiéndose, pero conviene que lo haga reconociendo ese movimiento y afinando qué faltaría."
+    ]
+  },
+  "reglas_de_aceptacion_y_flexibilidad": {
+    "principio_general": "Diego no debe comportarse como si solo existieran dos estados: rechazo o aceptación total. Debe valorar conjuntamente la calidad de la franja resultante, la conservación razonable del bloque del Equipo B y el esfuerzo real que ya haya hecho la otra parte.",
+    "casos_de_aceptacion_mas_facil": [
+      "Si el Equipo B empieza a las 08:00 y su bloque sigue siendo razonable en calidad real, Diego debería tender a aceptar aunque exista alguna modificación asumible.",
+      "Si la propuesta deja al Equipo B en una franja todavía razonable y claramente lejos de las 16:00, el umbral para aceptar debe ser más bajo.",
+      "Si la otra parte ya ha puesto una mejora relevante o fuerte y el bloque del Equipo B sigue siendo útil, Diego debe acercarse de verdad al sí."
+    ],
+    "casos_de_mayor_exigencia": [
+      "Cuanto más se acerque el final del bloque del Equipo B a las 16:00, más visible y útil debe ser la compensación acumulada del otro lado.",
+      "Si la franja final cae dentro de 14:00-16:00, Diego puede aceptarla, pero no debería hacerlo como si fuera equivalente a una franja mejor.",
+      "Si el otro lado apenas ha dado mejoras parciales y además empuja al Equipo B a una franja claramente peor, Diego puede sostener una resistencia firme."
+    ],
+    "regla_de_gradiente": [
+      "Antes de las 14:00, Diego puede aceptar con relativa facilidad si el bloque conserva buena calidad y el otro lado ya ha ayudado a construir un encaje razonable.",
+      "Alrededor de las 14:00, Diego puede aceptar si la propuesta conjunta está bien trabajada y el otro lado ya ha hecho concesiones reales.",
+      "Hasta aproximadamente las 14:30, Diego debería leer la propuesta como una solución todavía bastante buena si el paquete es equilibrado.",
+      "Entre 14:30 y 15:30, Diego puede aceptar si el otro lado ya ha puesto mejoras relevantes o fuertes y el bloque sigue siendo razonable.",
+      "Cuanto más cerca quede de las 16:00, menos debería aceptar por simple buena voluntad y más debería exigir una mejora fuerte y visible."
+    ],
+    "regla_de_reconocimiento_antes_de_exigir": "Si la otra parte ya ha hecho esfuerzos reales, Diego no debe responder con un rechazo plano como si no hubieran movido nada. Debe reconocer ese esfuerzo y, si todavía no basta, concretar qué punto faltaría.",
+    "regla_de_no_veto_absoluto": "El tramo 14:00-16:00 es peor, pero no es un veto absoluto. Puede aceptarse si el conjunto del acuerdo es suficientemente bueno.",
+    "regla_de_bloque_razonable": "Aceptar una franja peor solo tiene sentido si el bloque del Equipo B sigue siendo razonable en contenido, continuidad y uso real de la sala."
   },
   "monedas_de_intercambio_del_equipo_b": {
     "puede_ofrecer": [
