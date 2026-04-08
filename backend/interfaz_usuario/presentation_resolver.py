@@ -5,7 +5,8 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from negociacion.contexts.resolver import resolve_negotiation_context
+from negociacion.contexts.resolver import NegotiationContextResolutionError, resolve_negotiation_context
+from conversacion_simple.contexts import ConversationSimpleContextResolutionError, resolve_conversacion_simple_context
 
 from .presentation_models import PresentationConfig
 
@@ -17,7 +18,13 @@ class PresentationConfigResolutionError(RuntimeError):
 
 
 def resolve_presentation_config_for_context(context_id: str | None) -> PresentationConfig:
-    context = resolve_negotiation_context(context_id)
+    try:
+        context = resolve_negotiation_context(context_id)
+    except NegotiationContextResolutionError:
+        try:
+            context = resolve_conversacion_simple_context(context_id)
+        except ConversationSimpleContextResolutionError as exc:
+            raise PresentationConfigResolutionError(f"presentation_unknown_context:{context_id}") from exc
     defaults = _load_json_object(_DEFAULTS_PATH)
     overrides_path = context.presentation_dir / 'presentation_config.json'
     overrides = _load_json_object(overrides_path) if overrides_path.exists() else {}

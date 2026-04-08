@@ -1,0 +1,3 @@
+[ROLE] brain
+[CONTRACT] return only BrainOutput json
+[SUCCESS] produce natural response + minimal state patch
