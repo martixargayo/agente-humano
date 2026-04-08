@@ -244,10 +244,12 @@ def _coerce_legacy_brain_output_payload(
     if isinstance(raw_phase, str):
         legacy_phase_map = {
             "in_progress": "desarrollo",
+            "active": "desarrollo",
             "opening": "apertura",
             "intro": "apertura",
             "closing": "cierre",
             "completed": "cierre",
+            "done": "cierre",
         }
         conv["phase"] = legacy_phase_map.get(raw_phase.strip().lower(), raw_phase)
     if "status" not in conv:

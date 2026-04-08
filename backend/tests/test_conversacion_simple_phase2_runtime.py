@@ -95,7 +95,16 @@ def test_legacy_response_text_payload_is_coerced(monkeypatch) -> None:
     assert updated.world_state[config.memory_key]["trace"]["last_status"] == "deliver"
 
 
-def test_legacy_response_key_and_in_progress_phase_are_normalized(monkeypatch) -> None:
+@pytest.mark.parametrize(
+    ("legacy_phase", "expected_phase"),
+    [
+        ("in_progress", "desarrollo"),
+        ("active", "desarrollo"),
+        ("opening", "apertura"),
+        ("closing", "cierre"),
+    ],
+)
+def test_legacy_response_key_and_phase_aliases_are_normalized(monkeypatch, legacy_phase: str, expected_phase: str) -> None:
     def _fake_call(**kwargs):
         return StructuredBrainCall(
             source="model",
@@ -103,7 +112,7 @@ def test_legacy_response_key_and_in_progress_phase_are_normalized(monkeypatch) -
                 "response": "hola desde response",
                 "schema_version": "brain.v1",
                 "status": "deliver",
-                "state_patch": {"conversation_state": {"phase": "in_progress"}},
+                "state_patch": {"conversation_state": {"phase": legacy_phase}},
             },
             response=None,
         )
@@ -119,7 +128,7 @@ def test_legacy_response_key_and_in_progress_phase_are_normalized(monkeypatch) -
     canonical = updated.world_state[config.memory_key]
 
     assert reply == "hola desde response"
-    assert canonical["conversation_state"]["phase"] == "desarrollo"
+    assert canonical["conversation_state"]["phase"] == expected_phase
     assert canonical["conversation_state"]["status"] == "active"
 
 

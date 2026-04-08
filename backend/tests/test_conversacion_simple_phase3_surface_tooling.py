@@ -164,7 +164,7 @@ def test_surface_parity_for_legacy_brain_output_with_optimizer_overrides(monkeyp
                 "response": "hola paridad",
                 "schema_version": "brain.v1",
                 "status": "deliver",
-                "state_patch": {"conversation_state": {"phase": "in_progress"}},
+                "state_patch": {"conversation_state": {"phase": "active"}},
             },
             response=None,
         )
