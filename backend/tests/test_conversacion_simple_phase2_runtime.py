@@ -156,6 +156,39 @@ def test_unknown_phase_keeps_strict_validation(monkeypatch) -> None:
         run_conversacion_simple_turn(state=state, user_message="hola", config=config, turn_context=turn_context)
 
 
+def test_legacy_memory_patch_and_response_object_are_normalized(monkeypatch) -> None:
+    def _fake_call(**kwargs):
+        return StructuredBrainCall(
+            source="model",
+            parsed_json={
+                "schema_version": "brain.v1",
+                "status": "deliver",
+                "response": {"text": "respuesta legacy object"},
+                "memory_patch": {
+                    "current_topic": "tema legacy",
+                    "pending_question": "pregunta legacy",
+                    "last_turn_summary": "resumen legacy",
+                },
+            },
+            response=None,
+        )
+
+    monkeypatch.setattr("conversacion_simple.orchestration.pipeline._call_brain_structured", _fake_call)
+
+    state = SessionState(user_id="u", session_id="s")
+    _bind(state)
+    config = build_conversacion_simple_pipeline_config(context_id="baseline", stateful=True)
+    turn_context = build_conversacion_simple_turn_context(state=state, entrypoint="/tests", requested_context_id="baseline")
+
+    reply, updated, _ = run_conversacion_simple_turn(state=state, user_message="hola", config=config, turn_context=turn_context)
+    canonical = updated.world_state[config.memory_key]
+
+    assert reply == "respuesta legacy object"
+    assert canonical["memory_working"]["current_topic"] == "tema legacy"
+    assert canonical["memory_working"]["pending_question"] == "pregunta legacy"
+    assert canonical["memory_working"]["last_turn_summary"] == "resumen legacy"
+
+
 def test_fallback_without_openai_key_returns_clarify() -> None:
     state = SessionState(user_id="u", session_id="s")
     _bind(state)
