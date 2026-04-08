@@ -421,6 +421,7 @@ def run_conversacion_simple_turn(
         session_id=state.session_id,
         user_id=state.user_id,
         previous_response_id_after=call.response_id,
+        user_turn=user_turn,
         final_reply_text=reply,
         final_status=brain_output.status,
         context_id=effective_context_id,
