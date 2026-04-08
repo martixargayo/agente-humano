@@ -12,6 +12,7 @@ if str(ROOT) not in sys.path:
 from interfaz_usuario import services as iu_services
 from negociacion.optimizador import services as opt_services
 from negociacion.optimizador import trace_reader
+from conversacion_simple.orchestration.pipeline import StructuredBrainCall
 from sessions.state import SessionState, get_session_state, get_session_store
 
 
@@ -150,6 +151,55 @@ def test_optimizador_sandbox_turn_routes_to_conversacion_simple(monkeypatch) -> 
 
     assert out["reply"] == "ok-cs"
     assert called == {"cs": 1, "neg": 0}
+
+
+def test_surface_parity_for_legacy_brain_output_with_optimizer_overrides(monkeypatch) -> None:
+    iu_services.ensure_session(user_id="u_parity", session_id="s_iu", context_id="baseline")
+    opt_services.ensure_session(user_id="u_parity", session_id="s_opt", flow_id="conversacion_simple", context_id="baseline")
+
+    def _legacy_call(**kwargs):
+        return StructuredBrainCall(
+            source="model",
+            parsed_json={
+                "response": "hola paridad",
+                "schema_version": "brain.v1",
+                "status": "deliver",
+                "state_patch": {"conversation_state": {"phase": "in_progress"}},
+            },
+            response=None,
+        )
+
+    monkeypatch.setattr("conversacion_simple.orchestration.pipeline._call_brain_structured", _legacy_call)
+    monkeypatch.setattr(
+        "negociacion.optimizador.services.experiments_bridge.resolve_entries",
+        lambda **_: [{"category": "prompt", "key": "brain", "value": "legacy override"}],
+    )
+    monkeypatch.setattr(
+        "negociacion.optimizador.services.experiments_bridge.apply_overrides",
+        lambda base_config, entries, context_id=None: (base_config, None),
+    )
+    monkeypatch.setattr(
+        "negociacion.optimizador.services.experiments_bridge.describe_effective_overrides",
+        lambda entries: {"prompt": {"brain": "legacy override"}, "config": {}, "contextual": {}},
+    )
+    monkeypatch.setattr(
+        "negociacion.optimizador.services.experiments_bridge.get_state",
+        lambda optimizer_session_id: {"mode": "sandbox", "workspace_version": 2},
+    )
+
+    iu_out = iu_services.run_turn(user_id="u_parity", session_id="s_iu", message="hola")
+    opt_out = opt_services.run_sandbox_turn(
+        optimizer_session_id="opt-parity",
+        user_id="u_parity",
+        session_id="s_opt",
+        message="hola",
+        conversation_id=None,
+        scope_turn_id=None,
+        repeat_from_turn_id=None,
+    )
+
+    assert iu_out["reply"] == "hola paridad"
+    assert opt_out["reply"] == "hola paridad"
 
 
 def test_trace_reader_supports_single_brain_node() -> None:

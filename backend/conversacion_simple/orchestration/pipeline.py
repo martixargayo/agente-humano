@@ -226,13 +226,46 @@ def _coerce_legacy_brain_output_payload(
         normalized["status"] = "deliver"
     if "assistant_response" not in normalized and isinstance(normalized.get("response_text"), str):
         normalized["assistant_response"] = {"text": normalized["response_text"]}
+    if "assistant_response" not in normalized and isinstance(normalized.get("response"), str):
+        normalized["assistant_response"] = {"text": normalized["response"]}
     normalized.pop("response_text", None)
-    if "state_patch" not in normalized:
-        normalized["state_patch"] = {
-            "conversation_state": canonical_state.conversation_state.model_dump(mode="json"),
-            "memory_working": canonical_state.memory_working.model_dump(mode="json"),
-            "memory_episodic_append": [],
+    normalized.pop("response", None)
+    default_patch: dict[str, object] = {
+        "conversation_state": canonical_state.conversation_state.model_dump(mode="json"),
+        "memory_working": canonical_state.memory_working.model_dump(mode="json"),
+        "memory_episodic_append": [],
+    }
+    raw_patch = normalized.get("state_patch")
+    patch = dict(raw_patch) if isinstance(raw_patch, dict) else {}
+
+    raw_conv = patch.get("conversation_state")
+    conv = dict(raw_conv) if isinstance(raw_conv, dict) else {}
+    raw_phase = conv.get("phase")
+    if isinstance(raw_phase, str):
+        legacy_phase_map = {
+            "in_progress": "desarrollo",
+            "opening": "apertura",
+            "intro": "apertura",
+            "closing": "cierre",
+            "completed": "cierre",
         }
+        conv["phase"] = legacy_phase_map.get(raw_phase.strip().lower(), raw_phase)
+    if "status" not in conv:
+        conv["status"] = default_patch["conversation_state"]["status"]  # type: ignore[index]
+    if "current_turn_goal" not in conv:
+        conv["current_turn_goal"] = default_patch["conversation_state"]["current_turn_goal"]  # type: ignore[index]
+    patch["conversation_state"] = conv or default_patch["conversation_state"]
+
+    raw_working = patch.get("memory_working")
+    working = dict(raw_working) if isinstance(raw_working, dict) else {}
+    for field in ("current_topic", "pending_question", "last_turn_summary"):
+        if field not in working:
+            working[field] = default_patch["memory_working"][field]  # type: ignore[index]
+    patch["memory_working"] = working
+
+    episodic = patch.get("memory_episodic_append")
+    patch["memory_episodic_append"] = episodic if isinstance(episodic, list) else []
+    normalized["state_patch"] = patch if patch else default_patch
     return normalized
 
 

@@ -95,6 +95,58 @@ def test_legacy_response_text_payload_is_coerced(monkeypatch) -> None:
     assert updated.world_state[config.memory_key]["trace"]["last_status"] == "deliver"
 
 
+def test_legacy_response_key_and_in_progress_phase_are_normalized(monkeypatch) -> None:
+    def _fake_call(**kwargs):
+        return StructuredBrainCall(
+            source="model",
+            parsed_json={
+                "response": "hola desde response",
+                "schema_version": "brain.v1",
+                "status": "deliver",
+                "state_patch": {"conversation_state": {"phase": "in_progress"}},
+            },
+            response=None,
+        )
+
+    monkeypatch.setattr("conversacion_simple.orchestration.pipeline._call_brain_structured", _fake_call)
+
+    state = SessionState(user_id="u", session_id="s")
+    _bind(state)
+    config = build_conversacion_simple_pipeline_config(context_id="baseline", stateful=True)
+    turn_context = build_conversacion_simple_turn_context(state=state, entrypoint="/tests", requested_context_id="baseline")
+
+    reply, updated, _ = run_conversacion_simple_turn(state=state, user_message="hola", config=config, turn_context=turn_context)
+    canonical = updated.world_state[config.memory_key]
+
+    assert reply == "hola desde response"
+    assert canonical["conversation_state"]["phase"] == "desarrollo"
+    assert canonical["conversation_state"]["status"] == "active"
+
+
+def test_unknown_phase_keeps_strict_validation(monkeypatch) -> None:
+    def _fake_call(**kwargs):
+        return StructuredBrainCall(
+            source="model",
+            parsed_json={
+                "response": "hola",
+                "schema_version": "brain.v1",
+                "status": "deliver",
+                "state_patch": {"conversation_state": {"phase": "unexpected_phase"}},
+            },
+            response=None,
+        )
+
+    monkeypatch.setattr("conversacion_simple.orchestration.pipeline._call_brain_structured", _fake_call)
+
+    state = SessionState(user_id="u", session_id="s")
+    _bind(state)
+    config = build_conversacion_simple_pipeline_config(context_id="baseline", stateful=True)
+    turn_context = build_conversacion_simple_turn_context(state=state, entrypoint="/tests", requested_context_id="baseline")
+
+    with pytest.raises(RuntimeError, match="conversacion_simple_brain_output_validation_error"):
+        run_conversacion_simple_turn(state=state, user_message="hola", config=config, turn_context=turn_context)
+
+
 def test_fallback_without_openai_key_returns_clarify() -> None:
     state = SessionState(user_id="u", session_id="s")
     _bind(state)
