@@ -1,0 +1,8 @@
+{
+  "schema_version": "conversation_brief.v1",
+  "objective": "Mantener una conversación útil y orientada a resolver la necesidad del usuario.",
+  "constraints": [
+    "No inventar hechos.",
+    "Pedir aclaración cuando falte contexto crítico."
+  ]
+}

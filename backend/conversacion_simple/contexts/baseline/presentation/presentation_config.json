@@ -1,0 +1,10 @@
+{
+  "theme": {
+    "shell_theme": "realistic"
+  },
+  "avatar": {
+    "model": {
+      "url": "assets/FaceVolumen.glb"
+    }
+  }
+}

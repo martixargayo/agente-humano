@@ -173,11 +173,15 @@ if INTERFAZ_USUARIO_DIR.exists():
     @app.get("/interfaz_usuario/context-assets/{context_id}/{asset_path:path}", include_in_schema=False)
     def interfaz_usuario_context_asset(context_id: str, asset_path: str) -> FileResponse:
         from negociacion.contexts import NegotiationContextResolutionError, resolve_negotiation_context
+        from conversacion_simple.contexts import ConversationSimpleContextResolutionError, resolve_conversacion_simple_context
 
         try:
             context = resolve_negotiation_context(context_id)
-        except NegotiationContextResolutionError as exc:
-            raise HTTPException(status_code=404, detail="interfaz_usuario_context_asset_missing") from exc
+        except NegotiationContextResolutionError:
+            try:
+                context = resolve_conversacion_simple_context(context_id)
+            except ConversationSimpleContextResolutionError as exc:
+                raise HTTPException(status_code=404, detail="interfaz_usuario_context_asset_missing") from exc
 
         base_dir = (context.presentation_dir / "assets").resolve()
         requested_path = base_dir.joinpath(asset_path).resolve()
@@ -196,16 +200,24 @@ if INTERFAZ_USUARIO_DIR.exists():
     @app.get("/interfaz_usuario/{public_slug}", include_in_schema=False)
     def interfaz_usuario_public_context(public_slug: str) -> FileResponse:
         from negociacion.contexts import resolve_public_slug_to_context_id
+        from conversacion_simple.contexts import resolve_conversacion_simple_public_slug_to_context_id
 
-        resolve_public_slug_to_context_id(public_slug)
+        try:
+            resolve_public_slug_to_context_id(public_slug)
+        except Exception:
+            resolve_conversacion_simple_public_slug_to_context_id(public_slug)
         return _interfaz_usuario_index_response()
 
 
     @app.get("/interfaz_usuario/{public_slug}/", include_in_schema=False)
     def interfaz_usuario_public_context_slash(public_slug: str) -> FileResponse:
         from negociacion.contexts import resolve_public_slug_to_context_id
+        from conversacion_simple.contexts import resolve_conversacion_simple_public_slug_to_context_id
 
-        resolve_public_slug_to_context_id(public_slug)
+        try:
+            resolve_public_slug_to_context_id(public_slug)
+        except Exception:
+            resolve_conversacion_simple_public_slug_to_context_id(public_slug)
         return _interfaz_usuario_index_response()
 
     app.mount(
