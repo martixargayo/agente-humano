@@ -214,11 +214,39 @@ def _normalize_reply_text(reply: str) -> str:
     return normalized
 
 
-def _parse_brain_output_strict(*, payload: dict | None, allow_fallback: bool) -> BrainOutput:
+def _coerce_legacy_brain_output_payload(
+    *,
+    payload: dict[str, object],
+    canonical_state: ConversationSimpleCanonicalState,
+) -> dict[str, object]:
+    normalized = dict(payload)
+    if "schema_version" not in normalized:
+        normalized["schema_version"] = "brain.v1"
+    if "status" not in normalized:
+        normalized["status"] = "deliver"
+    if "assistant_response" not in normalized and isinstance(normalized.get("response_text"), str):
+        normalized["assistant_response"] = {"text": normalized["response_text"]}
+    normalized.pop("response_text", None)
+    if "state_patch" not in normalized:
+        normalized["state_patch"] = {
+            "conversation_state": canonical_state.conversation_state.model_dump(mode="json"),
+            "memory_working": canonical_state.memory_working.model_dump(mode="json"),
+            "memory_episodic_append": [],
+        }
+    return normalized
+
+
+def _parse_brain_output_strict(
+    *,
+    payload: dict | None,
+    allow_fallback: bool,
+    canonical_state: ConversationSimpleCanonicalState,
+) -> BrainOutput:
     if payload is None:
         if allow_fallback:
             return _brain_fallback()
         raise RuntimeError("conversacion_simple_brain_output_missing_json")
+    payload = _coerce_legacy_brain_output_payload(payload=payload, canonical_state=canonical_state)
     try:
         output = BrainOutput.model_validate(payload)
     except ValidationError as exc:
@@ -306,7 +334,11 @@ def run_conversacion_simple_turn(
 
     started = time.perf_counter()
     call = _call_brain_structured(client=client, model=trace_meta.model_target, messages=brain_messages)
-    brain_output = _parse_brain_output_strict(payload=call.parsed_json, allow_fallback=call.source != "model")
+    brain_output = _parse_brain_output_strict(
+        payload=call.parsed_json,
+        allow_fallback=call.source != "model",
+        canonical_state=canonical_state,
+    )
     latency_ms = int((time.perf_counter() - started) * 1000)
 
     # Apply deterministic patch
