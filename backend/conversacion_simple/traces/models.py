@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from conversacion_simple.nodes.common import UserTurn
+
 
 class ConversationSimpleNodeTrace(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -27,6 +29,7 @@ class ConversationSimpleTurnTrace(BaseModel):
     conversation_id_after: str | None = None
     previous_response_id_before: str | None = None
     previous_response_id_after: str | None = None
+    user_turn: UserTurn
     final_reply_text: str
     final_status: str
     context_id: str | None = None

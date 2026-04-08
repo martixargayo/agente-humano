@@ -68,7 +68,9 @@ def get_turn(turn_id: str) -> dict[str, Any] | None:
 def get_dialogue(user_id: str, session_id: str) -> list[dict[str, Any]]:
     utterances: list[dict[str, Any]] = []
     for turn in _all_turns_for_session(user_id, session_id):
-        utterances.append({"role": "user", "text": turn.get("user_turn", {}).get("raw_text", ""), "turn_id": turn.get("turn_id")})
+        user_turn = turn.get("user_turn", {}) if isinstance(turn.get("user_turn"), dict) else {}
+        user_text = user_turn.get("raw_text") or user_turn.get("normalized_text") or ""
+        utterances.append({"role": "user", "text": user_text, "turn_id": turn.get("turn_id")})
         utterances.append({"role": "assistant", "text": turn.get("final_reply_text", ""), "turn_id": turn.get("turn_id")})
     return utterances
 
