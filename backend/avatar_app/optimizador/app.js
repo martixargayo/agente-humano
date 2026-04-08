@@ -15,6 +15,8 @@ const EVAL_TOOLTIPS = {
 const state = {
   optimizerSessionId: "default",
   contexts: [],
+  flows: ["conversacion_simple", "negociacion"],
+  selectedFlowId: "negociacion",
   selectedContextId: "baseline_current",
   sessions: [], selectedSessionKey: "", selectedConversation: "",
   turns: [], selectedTurnId: "", turn: null,
@@ -75,7 +77,8 @@ const deepEqual = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const escapeHtml = (s) => String(s ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 
 const selectedSession = () => state.sessions.find((s) => s.session_key === state.selectedSessionKey) || null;
-const activeContext = () => state.contexts.find((c) => c.context_id === state.selectedContextId) || null;
+const filteredContexts = () => state.contexts.filter((c) => c.flow_id === state.selectedFlowId);
+const activeContext = () => filteredContexts().find((c) => c.context_id === state.selectedContextId) || null;
 
 function newLogicalMessageId() {
   return `lmsg_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
@@ -83,23 +86,24 @@ function newLogicalMessageId() {
 
 function normalizeContextId(value) {
   const raw = String(value || "").trim();
-  if (!raw) return state.selectedContextId || "baseline_current";
-  const byId = state.contexts.find((c) => c.context_id === raw);
+  if (!raw) return state.selectedContextId || (filteredContexts()[0]?.context_id ?? "baseline_current");
+  const byId = filteredContexts().find((c) => c.context_id === raw);
   if (byId) return byId.context_id;
-  const bySlug = state.contexts.find((c) => c.public_slug === raw);
+  const bySlug = filteredContexts().find((c) => c.public_slug === raw);
   if (bySlug) return bySlug.context_id;
   return raw;
 }
 
 function buildDefaultSessionId(contextId = state.selectedContextId) {
-  return `${state.defaultSessionIdBase}-${contextId || 'baseline_current'}`;
+  return `${state.defaultSessionIdBase}-${state.selectedFlowId || 'negociacion'}-${contextId || 'baseline_current'}`;
 }
 
 async function ensureOptimizerSessionForContext(contextId, { forceNew = false } = {}) {
   const normalizedContextId = normalizeContextId(contextId || state.selectedContextId || 'baseline_current');
   let sessionId = buildDefaultSessionId(normalizedContextId);
   if (forceNew) sessionId = `${sessionId}-${Date.now()}`;
-  const payload = await api('/sessions/bootstrap', { method: 'POST', body: JSON.stringify({ user_id: state.defaultUserId, session_id: sessionId, context_id: normalizedContextId }) });
+  const payload = await api('/sessions/bootstrap', { method: 'POST', body: JSON.stringify({ user_id: state.defaultUserId, session_id: sessionId, flow_id: state.selectedFlowId, context_id: normalizedContextId }) });
+  if (payload.base_context?.flow_id) state.selectedFlowId = payload.base_context.flow_id;
   state.selectedContextId = payload.base_context?.context_id || normalizedContextId;
   state.selectedSessionKey = payload.session_key;
   state.sessionSelectionMode = forceNew ? "clean" : "explicit";
@@ -108,8 +112,12 @@ async function ensureOptimizerSessionForContext(contextId, { forceNew = false } 
 
 async function loadContexts() {
   state.contexts = (await api('/contexts')).items;
-  if (!state.contexts.some((ctx) => ctx.context_id === state.selectedContextId) && state.contexts[0]) {
-    state.selectedContextId = state.contexts[0].context_id;
+  const availableFlows = Array.from(new Set(state.contexts.map((ctx) => ctx.flow_id).filter(Boolean)));
+  if (availableFlows.length) state.flows = availableFlows;
+  if (!state.flows.includes(state.selectedFlowId)) state.selectedFlowId = state.flows[0];
+  const filtered = filteredContexts();
+  if (!filtered.some((ctx) => ctx.context_id === state.selectedContextId) && filtered[0]) {
+    state.selectedContextId = filtered[0].context_id;
   }
 }
 
@@ -183,6 +191,7 @@ async function refreshCore({ autoSelect = false } = {}) {
     return;
   }
   state.selectedContextId = s.base_context?.context_id || state.selectedContextId;
+  state.selectedFlowId = s.base_context?.flow_id || state.selectedFlowId;
   const base = `/sessions/${encodeURIComponent(s.user_id)}/${encodeURIComponent(s.session_id)}`;
   state.turns = (await api(`${base}/turns${state.selectedConversation ? `?conversation_id=${encodeURIComponent(state.selectedConversation)}` : ''}`)).items;
   const nextLast = state.turns[state.turns.length - 1]?.turn_id || '';
@@ -217,6 +226,7 @@ async function refreshCore({ autoSelect = false } = {}) {
 function buildUiSnapshot() {
   return JSON.stringify({
     selectedSessionKey: state.selectedSessionKey,
+    selectedFlowId: state.selectedFlowId,
     selectedTurnId: state.selectedTurnId,
     liveFollow: state.liveFollow,
     waitingReply: state.waitingReply,
@@ -275,7 +285,12 @@ function renderTopbar() {
   <div class='top-left'>
     <label>Contexto
       <select id='contextSelector' title='Elige el contexto oficial del optimizer.'>
-        ${state.contexts.map((c) => `<option value='${c.context_id}' ${c.context_id === state.selectedContextId ? 'selected' : ''}>${c.context_id}</option>`).join('')}
+        ${filteredContexts().map((c) => `<option value='${c.context_id}' ${c.context_id === state.selectedContextId ? 'selected' : ''}>${c.context_id}</option>`).join('')}
+      </select>
+    </label>
+    <label>Flow
+      <select id='flowSelector' title='Elige el flow activo.'>
+        ${state.flows.map((f) => `<option value='${f}' ${f === state.selectedFlowId ? 'selected' : ''}>${f}</option>`).join('')}
       </select>
     </label>
     <button id='applyContextBtn' title='Crear una sesión nueva y limpia con el contexto seleccionado.'>Empezar limpio</button>
@@ -286,6 +301,7 @@ function renderTopbar() {
   </div>
   <div class='top-mid'>
     Contexto activo: <b>${escapeHtml(s?.base_context?.context_id || state.selectedContextId)}</b>
+    · flow activo: <b>${escapeHtml(s?.base_context?.flow_id || state.selectedFlowId)}</b>
     · versión contexto: ${escapeHtml(s?.base_context?.context_version || ctx?.context_version || '-')}
     · sesión: ${escapeHtml(s?.session_id || '-')}
     · modo sesión: ${escapeHtml(state.sessionSelectionMode)}
@@ -305,6 +321,7 @@ function toolbarHtml() {
   if (!s) {
     return `<div class='toolbar'>
       <span class='badge'>Sin sesión activa</span>
+      <span class='badge'>Flow seleccionado: ${escapeHtml(state.selectedFlowId)}</span>
       <span class='badge'>Contexto seleccionado: ${escapeHtml(state.selectedContextId)}</span>
       <span class='badge'>Pulsa "Empezar limpio" o "Reanudar última"</span>
     </div>`;
@@ -429,6 +446,13 @@ function bindEvents() {
     renderTabs(); renderTopbar(); renderTab(); bindEvents();
   };
 
+  byId('flowSelector')?.addEventListener('change', (e) => {
+    state.selectedFlowId = String(e.target.value || '').trim() || state.selectedFlowId;
+    const nextCtx = filteredContexts()[0];
+    if (nextCtx) state.selectedContextId = nextCtx.context_id;
+    renderTopbar();
+    bindEvents();
+  });
   byId('contextSelector')?.addEventListener('change', (e) => { state.selectedContextId = normalizeContextId(e.target.value); renderTopbar(); bindEvents(); });
 
   byId('applyContextBtn')?.addEventListener('click', async () => {
