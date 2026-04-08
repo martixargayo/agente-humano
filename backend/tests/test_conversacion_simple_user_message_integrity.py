@@ -47,6 +47,10 @@ def test_optimizador_conversacion_simple_dialogue_keeps_user_text(monkeypatch) -
     _install_optimizer_noop_overrides(monkeypatch)
 
     opt_services.ensure_session(user_id="u_opt", session_id="s_opt", flow_id="conversacion_simple", context_id="baseline")
+    state_before = get_session_state(user_id="u_opt", session_id="s_opt")
+    state_before.world_state["negotiation_canonical_traces"] = [
+        {"turn_id": "legacy-neg", "user_turn": {"raw_text": ""}, "final_reply_text": "legacy"}
+    ]
     out = opt_services.run_sandbox_turn(
         optimizer_session_id="opt",
         user_id="u_opt",
@@ -59,6 +63,7 @@ def test_optimizador_conversacion_simple_dialogue_keeps_user_text(monkeypatch) -
 
     assert out["reply"] == "respuesta-cs"
     dialogue = opt_services.get_dialogue("u_opt", "s_opt")
+    assert len(dialogue) == 2
     assert dialogue[-2]["role"] == "user"
     assert dialogue[-2]["text"] == "hola desde optimizador"
 

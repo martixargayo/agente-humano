@@ -228,8 +228,23 @@ def _coerce_legacy_brain_output_payload(
         normalized["assistant_response"] = {"text": normalized["response_text"]}
     if "assistant_response" not in normalized and isinstance(normalized.get("response"), str):
         normalized["assistant_response"] = {"text": normalized["response"]}
+    if "assistant_response" not in normalized and isinstance(normalized.get("assistant_response_text"), str):
+        normalized["assistant_response"] = {"text": normalized["assistant_response_text"]}
+    if "assistant_response" not in normalized and isinstance(normalized.get("reply"), str):
+        normalized["assistant_response"] = {"text": normalized["reply"]}
+    if "assistant_response" not in normalized and isinstance(normalized.get("response"), dict):
+        response_payload = normalized.get("response")
+        if isinstance(response_payload.get("text"), str):
+            normalized["assistant_response"] = {"text": response_payload["text"]}
+    if "assistant_response" not in normalized and isinstance(normalized.get("assistant"), dict):
+        assistant_payload = normalized.get("assistant")
+        if isinstance(assistant_payload.get("text"), str):
+            normalized["assistant_response"] = {"text": assistant_payload["text"]}
     normalized.pop("response_text", None)
     normalized.pop("response", None)
+    normalized.pop("assistant_response_text", None)
+    normalized.pop("reply", None)
+    normalized.pop("assistant", None)
     default_patch: dict[str, object] = {
         "conversation_state": canonical_state.conversation_state.model_dump(mode="json"),
         "memory_working": canonical_state.memory_working.model_dump(mode="json"),
@@ -237,6 +252,11 @@ def _coerce_legacy_brain_output_payload(
     }
     raw_patch = normalized.get("state_patch")
     patch = dict(raw_patch) if isinstance(raw_patch, dict) else {}
+    raw_memory_patch = normalized.get("memory_patch")
+    memory_patch = dict(raw_memory_patch) if isinstance(raw_memory_patch, dict) else {}
+    normalized.pop("memory_patch", None)
+    if memory_patch and "memory_working" not in patch:
+        patch["memory_working"] = memory_patch
 
     raw_conv = patch.get("conversation_state")
     conv = dict(raw_conv) if isinstance(raw_conv, dict) else {}
