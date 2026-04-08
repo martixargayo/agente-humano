@@ -9,8 +9,13 @@ from typing import Any
 from ..orchestration.flow_config import NegotiationTurnConfig
 from .models import OverrideEntry
 from ..contexts import resolve_negotiation_context
+from conversacion_simple.contexts import resolve_conversacion_simple_context
 from .prompts_bridge import PROMPT_FILES
 
+# Prompt files per flow
+_CS_PROMPT_FILES: dict[str, str] = {"brain": "brain_prompt.txt"}
+
+# Config fields allowed per flow
 _ALLOWED_CONFIG_FIELDS: dict[str, type] = {
     "model_memory": str,
     "model_phase_classifier": str,
@@ -23,6 +28,20 @@ _ALLOWED_CONFIG_FIELDS: dict[str, type] = {
     "max_recent_messages": int,
     "max_executor_recent_turns": int,
 }
+
+_CS_ALLOWED_CONFIG_FIELDS: dict[str, type] = {
+    "max_recent_dialogue_messages": int,
+    "episodic_compaction_trigger_count": int,
+    "episodic_compaction_trigger_chars": int,
+    "max_episodic_high_resolution_items": int,
+    "maintenance_retry_limit": int,
+    "compacted_summary_max_chars": int,
+    "maintenance_force_failure": bool,
+}
+
+# Combined sets for flow-agnostic validation at store time
+_ALL_PROMPT_FILES: dict[str, str] = {**PROMPT_FILES, **_CS_PROMPT_FILES}
+_ALL_ALLOWED_CONFIG_FIELDS: dict[str, type] = {**_ALLOWED_CONFIG_FIELDS, **_CS_ALLOWED_CONFIG_FIELDS}
 
 _ALLOWED_CONTEXTUAL_KEYS = {"phase_cards", "persona"}
 
@@ -93,10 +112,11 @@ def resolve_entries(
 
 
 def apply_overrides(
-    base_config: NegotiationTurnConfig,
+    base_config: Any,
     entries: list[dict[str, Any]],
     context_id: str | None = None,
-) -> tuple[NegotiationTurnConfig, TemporaryDirectory | None]:
+    flow_id: str | None = None,
+) -> tuple[Any, TemporaryDirectory | None]:
     config_patch: dict[str, Any] = {}
     for entry in entries:
         if entry["category"] == "config":
@@ -111,10 +131,11 @@ def apply_overrides(
     tempdir = TemporaryDirectory(prefix="optimizador_prompts_")
     tmp_dir = Path(tempdir.name)
 
-    _copy_base_prompt_bundle(tmp_dir, context_id=context_id, prompts_dir=Path(base_config.prompts_dir))
+    _copy_base_prompt_bundle(tmp_dir, context_id=context_id, prompts_dir=Path(base_config.prompts_dir), flow_id=flow_id)
 
+    prompt_files = _CS_PROMPT_FILES if flow_id == "conversacion_simple" else PROMPT_FILES
     for entry in prompt_entries:
-        file_name = PROMPT_FILES.get(entry["key"])
+        file_name = prompt_files.get(entry["key"])
         if file_name:
             (tmp_dir / file_name).write_text(str(entry["value"]), encoding="utf-8")
 
@@ -140,18 +161,31 @@ def describe_effective_overrides(entries: list[dict[str, Any]]) -> dict[str, Any
     return grouped
 
 
-def _copy_base_prompt_bundle(tmp_dir: Path, *, context_id: str | None = None, prompts_dir: Path | None = None) -> None:
-    resolved = resolve_negotiation_context(context_id) if context_id else None
-    prompts_dir = resolved.prompts_dir if resolved is not None else (prompts_dir or Path())
-    for file_name in list(PROMPT_FILES.values()):
-        source = prompts_dir / file_name
-        if source.exists():
-            (tmp_dir / file_name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
-    if resolved is not None:
-        assets = {"phase_cards.json": resolved.phase_cards_path, "persona.json": resolved.persona_path}
-        for target_name, source in assets.items():
+def _copy_base_prompt_bundle(tmp_dir: Path, *, context_id: str | None = None, prompts_dir: Path | None = None, flow_id: str | None = None) -> None:
+    if flow_id == "conversacion_simple":
+        resolved_cs = resolve_conversacion_simple_context(context_id) if context_id else None
+        effective_dir = resolved_cs.prompts_dir if resolved_cs is not None else (prompts_dir or Path())
+        for file_name in list(_CS_PROMPT_FILES.values()):
+            source = effective_dir / file_name
             if source.exists():
-                (tmp_dir / target_name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+                (tmp_dir / file_name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+        if resolved_cs is not None:
+            assets = {"phase_cards.json": resolved_cs.phase_cards_path, "persona.json": resolved_cs.persona_path}
+            for target_name, source_path in assets.items():
+                if source_path.exists():
+                    (tmp_dir / target_name).write_text(source_path.read_text(encoding="utf-8"), encoding="utf-8")
+    else:
+        resolved = resolve_negotiation_context(context_id) if context_id else None
+        prompts_dir = resolved.prompts_dir if resolved is not None else (prompts_dir or Path())
+        for file_name in list(PROMPT_FILES.values()):
+            source = prompts_dir / file_name
+            if source.exists():
+                (tmp_dir / file_name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+        if resolved is not None:
+            assets = {"phase_cards.json": resolved.phase_cards_path, "persona.json": resolved.persona_path}
+            for target_name, source_path in assets.items():
+                if source_path.exists():
+                    (tmp_dir / target_name).write_text(source_path.read_text(encoding="utf-8"), encoding="utf-8")
 
 
 def _json_string(value: Any) -> str:
@@ -179,10 +213,10 @@ def _validate_contextual_value(key: str, value: Any) -> None:
 
 def _validate_entry(entry: OverrideEntry) -> None:
     if entry.category == "prompt":
-        if entry.key not in PROMPT_FILES:
+        if entry.key not in _ALL_PROMPT_FILES:
             raise ValueError(f"prompt override no soportado: {entry.key}")
     elif entry.category == "config":
-        expected = _ALLOWED_CONFIG_FIELDS.get(entry.key)
+        expected = _ALL_ALLOWED_CONFIG_FIELDS.get(entry.key)
         if expected is None:
             raise ValueError(f"config override no soportado: {entry.key}")
         if not isinstance(entry.value, expected):
