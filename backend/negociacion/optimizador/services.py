@@ -14,15 +14,16 @@ from sessions.surface_scope import ensure_session_surface
 
 from ..orchestration.flow_config import build_negotiation_pipeline_config
 from ..orchestration.context_errors import ContextContractError
-from ..orchestration.turn_contract import TurnEntryContract, execute_turn_with_contract
+from ..orchestration.context_errors import SessionContextConflictError
+from ..orchestration.turn_contract import execute_turn_with_contract  # backward-compatible patch target for tests/tooling
+from conversacion_simple.orchestration.pipeline import run_conversacion_simple_turn  # backward-compatible patch target for tests/tooling
 from ..state.canonical_state import build_default_canonical_state
 from ..state.shared_types import ThreadMode
 from ..traces.context_meta import build_trace_context_meta
 from . import context_bridge, datasets_bridge, evals_bridge, experiments_bridge, guardrails_bridge, session_bridge, storage, trace_reader
-from .prompts_bridge import list_prompts as _list_prompts
-from ..contexts import list_official_negotiation_contexts
+from .flow_adapters import get_adapter, list_supported_flow_ids
+from conversacion_simple.orchestration.flow_config import build_conversacion_simple_pipeline_config
 from ..services.context_http import raise_http_from_context_error
-from ..services.turn_context_factory import build_optimizador_turn_context
 from ..forensics.provider_probe import begin_turn_probe, end_turn_probe
 
 logger = logging.getLogger(__name__)
@@ -136,13 +137,18 @@ def list_attempt_traces(user_id: str, session_id: str) -> list[dict[str, Any]]:
 
 
 
-def ensure_session(*, user_id: str, session_id: str, context_id: str | None = None) -> dict[str, Any]:
+def ensure_session(*, user_id: str, session_id: str, context_id: str | None = None, flow_id: str | None = None) -> dict[str, Any]:
     try:
         store = get_session_store()
         existing_state = store.get(user_id=user_id, session_id=session_id)
         state = existing_state or get_session_state(user_id=user_id, session_id=session_id)
         ensure_session_surface(state=state, surface='optimizador')
-        base_context = context_bridge.ensure_optimizer_session_context(state=state, requested_context_id=context_id)
+        base_context = context_bridge.ensure_optimizer_session_context(
+            state=state,
+            requested_context_id=context_id,
+            requested_flow_id=flow_id,
+        )
+        adapter = get_adapter(base_context["flow_id"])
         traces = storage.resolve_traces(state)
         meta = state.world_state.get("optimizador_sandbox_meta", {}) if isinstance(state.world_state, dict) else {}
         ttl_scope = "bootstrap" if existing_state is None and len(traces) == 0 else "active"
@@ -165,9 +171,13 @@ def ensure_session(*, user_id: str, session_id: str, context_id: str | None = No
             "is_sandbox": bool(meta),
             "sandbox_meta": meta if isinstance(meta, dict) else {},
             "base_context": base_context,
+            "capabilities": adapter.capabilities().__dict__,
+            "available_flows": list_supported_flow_ids(),
         }
     except ContextContractError as exc:
         raise_http_from_context_error(exc)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 def list_conversations(user_id: str, session_id: str) -> list[dict[str, Any]]:
     return session_bridge.list_conversations(user_id, session_id)
@@ -198,13 +208,23 @@ def duplicate_sandbox_session(
     source_conversation_id: str | None,
     context_id: str | None = None,
 ) -> dict[str, Any]:
-    return session_bridge.duplicate_sandbox_session(
-        source_user_id=source_user_id,
-        source_session_id=source_session_id,
-        source_conversation_id=source_conversation_id,
-        optimizer_session_id=optimizer_session_id,
-        context_id=context_id,
-    )
+    try:
+        return session_bridge.duplicate_sandbox_session(
+            source_user_id=source_user_id,
+            source_session_id=source_session_id,
+            source_conversation_id=source_conversation_id,
+            optimizer_session_id=optimizer_session_id,
+            context_id=context_id,
+        )
+    except SessionContextConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "optimizer_context_conflict",
+                "existing_context_id": exc.expected,
+                "requested_context_id": exc.actual,
+            },
+        ) from exc
 
 
 def new_conversation_session(*, optimizer_session_id: str, user_id: str, session_id: str, context_id: str | None = None) -> dict[str, Any]:
@@ -240,6 +260,15 @@ def new_conversation_session(*, optimizer_session_id: str, user_id: str, session
             "sandbox_meta": new_state.world_state["optimizador_sandbox_meta"],
             "base_context": base_context,
         }
+    except SessionContextConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "optimizer_context_conflict",
+                "existing_context_id": exc.expected,
+                "requested_context_id": exc.actual,
+            },
+        ) from exc
     except ContextContractError as exc:
         raise_http_from_context_error(exc)
 
@@ -286,8 +315,12 @@ def run_sandbox_turn(
             ensure_session_surface(state=state, surface='optimizador')
             trace_count_before = len(storage.resolve_traces(state))
             base_context = context_bridge.ensure_optimizer_session_context(state=state)
+            adapter = get_adapter(base_context["flow_id"])
             failing_stage = "build_pipeline_config"
-            base_config = build_negotiation_pipeline_config(context_id=base_context["context_id"], stateful=True)
+            if adapter.flow_id == "conversacion_simple":
+                base_config = build_conversacion_simple_pipeline_config(context_id=base_context["context_id"], stateful=True)
+            else:
+                base_config = build_negotiation_pipeline_config(context_id=base_context["context_id"], stateful=True)
             resolved_entries = experiments_bridge.resolve_entries(
                 optimizer_session_id=optimizer_session_id,
                 conversation_id=conversation_id,
@@ -296,11 +329,6 @@ def run_sandbox_turn(
             config, tempdir = experiments_bridge.apply_overrides(base_config, resolved_entries, context_id=base_context["context_id"])
             _apply_contextual_state_overrides(state, config, resolved_entries)
             clone_used, new_conversation = _resolve_optimizer_contract_flags(state)
-            turn_context = build_optimizador_turn_context(
-                state=state,
-                entrypoint="/api/optimizador/sandbox/turn",
-                requested_context_id=base_context["context_id"],
-            )
             probe_token = begin_turn_probe(
                 logical_user_message_id=logical_user_message_id,
                 logical_attempt_index=logical_attempt_index,
@@ -310,19 +338,14 @@ def run_sandbox_turn(
             probe_snapshot = None
             try:
                 failing_stage = "execute_turn_with_contract"
-                reply, _, meta = execute_turn_with_contract(
+                reply, _, meta = adapter.run_sandbox_turn(
                     state=state,
                     user_message=message,
-                    config=config,
-                    contract=TurnEntryContract(
-                        entry_surface="optimizador",
-                        entrypoint="/api/optimizador/sandbox/turn",
-                        overrides_applied=bool(resolved_entries),
-                        optimizer_wrapper_used=True,
-                        new_conversation=new_conversation,
-                        clone_used=clone_used,
-                    ),
-                    turn_context=turn_context,
+                    context_id=base_context["context_id"],
+                    overrides_applied=bool(resolved_entries),
+                    new_conversation=new_conversation,
+                    clone_used=clone_used,
+                    base_config=config,
                 )
             finally:
                 probe_snapshot = end_turn_probe(probe_token)
@@ -476,6 +499,7 @@ def run_sandbox_turn(
             "conversation_id": conversation_id,
             "versioning": versioning,
             "base_context": build_trace_context_meta(state=state, overrides_applied=bool(resolved_entries)).model_dump(mode="json"),
+            "capabilities": adapter.capabilities().__dict__,
         }
 
     turns = list_turns(user_id, session_id, conversation_id=conversation_id)
@@ -527,27 +551,28 @@ def derive_turn_title(turn: dict[str, Any], turns: list[dict[str, Any]]) -> str:
 
 def list_prompts(*, user_id: str | None = None, session_id: str | None = None, context_id: str | None = None) -> list[dict[str, str]]:
     resolved_context_id = (context_id or '').strip() or None
+    resolved_flow_id: str | None = None
     if user_id and session_id:
         state = storage.get_optimizer_state(user_id, session_id)
         if state is None:
             raise ValueError('sesión optimizer no encontrada')
         base_context = context_bridge.ensure_optimizer_session_context(state=state)
         resolved_context_id = base_context['context_id']
-    return _list_prompts(resolved_context_id)
+        resolved_flow_id = base_context.get("flow_id")
+    if resolved_flow_id is None and resolved_context_id:
+        resolved_flow_id = context_bridge.resolve_optimizer_context_payload(context_id=resolved_context_id)["flow_id"]
+    adapter = get_adapter(resolved_flow_id or "negociacion")
+    return adapter.list_prompts(context_id=resolved_context_id)
 
 
-def list_contexts() -> list[dict[str, Any]]:
-    return [
-        {
-            'flow_id': ctx.flow_id,
-            'context_id': ctx.context_id,
-            'context_version': ctx.context_version,
-            'public_slug': ctx.public_slug,
-            'prompts_dir': str(ctx.prompts_dir),
-            'resolution_source': ctx.resolution_source,
-        }
-        for ctx in list_official_negotiation_contexts()
-    ]
+def list_contexts(*, flow_id: str | None = None) -> list[dict[str, Any]]:
+    normalized_flow = (flow_id or "").strip() or None
+    if normalized_flow:
+        return get_adapter(normalized_flow).list_contexts()
+    items: list[dict[str, Any]] = []
+    for supported in list_supported_flow_ids():
+        items.extend(get_adapter(supported).list_contexts())
+    return items
 
 
 def run_eval(action: str) -> dict[str, Any]:
@@ -573,6 +598,12 @@ def compare_turns(turn_a: str, turn_b: str) -> dict[str, Any]:
 
     a_meta = a.get("_optimizador", {}) if isinstance(a.get("_optimizador"), dict) else {}
     b_meta = b.get("_optimizador", {}) if isinstance(b.get("_optimizador"), dict) else {}
+    a_base = a_meta.get("base_context", {}) if isinstance(a_meta.get("base_context"), dict) else {}
+    b_base = b_meta.get("base_context", {}) if isinstance(b_meta.get("base_context"), dict) else {}
+    a_flow = a_base.get("flow_id")
+    b_flow = b_base.get("flow_id")
+    if a_flow and b_flow and a_flow != b_flow:
+        raise ValueError(f"cross_flow_compare_not_supported:{a_flow}:{b_flow}")
 
     a_overrides = a_meta.get("applied_overrides") if isinstance(a_meta.get("applied_overrides"), dict) else {"prompt": {}, "config": {}, "contextual": {}}
     b_overrides = b_meta.get("applied_overrides") if isinstance(b_meta.get("applied_overrides"), dict) else {"prompt": {}, "config": {}, "contextual": {}}

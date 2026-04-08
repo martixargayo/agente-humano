@@ -1,0 +1,16 @@
+{
+  "phase_cards": {
+    "apertura": {
+      "phase": "apertura",
+      "guidance": "Abrir con claridad y contexto mínimo."
+    },
+    "desarrollo": {
+      "phase": "desarrollo",
+      "guidance": "Profundizar en la necesidad y proponer pasos concretos."
+    },
+    "cierre": {
+      "phase": "cierre",
+      "guidance": "Cerrar con siguiente acción explícita o resumen breve."
+    }
+  }
+}

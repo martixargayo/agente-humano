@@ -23,6 +23,18 @@ from negociacion.contexts import (
     resolve_public_context_selection,
     resolve_negotiation_context,
 )
+from conversacion_simple.contexts import (
+    ConversationSimpleContextResolutionError,
+    ConversationSimplePublicConflictError,
+    ConversationSimplePublicSlugResolutionError,
+    ensure_conversacion_simple_session_context,
+    read_bound_conversacion_simple_context_from_session,
+    resolve_conversacion_simple_context,
+    resolve_conversacion_simple_public_context_selection,
+)
+from conversacion_simple.orchestration.flow_config import build_conversacion_simple_pipeline_config
+from conversacion_simple.orchestration.pipeline import run_conversacion_simple_turn
+from conversacion_simple.services import build_conversacion_simple_turn_context
 
 from .presentation_resolver import resolve_presentation_config_for_context
 from negociacion.orchestration.flow_config import build_negotiation_pipeline_config
@@ -33,6 +45,42 @@ from negociacion.services.context_http import raise_http_from_context_error
 from negociacion.services.turn_context_factory import build_interfaz_usuario_turn_context
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_flow_and_context_id(*, context_id: str | None, public_slug: str | None) -> tuple[str, str]:
+    normalized_context_id = (context_id or "").strip() or None
+    normalized_public_slug = (public_slug or "").strip() or None
+    if normalized_context_id is None and normalized_public_slug is None:
+        return "negociacion", _resolve_bootstrap_context_id(context_id=None, public_slug=None)
+    if normalized_public_slug is not None:
+        try:
+            selection = resolve_public_context_selection(context_id=normalized_context_id, public_slug=normalized_public_slug)
+            return "negociacion", selection.context_id
+        except (PublicContextConflictError, PublicSlugResolutionError, NegotiationContextResolutionError):
+            pass
+        selection = resolve_conversacion_simple_public_context_selection(
+            context_id=normalized_context_id,
+            public_slug=normalized_public_slug,
+        )
+        return "conversacion_simple", selection.context_id
+
+    assert normalized_context_id is not None
+    try:
+        resolved = resolve_negotiation_context(normalized_context_id)
+        return resolved.flow_id, resolved.context_id
+    except NegotiationContextResolutionError:
+        resolved_cs = resolve_conversacion_simple_context(normalized_context_id)
+        return resolved_cs.flow_id, resolved_cs.context_id
+
+
+def _read_bound_surface_context(state: SessionState) -> tuple[str, str] | None:
+    bound_neg = read_bound_context_from_session(state)
+    if bound_neg is not None:
+        return bound_neg.flow_id, bound_neg.context_id
+    bound_cs = read_bound_conversacion_simple_context_from_session(state)
+    if bound_cs is not None:
+        return bound_cs.flow_id, bound_cs.context_id
+    return None
 
 
 def _diagnostic_from_exception(exc: Exception) -> str:
@@ -126,20 +174,41 @@ def ensure_session(
         existing_state = store.get(user_id=normalized_user_id, session_id=normalized_session_id)
         state = existing_state or get_session_state(user_id=normalized_user_id, session_id=normalized_session_id)
         ensure_session_surface(state=state, surface='interfaz_usuario')
-        existing_context = read_bound_context_from_session(state)
+        bound_surface_context = _read_bound_surface_context(state)
+        if bound_surface_context is not None:
+            existing_flow_id, existing_context_id = bound_surface_context
+            normalized_context_id = (context_id or "").strip() or None
+            if normalized_context_id is not None and normalized_context_id != existing_context_id:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "error": "session_context_conflict",
+                        "existing_context_id": existing_context_id,
+                        "requested_context_id": normalized_context_id,
+                    },
+                )
+        requested_flow_id, requested_context_id = _resolve_flow_and_context_id(context_id=context_id, public_slug=public_slug)
+        if bound_surface_context is not None:
+            existing_flow_id, existing_context_id = bound_surface_context
+            if existing_flow_id != requested_flow_id or existing_context_id != requested_context_id:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "error": "session_context_conflict",
+                        "existing_context_id": existing_context_id,
+                        "requested_context_id": requested_context_id,
+                    },
+                )
 
-        if existing_context is None:
-            resolved_context_id = _resolve_bootstrap_context_id(context_id=context_id, public_slug=public_slug)
-            ensure_session_context(state=state, requested_context_id=resolved_context_id)
-        elif public_slug is not None:
-            resolved_context_id = _resolve_bootstrap_context_id(context_id=context_id, public_slug=public_slug)
-            ensure_session_context(state=state, requested_context_id=resolved_context_id)
+        if requested_flow_id == "conversacion_simple":
+            bound_cs = ensure_conversacion_simple_session_context(state=state, requested_context_id=requested_context_id)
+            resolved_context = resolve_conversacion_simple_context(bound_cs.context_id)
+            bound_context_id = bound_cs.context_id
         else:
-            ensure_session_context(state=state, requested_context_id=context_id)
-
-        bound_context = ensure_session_context(state=state)
-        resolved_context = resolve_negotiation_context(bound_context.context_id)
-        presentation_config = resolve_presentation_config_for_context(bound_context.context_id)
+            bound_neg = ensure_session_context(state=state, requested_context_id=requested_context_id)
+            resolved_context = resolve_negotiation_context(bound_neg.context_id)
+            bound_context_id = bound_neg.context_id
+        presentation_config = resolve_presentation_config_for_context(bound_context_id)
 
         traces = resolve_traces(state)
         canonical = state.world_state.get("negotiation_canonical", {}) if isinstance(state.world_state, dict) else {}
@@ -171,19 +240,28 @@ def ensure_session(
         }
     except ContextContractError as exc:
         raise_http_from_context_error(exc)
+    except (ConversationSimpleContextResolutionError, ConversationSimplePublicConflictError) as exc:
+        raise HTTPException(status_code=400, detail={"error": "bootstrap_context_input_conflict"}) from exc
+    except ConversationSimplePublicSlugResolutionError as exc:
+        raise HTTPException(status_code=404, detail={"error": "unsupported_public_slug", "public_slug": public_slug}) from exc
 
 
 def create_new_conversation(*, user_id: str, base_session_id: str) -> dict[str, Any]:
     base_state = get_session_state(user_id=user_id, session_id=base_session_id)
     ensure_session_surface(state=base_state, surface='interfaz_usuario')
-    bound_context = ensure_session_context(state=base_state)
+    base_bound = _read_bound_surface_context(base_state)
+    if base_bound is None:
+        bound_context = ensure_session_context(state=base_state)
+        flow_id, context_id = bound_context.flow_id, bound_context.context_id
+    else:
+        flow_id, context_id = base_bound
 
     new_session_id = f"{base_session_id}__newconv__{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}_{uuid4().hex[:6]}"
     new_state = SessionState(user_id=user_id, session_id=new_session_id)
     get_session_store().save(new_state)
     apply_session_ttl(new_state, scope="active", reason="interfaz_usuario_new_conversation")
     logger.info("interfaz_usuario_new_conversation_created source_session=%s new_session=%s", base_session_id, new_session_id)
-    return ensure_session(user_id=user_id, session_id=new_session_id, context_id=bound_context.context_id)
+    return ensure_session(user_id=user_id, session_id=new_session_id, context_id=context_id)
 
 
 def finalize_session(*, user_id: str, session_id: str, reason: str | None = None) -> dict[str, Any]:
@@ -274,7 +352,8 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
             else:
                 base_state = get_session_state(user_id=user_id, session_id=session_id)
                 ensure_session_surface(state=base_state, surface='interfaz_usuario')
-                ensure_session_context(state=base_state)
+                if _read_bound_surface_context(base_state) is None:
+                    ensure_session_context(state=base_state)
                 if _should_auto_reset_for_fresh_opener(state=base_state, message=message):
                     payload = create_new_conversation(user_id=user_id, base_session_id=session_id)
                     resolved_session_id = payload["session_id"]
@@ -282,27 +361,71 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
 
             state = get_session_state(user_id=user_id, session_id=resolved_session_id)
             ensure_session_surface(state=state, surface='interfaz_usuario')
-            bound_context = ensure_session_context(state=state)
-            config = build_negotiation_pipeline_config(context_id=bound_context.context_id, stateful=True)
-            turn_context = build_interfaz_usuario_turn_context(
-                state=state,
-                entrypoint="/api/interfaz_usuario/negociacion/turn",
-                requested_context_id=bound_context.context_id,
-            )
-            reply, _, meta = execute_turn_with_contract(
-                state=state,
-                user_message=message,
-                config=config,
-                contract=TurnEntryContract(
-                    entry_surface="interfaz_usuario",
+            bound_surface_context = _read_bound_surface_context(state)
+            if bound_surface_context is None:
+                raise RuntimeError("session_context_required")
+            flow_id, effective_context_id = bound_surface_context
+            if flow_id == "conversacion_simple":
+                config = build_conversacion_simple_pipeline_config(context_id=effective_context_id, stateful=True)
+                turn_context = build_conversacion_simple_turn_context(
+                    state=state,
                     entrypoint="/api/interfaz_usuario/negociacion/turn",
-                    overrides_applied=False,
-                    optimizer_wrapper_used=False,
-                    new_conversation=new_conversation,
-                    clone_used=False,
-                ),
-                turn_context=turn_context,
-            )
+                    requested_context_id=effective_context_id,
+                )
+                reply, _, cs_meta = run_conversacion_simple_turn(
+                    state=state,
+                    user_message=message,
+                    config=config,
+                    turn_context=turn_context,
+                )
+                meta = {
+                    "trace_count": len(resolve_traces(state)),
+                    "latest_turn_id": cs_meta.get("turn_id"),
+                    "entry_contract": {
+                        "entry_surface": "interfaz_usuario",
+                        "entrypoint": "/api/interfaz_usuario/negociacion/turn",
+                        "overrides_applied": False,
+                        "optimizer_wrapper_used": False,
+                        "new_conversation": new_conversation,
+                        "clone_used": False,
+                        "config_snapshot": {
+                            "memory_key": config.memory_key,
+                            "thread_mode_default": "conversation",
+                            "model_memory": "single_llm_brain",
+                            "model_phase_classifier": "single_llm_brain",
+                            "model_planner": "single_llm_brain",
+                            "model_executor": "single_llm_brain",
+                            "max_recent_messages": 12,
+                            "max_executor_recent_turns": 12,
+                        },
+                    },
+                    "context_meta": {
+                        "flow_id": flow_id,
+                        "context_id": effective_context_id,
+                    },
+                }
+            else:
+                bound_context = ensure_session_context(state=state, requested_context_id=effective_context_id)
+                config = build_negotiation_pipeline_config(context_id=bound_context.context_id, stateful=True)
+                turn_context = build_interfaz_usuario_turn_context(
+                    state=state,
+                    entrypoint="/api/interfaz_usuario/negociacion/turn",
+                    requested_context_id=bound_context.context_id,
+                )
+                reply, _, meta = execute_turn_with_contract(
+                    state=state,
+                    user_message=message,
+                    config=config,
+                    contract=TurnEntryContract(
+                        entry_surface="interfaz_usuario",
+                        entrypoint="/api/interfaz_usuario/negociacion/turn",
+                        overrides_applied=False,
+                        optimizer_wrapper_used=False,
+                        new_conversation=new_conversation,
+                        clone_used=False,
+                    ),
+                    turn_context=turn_context,
+                )
             try:
                 apply_session_ttl(state, scope="active", reason="interfaz_usuario_turn_completed")
             except Exception as post_commit_exc:
@@ -366,9 +489,11 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
             },
         ) from exc
 
-    canonical = state.world_state.get("negotiation_canonical", {}) if isinstance(state.world_state, dict) else {}
-    ui_state = canonical.get("ui_state", {}) if isinstance(canonical, dict) else {}
-    finish_button_armed = bool(ui_state.get("finish_button_armed", False)) if isinstance(ui_state, dict) else False
+    finish_button_armed = False
+    if isinstance(state.world_state, dict):
+        canonical = state.world_state.get("negotiation_canonical", {})
+        ui_state = canonical.get("ui_state", {}) if isinstance(canonical, dict) else {}
+        finish_button_armed = bool(ui_state.get("finish_button_armed", False)) if isinstance(ui_state, dict) else False
 
     return {
         "reply": reply,

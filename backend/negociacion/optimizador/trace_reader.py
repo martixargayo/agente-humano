@@ -24,6 +24,11 @@ def list_turns(user_id: str, session_id: str, conversation_id: str | None = None
     for idx, turn in enumerate(turns, start=1):
         node_sources = [log.get("source") for log in turn.get("logs", []) if isinstance(log, dict)]
         node_fallbacks = [bool(log.get("fallback_applied", log.get("fallback_used", False))) for log in turn.get("logs", []) if isinstance(log, dict)]
+        nodes = turn.get("nodes", {}) if isinstance(turn.get("nodes"), dict) else {}
+        single_node_fallback = any(
+            isinstance(node, dict) and (node.get("status") in {"clarify", "refuse"} and node.get("model_called") is False)
+            for node in nodes.values()
+        )
         meta = turn.get("_optimizador", {}) if isinstance(turn.get("_optimizador"), dict) else {}
         versioning = meta.get("versioning", {}) if isinstance(meta.get("versioning"), dict) else {}
         base_context = _resolved_optimizer_base_context(turn)
@@ -34,7 +39,9 @@ def list_turns(user_id: str, session_id: str, conversation_id: str | None = None
                 "final_status": turn.get("final_status", "unknown"),
                 "total_latency_ms": turn.get("total_latency_ms", 0),
                 "guardrails_triggered": bool(turn.get("guardrails_triggered", False)),
-                "fallback_used": any(node_fallbacks) or any(source in {"fallback", "parse_error", "exception", "refusal"} for source in node_sources),
+                "fallback_used": any(node_fallbacks)
+                or any(source in {"fallback", "parse_error", "exception", "refusal"} for source in node_sources)
+                or single_node_fallback,
                 "conversation_id": turn.get("conversation_id_after") or turn.get("conversation_id_before"),
                 "has_override": bool(meta.get("applied_overrides")),
                 "version": int(versioning.get("version") or 1),
