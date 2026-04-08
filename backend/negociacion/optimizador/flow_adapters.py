@@ -7,6 +7,7 @@ from sessions.state import SessionState
 
 from conversacion_simple.contexts import list_official_conversacion_simple_contexts, resolve_conversacion_simple_context
 from conversacion_simple.orchestration.flow_config import build_conversacion_simple_pipeline_config
+from conversacion_simple.orchestration.pipeline import run_conversacion_simple_turn
 from conversacion_simple.services import build_conversacion_simple_turn_context
 
 from ..contexts import list_official_negotiation_contexts, resolve_negotiation_context
@@ -164,9 +165,7 @@ class ConversacionSimpleOptimizerAdapter:
             entrypoint="/api/optimizador/sandbox/turn",
             requested_context_id=context_id,
         )
-        from . import services as optimizer_services
-
-        reply, updated, cs_meta = optimizer_services.run_conversacion_simple_turn(
+        reply, updated, cs_meta = run_conversacion_simple_turn(
             state=state,
             user_message=user_message,
             config=base_config,

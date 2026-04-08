@@ -88,14 +88,23 @@ def _append_attempt_trace(state: SessionState, payload: dict[str, Any]) -> None:
         state.world_state["optimizador_attempt_traces"] = traces
     traces.append(payload)
 
-def _apply_contextual_state_overrides(state: Any, config: Any, entries: list[dict[str, Any]]) -> None:
+def _apply_contextual_state_overrides(state: Any, config: Any, entries: list[dict[str, Any]], *, flow_id: str | None = None) -> None:
     persona_entry = next((entry for entry in entries if entry.get("category") == "contextual" and entry.get("key") == "persona"), None)
     if not persona_entry:
         return
     memory_key = config.memory_key
     raw = state.world_state.get(memory_key)
     if not isinstance(raw, dict):
-        raw = build_default_canonical_state(session_id=state.session_id, user_id=state.user_id, thread_mode=ThreadMode.conversation).model_dump(mode="json")
+        if flow_id == "conversacion_simple":
+            from conversacion_simple.state import build_default_conversation_simple_canonical_state
+            raw = build_default_conversation_simple_canonical_state(
+                session_id=state.session_id,
+                user_id=state.user_id,
+                thread_mode=ThreadMode.conversation,
+                context_id=getattr(config, "context_id", None),
+            ).model_dump(mode="json")
+        else:
+            raw = build_default_canonical_state(session_id=state.session_id, user_id=state.user_id, thread_mode=ThreadMode.conversation).model_dump(mode="json")
     persona_value = persona_entry.get("value")
     if not isinstance(persona_value, dict):
         return
@@ -326,8 +335,8 @@ def run_sandbox_turn(
                 conversation_id=conversation_id,
                 turn_id=scope_turn_id,
             )
-            config, tempdir = experiments_bridge.apply_overrides(base_config, resolved_entries, context_id=base_context["context_id"])
-            _apply_contextual_state_overrides(state, config, resolved_entries)
+            config, tempdir = experiments_bridge.apply_overrides(base_config, resolved_entries, context_id=base_context["context_id"], flow_id=base_context["flow_id"])
+            _apply_contextual_state_overrides(state, config, resolved_entries, flow_id=base_context["flow_id"])
             clone_used, new_conversation = _resolve_optimizer_contract_flags(state)
             probe_token = begin_turn_probe(
                 logical_user_message_id=logical_user_message_id,
