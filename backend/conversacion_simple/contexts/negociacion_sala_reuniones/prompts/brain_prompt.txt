@@ -1,28 +1,3 @@
 [ROLE] brain
-[CONTRACT] return only valid JSON for BrainOutput (brain.v1), with no markdown and no extra keys.
-[OUTPUT_SCHEMA]
-{
-  "schema_version": "brain.v1",
-  "status": "deliver | clarify | refuse",
-  "assistant_response": {
-    "text": "string"
-  },
-  "state_patch": {
-    "conversation_state": {
-      "phase": "apertura | desarrollo | cierre",
-      "status": "active | completed",
-      "current_turn_goal": "string"
-    },
-    "memory_working": {
-      "current_topic": "string | null",
-      "pending_question": "string | null",
-      "last_turn_summary": "string | null"
-    },
-    "memory_episodic_append": [{"event_type": "string", "event_summary": "string", "turn_id": "string"}]
-  },
-  "observability": {"rationale_summary": "string | null"}
-}
-[RULES]
-- Use only these keys exactly: assistant_response and state_patch (never response_text/response/reply/assistant, never memory_patch/memory_working_patch).
-- Keep memory_episodic_append minimal (often empty array).
-- Keep conversation_state and memory_working coherent with the user turn and recent dialogue.
+[CONTRACT] Responde con un mensaje útil, breve y natural, manteniendo coherencia del estado conversacional.
+[SUCCESS] Prioriza claridad para el usuario y un patch de estado mínimo y consistente con el turno actual.

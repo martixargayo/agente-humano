@@ -10,7 +10,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from conversacion_simple.orchestration.flow_config import build_conversacion_simple_pipeline_config
-from conversacion_simple.orchestration.pipeline import StructuredBrainCall, run_conversacion_simple_turn
+from conversacion_simple.orchestration.pipeline import StructuredBrainCall, _call_brain_structured, run_conversacion_simple_turn
 from conversacion_simple.services import build_conversacion_simple_turn_context
 from sessions.state import SessionState
 
@@ -319,6 +319,42 @@ def test_recent_dialogue_updated() -> None:
     assert recent[-2]["role"] == "user"
     assert recent[-1]["role"] == "assistant"
     assert isinstance(reply, str) and reply
+
+
+def test_structured_call_enforces_json_schema_without_prompt_embedded_schema() -> None:
+    captured: dict[str, object] = {}
+
+    class _FakeResponse:
+        id = "resp_1"
+        output_text = (
+            '{"schema_version":"brain.v1","status":"deliver","assistant_response":{"text":"ok"},'
+            '"state_patch":{"conversation_state":{"phase":"desarrollo","status":"active","current_turn_goal":"g"},'
+            '"memory_working":{"current_topic":null,"pending_question":null,"last_turn_summary":"s"},'
+            '"memory_episodic_append":[]},"observability":{"rationale_summary":"ok"}}'
+        )
+
+    class _FakeResponses:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            return _FakeResponse()
+
+    class _FakeClient:
+        responses = _FakeResponses()
+
+    out = _call_brain_structured(
+        client=_FakeClient(),
+        model="gpt-5-nano",
+        messages=[{"role": "developer", "content": "prompt"}, {"role": "user", "content": "payload"}],
+    )
+
+    assert out.source == "model"
+    assert out.parsed_json is not None
+    text = captured.get("text")
+    assert isinstance(text, dict)
+    fmt = text.get("format")
+    assert isinstance(fmt, dict)
+    assert fmt.get("type") == "json_schema"
+    assert fmt.get("strict") is True
 
 
 def test_context_precheck_mismatch_raises() -> None:

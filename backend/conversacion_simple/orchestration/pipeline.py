@@ -169,6 +169,20 @@ def _extract_response_id(response: object) -> str | None:
     return value if isinstance(value, str) and value.strip() else None
 
 
+def _normalize_schema_for_strict_json_schema(schema: object) -> object:
+    if isinstance(schema, dict):
+        normalized = {key: _normalize_schema_for_strict_json_schema(value) for key, value in schema.items()}
+        if normalized.get("type") == "object":
+            properties = normalized.get("properties")
+            if isinstance(properties, dict):
+                normalized["required"] = sorted(properties.keys())
+            normalized["additionalProperties"] = False
+        return normalized
+    if isinstance(schema, list):
+        return [_normalize_schema_for_strict_json_schema(item) for item in schema]
+    return schema
+
+
 def _call_brain_structured(
     *,
     client: openai.OpenAI | None,
@@ -177,7 +191,20 @@ def _call_brain_structured(
 ) -> StructuredBrainCall:
     if client is None:
         return StructuredBrainCall(source="fallback", parsed_json=None, response=None)
-    response = client.responses.create(model=model, input=messages, reasoning={"effort": "low"})
+    response = client.responses.create(
+        model=model,
+        input=messages,
+        text={
+            "format": {
+                "type": "json_schema",
+                "name": BrainOutput.__name__,
+                "schema": _normalize_schema_for_strict_json_schema(BrainOutput.model_json_schema()),
+                "strict": True,
+            }
+        },
+        reasoning={"effort": "low"},
+        store=False,
+    )
     text = _extract_output_text(response)
     response_id = _extract_response_id(response)
     if not text:
