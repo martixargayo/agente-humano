@@ -214,6 +214,59 @@ def _normalize_reply_text(reply: str) -> str:
     return normalized
 
 
+_LEGACY_MEMORY_WORKING_KEYS: tuple[str, ...] = ("memory_working_patch", "memory_patch")
+_LEGACY_PHASE_ALIASES: dict[str, str] = {
+    "in_progress": "desarrollo",
+    "active": "desarrollo",
+    "opening": "apertura",
+    "intro": "apertura",
+    "closing": "cierre",
+    "completed": "cierre",
+    "done": "cierre",
+}
+
+
+def _extract_assistant_response_text(normalized: dict[str, object]) -> str | None:
+    assistant_response = normalized.get("assistant_response")
+    if isinstance(assistant_response, str):
+        return assistant_response
+    if isinstance(assistant_response, dict):
+        text = assistant_response.get("text")
+        if isinstance(text, str):
+            return text
+    response_value = normalized.get("response")
+    if isinstance(response_value, str):
+        return response_value
+    if isinstance(response_value, dict):
+        text = response_value.get("text")
+        if isinstance(text, str):
+            return text
+    assistant_value = normalized.get("assistant")
+    if isinstance(assistant_value, dict):
+        text = assistant_value.get("text")
+        if isinstance(text, str):
+            return text
+    reply_value = normalized.get("reply")
+    if isinstance(reply_value, str):
+        return reply_value
+    response_text_value = normalized.get("response_text")
+    if isinstance(response_text_value, str):
+        return response_text_value
+    assistant_response_text_value = normalized.get("assistant_response_text")
+    if isinstance(assistant_response_text_value, str):
+        return assistant_response_text_value
+    return None
+
+
+def _extract_legacy_memory_working_patch(normalized: dict[str, object]) -> dict[str, object]:
+    merged: dict[str, object] = {}
+    for key in _LEGACY_MEMORY_WORKING_KEYS:
+        value = normalized.get(key)
+        if isinstance(value, dict):
+            merged.update(value)
+    return merged
+
+
 def _coerce_legacy_brain_output_payload(
     *,
     payload: dict[str, object],
@@ -224,27 +277,11 @@ def _coerce_legacy_brain_output_payload(
         normalized["schema_version"] = "brain.v1"
     if "status" not in normalized:
         normalized["status"] = "deliver"
-    if "assistant_response" not in normalized and isinstance(normalized.get("response_text"), str):
-        normalized["assistant_response"] = {"text": normalized["response_text"]}
-    if "assistant_response" not in normalized and isinstance(normalized.get("response"), str):
-        normalized["assistant_response"] = {"text": normalized["response"]}
-    if "assistant_response" not in normalized and isinstance(normalized.get("assistant_response_text"), str):
-        normalized["assistant_response"] = {"text": normalized["assistant_response_text"]}
-    if "assistant_response" not in normalized and isinstance(normalized.get("reply"), str):
-        normalized["assistant_response"] = {"text": normalized["reply"]}
-    if "assistant_response" not in normalized and isinstance(normalized.get("response"), dict):
-        response_payload = normalized.get("response")
-        if isinstance(response_payload.get("text"), str):
-            normalized["assistant_response"] = {"text": response_payload["text"]}
-    if "assistant_response" not in normalized and isinstance(normalized.get("assistant"), dict):
-        assistant_payload = normalized.get("assistant")
-        if isinstance(assistant_payload.get("text"), str):
-            normalized["assistant_response"] = {"text": assistant_payload["text"]}
-    normalized.pop("response_text", None)
-    normalized.pop("response", None)
-    normalized.pop("assistant_response_text", None)
-    normalized.pop("reply", None)
-    normalized.pop("assistant", None)
+    assistant_text = _extract_assistant_response_text(normalized)
+    if assistant_text is not None:
+        normalized["assistant_response"] = {"text": assistant_text}
+    for key in ("response_text", "assistant_response_text", "reply", "response", "assistant"):
+        normalized.pop(key, None)
     default_patch: dict[str, object] = {
         "conversation_state": canonical_state.conversation_state.model_dump(mode="json"),
         "memory_working": canonical_state.memory_working.model_dump(mode="json"),
@@ -252,26 +289,17 @@ def _coerce_legacy_brain_output_payload(
     }
     raw_patch = normalized.get("state_patch")
     patch = dict(raw_patch) if isinstance(raw_patch, dict) else {}
-    raw_memory_patch = normalized.get("memory_patch")
-    memory_patch = dict(raw_memory_patch) if isinstance(raw_memory_patch, dict) else {}
-    normalized.pop("memory_patch", None)
-    if memory_patch and "memory_working" not in patch:
-        patch["memory_working"] = memory_patch
+    legacy_memory_working = _extract_legacy_memory_working_patch(normalized)
+    for key in _LEGACY_MEMORY_WORKING_KEYS:
+        normalized.pop(key, None)
+    if legacy_memory_working and "memory_working" not in patch:
+        patch["memory_working"] = legacy_memory_working
 
     raw_conv = patch.get("conversation_state")
     conv = dict(raw_conv) if isinstance(raw_conv, dict) else {}
     raw_phase = conv.get("phase")
     if isinstance(raw_phase, str):
-        legacy_phase_map = {
-            "in_progress": "desarrollo",
-            "active": "desarrollo",
-            "opening": "apertura",
-            "intro": "apertura",
-            "closing": "cierre",
-            "completed": "cierre",
-            "done": "cierre",
-        }
-        conv["phase"] = legacy_phase_map.get(raw_phase.strip().lower(), raw_phase)
+        conv["phase"] = _LEGACY_PHASE_ALIASES.get(raw_phase.strip().lower(), raw_phase)
     if "status" not in conv:
         conv["status"] = default_patch["conversation_state"]["status"]  # type: ignore[index]
     if "current_turn_goal" not in conv:

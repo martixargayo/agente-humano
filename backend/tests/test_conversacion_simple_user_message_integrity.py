@@ -108,3 +108,35 @@ def test_interfaz_usuario_conversacion_simple_turn_preserves_user_text(monkeypat
     assert state.history[-2]["content"] == "hola desde interfaz"
     trace = state.world_state["conversation_simple_canonical_traces"][-1]
     assert trace["user_turn"]["raw_text"] == "hola desde interfaz"
+
+
+def test_surface_paths_share_runtime_but_optimizer_adds_overrides_layer(monkeypatch) -> None:
+    get_session_store().clear()
+    _install_fake_brain(monkeypatch, reply_text="ok")
+
+    counters = {"optimizer_apply_overrides": 0}
+
+    def _wrapped_apply_overrides(base_config, entries, context_id=None):
+        counters["optimizer_apply_overrides"] += 1
+        return base_config, None
+
+    monkeypatch.setattr("negociacion.optimizador.services.experiments_bridge.resolve_entries", lambda **_: [])
+    monkeypatch.setattr("negociacion.optimizador.services.experiments_bridge.apply_overrides", _wrapped_apply_overrides)
+    monkeypatch.setattr("negociacion.optimizador.services.experiments_bridge.describe_effective_overrides", lambda entries: {"prompt": {}, "config": {}, "contextual": {}})
+    monkeypatch.setattr("negociacion.optimizador.services.experiments_bridge.get_state", lambda optimizer_session_id: {"mode": "mirror", "workspace_version": 1})
+
+    opt_services.ensure_session(user_id="u_cmp", session_id="s_cmp_opt", flow_id="conversacion_simple", context_id="baseline")
+    opt_services.run_sandbox_turn(
+        optimizer_session_id="opt-cmp",
+        user_id="u_cmp",
+        session_id="s_cmp_opt",
+        message="hola optimizer",
+        conversation_id=None,
+        scope_turn_id=None,
+        repeat_from_turn_id=None,
+    )
+    assert counters["optimizer_apply_overrides"] == 1
+
+    iu_services.ensure_session(user_id="u_cmp", session_id="s_cmp_ui", context_id="baseline")
+    iu_services.run_turn(user_id="u_cmp", session_id="s_cmp_ui", message="hola ui", new_conversation=False)
+    assert counters["optimizer_apply_overrides"] == 1
