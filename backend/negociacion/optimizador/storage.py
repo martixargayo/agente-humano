@@ -9,6 +9,17 @@ from sessions.surface_scope import is_surface_owned
 PREFERRED_TRACE_KEYS = ["negotiation_canonical_traces", "conversation_simple_canonical_traces"]
 
 
+def _preferred_trace_keys_for_state(state: SessionState) -> list[str]:
+    world = state.world_state if isinstance(state.world_state, dict) else {}
+    has_neg_context = isinstance(world.get("negotiation_context"), dict)
+    has_cs_context = isinstance(world.get("conversacion_simple_context"), dict)
+    if has_cs_context and not has_neg_context:
+        return ["conversation_simple_canonical_traces", "negotiation_canonical_traces"]
+    if has_neg_context and not has_cs_context:
+        return ["negotiation_canonical_traces", "conversation_simple_canonical_traces"]
+    return PREFERRED_TRACE_KEYS
+
+
 def iter_session_entries() -> Iterable[tuple[str, str, SessionState]]:
     yield from get_session_store().iter_entries()
 
@@ -49,7 +60,7 @@ def resolve_traces(state: SessionState, memory_key: str | None = None) -> list[d
         if isinstance(candidate, list):
             return [item for item in candidate if isinstance(item, dict)]
 
-    for key in PREFERRED_TRACE_KEYS:
+    for key in _preferred_trace_keys_for_state(state):
         candidate = state.world_state.get(key)
         if isinstance(candidate, list):
             return [item for item in candidate if isinstance(item, dict)]

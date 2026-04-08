@@ -142,3 +142,9 @@ def test_frontend_exposes_flow_and_context_selection_controls() -> None:
     assert "id='contextSelector'" in app_js
     assert "flow_id: state.selectedFlowId" in app_js
     assert "filteredContexts()" in app_js
+
+
+def test_frontend_chat_send_and_poll_use_real_message_text() -> None:
+    app_js = (ROOT / "avatar_app" / "optimizador" / "app.js").read_text(encoding="utf-8")
+    assert 'body: JSON.stringify({ optimizer_session_id: state.optimizerSessionId, user_id: s.user_id, session_id: s.session_id, message' in app_js
+    assert 'state.dialogue.map((d) => `<div class=\'msg ${d.role}\'>${d.role === "user" ? "Usuario" : "IA"}: ${escapeHtml(d.text || "")}</div>`).join("")' in app_js
