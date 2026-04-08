@@ -8,7 +8,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from conversacion_simple.nodes import BrainOutput
-from conversacion_simple.orchestration.pipeline import apply_brain_output_to_state
+from conversacion_simple.orchestration.pipeline import apply_brain_output_to_state, _normalize_schema_for_strict_json_schema
 from conversacion_simple.state import build_default_conversation_simple_canonical_state
 from negociacion.state.shared_types import ThreadMode
 
@@ -44,3 +44,10 @@ def test_apply_brain_output_to_state_is_deterministic() -> None:
     assert [m.model_dump(mode="json") for m in s1.memory_episodic] == [m.model_dump(mode="json") for m in s2.memory_episodic]
     assert s1.trace.turn_id == "turn-x"
     assert len(s1.memory_episodic) == 1
+
+
+def test_schema_normalization_preserves_pydantic_required_keys() -> None:
+    base = BrainOutput.model_json_schema()
+    normalized = _normalize_schema_for_strict_json_schema(base)
+    assert normalized.get("required") == base.get("required")
+    assert normalized.get("$defs", {}).get("BrainStatePatch", {}).get("required") == base.get("$defs", {}).get("BrainStatePatch", {}).get("required")
