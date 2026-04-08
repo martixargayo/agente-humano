@@ -10,7 +10,13 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from conversacion_simple.orchestration.flow_config import build_conversacion_simple_pipeline_config
-from conversacion_simple.orchestration.pipeline import StructuredBrainCall, _call_brain_structured, run_conversacion_simple_turn
+from conversacion_simple.orchestration.pipeline import (
+    StructuredBrainCall,
+    _call_brain_structured,
+    _normalize_schema_for_strict_json_schema,
+    run_conversacion_simple_turn,
+)
+from conversacion_simple.nodes.brain_node import BrainOutput
 from conversacion_simple.services import build_conversacion_simple_turn_context
 from sessions.state import SessionState
 
@@ -355,6 +361,25 @@ def test_structured_call_enforces_json_schema_without_prompt_embedded_schema() -
     assert isinstance(fmt, dict)
     assert fmt.get("type") == "json_schema"
     assert fmt.get("strict") is True
+
+
+def test_normalized_brain_output_schema_has_required_equal_to_properties_per_object() -> None:
+    normalized = _normalize_schema_for_strict_json_schema(BrainOutput.model_json_schema())
+
+    def _walk(node: object) -> None:
+        if isinstance(node, dict):
+            properties = node.get("properties")
+            required = node.get("required")
+            if isinstance(properties, dict):
+                assert isinstance(required, list)
+                assert set(required) == set(properties.keys())
+            for value in node.values():
+                _walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                _walk(item)
+
+    _walk(normalized)
 
 
 def test_context_precheck_mismatch_raises() -> None:
