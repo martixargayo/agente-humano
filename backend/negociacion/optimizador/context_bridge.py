@@ -21,6 +21,18 @@ from conversacion_simple.contexts import (
 from ..orchestration.context_errors import SessionContextConflictError
 
 
+_SUPPORTED_FLOWS = {"negociacion", "conversacion_simple"}
+
+
+def _normalize_flow_id(flow_id: str | None) -> str | None:
+    normalized = (flow_id or "").strip() or None
+    if normalized is None:
+        return None
+    if normalized not in _SUPPORTED_FLOWS:
+        raise ValueError(f"unsupported_flow_id:{normalized}")
+    return normalized
+
+
 def resolve_optimizer_context_payload(*, context_id: str | None = None) -> dict[str, Any]:
     normalized = (context_id or '').strip() or None
     try:
@@ -46,9 +58,10 @@ def ensure_optimizer_session_context(
     requested_flow_id: str | None = None,
 ) -> dict[str, Any]:
     normalized = (requested_context_id or "").strip() or None
-    normalized_flow = (requested_flow_id or "").strip() or None
+    normalized_flow = _normalize_flow_id(requested_flow_id)
     bound_neg = read_bound_context_from_session(state)
     bound_cs = read_bound_conversacion_simple_context_from_session(state)
+
     if bound_neg is not None:
         if bound_cs is not None:
             raise ValueError("session_has_mixed_flow_bindings")
@@ -64,6 +77,7 @@ def ensure_optimizer_session_context(
             'context_id': bound.context_id,
             'context_version': bound.context_version,
         }
+
     if bound_cs is not None:
         if normalized_flow is not None and normalized_flow != "conversacion_simple":
             raise SessionContextConflictError(
@@ -77,24 +91,42 @@ def ensure_optimizer_session_context(
             'context_id': bound.context_id,
             'context_version': bound.context_version,
         }
-    if normalized_flow == "conversacion_simple":
-        try:
-            resolve_conversacion_simple_context(normalized) if normalized else resolve_default_conversacion_simple_context()
-        except ConversationSimpleContextResolutionError as exc:
-            raise ValueError(f"unsupported_context_id:{normalized}") from exc
-        bound = ensure_conversacion_simple_session_context(state=state, requested_context_id=normalized)
-    elif normalized_flow == "negociacion":
+
+    if normalized_flow == "negociacion":
         try:
             resolve_negotiation_context(normalized) if normalized else resolve_default_negotiation_context()
         except NegotiationContextResolutionError as exc:
             raise ValueError(f"unsupported_context_id:{normalized}") from exc
         bound = ensure_session_context(state=state, requested_context_id=normalized)
-    else:
+    elif normalized_flow == "conversacion_simple":
         try:
-            resolve_negotiation_context(normalized) if normalized else resolve_default_negotiation_context()
-            bound = ensure_session_context(state=state, requested_context_id=normalized)
+            resolve_conversacion_simple_context(normalized) if normalized else resolve_default_conversacion_simple_context()
+        except ConversationSimpleContextResolutionError as exc:
+            raise ValueError(f"unsupported_context_id:{normalized}") from exc
+        bound = ensure_conversacion_simple_session_context(state=state, requested_context_id=normalized)
+    elif normalized is None:
+        bound = ensure_session_context(state=state, requested_context_id=None)
+    else:
+        neg_ok = True
+        cs_ok = True
+        try:
+            resolve_negotiation_context(normalized)
         except NegotiationContextResolutionError:
+            neg_ok = False
+        try:
+            resolve_conversacion_simple_context(normalized)
+        except ConversationSimpleContextResolutionError:
+            cs_ok = False
+
+        if neg_ok and cs_ok:
+            raise ValueError(f"ambiguous_context_id_requires_flow:{normalized}")
+        if neg_ok:
+            bound = ensure_session_context(state=state, requested_context_id=normalized)
+        elif cs_ok:
             bound = ensure_conversacion_simple_session_context(state=state, requested_context_id=normalized)
+        else:
+            raise ValueError(f"unsupported_context_id:{normalized}")
+
     return {
         'flow_id': bound.flow_id,
         'context_id': bound.context_id,
@@ -118,7 +150,7 @@ def inherit_or_bind_sandbox_context(*, source_state: SessionState, target_state:
                 existing_context_id=source_context.context_id,
                 requested_context_id=requested,
             )
-        return ensure_optimizer_session_context(state=target_state, requested_context_id=source_context.context_id)
+        return ensure_optimizer_session_context(state=target_state, requested_context_id=source_context.context_id, requested_flow_id=source_context.flow_id)
 
     assert source_cs_context is not None
     if requested is not None and requested != source_cs_context.context_id:
@@ -127,4 +159,4 @@ def inherit_or_bind_sandbox_context(*, source_state: SessionState, target_state:
             existing_context_id=source_cs_context.context_id,
             requested_context_id=requested,
         )
-    return ensure_optimizer_session_context(state=target_state, requested_context_id=source_cs_context.context_id)
+    return ensure_optimizer_session_context(state=target_state, requested_context_id=source_cs_context.context_id, requested_flow_id=source_cs_context.flow_id)

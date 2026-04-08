@@ -171,11 +171,7 @@ def _extract_response_id(response: object) -> str | None:
 
 def _normalize_schema_for_strict_json_schema(schema: object) -> object:
     if isinstance(schema, dict):
-        normalized = {key: _normalize_schema_for_strict_json_schema(value) for key, value in schema.items()}
-        properties = normalized.get("properties")
-        if isinstance(properties, dict):
-            normalized["required"] = list(properties.keys())
-        return normalized
+        return {key: _normalize_schema_for_strict_json_schema(value) for key, value in schema.items()}
     if isinstance(schema, list):
         return [_normalize_schema_for_strict_json_schema(item) for item in schema]
     return schema
