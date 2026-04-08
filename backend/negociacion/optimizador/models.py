@@ -63,6 +63,7 @@ class NewConversationRequest(BaseModel):
 class BootstrapSessionRequest(BaseModel):
     user_id: str = "u_optimizador"
     session_id: str = "optimizador-main"
+    flow_id: str | None = None
     context_id: str | None = None
 
 

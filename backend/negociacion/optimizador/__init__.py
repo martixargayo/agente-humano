@@ -15,7 +15,12 @@ def list_sessions() -> dict:
 
 @router.post("/sessions/bootstrap")
 def bootstrap_session(payload: BootstrapSessionRequest) -> dict:
-    return services.ensure_session(user_id=payload.user_id, session_id=payload.session_id, context_id=payload.context_id)
+    return services.ensure_session(
+        user_id=payload.user_id,
+        session_id=payload.session_id,
+        context_id=payload.context_id,
+        flow_id=payload.flow_id,
+    )
 
 
 @router.get("/sessions/{user_id}/{session_id}/conversations")
@@ -63,8 +68,8 @@ def list_prompts(user_id: str | None = None, session_id: str | None = None, cont
 
 
 @router.get("/contexts")
-def list_contexts() -> dict:
-    return {"items": services.list_contexts()}
+def list_contexts(flow_id: str | None = None) -> dict:
+    return {"items": services.list_contexts(flow_id=flow_id)}
 
 
 @router.get("/overrides/{optimizer_session_id}")

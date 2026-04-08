@@ -6,7 +6,7 @@ from typing import Any
 from sessions.state import SessionState, get_session_state, get_session_store
 from sessions.surface_scope import is_surface_owned
 
-PREFERRED_TRACE_KEYS = ["negotiation_canonical_traces"]
+PREFERRED_TRACE_KEYS = ["negotiation_canonical_traces", "conversation_simple_canonical_traces"]
 
 
 def iter_session_entries() -> Iterable[tuple[str, str, SessionState]]:
