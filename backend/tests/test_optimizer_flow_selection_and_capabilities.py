@@ -11,6 +11,7 @@ if str(ROOT) not in sys.path:
 
 from fastapi import HTTPException
 
+from negociacion.optimizador import context_bridge
 from negociacion.optimizador import services as opt_services
 from negociacion.optimizador import trace_reader
 from negociacion.optimizador.flow_adapters import ConversacionSimpleOptimizerAdapter
@@ -148,3 +149,19 @@ def test_frontend_chat_send_and_poll_use_real_message_text() -> None:
     app_js = (ROOT / "avatar_app" / "optimizador" / "app.js").read_text(encoding="utf-8")
     assert 'body: JSON.stringify({ optimizer_session_id: state.optimizerSessionId, user_id: s.user_id, session_id: s.session_id, message' in app_js
     assert 'state.dialogue.map((d) => `<div class=\'msg ${d.role}\'>${d.role === "user" ? "Usuario" : "IA"}: ${escapeHtml(d.text || "")}</div>`).join("")' in app_js
+
+
+def test_context_bridge_requires_flow_when_context_is_ambiguous(monkeypatch) -> None:
+    get_session_store().clear()
+    state = SessionState(user_id="u", session_id="s")
+    monkeypatch.setattr(context_bridge, "resolve_negotiation_context", lambda context_id: object())
+    monkeypatch.setattr(context_bridge, "resolve_conversacion_simple_context", lambda context_id: object())
+    with pytest.raises(ValueError, match="ambiguous_context_id_requires_flow"):
+        context_bridge.ensure_optimizer_session_context(state=state, requested_context_id="baseline")
+
+
+def test_context_bridge_rejects_unsupported_flow_id() -> None:
+    get_session_store().clear()
+    state = SessionState(user_id="u", session_id="s")
+    with pytest.raises(ValueError, match="unsupported_flow_id:foobar"):
+        context_bridge.ensure_optimizer_session_context(state=state, requested_flow_id="foobar")
