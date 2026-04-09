@@ -394,6 +394,16 @@ def test_structured_call_enforces_json_schema_without_prompt_embedded_schema() -
     assert isinstance(out.schema_observability, dict)
     assert out.schema_observability.get("schema_name") == "BrainOutput"
     assert out.schema_observability.get("validation", {}).get("valid") is True
+    assert out.schema_observability.get("schema_hash")
+    assert out.schema_observability.get("root_properties")
+    assert out.schema_observability.get("root_required")
+    assert out.schema_observability.get("provider_model_target") == "gpt-5-nano"
+    assert out.schema_observability.get("format_name") == "BrainOutput"
+    assert out.schema_observability.get("format_strict") is True
+    brain_patch = out.schema_observability.get("brain_state_patch")
+    assert isinstance(brain_patch, dict)
+    assert "memory_episodic_append" in brain_patch.get("properties", [])
+    assert "memory_episodic_append" in brain_patch.get("required", [])
 
 
 def test_normalized_brain_output_schema_preserves_required_lists() -> None:
@@ -445,6 +455,66 @@ def test_structured_summarizer_wiring_keeps_json_schema_strict_and_additional_pr
     assert isinstance(out.schema_observability, dict)
     assert out.schema_observability.get("schema_name") == "SummarizerOutput"
     assert out.schema_observability.get("validation", {}).get("valid") is True
+    assert out.schema_observability.get("schema_hash")
+    assert out.schema_observability.get("root_properties")
+    assert out.schema_observability.get("root_required")
+    assert out.schema_observability.get("provider_model_target") == "gpt-5-nano"
+    assert out.schema_observability.get("format_name") == "SummarizerOutput"
+    assert out.schema_observability.get("format_strict") is True
+
+
+def test_brain_preflight_invalid_schema_short_circuits_before_provider(monkeypatch) -> None:
+    called = {"count": 0}
+
+    class _UnexpectedResponses:
+        def create(self, **kwargs):
+            called["count"] += 1
+            return None
+
+    class _UnexpectedClient:
+        responses = _UnexpectedResponses()
+
+    def _break_normalization(schema: object) -> object:
+        normalized = _normalize_schema_for_strict_json_schema(schema)
+        if isinstance(normalized, dict):
+            normalized["required"] = list(normalized.get("required", [])) + ["memory_episodic_append"]
+        return normalized
+
+    monkeypatch.setattr("conversacion_simple.orchestration.pipeline._normalize_schema_for_strict_json_schema", _break_normalization)
+    out = _call_brain_structured(client=_UnexpectedClient(), model="gpt-5.4", messages=[{"role": "user", "content": "x"}])
+
+    assert out.source == "fallback"
+    assert out.fallback_reason_code == "schema_preflight_invalid"
+    assert called["count"] == 0
+    assert out.schema_observability is not None
+    assert out.schema_observability.get("validation", {}).get("first_mismatch", {}).get("kind") == "extra_required"
+
+
+def test_summarizer_preflight_invalid_schema_short_circuits_before_provider(monkeypatch) -> None:
+    called = {"count": 0}
+
+    class _UnexpectedResponses:
+        def create(self, **kwargs):
+            called["count"] += 1
+            return None
+
+    class _UnexpectedClient:
+        responses = _UnexpectedResponses()
+
+    def _break_normalization(schema: object) -> object:
+        normalized = _normalize_schema_for_strict_json_schema(schema)
+        if isinstance(normalized, dict):
+            normalized["required"] = list(normalized.get("required", [])) + ["ghost_field"]
+        return normalized
+
+    monkeypatch.setattr("conversacion_simple.orchestration.pipeline._normalize_schema_for_strict_json_schema", _break_normalization)
+    out = _call_summarizer_structured(client=_UnexpectedClient(), model="gpt-5.4", messages=[{"role": "user", "content": "x"}])
+
+    assert out.source == "fallback"
+    assert out.fallback_reason_code == "schema_preflight_invalid"
+    assert called["count"] == 0
+    assert out.schema_observability is not None
+    assert out.schema_observability.get("validation", {}).get("first_mismatch", {}).get("kind") == "extra_required"
 
 
 def test_structured_call_provider_error_keeps_schema_observability() -> None:
@@ -710,6 +780,23 @@ def test_turn_trace_includes_runtime_version_info(monkeypatch) -> None:
     runtime_version = trace.get("runtime_version")
     assert isinstance(runtime_version, dict)
     assert "git_commit" in runtime_version
+
+
+def test_runtime_version_prefers_environment_metadata(monkeypatch) -> None:
+    monkeypatch.setenv("RAILWAY_GIT_COMMIT_SHA", "commit-env-123")
+    monkeypatch.setenv("RAILWAY_GIT_BRANCH", "branch-env")
+    monkeypatch.setenv("RAILWAY_BUILD_ID", "build-env")
+    monkeypatch.setenv("RAILWAY_ENVIRONMENT", "production")
+    monkeypatch.setenv("SERVICE_VERSION", "svc-v1")
+    from infra.runtime_version import get_runtime_version_info
+
+    get_runtime_version_info.cache_clear()
+    runtime = get_runtime_version_info()
+    assert runtime["git_commit"] == "commit-env-123"
+    assert runtime["git_branch"] == "branch-env"
+    assert runtime["build_id"] == "build-env"
+    assert runtime["deploy_env"] == "production"
+    assert runtime["service_version"] == "svc-v1"
 
 
 def test_context_precheck_mismatch_raises() -> None:

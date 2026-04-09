@@ -314,7 +314,14 @@ def _normalize_schema_for_strict_json_schema(schema: object) -> object:
     return normalize_schema_for_strict_json_schema(schema)
 
 
-def _prepare_strict_schema(*, schema_name: str, schema: object) -> tuple[object, dict[str, object]]:
+def _prepare_strict_schema(
+    *,
+    schema_name: str,
+    schema: object,
+    provider_model_target: str,
+    format_name: str,
+    format_strict: bool,
+) -> tuple[object, dict[str, object]]:
     normalized = _normalize_schema_for_strict_json_schema(schema)
     validation_report = validate_strict_json_schema(normalized)
     subset_validation = validate_openai_structured_output_subset(normalized)
@@ -406,7 +413,13 @@ def _call_brain_structured(
             model_succeeded=False,
             provider_exception=None,
         )
-    normalized_schema, schema_observability = _prepare_strict_schema(schema_name=BrainOutput.__name__, schema=BrainOutput.model_json_schema())
+    normalized_schema, schema_observability = _prepare_strict_schema(
+        schema_name=BrainOutput.__name__,
+        schema=BrainOutput.model_json_schema(),
+        provider_model_target=model,
+        format_name=BrainOutput.__name__,
+        format_strict=True,
+    )
     validation = schema_observability.get("validation")
     subset_validation = schema_observability.get("openai_subset_validation")
     strict_valid = isinstance(validation, dict) and bool(validation.get("valid", False))
@@ -543,7 +556,13 @@ def _call_summarizer_structured(
             model_succeeded=False,
             provider_exception=None,
         )
-    normalized_schema, schema_observability = _prepare_strict_schema(schema_name=SummarizerOutput.__name__, schema=SummarizerOutput.model_json_schema())
+    normalized_schema, schema_observability = _prepare_strict_schema(
+        schema_name=SummarizerOutput.__name__,
+        schema=SummarizerOutput.model_json_schema(),
+        provider_model_target=model,
+        format_name=SummarizerOutput.__name__,
+        format_strict=True,
+    )
     validation = schema_observability.get("validation")
     subset_validation = schema_observability.get("openai_subset_validation")
     strict_valid = isinstance(validation, dict) and bool(validation.get("valid", False))
