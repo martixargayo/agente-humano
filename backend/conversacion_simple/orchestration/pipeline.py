@@ -48,6 +48,16 @@ from negociacion.orchestration.turn_execution_context import TurnExecutionContex
 logger = logging.getLogger(__name__)
 
 
+def _is_truthy_env(value: str | None) -> bool:
+    if value is None:
+        return False
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _is_trace_forensic_enabled() -> bool:
+    return _is_truthy_env(os.getenv("CONVERSACION_SIMPLE_TRACE_FORENSIC"))
+
+
 def _compact_recent(recent: list[DialogueMessage], max_messages: int) -> list[DialogueMessage]:
     return list(recent[-max_messages:])
 
@@ -344,21 +354,28 @@ def _provider_runtime_fingerprint(
     model_target: str,
     request_payload: dict[str, object] | None,
     schema_observability: dict[str, object] | None,
+    forensic_enabled: bool = False,
 ) -> dict[str, object]:
     runtime = get_runtime_version_info()
     text_format = ((((request_payload or {}).get("text") or {}).get("format")) or {})
     schema = text_format.get("schema")
-    root_properties = []
-    root_required = []
-    state_patch_properties = []
-    state_patch_required = []
+    root_properties_count = 0
+    root_required_count = 0
+    state_patch_properties_count = 0
+    state_patch_required_count = 0
+    root_properties: list[str] = []
+    root_required: list[str] = []
+    state_patch_properties: list[str] = []
+    state_patch_required: list[str] = []
     if isinstance(schema, dict):
         props = schema.get("properties")
         req = schema.get("required")
         if isinstance(props, dict):
             root_properties = sorted(list(props.keys()))
+            root_properties_count = len(root_properties)
         if isinstance(req, list):
             root_required = [str(item) for item in req]
+            root_required_count = len(root_required)
         defs = schema.get("$defs")
         if isinstance(defs, dict):
             bsp = defs.get("BrainStatePatch")
@@ -367,8 +384,10 @@ def _provider_runtime_fingerprint(
                 bsp_req = bsp.get("required")
                 if isinstance(bsp_props, dict):
                     state_patch_properties = sorted(list(bsp_props.keys()))
+                    state_patch_properties_count = len(state_patch_properties)
                 if isinstance(bsp_req, list):
                     state_patch_required = [str(item) for item in bsp_req]
+                    state_patch_required_count = len(state_patch_required)
     base_url = None
     if client is not None:
         maybe_base_url = getattr(client, "base_url", None)
@@ -376,7 +395,7 @@ def _provider_runtime_fingerprint(
     validation = schema_observability.get("validation") if isinstance(schema_observability, dict) else {}
     first_mismatch = validation.get("first_mismatch") if isinstance(validation, dict) else None
     schema_hash = schema_observability.get("schema_hash") if isinstance(schema_observability, dict) else None
-    return {
+    fingerprint: dict[str, object] = {
         "git_commit": runtime.get("git_commit"),
         "build_id": runtime.get("build_id"),
         "service_version": runtime.get("service_version"),
@@ -388,13 +407,49 @@ def _provider_runtime_fingerprint(
         "text_format_name": text_format.get("name") if isinstance(text_format, dict) else None,
         "text_format_strict": text_format.get("strict") if isinstance(text_format, dict) else None,
         "schema_hash": schema_hash,
-        "root_properties": root_properties,
-        "root_required": root_required,
-        "brain_state_patch_properties": state_patch_properties,
-        "brain_state_patch_required": state_patch_required,
+        "root_properties_count": root_properties_count,
+        "root_required_count": root_required_count,
+        "brain_state_patch_properties_count": state_patch_properties_count,
+        "brain_state_patch_required_count": state_patch_required_count,
         "first_mismatch": first_mismatch,
-        "schema_serialized": schema,
     }
+    if forensic_enabled:
+        fingerprint.update(
+            {
+                "root_properties": root_properties,
+                "root_required": root_required,
+                "brain_state_patch_properties": state_patch_properties,
+                "brain_state_patch_required": state_patch_required,
+                "schema_serialized": schema,
+            }
+        )
+    return fingerprint
+
+
+def _compact_schema_observability(
+    schema_observability: dict[str, object] | None,
+    *,
+    forensic_enabled: bool,
+) -> dict[str, object] | None:
+    if not isinstance(schema_observability, dict):
+        return None
+    if forensic_enabled:
+        return schema_observability
+    validation = schema_observability.get("validation")
+    subset_validation = schema_observability.get("openai_subset_validation")
+    compact: dict[str, object] = {
+        "schema_name": schema_observability.get("schema_name"),
+        "schema_hash": schema_observability.get("schema_hash"),
+        "validation": {
+            "valid": validation.get("valid") if isinstance(validation, dict) else None,
+            "first_mismatch": validation.get("first_mismatch") if isinstance(validation, dict) else None,
+        },
+        "openai_subset_validation": {
+            "valid": subset_validation.get("valid") if isinstance(subset_validation, dict) else None,
+            "first_violation": subset_validation.get("first_violation") if isinstance(subset_validation, dict) else None,
+        },
+    }
+    return compact
 
 
 def _call_brain_structured(
@@ -799,6 +854,7 @@ def run_conversacion_simple_turn(
     recent_dialogue = repo.load_recent_dialogue(state)
     memory_obs: dict[str, object] = {}
     runtime_version = get_runtime_version_info()
+    forensic_enabled = _is_trace_forensic_enabled()
 
     turn_id = str(uuid.uuid4())
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -847,13 +903,18 @@ def run_conversacion_simple_turn(
             model_target=config.summarizer_model_target,
             request_payload=summarizer_call.provider_request,
             schema_observability=summarizer_call.schema_observability,
+            forensic_enabled=forensic_enabled,
         )
-        if summarizer_call.provider_request is not None:
+        if forensic_enabled and summarizer_call.provider_request is not None:
             memory_obs["summarizer_provider_request"] = summarizer_call.provider_request
-        if isinstance(summarizer_call.provider_response_text, str):
+        if forensic_enabled and isinstance(summarizer_call.provider_response_text, str):
             memory_obs["summarizer_provider_response_text"] = summarizer_call.provider_response_text
-        if summarizer_call.schema_observability is not None:
-            memory_obs["summarizer_schema_observability"] = summarizer_call.schema_observability
+        compact_summarizer_schema_obs = _compact_schema_observability(
+            summarizer_call.schema_observability,
+            forensic_enabled=forensic_enabled,
+        )
+        if compact_summarizer_schema_obs is not None:
+            memory_obs["summarizer_schema_observability"] = compact_summarizer_schema_obs
         if summarizer_call.output is not None:
             new_summary = _render_structured_summary(summarizer_call.output)
             canonical_state.memory_compacted_summary = _truncate_compacted_summary(new_summary, config.compacted_summary_max_chars)
@@ -892,13 +953,15 @@ def run_conversacion_simple_turn(
         model_target=trace_meta.model_target,
         request_payload=call.provider_request,
         schema_observability=call.schema_observability,
+        forensic_enabled=forensic_enabled,
     )
-    if call.provider_request is not None:
+    if forensic_enabled and call.provider_request is not None:
         memory_obs["brain_provider_request"] = call.provider_request
-    if isinstance(call.provider_response_text, str):
+    if forensic_enabled and isinstance(call.provider_response_text, str):
         memory_obs["brain_provider_response_text"] = call.provider_response_text
-    if call.schema_observability is not None:
-        memory_obs["brain_schema_observability"] = call.schema_observability
+    compact_brain_schema_obs = _compact_schema_observability(call.schema_observability, forensic_enabled=forensic_enabled)
+    if compact_brain_schema_obs is not None:
+        memory_obs["brain_schema_observability"] = compact_brain_schema_obs
     brain_output, parse_fallback_reason_code = _parse_brain_output_strict(
         payload=call.parsed_json,
         allow_fallback=True,
@@ -966,6 +1029,7 @@ def run_conversacion_simple_turn(
         recent_dialogue_count=len(brain_input.recent_dialogue_short),
         episodic_append_count=len(brain_output.state_patch.memory_episodic_append),
         provider_exception=call.provider_exception,
+        include_provider_exception_details=forensic_enabled,
     )
 
     turn_trace = ConversationSimpleTurnTrace(

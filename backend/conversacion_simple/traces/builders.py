@@ -14,10 +14,13 @@ def build_brain_node_trace(
     recent_dialogue_count: int,
     episodic_append_count: int,
     provider_exception: dict[str, object | None] | None = None,
+    include_provider_exception_details: bool = False,
 ) -> ConversationSimpleNodeTrace:
     output_summary: dict[str, object] = {"memory_episodic_append_count": episodic_append_count}
     if provider_exception is not None:
-        output_summary["provider_exception"] = dict(provider_exception)
+        output_summary["provider_exception_present"] = True
+        if include_provider_exception_details:
+            output_summary["provider_exception"] = dict(provider_exception)
     return ConversationSimpleNodeTrace(
         node_name="brain",
         model_called=model_called,

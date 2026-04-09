@@ -116,3 +116,81 @@ def test_legacy_like_brain_payload_no_longer_coerced_and_uses_explicit_fallback(
     assert runtime_fp.get("provider_model_target") == "gpt-5.4"
     assert runtime_fp.get("schema_hash")
     assert runtime_fp.get("text_format_name") == "BrainOutput"
+
+
+def test_trace_observability_is_compact_in_normal_mode(monkeypatch) -> None:
+    payload = {
+        "schema_version": "brain.v1",
+        "status": "deliver",
+        "assistant_response": {"text": "ok"},
+        "state_patch": {
+            "conversation_state": {"phase": None, "status": "active", "current_turn_goal": "g"},
+            "memory_working": {"current_topic": None, "pending_question": None, "last_turn_summary": "x"},
+            "memory_episodic_append": [],
+        },
+        "observability": {"rationale_summary": None},
+    }
+    client = _Client(json.dumps(payload, ensure_ascii=False))
+    monkeypatch.setattr("conversacion_simple.orchestration.pipeline._build_client", lambda: client)
+    monkeypatch.delenv("CONVERSACION_SIMPLE_TRACE_FORENSIC", raising=False)
+
+    state = SessionState(user_id="u2", session_id="s2")
+    ensure_conversacion_simple_session_context(state=state, requested_context_id="baseline")
+    config = build_conversacion_simple_pipeline_config(context_id="baseline", stateful=True)
+    turn_context = build_conversacion_simple_turn_context(
+        state=state,
+        entrypoint="/tests",
+        entry_surface="tests",
+        requested_context_id="baseline",
+    )
+    _reply, updated, _meta = run_conversacion_simple_turn(state=state, user_message="hola", config=config, turn_context=turn_context)
+    trace = updated.world_state[config.traces_key][-1]
+    obs = trace["memory_observability"]
+
+    assert "brain_provider_request" not in obs
+    assert "brain_provider_response_text" not in obs
+    runtime_fp = obs["brain_runtime_fingerprint"]
+    assert "schema_serialized" not in runtime_fp
+    assert isinstance(runtime_fp.get("root_properties_count"), int)
+    assert isinstance(runtime_fp.get("root_required_count"), int)
+    schema_obs = obs["brain_schema_observability"]
+    assert set(schema_obs.keys()) == {"schema_name", "schema_hash", "validation", "openai_subset_validation"}
+    assert set(schema_obs["validation"].keys()) == {"valid", "first_mismatch"}
+    assert set(schema_obs["openai_subset_validation"].keys()) == {"valid", "first_violation"}
+
+
+def test_trace_observability_persists_heavy_fields_in_forensic_mode(monkeypatch) -> None:
+    payload = {
+        "schema_version": "brain.v1",
+        "status": "deliver",
+        "assistant_response": {"text": "ok"},
+        "state_patch": {
+            "conversation_state": {"phase": None, "status": "active", "current_turn_goal": "g"},
+            "memory_working": {"current_topic": None, "pending_question": None, "last_turn_summary": "x"},
+            "memory_episodic_append": [],
+        },
+        "observability": {"rationale_summary": None},
+    }
+    client = _Client(json.dumps(payload, ensure_ascii=False))
+    monkeypatch.setattr("conversacion_simple.orchestration.pipeline._build_client", lambda: client)
+    monkeypatch.setenv("CONVERSACION_SIMPLE_TRACE_FORENSIC", "1")
+
+    state = SessionState(user_id="u3", session_id="s3")
+    ensure_conversacion_simple_session_context(state=state, requested_context_id="baseline")
+    config = build_conversacion_simple_pipeline_config(context_id="baseline", stateful=True)
+    turn_context = build_conversacion_simple_turn_context(
+        state=state,
+        entrypoint="/tests",
+        entry_surface="tests",
+        requested_context_id="baseline",
+    )
+    _reply, updated, _meta = run_conversacion_simple_turn(state=state, user_message="hola", config=config, turn_context=turn_context)
+    trace = updated.world_state[config.traces_key][-1]
+    obs = trace["memory_observability"]
+
+    assert isinstance(obs.get("brain_provider_request"), dict)
+    assert isinstance(obs.get("brain_provider_response_text"), str)
+    runtime_fp = obs["brain_runtime_fingerprint"]
+    assert runtime_fp.get("schema_serialized")
+    schema_obs = obs["brain_schema_observability"]
+    assert "root_properties" in schema_obs
