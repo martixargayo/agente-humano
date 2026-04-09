@@ -131,3 +131,31 @@ Notas de observabilidad:
 - Estado conversacional en RAM (no reanudación robusta tras reinicio/redeploy).
 - Sin multi-réplica en esta fase.
 - Esta fase no incluye cambios de sesiones, feedback runtime, persistencia ni integración Moodle.
+
+## Fondo de interfaz para contextos (`conversacion_simple` y `negociacion`)
+
+La UI ya soporta fondo por contexto vía `presentation/presentation_config.json`.
+
+Pasos recomendados:
+
+1. Copia tu imagen en la carpeta `presentation/assets/` del contexto.
+2. En `presentation_config.json`, define:
+
+```json
+{
+  "background": {
+    "type": "image",
+    "url": "nombre_imagen.jpg",
+    "size": "cover",
+    "position": "center center"
+  }
+}
+```
+
+Notas:
+- Si `url` es relativa, el backend la resuelve automáticamente como `/interfaz_usuario/context-assets/<context_id>/...`.
+- Si no quieres fondo en un contexto, usa `"type": "none"` y `"url": null`.
+
+Ruta exacta para tu caso (`conversacion_simple` + `negociacion_sala_reuniones`):
+- Carpeta de imagen: `backend/conversacion_simple/contexts/negociacion_sala_reuniones/presentation/assets/`
+- Ejemplo: guarda `fondo_sala.png` ahí y usa `"url": "fondo_sala.png"` en `presentation_config.json`.
