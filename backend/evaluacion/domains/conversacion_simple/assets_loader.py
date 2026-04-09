@@ -12,7 +12,8 @@ from evaluacion.contracts.models import DomainContext
 from .context_resolver import ConversationSimpleEvaluationContext, resolve_evaluation_context_from_domain_context
 
 LEGACY_EVALUATION_DIR = Path(__file__).resolve().parents[2] / 'prompts'
-LEGACY_RUBRIC_PATH = Path(__file__).resolve().parents[1] / 'negotiation' / 'rubrics' / 'negotiation_rubric_v1.json'
+# FIX: Use conversacion_simple baseline rubric as fallback, NOT negotiation
+LEGACY_RUBRIC_PATH = Path(__file__).resolve().parents[3] / 'conversacion_simple' / 'contexts' / 'baseline' / 'evaluation' / 'rubric.json'
 
 
 class ConversationSimpleEvaluationAssets(BaseModel):
