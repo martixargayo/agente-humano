@@ -24,6 +24,7 @@ class ConversationSimpleTurnConfig(BaseModel):
     context_limit_turns: int = 20
     keep_last_n_turns: int = 20
     max_recent_dialogue_messages: int = 12
+    recent_dialogue_short_max_messages: int = 8
     episodic_compaction_trigger_count: int = 30
     episodic_compaction_trigger_chars: int = 6000
     max_episodic_high_resolution_items: int = 24
@@ -47,6 +48,7 @@ def build_conversacion_simple_pipeline_config(*, context_id: str | None = None, 
         context_limit_turns=20,
         keep_last_n_turns=20,
         max_recent_dialogue_messages=12,
+        recent_dialogue_short_max_messages=8,
         episodic_compaction_trigger_count=30,
         episodic_compaction_trigger_chars=6000,
         max_episodic_high_resolution_items=24,

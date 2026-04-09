@@ -106,6 +106,7 @@ def build_brain_input(
     recent_dialogue: list[DialogueMessage],
     user_turn: UserTurn,
     trace_meta: TraceMeta,
+    recent_dialogue_short_max: int = 8,
 ) -> BrainInput:
     return BrainInput(
         schema_version="brain_input.v1",
@@ -125,7 +126,7 @@ def build_brain_input(
         conversation_state=canonical_state.conversation_state,
         memory_working=canonical_state.memory_working,
         memory_compacted_summary=canonical_state.memory_compacted_summary,
-        recent_dialogue_short=_compact_recent(recent_dialogue, 8),
+        recent_dialogue_short=_compact_recent(recent_dialogue, recent_dialogue_short_max),
         user_turn=user_turn,
         trace_meta=trace_meta,
     )
@@ -322,6 +323,14 @@ def _call_summarizer_structured(
 def _render_structured_summary(output: SummarizerOutput) -> str:
     payload = output.model_dump(mode="json")
     return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+def _truncate_compacted_summary(summary: str, max_chars: int) -> str:
+    if not summary or max_chars <= 0:
+        return summary
+    if len(summary) <= max_chars:
+        return summary
+    return summary[:max_chars].rstrip()
 
 
 def _format_turns_for_fallback_summary(*, archived_turns: list[list[DialogueMessage]]) -> str:
@@ -559,6 +568,8 @@ def run_conversacion_simple_turn(
 
     add_message(state, role="user", content=user_message)
     recent_dialogue.append(DialogueMessage(role="user", text=user_turn.normalized_text))
+    # TRIM AFTER USER MESSAGE: Determine if summarizer should trigger by comparing turn count
+    # This is the trigger point for archiving old turns beyond context_limit_turns.
     recent_dialogue, archived_turns, recent_metrics_user = trim_recent_dialogue_by_turns(
         recent_dialogue=recent_dialogue,
         context_limit_turns=config.context_limit_turns,
@@ -582,13 +593,15 @@ def run_conversacion_simple_turn(
             messages=summarizer_messages,
         )
         if summarizer_call.output is not None:
-            canonical_state.memory_compacted_summary = _render_structured_summary(summarizer_call.output)
+            new_summary = _render_structured_summary(summarizer_call.output)
+            canonical_state.memory_compacted_summary = _truncate_compacted_summary(new_summary, config.compacted_summary_max_chars)
             memory_obs["memory_summary_compaction_source"] = "llm_summarizer"
         else:
             fallback_block = _format_turns_for_fallback_summary(archived_turns=archived_turns)
-            canonical_state.memory_compacted_summary = "\n".join(
+            new_summary = "\n".join(
                 part for part in [canonical_state.memory_compacted_summary.strip(), fallback_block] if part
             ).strip()
+            canonical_state.memory_compacted_summary = _truncate_compacted_summary(new_summary, config.compacted_summary_max_chars)
             memory_obs["memory_summary_compaction_source"] = "deterministic_fallback"
         memory_obs["memory_summary_archived_turns"] = len(archived_turns)
         memory_obs["memory_summary_archived_messages"] = len(flatten_turns(turns=archived_turns))
@@ -597,7 +610,13 @@ def run_conversacion_simple_turn(
         memory_obs["memory_summary_archived_turns"] = 0
         memory_obs["memory_summary_archived_messages"] = 0
 
-    brain_input = build_brain_input(canonical_state=canonical_state, recent_dialogue=recent_dialogue, user_turn=user_turn, trace_meta=trace_meta)
+    brain_input = build_brain_input(
+        canonical_state=canonical_state,
+        recent_dialogue=recent_dialogue,
+        user_turn=user_turn,
+        trace_meta=trace_meta,
+        recent_dialogue_short_max=config.recent_dialogue_short_max_messages,
+    )
     brain_messages = build_brain_messages(prompt_text, brain_input)
 
     started = time.perf_counter()
@@ -615,6 +634,11 @@ def run_conversacion_simple_turn(
     reply = _normalize_reply_text(brain_output.assistant_response.text)
     add_message(state, role="assistant", content=reply)
     recent_dialogue.append(DialogueMessage(role="assistant", text=reply))
+    # TRIM AFTER ASSISTANT RESPONSE: Ensure total turn count stays within bounds after adding assistant message.
+    # This second trim applies the same limit to maintain invariant: len(recent_dialogue_turns) <= keep_last_n_turns
+    # Note: If the assistant message completes the 20th turn, this trim is a no-op. It only triggers if
+    # adding the assistant would exceed keep_last_n_turns. In practice with context_limit_turns == keep_last_n_turns,
+    # this is mostly idempotent, but necessary for consistency.
     recent_dialogue, archived_turns_after_assistant, recent_metrics_assistant = trim_recent_dialogue_by_turns(
         recent_dialogue=recent_dialogue,
         context_limit_turns=config.context_limit_turns,
