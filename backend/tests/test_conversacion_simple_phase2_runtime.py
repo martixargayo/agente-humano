@@ -11,8 +11,10 @@ if str(ROOT) not in sys.path:
 
 from conversacion_simple.orchestration.flow_config import build_conversacion_simple_pipeline_config
 from conversacion_simple.orchestration.pipeline import (
+    SummarizerOutput,
     StructuredBrainCall,
     _call_brain_structured,
+    _call_summarizer_structured,
     _normalize_schema_for_strict_json_schema,
     run_conversacion_simple_turn,
 )
@@ -43,6 +45,28 @@ def _valid_brain_output() -> dict:
         },
         "observability": {"rationale_summary": "ok"},
     }
+
+
+def _collect_required_mismatches(schema: object) -> list[tuple[str, list[str]]]:
+    mismatches: list[tuple[str, list[str]]] = []
+
+    def _walk(node: object, path: str) -> None:
+        if isinstance(node, dict):
+            properties = node.get("properties")
+            if isinstance(properties, dict):
+                required = node.get("required")
+                required_items = required if isinstance(required, list) else []
+                missing = [key for key in properties.keys() if key not in required_items]
+                if missing:
+                    mismatches.append((path, missing))
+            for key, value in node.items():
+                _walk(value, f"{path}/{key}")
+        elif isinstance(node, list):
+            for idx, value in enumerate(node):
+                _walk(value, f"{path}[{idx}]")
+
+    _walk(schema, "$")
+    return mismatches
 
 
 def test_single_llm_call_per_turn(monkeypatch) -> None:
@@ -366,8 +390,53 @@ def test_structured_call_enforces_json_schema_without_prompt_embedded_schema() -
 def test_normalized_brain_output_schema_preserves_required_lists() -> None:
     base = BrainOutput.model_json_schema()
     normalized = _normalize_schema_for_strict_json_schema(base)
-    assert normalized.get("required") == base.get("required")
-    assert normalized.get("$defs", {}).get("BrainStatePatch", {}).get("required") == base.get("$defs", {}).get("BrainStatePatch", {}).get("required")
+    assert _collect_required_mismatches(normalized) == []
+    assert "observability" in normalized.get("required", [])
+    assert "rationale_summary" in normalized.get("$defs", {}).get("BrainObservability", {}).get("required", [])
+
+
+def test_normalized_summarizer_output_schema_has_full_required() -> None:
+    normalized = _normalize_schema_for_strict_json_schema(SummarizerOutput.model_json_schema())
+    assert _collect_required_mismatches(normalized) == []
+
+
+def test_structured_summarizer_wiring_keeps_json_schema_strict_and_additional_properties() -> None:
+    captured: dict[str, object] = {}
+
+    class _FakeResponse:
+        id = "resp_summary_1"
+        output_text = (
+            '{"schema_version":"memory_summary.v1","situation_live":"ok","active_proposal":null,'
+            '"latest_offer_each_side":[],"concessions_accumulated":[],"open_items":[],"closed_items":[],'
+            '"operative_constraints":[],"fixed_time_calculations":[],"operative_question_live":null,'
+            '"sensitive_info_exposed":[],"agreement_progress":null,"pending_inconsistencies":[],"uncertainties":[]}'
+        )
+
+    class _FakeResponses:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            return _FakeResponse()
+
+    class _FakeClient:
+        responses = _FakeResponses()
+
+    out = _call_summarizer_structured(
+        client=_FakeClient(),
+        model="gpt-5-nano",
+        messages=[{"role": "developer", "content": "prompt"}, {"role": "user", "content": "payload"}],
+    )
+
+    assert out.source == "model"
+    text = captured.get("text")
+    assert isinstance(text, dict)
+    fmt = text.get("format")
+    assert isinstance(fmt, dict)
+    assert fmt.get("type") == "json_schema"
+    assert fmt.get("strict") is True
+    schema = fmt.get("schema")
+    assert isinstance(schema, dict)
+    assert _collect_required_mismatches(schema) == []
+    assert schema.get("additionalProperties") is False
 
 
 def test_context_precheck_mismatch_raises() -> None:

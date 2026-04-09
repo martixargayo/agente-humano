@@ -49,5 +49,6 @@ def test_apply_brain_output_to_state_is_deterministic() -> None:
 def test_schema_normalization_preserves_pydantic_required_keys() -> None:
     base = BrainOutput.model_json_schema()
     normalized = _normalize_schema_for_strict_json_schema(base)
-    assert normalized.get("required") == base.get("required")
-    assert normalized.get("$defs", {}).get("BrainStatePatch", {}).get("required") == base.get("$defs", {}).get("BrainStatePatch", {}).get("required")
+    assert "observability" in normalized.get("required", [])
+    assert "rationale_summary" in normalized.get("$defs", {}).get("BrainObservability", {}).get("required", [])
+    assert "memory_episodic_append" in normalized.get("$defs", {}).get("BrainStatePatch", {}).get("required", [])
