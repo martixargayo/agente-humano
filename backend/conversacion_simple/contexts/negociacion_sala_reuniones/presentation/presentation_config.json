@@ -2,6 +2,12 @@
   "theme": {
     "shell_theme": "realistic"
   },
+  "background": {
+    "type": "none",
+    "url": null,
+    "size": "cover",
+    "position": "center center"
+  },
   "avatar": {
     "model": {
       "url": "/interfaz_usuario/avatar_runtime/assets/FaceVolumen.glb"
