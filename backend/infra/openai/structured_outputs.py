@@ -28,6 +28,20 @@ def _json_path(parts: tuple[str, ...]) -> str:
     return "$/" + "/".join(parts)
 
 
+def _extract_object_snapshot(node: object, *, max_keys: int = 20) -> dict[str, object] | None:
+    if not isinstance(node, dict):
+        return None
+    properties = node.get("properties")
+    required = node.get("required")
+    if not isinstance(properties, dict):
+        return None
+    return {
+        "properties": list(properties.keys())[:max_keys],
+        "required": [str(item) for item in required][:max_keys] if isinstance(required, list) else [],
+        "additionalProperties": node.get("additionalProperties"),
+    }
+
+
 def validate_strict_json_schema(schema: object) -> dict[str, Any]:
     """Validate strict JSON schema invariants used by OpenAI structured outputs."""
 
@@ -133,10 +147,14 @@ def build_schema_observability(*, schema_name: str, schema: object, validation_r
             root_properties = list(props.keys())[:max_keys]
         if isinstance(req, list):
             root_required = [str(item) for item in req][:max_keys]
+    brain_state_patch: dict[str, object] | None = None
+    if isinstance(schema, dict):
+        brain_state_patch = _extract_object_snapshot(schema.get("$defs", {}).get("BrainStatePatch"), max_keys=max_keys)
     return {
         "schema_name": schema_name,
         "schema_hash": schema_hash,
         "root_properties": root_properties,
         "root_required": root_required,
+        "brain_state_patch": brain_state_patch,
         "validation": validation_report,
     }

@@ -1,0 +1,263 @@
+{
+  "brain": {
+    "base": {
+      "brainstatepatch_properties": [
+        "conversation_state",
+        "memory_working",
+        "memory_episodic_append"
+      ],
+      "brainstatepatch_required": [
+        "conversation_state",
+        "memory_working"
+      ],
+      "first_mismatch": {
+        "kind": "missing_required",
+        "missing_keys": [
+          "observability"
+        ],
+        "path": "$"
+      },
+      "hash": "e02e315035b6e263",
+      "name": "brain.base",
+      "root_properties": [
+        "schema_version",
+        "status",
+        "assistant_response",
+        "state_patch",
+        "observability"
+      ],
+      "root_required": [
+        "schema_version",
+        "status",
+        "assistant_response",
+        "state_patch"
+      ]
+    },
+    "name": "BrainOutput",
+    "normalized": {
+      "brainstatepatch_properties": [
+        "conversation_state",
+        "memory_working",
+        "memory_episodic_append"
+      ],
+      "brainstatepatch_required": [
+        "conversation_state",
+        "memory_working",
+        "memory_episodic_append"
+      ],
+      "first_mismatch": null,
+      "hash": "a9c3c1309609005f",
+      "name": "brain.normalized",
+      "root_properties": [
+        "schema_version",
+        "status",
+        "assistant_response",
+        "state_patch",
+        "observability"
+      ],
+      "root_required": [
+        "schema_version",
+        "status",
+        "assistant_response",
+        "state_patch",
+        "observability"
+      ]
+    },
+    "sent": {
+      "brainstatepatch_properties": [
+        "conversation_state",
+        "memory_working",
+        "memory_episodic_append"
+      ],
+      "brainstatepatch_required": [
+        "conversation_state",
+        "memory_working",
+        "memory_episodic_append"
+      ],
+      "first_mismatch": null,
+      "hash": "a9c3c1309609005f",
+      "name": "brain.sent",
+      "root_properties": [
+        "schema_version",
+        "status",
+        "assistant_response",
+        "state_patch",
+        "observability"
+      ],
+      "root_required": [
+        "schema_version",
+        "status",
+        "assistant_response",
+        "state_patch",
+        "observability"
+      ]
+    },
+    "strict": true
+  },
+  "runtime_version": {
+    "build_id": null,
+    "deploy_env": null,
+    "git_branch": "work",
+    "git_commit": "b662b5ad2cb8457712727e639426a668688261be",
+    "service_version": null
+  },
+  "summarizer": {
+    "base": {
+      "brainstatepatch_properties": [],
+      "brainstatepatch_required": [],
+      "first_mismatch": {
+        "kind": "missing_required",
+        "missing_keys": [
+          "active_proposal",
+          "latest_offer_each_side",
+          "concessions_accumulated",
+          "open_items",
+          "closed_items",
+          "operative_constraints",
+          "fixed_time_calculations",
+          "operative_question_live",
+          "sensitive_info_exposed",
+          "agreement_progress",
+          "pending_inconsistencies",
+          "uncertainties"
+        ],
+        "path": "$"
+      },
+      "hash": "49cfdc476ba05132",
+      "name": "summarizer.base",
+      "root_properties": [
+        "schema_version",
+        "situation_live",
+        "active_proposal",
+        "latest_offer_each_side",
+        "concessions_accumulated",
+        "open_items",
+        "closed_items",
+        "operative_constraints",
+        "fixed_time_calculations",
+        "operative_question_live",
+        "sensitive_info_exposed",
+        "agreement_progress",
+        "pending_inconsistencies",
+        "uncertainties"
+      ],
+      "root_required": [
+        "schema_version",
+        "situation_live"
+      ]
+    },
+    "name": "SummarizerOutput",
+    "normalized": {
+      "brainstatepatch_properties": [],
+      "brainstatepatch_required": [],
+      "first_mismatch": null,
+      "hash": "894a4a59c377b566",
+      "name": "summarizer.normalized",
+      "root_properties": [
+        "schema_version",
+        "situation_live",
+        "active_proposal",
+        "latest_offer_each_side",
+        "concessions_accumulated",
+        "open_items",
+        "closed_items",
+        "operative_constraints",
+        "fixed_time_calculations",
+        "operative_question_live",
+        "sensitive_info_exposed",
+        "agreement_progress",
+        "pending_inconsistencies",
+        "uncertainties"
+      ],
+      "root_required": [
+        "schema_version",
+        "situation_live",
+        "active_proposal",
+        "latest_offer_each_side",
+        "concessions_accumulated",
+        "open_items",
+        "closed_items",
+        "operative_constraints",
+        "fixed_time_calculations",
+        "operative_question_live",
+        "sensitive_info_exposed",
+        "agreement_progress",
+        "pending_inconsistencies",
+        "uncertainties"
+      ]
+    },
+    "sent": {
+      "brainstatepatch_properties": [],
+      "brainstatepatch_required": [],
+      "first_mismatch": null,
+      "hash": "894a4a59c377b566",
+      "name": "summarizer.sent",
+      "root_properties": [
+        "schema_version",
+        "situation_live",
+        "active_proposal",
+        "latest_offer_each_side",
+        "concessions_accumulated",
+        "open_items",
+        "closed_items",
+        "operative_constraints",
+        "fixed_time_calculations",
+        "operative_question_live",
+        "sensitive_info_exposed",
+        "agreement_progress",
+        "pending_inconsistencies",
+        "uncertainties"
+      ],
+      "root_required": [
+        "schema_version",
+        "situation_live",
+        "active_proposal",
+        "latest_offer_each_side",
+        "concessions_accumulated",
+        "open_items",
+        "closed_items",
+        "operative_constraints",
+        "fixed_time_calculations",
+        "operative_question_live",
+        "sensitive_info_exposed",
+        "agreement_progress",
+        "pending_inconsistencies",
+        "uncertainties"
+      ]
+    },
+    "strict": true
+  },
+  "synthetic_error_alignment": {
+    "expected_provider_error": "Extra required key 'memory_episodic_append' supplied",
+    "first_mismatch": {
+      "extra_keys": [
+        "memory_episodic_append"
+      ],
+      "kind": "extra_required",
+      "path": "$"
+    },
+    "root_node": {
+      "additionalProperties": false,
+      "extra": [
+        "memory_episodic_append"
+      ],
+      "missing": [],
+      "path": "$",
+      "properties": [
+        "schema_version",
+        "status",
+        "assistant_response",
+        "state_patch",
+        "observability"
+      ],
+      "required": [
+        "schema_version",
+        "status",
+        "assistant_response",
+        "state_patch",
+        "observability",
+        "memory_episodic_append"
+      ]
+    }
+  }
+}
