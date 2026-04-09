@@ -163,6 +163,8 @@ class ConversacionSimpleOptimizerAdapter:
         turn_context = build_conversacion_simple_turn_context(
             state=state,
             entrypoint="/api/optimizador/sandbox/turn",
+            entry_surface="optimizador",
+            context_source="optimizador_session_bound",
             requested_context_id=context_id,
         )
         reply, updated, cs_meta = run_conversacion_simple_turn(

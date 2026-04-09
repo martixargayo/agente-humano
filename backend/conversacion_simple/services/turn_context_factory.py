@@ -10,6 +10,8 @@ def build_conversacion_simple_turn_context(
     *,
     state: SessionState,
     entrypoint: str,
+    entry_surface: str = "conversacion_simple",
+    context_source: str = "internal_explicit",
     requested_context_id: str | None = None,
 ) -> TurnExecutionContext:
     bound = read_bound_conversacion_simple_context_from_session(state)
@@ -22,8 +24,8 @@ def build_conversacion_simple_turn_context(
         effective_context_id=effective_context_id,
         requested_context_id=(requested_context_id or "").strip() or None,
         session_bound_context_id=bound.context_id if bound is not None else None,
-        context_source="internal_explicit",
-        entry_surface="conversacion_simple",
+        context_source=context_source,
+        entry_surface=entry_surface,
         entrypoint=entrypoint,
         context_version=resolved.context_version if resolved is not None else None,
         flow_id=resolved.flow_id if resolved is not None else None,

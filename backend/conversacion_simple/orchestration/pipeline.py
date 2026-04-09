@@ -6,7 +6,6 @@ import time
 import uuid
 import logging
 import re
-import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,7 +19,6 @@ from infra.runtime_version import get_runtime_version_info
 from sessions.state import SessionState, add_message, save_session_state
 
 from ..contexts import (
-    load_prompt_io_adapter,
     read_bound_conversacion_simple_context_from_session,
     resolve_conversacion_simple_context_for_prompts_dir,
 )
@@ -171,6 +169,8 @@ class StructuredBrainCall:
     model_attempted: bool = False
     model_succeeded: bool = False
     provider_exception: dict[str, object | None] | None = None
+    provider_request: dict[str, object] | None = None
+    provider_response_text: str | None = None
 
 
 _DEFAULT_SUMMARIZER_PROMPT = """Eres un summarizer táctico de contexto conversacional para negociación.
@@ -231,6 +231,8 @@ class StructuredSummarizerCall:
     model_attempted: bool = False
     model_succeeded: bool = False
     provider_exception: dict[str, object | None] | None = None
+    provider_request: dict[str, object] | None = None
+    provider_response_text: str | None = None
 
 
 _SANITIZE_PATTERN_REPLACEMENTS: list[tuple[re.Pattern[str], str]] = [
@@ -366,21 +368,22 @@ def _call_brain_structured(
             model_succeeded=False,
             provider_exception=None,
         )
+    request_payload: dict[str, object] = {
+        "model": model,
+        "input": messages,
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": BrainOutput.__name__,
+                "schema": normalized_schema,
+                "strict": True,
+            }
+        },
+        "reasoning": {"effort": "low"},
+        "store": False,
+    }
     try:
-        response = client.responses.create(
-            model=model,
-            input=messages,
-            text={
-                "format": {
-                    "type": "json_schema",
-                    "name": BrainOutput.__name__,
-                    "schema": normalized_schema,
-                    "strict": True,
-                }
-            },
-            reasoning={"effort": "low"},
-            store=False,
-        )
+        response = client.responses.create(**request_payload)
     except Exception as exc:
         provider_exception = _extract_provider_exception_details(exc, stage="brain", model=model)
         logger.exception(
@@ -403,6 +406,7 @@ def _call_brain_structured(
             model_attempted=True,
             model_succeeded=False,
             provider_exception=provider_exception,
+            provider_request=request_payload,
         )
     text = _extract_output_text(response)
     response_id = _extract_response_id(response)
@@ -417,6 +421,7 @@ def _call_brain_structured(
             model_attempted=True,
             model_succeeded=False,
             provider_exception=None,
+            provider_request=request_payload,
         )
     try:
         payload = json.loads(text)
@@ -431,6 +436,8 @@ def _call_brain_structured(
             model_attempted=True,
             model_succeeded=False,
             provider_exception=None,
+            provider_request=request_payload,
+            provider_response_text=text,
         )
     return StructuredBrainCall(
         source="model",
@@ -441,6 +448,8 @@ def _call_brain_structured(
         model_attempted=True,
         model_succeeded=isinstance(payload, dict),
         provider_exception=None,
+        provider_request=request_payload,
+        provider_response_text=text,
     )
 
 
@@ -498,21 +507,22 @@ def _call_summarizer_structured(
             model_succeeded=False,
             provider_exception=None,
         )
+    request_payload: dict[str, object] = {
+        "model": model,
+        "input": messages,
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": SummarizerOutput.__name__,
+                "schema": normalized_schema,
+                "strict": True,
+            }
+        },
+        "reasoning": {"effort": "minimal"},
+        "store": False,
+    }
     try:
-        response = client.responses.create(
-            model=model,
-            input=messages,
-            text={
-                "format": {
-                    "type": "json_schema",
-                    "name": SummarizerOutput.__name__,
-                    "schema": normalized_schema,
-                    "strict": True,
-                }
-            },
-            reasoning={"effort": "minimal"},
-            store=False,
-        )
+        response = client.responses.create(**request_payload)
     except Exception as exc:
         provider_exception = _extract_provider_exception_details(exc, stage="summarizer", model=model)
         logger.exception(
@@ -535,6 +545,7 @@ def _call_summarizer_structured(
             model_attempted=True,
             model_succeeded=False,
             provider_exception=provider_exception,
+            provider_request=request_payload,
         )
     response_id = _extract_response_id(response)
     text = _extract_output_text(response)
@@ -548,6 +559,7 @@ def _call_summarizer_structured(
             model_attempted=True,
             model_succeeded=False,
             provider_exception=None,
+            provider_request=request_payload,
         )
     try:
         payload = json.loads(text)
@@ -562,6 +574,8 @@ def _call_summarizer_structured(
             model_attempted=True,
             model_succeeded=False,
             provider_exception=None,
+            provider_request=request_payload,
+            provider_response_text=text,
         )
     return StructuredSummarizerCall(
         source="model",
@@ -572,6 +586,8 @@ def _call_summarizer_structured(
         model_attempted=True,
         model_succeeded=True,
         provider_exception=None,
+        provider_request=request_payload,
+        provider_response_text=text,
     )
 
 
@@ -605,42 +621,9 @@ def _resolve_summarizer_prompt(prompts_dir: Path) -> str:
     return _DEFAULT_SUMMARIZER_PROMPT
 
 
-def _normalize_text_for_intent_detection(value: str) -> str:
-    lowered = value.strip().lower()
-    normalized = unicodedata.normalize("NFD", lowered)
-    no_accents = "".join(ch for ch in normalized if unicodedata.category(ch) != "Mn")
-    compact = " ".join(no_accents.split())
-    return re.sub(r"[¿?¡!.,;:]", "", compact)
-
-
-def _fallback_social_intent(user_message: str) -> Literal["greeting", "identity", "other"]:
-    normalized = _normalize_text_for_intent_detection(user_message)
-    if not normalized:
-        return "other"
-    greetings = {"hola", "buenas", "buen dia", "buenos dias", "buenas tardes", "buenas noches", "hey"}
-    if normalized in greetings:
-        return "greeting"
-    identity_patterns = (
-        "como te llamas",
-        "cual es tu nombre",
-        "quien eres",
-        "eres diego",
-        "sos diego",
-        "tu nombre",
-    )
-    if any(pattern in normalized for pattern in identity_patterns):
-        return "identity"
-    return "other"
-
-
 def _brain_fallback(*, user_message: str, fallback_reason_code: str | None) -> BrainOutput:
-    social_intent = _fallback_social_intent(user_message)
-    if social_intent == "greeting":
-        fallback_text = "Hola, soy Diego. Encantado de hablar contigo."
-    elif social_intent == "identity":
-        fallback_text = "Sí, soy Diego."
-    else:
-        fallback_text = "Para ayudarte bien con esto, compárteme un poco más de detalle."
+    _ = user_message
+    fallback_text = "No pude completar la generación del turno en este intento. ¿Puedes repetir tu último mensaje?"
     return BrainOutput(
         schema_version="brain.v1",
         status="clarify",
@@ -664,116 +647,10 @@ def _normalize_reply_text(reply: str) -> str:
     return normalized
 
 
-_LEGACY_MEMORY_WORKING_KEYS: tuple[str, ...] = ("memory_working_patch", "memory_patch")
-_LEGACY_PHASE_ALIASES: dict[str, str] = {
-    "in_progress": "desarrollo",
-    "active": "desarrollo",
-    "opening": "apertura",
-    "intro": "apertura",
-    "closing": "cierre",
-    "completed": "cierre",
-    "done": "cierre",
-}
-
-
-def _extract_assistant_response_text(normalized: dict[str, object]) -> str | None:
-    assistant_response = normalized.get("assistant_response")
-    if isinstance(assistant_response, str):
-        return assistant_response
-    if isinstance(assistant_response, dict):
-        text = assistant_response.get("text")
-        if isinstance(text, str):
-            return text
-    response_value = normalized.get("response")
-    if isinstance(response_value, str):
-        return response_value
-    if isinstance(response_value, dict):
-        text = response_value.get("text")
-        if isinstance(text, str):
-            return text
-    assistant_value = normalized.get("assistant")
-    if isinstance(assistant_value, dict):
-        text = assistant_value.get("text")
-        if isinstance(text, str):
-            return text
-    reply_value = normalized.get("reply")
-    if isinstance(reply_value, str):
-        return reply_value
-    response_text_value = normalized.get("response_text")
-    if isinstance(response_text_value, str):
-        return response_text_value
-    assistant_response_text_value = normalized.get("assistant_response_text")
-    if isinstance(assistant_response_text_value, str):
-        return assistant_response_text_value
-    return None
-
-
-def _extract_legacy_memory_working_patch(normalized: dict[str, object]) -> dict[str, object]:
-    merged: dict[str, object] = {}
-    for key in _LEGACY_MEMORY_WORKING_KEYS:
-        value = normalized.get(key)
-        if isinstance(value, dict):
-            merged.update(value)
-    return merged
-
-
-def _coerce_legacy_brain_output_payload(
-    *,
-    payload: dict[str, object],
-    canonical_state: ConversationSimpleCanonicalState,
-) -> dict[str, object]:
-    normalized = dict(payload)
-    if "schema_version" not in normalized:
-        normalized["schema_version"] = "brain.v1"
-    if "status" not in normalized:
-        normalized["status"] = "deliver"
-    assistant_text = _extract_assistant_response_text(normalized)
-    if assistant_text is not None:
-        normalized["assistant_response"] = {"text": assistant_text}
-    for key in ("response_text", "assistant_response_text", "reply", "response", "assistant"):
-        normalized.pop(key, None)
-    default_patch: dict[str, object] = {
-        "conversation_state": canonical_state.conversation_state.model_dump(mode="json"),
-        "memory_working": canonical_state.memory_working.model_dump(mode="json"),
-        "memory_episodic_append": [],
-    }
-    raw_patch = normalized.get("state_patch")
-    patch = dict(raw_patch) if isinstance(raw_patch, dict) else {}
-    legacy_memory_working = _extract_legacy_memory_working_patch(normalized)
-    for key in _LEGACY_MEMORY_WORKING_KEYS:
-        normalized.pop(key, None)
-    if legacy_memory_working and "memory_working" not in patch:
-        patch["memory_working"] = legacy_memory_working
-
-    raw_conv = patch.get("conversation_state")
-    conv = dict(raw_conv) if isinstance(raw_conv, dict) else {}
-    raw_phase = conv.get("phase")
-    if isinstance(raw_phase, str):
-        conv["phase"] = _LEGACY_PHASE_ALIASES.get(raw_phase.strip().lower(), raw_phase)
-    if "status" not in conv:
-        conv["status"] = default_patch["conversation_state"]["status"]  # type: ignore[index]
-    if "current_turn_goal" not in conv:
-        conv["current_turn_goal"] = default_patch["conversation_state"]["current_turn_goal"]  # type: ignore[index]
-    patch["conversation_state"] = conv or default_patch["conversation_state"]
-
-    raw_working = patch.get("memory_working")
-    working = dict(raw_working) if isinstance(raw_working, dict) else {}
-    for field in ("current_topic", "pending_question", "last_turn_summary"):
-        if field not in working:
-            working[field] = default_patch["memory_working"][field]  # type: ignore[index]
-    patch["memory_working"] = working
-
-    episodic = patch.get("memory_episodic_append")
-    patch["memory_episodic_append"] = episodic if isinstance(episodic, list) else []
-    normalized["state_patch"] = patch if patch else default_patch
-    return normalized
-
-
 def _parse_brain_output_strict(
     *,
     payload: dict | None,
     allow_fallback: bool,
-    canonical_state: ConversationSimpleCanonicalState,
     user_message: str,
     fallback_reason_code: str | None = None,
 ) -> tuple[BrainOutput, str | None]:
@@ -782,7 +659,6 @@ def _parse_brain_output_strict(
             resolved_reason = fallback_reason_code or "unknown_fallback"
             return _brain_fallback(user_message=user_message, fallback_reason_code=resolved_reason), resolved_reason
         raise RuntimeError("conversacion_simple_brain_output_missing_json")
-    payload = _coerce_legacy_brain_output_payload(payload=payload, canonical_state=canonical_state)
     try:
         output = BrainOutput.model_validate(payload)
     except ValidationError as exc:
@@ -860,7 +736,6 @@ def run_conversacion_simple_turn(
     prompts_dir = Path(config.prompts_dir)
     prompt_text = (prompts_dir / "brain_prompt.txt").read_text(encoding="utf-8").strip()
     summarizer_prompt = _resolve_summarizer_prompt(prompts_dir)
-    _ = load_prompt_io_adapter(None)
     client = _build_client()
     llm_call_attempted = client is not None
 
@@ -890,6 +765,10 @@ def run_conversacion_simple_turn(
             model=config.summarizer_model_target,
             messages=summarizer_messages,
         )
+        if summarizer_call.provider_request is not None:
+            memory_obs["summarizer_provider_request"] = summarizer_call.provider_request
+        if isinstance(summarizer_call.provider_response_text, str):
+            memory_obs["summarizer_provider_response_text"] = summarizer_call.provider_response_text
         if summarizer_call.schema_observability is not None:
             memory_obs["summarizer_schema_observability"] = summarizer_call.schema_observability
         if summarizer_call.output is not None:
@@ -925,12 +804,15 @@ def run_conversacion_simple_turn(
 
     started = time.perf_counter()
     call = _call_brain_structured(client=client, model=trace_meta.model_target, messages=brain_messages)
+    if call.provider_request is not None:
+        memory_obs["brain_provider_request"] = call.provider_request
+    if isinstance(call.provider_response_text, str):
+        memory_obs["brain_provider_response_text"] = call.provider_response_text
     if call.schema_observability is not None:
         memory_obs["brain_schema_observability"] = call.schema_observability
     brain_output, parse_fallback_reason_code = _parse_brain_output_strict(
         payload=call.parsed_json,
-        allow_fallback=call.source != "model",
-        canonical_state=canonical_state,
+        allow_fallback=True,
         user_message=user_message,
         fallback_reason_code=call.fallback_reason_code,
     )
