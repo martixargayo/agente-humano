@@ -600,13 +600,14 @@ def test_provider_exception_observability_is_propagated_without_secret_leaks(mon
     _, updated, _ = run_conversacion_simple_turn(state=state, user_message="hola", config=config, turn_context=turn_context)
     trace = updated.world_state[config.traces_key][-1]
     provider_exc = trace["memory_observability"]["brain_provider_exception"]
-    node_provider_exc = trace["nodes"]["brain"]["output_summary"]["provider_exception"]
+    node_summary = trace["nodes"]["brain"]["output_summary"]
     assert trace["brain_fallback_reason_code"] == "provider_exception"
     assert provider_exc["provider_exception_type"] == "RuntimeError"
     assert provider_exc["provider_exception_stage"] == "brain"
     assert provider_exc["provider_model_target"] == config.brain_model_target
     assert secret not in str(provider_exc["provider_exception_message"])
-    assert node_provider_exc["provider_exception_type"] == "RuntimeError"
+    assert node_summary["provider_exception_present"] is True
+    assert "provider_exception" not in node_summary
 
 
 def test_summarizer_provider_exception_observability_is_captured(monkeypatch) -> None:
@@ -652,6 +653,61 @@ def test_summarizer_provider_exception_observability_is_captured(monkeypatch) ->
     assert obs["summarizer_fallback_reason_code"] == "provider_exception"
     assert obs["summarizer_provider_exception"]["provider_exception_stage"] == "summarizer"
     assert obs["summarizer_provider_exception"]["provider_exception_status_code"] == 503
+
+
+def test_summarizer_heavy_observability_is_opt_in_forensic(monkeypatch) -> None:
+    monkeypatch.setattr("conversacion_simple.orchestration.pipeline._build_client", lambda: object())
+
+    def _fake_brain(**kwargs):
+        return StructuredBrainCall(source="model", parsed_json=_valid_brain_output(), response=None, model_attempted=True, model_succeeded=True)
+
+    def _fake_summarizer(**kwargs):
+        return StructuredSummarizerCall(
+            source="model",
+            output=SummarizerOutput(
+                schema_version="memory_summary.v1",
+                situation_live="ok",
+            ),
+            response_id="sum-optin",
+            model_attempted=True,
+            model_succeeded=True,
+            provider_request={"model": "gpt-5.4-nano", "input": []},
+            provider_response_text='{"schema_version":"memory_summary.v1","situation_live":"ok"}',
+            schema_observability={
+                "schema_name": "SummarizerOutput",
+                "schema_hash": "abc123",
+                "root_properties": ["schema_version", "situation_live"],
+                "validation": {"valid": True, "first_mismatch": None},
+                "openai_subset_validation": {"valid": True, "first_violation": None},
+            },
+        )
+
+    monkeypatch.setattr("conversacion_simple.orchestration.pipeline._call_brain_structured", _fake_brain)
+    monkeypatch.setattr("conversacion_simple.orchestration.pipeline._call_summarizer_structured", _fake_summarizer)
+
+    state = SessionState(user_id="u", session_id="s")
+    _bind(state)
+    config = build_conversacion_simple_pipeline_config(context_id="baseline", stateful=True)
+    turn_context = build_conversacion_simple_turn_context(state=state, entrypoint="/tests", requested_context_id="baseline")
+
+    monkeypatch.delenv("CONVERSACION_SIMPLE_TRACE_FORENSIC", raising=False)
+    for i in range(21):
+        run_conversacion_simple_turn(state=state, user_message=f"turno normal {i}", config=config, turn_context=turn_context)
+    normal_obs = state.world_state[config.traces_key][-1]["memory_observability"]
+    assert "summarizer_provider_request" not in normal_obs
+    assert "summarizer_provider_response_text" not in normal_obs
+    assert "schema_serialized" not in normal_obs["summarizer_runtime_fingerprint"]
+
+    state_f = SessionState(user_id="uf", session_id="sf")
+    _bind(state_f)
+    turn_context_f = build_conversacion_simple_turn_context(state=state_f, entrypoint="/tests", requested_context_id="baseline")
+    monkeypatch.setenv("CONVERSACION_SIMPLE_TRACE_FORENSIC", "1")
+    for i in range(21):
+        run_conversacion_simple_turn(state=state_f, user_message=f"turno forense {i}", config=config, turn_context=turn_context_f)
+    forensic_obs = state_f.world_state[config.traces_key][-1]["memory_observability"]
+    assert isinstance(forensic_obs.get("summarizer_provider_request"), dict)
+    assert isinstance(forensic_obs.get("summarizer_provider_response_text"), str)
+    assert "schema_serialized" in forensic_obs["summarizer_runtime_fingerprint"]
 
 
 def test_structured_call_fallback_reason_codes_for_empty_and_parse_error() -> None:

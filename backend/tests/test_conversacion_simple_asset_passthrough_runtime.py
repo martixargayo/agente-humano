@@ -108,6 +108,7 @@ class _FakeClient:
 def test_brain_provider_request_keeps_rich_assets_for_interfaz_y_optimizador(monkeypatch) -> None:
     persona_raw, brief_raw, phase_raw = _rich_assets()
     monkeypatch.setattr("conversacion_simple.orchestration.pipeline._build_client", lambda: _FakeClient())
+    monkeypatch.setenv("CONVERSACION_SIMPLE_TRACE_FORENSIC", "1")
 
     config = build_conversacion_simple_pipeline_config(context_id="negociacion_sala_reuniones", stateful=True)
 
