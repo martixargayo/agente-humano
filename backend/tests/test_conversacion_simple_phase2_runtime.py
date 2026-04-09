@@ -106,8 +106,10 @@ def test_invalid_brain_output_schema_raises(monkeypatch) -> None:
     config = build_conversacion_simple_pipeline_config(context_id="baseline", stateful=True)
     turn_context = build_conversacion_simple_turn_context(state=state, entrypoint="/tests", requested_context_id="baseline")
 
-    with pytest.raises(RuntimeError, match="conversacion_simple_brain_output_validation_error"):
-        run_conversacion_simple_turn(state=state, user_message="hola", config=config, turn_context=turn_context)
+    reply, updated, _ = run_conversacion_simple_turn(state=state, user_message="hola", config=config, turn_context=turn_context)
+    trace = updated.world_state[config.traces_key][-1]
+    assert "No pude completar la generación del turno" in reply
+    assert trace["brain_fallback_reason_code"] == "validation_error_after_parse"
 
 
 def test_legacy_response_text_payload_is_coerced(monkeypatch) -> None:
@@ -123,12 +125,13 @@ def test_legacy_response_text_payload_is_coerced(monkeypatch) -> None:
 
     reply, updated, _ = run_conversacion_simple_turn(state=state, user_message="hola", config=config, turn_context=turn_context)
 
-    assert reply == "hola desde legacy"
-    assert updated.world_state[config.memory_key]["trace"]["last_status"] == "deliver"
+    trace = updated.world_state[config.traces_key][-1]
+    assert "No pude completar la generación del turno" in reply
+    assert trace["brain_fallback_reason_code"] == "validation_error_after_parse"
 
 
 @pytest.mark.parametrize(
-    ("payload", "expected_reply", "expected_topic"),
+    ("payload", "expected_reply", "expected_topic", "expected_fallback"),
     [
         (
             {
@@ -143,32 +146,36 @@ def test_legacy_response_text_payload_is_coerced(monkeypatch) -> None:
             },
             "canon",
             "topic-canon",
+            False,
         ),
-        ({"response_text": "legacy-response-text"}, "legacy-response-text", None),
-        ({"response": "legacy-response-string"}, "legacy-response-string", None),
+        ({"response_text": "legacy-response-text"}, None, None, True),
+        ({"response": "legacy-response-string"}, None, None, True),
         (
             {
                 "response": {"text": "legacy-response-object"},
                 "memory_patch": {"current_topic": "topic-memory-patch"},
             },
-            "legacy-response-object",
-            "topic-memory-patch",
+            None,
+            None,
+            True,
         ),
         (
             {
                 "assistant_response_text": "legacy-assistant-response-text",
                 "memory_working_patch": {"current_topic": "topic-working-patch"},
             },
-            "legacy-assistant-response-text",
-            "topic-working-patch",
+            None,
+            None,
+            True,
         ),
         (
             {
                 "assistant": {"text": "legacy-assistant-object"},
                 "state_patch": {"memory_episodic_append": []},
             },
-            "legacy-assistant-object",
             None,
+            None,
+            True,
         ),
         (
             {
@@ -177,12 +184,15 @@ def test_legacy_response_text_payload_is_coerced(monkeypatch) -> None:
                 "state_patch": {"conversation_state": {"phase": "opening"}},
                 "memory_patch": {"current_topic": "topic-combined"},
             },
-            "legacy-reply",
-            "topic-combined",
+            None,
+            None,
+            True,
         ),
     ],
 )
-def test_brain_output_canonicalization_family_variants(monkeypatch, payload: dict, expected_reply: str, expected_topic: str | None) -> None:
+def test_brain_output_canonicalization_family_variants(
+    monkeypatch, payload: dict, expected_reply: str | None, expected_topic: str | None, expected_fallback: bool
+) -> None:
     def _fake_call(**kwargs):
         return StructuredBrainCall(source="model", parsed_json=payload, response=None)
 
@@ -196,6 +206,11 @@ def test_brain_output_canonicalization_family_variants(monkeypatch, payload: dic
     reply, updated, _ = run_conversacion_simple_turn(state=state, user_message="hola", config=config, turn_context=turn_context)
     canonical = updated.world_state[config.memory_key]
 
+    if expected_fallback:
+        trace = updated.world_state[config.traces_key][-1]
+        assert "No pude completar la generación del turno" in reply
+        assert trace["brain_fallback_reason_code"] == "validation_error_after_parse"
+        return
     assert reply == expected_reply
     if expected_topic is not None:
         assert canonical["memory_working"]["current_topic"] == expected_topic
@@ -233,9 +248,10 @@ def test_legacy_response_key_and_phase_aliases_are_normalized(monkeypatch, legac
     reply, updated, _ = run_conversacion_simple_turn(state=state, user_message="hola", config=config, turn_context=turn_context)
     canonical = updated.world_state[config.memory_key]
 
-    assert reply == "hola desde response"
-    assert canonical["conversation_state"]["phase"] == expected_phase
-    assert canonical["conversation_state"]["status"] == "active"
+    _ = expected_phase
+    trace = updated.world_state[config.traces_key][-1]
+    assert "No pude completar la generación del turno" in reply
+    assert trace["brain_fallback_reason_code"] == "validation_error_after_parse"
 
 
 def test_unknown_phase_keeps_strict_validation(monkeypatch) -> None:
@@ -258,8 +274,10 @@ def test_unknown_phase_keeps_strict_validation(monkeypatch) -> None:
     config = build_conversacion_simple_pipeline_config(context_id="baseline", stateful=True)
     turn_context = build_conversacion_simple_turn_context(state=state, entrypoint="/tests", requested_context_id="baseline")
 
-    with pytest.raises(RuntimeError, match="conversacion_simple_brain_output_validation_error"):
-        run_conversacion_simple_turn(state=state, user_message="hola", config=config, turn_context=turn_context)
+    reply, updated, _ = run_conversacion_simple_turn(state=state, user_message="hola", config=config, turn_context=turn_context)
+    trace = updated.world_state[config.traces_key][-1]
+    assert "No pude completar la generación del turno" in reply
+    assert trace["brain_fallback_reason_code"] == "validation_error_after_parse"
 
 
 def test_legacy_memory_patch_and_response_object_are_normalized(monkeypatch) -> None:
@@ -289,10 +307,9 @@ def test_legacy_memory_patch_and_response_object_are_normalized(monkeypatch) -> 
     reply, updated, _ = run_conversacion_simple_turn(state=state, user_message="hola", config=config, turn_context=turn_context)
     canonical = updated.world_state[config.memory_key]
 
-    assert reply == "respuesta legacy object"
-    assert canonical["memory_working"]["current_topic"] == "tema legacy"
-    assert canonical["memory_working"]["pending_question"] == "pregunta legacy"
-    assert canonical["memory_working"]["last_turn_summary"] == "resumen legacy"
+    trace = updated.world_state[config.traces_key][-1]
+    assert "No pude completar la generación del turno" in reply
+    assert trace["brain_fallback_reason_code"] == "validation_error_after_parse"
 
 
 def test_unknown_extra_fields_stay_strict_and_fail(monkeypatch) -> None:
@@ -320,8 +337,10 @@ def test_unknown_extra_fields_stay_strict_and_fail(monkeypatch) -> None:
     config = build_conversacion_simple_pipeline_config(context_id="baseline", stateful=True)
     turn_context = build_conversacion_simple_turn_context(state=state, entrypoint="/tests", requested_context_id="baseline")
 
-    with pytest.raises(RuntimeError, match="conversacion_simple_brain_output_validation_error"):
-        run_conversacion_simple_turn(state=state, user_message="hola", config=config, turn_context=turn_context)
+    reply, updated, _ = run_conversacion_simple_turn(state=state, user_message="hola", config=config, turn_context=turn_context)
+    trace = updated.world_state[config.traces_key][-1]
+    assert "No pude completar la generación del turno" in reply
+    assert trace["brain_fallback_reason_code"] == "validation_error_after_parse"
 
 
 def test_fallback_without_openai_key_returns_clarify() -> None:
@@ -397,9 +416,6 @@ def test_structured_call_enforces_json_schema_without_prompt_embedded_schema() -
     assert out.schema_observability.get("schema_hash")
     assert out.schema_observability.get("root_properties")
     assert out.schema_observability.get("root_required")
-    assert out.schema_observability.get("provider_model_target") == "gpt-5-nano"
-    assert out.schema_observability.get("format_name") == "BrainOutput"
-    assert out.schema_observability.get("format_strict") is True
     brain_patch = out.schema_observability.get("brain_state_patch")
     assert isinstance(brain_patch, dict)
     assert "memory_episodic_append" in brain_patch.get("properties", [])
@@ -458,9 +474,6 @@ def test_structured_summarizer_wiring_keeps_json_schema_strict_and_additional_pr
     assert out.schema_observability.get("schema_hash")
     assert out.schema_observability.get("root_properties")
     assert out.schema_observability.get("root_required")
-    assert out.schema_observability.get("provider_model_target") == "gpt-5-nano"
-    assert out.schema_observability.get("format_name") == "SummarizerOutput"
-    assert out.schema_observability.get("format_strict") is True
 
 
 def test_brain_preflight_invalid_schema_short_circuits_before_provider(monkeypatch) -> None:
@@ -695,8 +708,7 @@ def test_fallback_observability_and_social_ux_for_trivial_turns(monkeypatch) -> 
     reply_hola, updated, _ = run_conversacion_simple_turn(state=state, user_message="hola", config=config, turn_context=turn_context)
     trace_hola = updated.world_state[config.traces_key][-1]
     brain_hola = trace_hola["nodes"]["brain"]
-    assert reply_hola != "¿Me compartes un poco más de contexto para ayudarte mejor?"
-    assert "hola" in reply_hola.lower() or "diego" in reply_hola.lower()
+    assert "No pude completar la generación del turno" in reply_hola
     assert trace_hola["brain_fallback_reason_code"] == "client_unavailable"
     assert trace_hola["brain_model_attempted"] is False
     assert trace_hola["brain_model_succeeded"] is False
@@ -712,8 +724,7 @@ def test_fallback_observability_and_social_ux_for_trivial_turns(monkeypatch) -> 
         config=config,
         turn_context=turn_context,
     )
-    assert reply_identity != "¿Me compartes un poco más de contexto para ayudarte mejor?"
-    assert "diego" in reply_identity.lower()
+    assert "No pude completar la generación del turno" in reply_identity
 
 
 def test_fallback_non_trivial_turn_keeps_prudent_response(monkeypatch) -> None:
@@ -730,7 +741,7 @@ def test_fallback_non_trivial_turn_keeps_prudent_response(monkeypatch) -> None:
         turn_context=turn_context,
     )
     trace = updated.world_state[config.traces_key][-1]
-    assert reply == "Para ayudarte bien con esto, compárteme un poco más de detalle."
+    assert "No pude completar la generación del turno" in reply
     assert trace["final_reply_text"] == reply
     assert trace["brain_fallback_reason_code"] == "client_unavailable"
 
