@@ -53,8 +53,13 @@ def test_recent_dialogue_trimming_operational(monkeypatch) -> None:
     state = SessionState(user_id="u", session_id="s")
     _bind(state)
     for _ in range(4):
-        (_reply, updated, _meta), config = _run_turn(monkeypatch, state, max_recent_dialogue_messages=3)
-    assert len(updated.world_state[config.recent_dialogue_key]) == 3
+        (_reply, updated, _meta), config = _run_turn(
+            monkeypatch,
+            state,
+            context_limit_turns=2,
+            keep_last_n_turns=2,
+        )
+    assert len(updated.world_state[config.recent_dialogue_key]) == 4
 
 
 def test_compaction_is_scheduled_when_threshold_exceeded(monkeypatch) -> None:
@@ -135,11 +140,12 @@ def test_long_conversation_stability(monkeypatch) -> None:
             monkeypatch,
             state,
             event_summary=f"fact-{idx}",
-            max_recent_dialogue_messages=10,
+            context_limit_turns=10,
+            keep_last_n_turns=5,
             episodic_compaction_trigger_count=4,
             max_episodic_high_resolution_items=5,
         )
-    assert len(updated.world_state[config.recent_dialogue_key]) <= 10
+    assert len(updated.world_state[config.recent_dialogue_key]) <= 20
     assert len(updated.world_state[config.memory_key]["memory_episodic"]) <= 5
 
 

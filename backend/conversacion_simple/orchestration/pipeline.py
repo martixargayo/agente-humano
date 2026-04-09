@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Literal
 
 import openai
-from pydantic import ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from sessions.state import SessionState, add_message, save_session_state
 
@@ -21,10 +21,11 @@ from ..contexts import (
 )
 from ..nodes import BrainInput, BrainOutput, BrainTaskContract, DialogueMessage, TraceMeta, UserTurn
 from ..memory import (
+    flatten_turns,
     run_memory_maintenance_best_effort,
     schedule_memory_maintenance,
     should_schedule_compaction,
-    trim_recent_dialogue,
+    trim_recent_dialogue_by_turns,
 )
 from ..state import (
     ConversationSimpleCanonicalState,
@@ -120,8 +121,10 @@ def build_brain_input(
         ),
         persona=canonical_state.persona,
         conversation_brief=canonical_state.conversation_brief,
+        phase_cards=canonical_state.phase_cards,
         conversation_state=canonical_state.conversation_state,
         memory_working=canonical_state.memory_working,
+        memory_compacted_summary=canonical_state.memory_compacted_summary,
         recent_dialogue_short=_compact_recent(recent_dialogue, 8),
         user_turn=user_turn,
         trace_meta=trace_meta,
@@ -154,6 +157,61 @@ class StructuredBrainCall:
     source: Literal["model", "fallback"]
     parsed_json: dict | None
     response: object | None
+    response_id: str | None = None
+
+
+_DEFAULT_SUMMARIZER_PROMPT = """Eres un summarizer táctico de contexto conversacional para negociación.
+Devuelve SOLO JSON válido para el schema solicitado.
+Objetivo: comprimir contexto antiguo sin inventar información y preservar continuidad operativa.
+Reglas:
+- Mantén orden temporal y causal.
+- Si hay ambigüedad, explícitala en `uncertainties`.
+- Si no hay evidencia suficiente para un campo, usa null o lista vacía.
+- Prioriza hechos operativos sobre estilo narrativo.
+- No respondas al usuario final.
+- Nunca inventes propuestas, concesiones o acuerdos.
+"""
+
+
+class SummarizerTurnPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    turn_index: int
+    messages: list[DialogueMessage] = Field(default_factory=list)
+
+
+class SummarizerInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["summary_input.v1"]
+    objective: str
+    previous_summary: str
+    archived_turns: list[SummarizerTurnPayload] = Field(default_factory=list)
+
+
+class SummarizerOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["memory_summary.v1"]
+    situation_live: str
+    active_proposal: str | None = None
+    latest_offer_each_side: list[str] = Field(default_factory=list)
+    concessions_accumulated: list[str] = Field(default_factory=list)
+    open_items: list[str] = Field(default_factory=list)
+    closed_items: list[str] = Field(default_factory=list)
+    operative_constraints: list[str] = Field(default_factory=list)
+    fixed_time_calculations: list[str] = Field(default_factory=list)
+    operative_question_live: str | None = None
+    sensitive_info_exposed: list[str] = Field(default_factory=list)
+    agreement_progress: str | None = None
+    pending_inconsistencies: list[str] = Field(default_factory=list)
+    uncertainties: list[str] = Field(default_factory=list)
+
+
+@dataclass
+class StructuredSummarizerCall:
+    source: Literal["model", "fallback"]
+    output: SummarizerOutput | None
     response_id: str | None = None
 
 
@@ -213,6 +271,74 @@ def _call_brain_structured(
         response=response,
         response_id=response_id,
     )
+
+
+def _build_summarizer_messages(*, summarizer_prompt: str, payload: SummarizerInput) -> list[dict[str, str]]:
+    return [
+        {"role": "developer", "content": summarizer_prompt},
+        {
+            "role": "user",
+            "content": "<summary_input_json>\n"
+            f"{payload.model_dump_json()}\n"
+            "</summary_input_json>",
+        },
+    ]
+
+
+def _call_summarizer_structured(
+    *,
+    client: openai.OpenAI | None,
+    model: str,
+    messages: list[dict[str, str]],
+) -> StructuredSummarizerCall:
+    if client is None:
+        return StructuredSummarizerCall(source="fallback", output=None, response_id=None)
+    response = client.responses.create(
+        model=model,
+        input=messages,
+        text={
+            "format": {
+                "type": "json_schema",
+                "name": SummarizerOutput.__name__,
+                "schema": _normalize_schema_for_strict_json_schema(SummarizerOutput.model_json_schema()),
+                "strict": True,
+            }
+        },
+        reasoning={"effort": "minimal"},
+        store=False,
+    )
+    response_id = _extract_response_id(response)
+    text = _extract_output_text(response)
+    if not text:
+        return StructuredSummarizerCall(source="fallback", output=None, response_id=response_id)
+    try:
+        payload = json.loads(text)
+        output = SummarizerOutput.model_validate(payload)
+    except Exception:
+        return StructuredSummarizerCall(source="fallback", output=None, response_id=response_id)
+    return StructuredSummarizerCall(source="model", output=output, response_id=response_id)
+
+
+def _render_structured_summary(output: SummarizerOutput) -> str:
+    payload = output.model_dump(mode="json")
+    return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+def _format_turns_for_fallback_summary(*, archived_turns: list[list[DialogueMessage]]) -> str:
+    lines: list[str] = []
+    for turn_index, turn in enumerate(archived_turns, start=1):
+        snippets = [f"{message.role}: {message.text}" for message in turn]
+        lines.append(f"- turn_{turn_index}: {' | '.join(snippets)}")
+    return "\n".join(lines)
+
+
+def _resolve_summarizer_prompt(prompts_dir: Path) -> str:
+    prompt_path = prompts_dir / "summarizer_prompt.txt"
+    if prompt_path.exists():
+        value = prompt_path.read_text(encoding="utf-8").strip()
+        if value:
+            return value
+    return _DEFAULT_SUMMARIZER_PROMPT
 
 
 def _brain_fallback() -> BrainOutput:
@@ -417,21 +543,59 @@ def run_conversacion_simple_turn(
     turn_id = str(uuid.uuid4())
     now_iso = datetime.now(timezone.utc).isoformat()
     user_turn = _build_user_turn(user_message, now_iso)
-    trace_meta = TraceMeta(turn_id=turn_id, prompt_version="brain_v1", schema_version="brain_input.v1", model_target="gpt-5-nano")
+    trace_meta = TraceMeta(
+        turn_id=turn_id,
+        prompt_version="brain_v1",
+        schema_version="brain_input.v1",
+        model_target=config.brain_model_target,
+    )
 
     prompts_dir = Path(config.prompts_dir)
     prompt_text = (prompts_dir / "brain_prompt.txt").read_text(encoding="utf-8").strip()
+    summarizer_prompt = _resolve_summarizer_prompt(prompts_dir)
     _ = load_prompt_io_adapter(None)
     client = _build_client()
     llm_call_attempted = client is not None
 
     add_message(state, role="user", content=user_message)
     recent_dialogue.append(DialogueMessage(role="user", text=user_turn.normalized_text))
-    recent_dialogue, recent_metrics_user = trim_recent_dialogue(
+    recent_dialogue, archived_turns, recent_metrics_user = trim_recent_dialogue_by_turns(
         recent_dialogue=recent_dialogue,
-        max_messages=config.max_recent_dialogue_messages,
+        context_limit_turns=config.context_limit_turns,
+        keep_last_n_turns=config.keep_last_n_turns,
     )
     memory_obs.update(recent_metrics_user)
+    if archived_turns:
+        summarizer_input = SummarizerInput(
+            schema_version="summary_input.v1",
+            objective="resumir contexto antiguo de negociación para continuidad operativa",
+            previous_summary=canonical_state.memory_compacted_summary,
+            archived_turns=[
+                SummarizerTurnPayload(turn_index=idx + 1, messages=turn)
+                for idx, turn in enumerate(archived_turns)
+            ],
+        )
+        summarizer_messages = _build_summarizer_messages(summarizer_prompt=summarizer_prompt, payload=summarizer_input)
+        summarizer_call = _call_summarizer_structured(
+            client=client,
+            model=config.summarizer_model_target,
+            messages=summarizer_messages,
+        )
+        if summarizer_call.output is not None:
+            canonical_state.memory_compacted_summary = _render_structured_summary(summarizer_call.output)
+            memory_obs["memory_summary_compaction_source"] = "llm_summarizer"
+        else:
+            fallback_block = _format_turns_for_fallback_summary(archived_turns=archived_turns)
+            canonical_state.memory_compacted_summary = "\n".join(
+                part for part in [canonical_state.memory_compacted_summary.strip(), fallback_block] if part
+            ).strip()
+            memory_obs["memory_summary_compaction_source"] = "deterministic_fallback"
+        memory_obs["memory_summary_archived_turns"] = len(archived_turns)
+        memory_obs["memory_summary_archived_messages"] = len(flatten_turns(turns=archived_turns))
+    else:
+        memory_obs["memory_summary_compaction_source"] = "not_needed"
+        memory_obs["memory_summary_archived_turns"] = 0
+        memory_obs["memory_summary_archived_messages"] = 0
 
     brain_input = build_brain_input(canonical_state=canonical_state, recent_dialogue=recent_dialogue, user_turn=user_turn, trace_meta=trace_meta)
     brain_messages = build_brain_messages(prompt_text, brain_input)
@@ -451,11 +615,14 @@ def run_conversacion_simple_turn(
     reply = _normalize_reply_text(brain_output.assistant_response.text)
     add_message(state, role="assistant", content=reply)
     recent_dialogue.append(DialogueMessage(role="assistant", text=reply))
-    recent_dialogue, recent_metrics_assistant = trim_recent_dialogue(
+    recent_dialogue, archived_turns_after_assistant, recent_metrics_assistant = trim_recent_dialogue_by_turns(
         recent_dialogue=recent_dialogue,
-        max_messages=config.max_recent_dialogue_messages,
+        context_limit_turns=config.context_limit_turns,
+        keep_last_n_turns=config.keep_last_n_turns,
     )
     memory_obs.update(recent_metrics_assistant)
+    if archived_turns_after_assistant:
+        memory_obs["memory_post_assistant_archived_turns"] = len(archived_turns_after_assistant)
 
     schedule, schedule_reason = should_schedule_compaction(
         canonical_state=canonical_state,

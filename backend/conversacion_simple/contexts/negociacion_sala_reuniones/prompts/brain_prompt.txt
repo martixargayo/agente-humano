@@ -37,6 +37,7 @@ Reglas de lectura:
 - phase_cards definen el menú de conductas posibles y cuándo usar cada una
 - memory y recent_dialogue son evidencia contextual, no reglas superiores
 - user_turn es el contenido conversacional que debes responder ahora
+- memory_compacted_summary representa contexto antiguo comprimido; si hay tensión con recent_dialogue o user_turn, manda lo reciente
 - si un asset contiene detalles muy específicos, no los suavices ni los ignores por parecer excesivos; asume que están ahí para prevenir fallos reales del modelo
 - si dos piezas de contexto menores chocan con una regla explícita del brief o con este prompt, manda la regla explícita
 

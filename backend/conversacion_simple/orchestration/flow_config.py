@@ -19,6 +19,10 @@ class ConversationSimpleTurnConfig(BaseModel):
     context_id: str | None = None
     stateful: bool = False
     prompts_dir: str
+    brain_model_target: str = "gpt-5.4"
+    summarizer_model_target: str = "gpt-5.4-nano"
+    context_limit_turns: int = 20
+    keep_last_n_turns: int = 20
     max_recent_dialogue_messages: int = 12
     episodic_compaction_trigger_count: int = 30
     episodic_compaction_trigger_chars: int = 6000
@@ -38,6 +42,10 @@ def build_conversacion_simple_pipeline_config(*, context_id: str | None = None, 
         context_id=resolved_context.context_id,
         stateful=stateful,
         prompts_dir=str(resolved_context.prompts_dir),
+        brain_model_target="gpt-5.4",
+        summarizer_model_target="gpt-5.4-nano",
+        context_limit_turns=20,
+        keep_last_n_turns=20,
         max_recent_dialogue_messages=12,
         episodic_compaction_trigger_count=30,
         episodic_compaction_trigger_chars=6000,
