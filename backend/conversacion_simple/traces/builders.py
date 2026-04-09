@@ -13,7 +13,11 @@ def build_brain_node_trace(
     fallback_reason_code: str | None,
     recent_dialogue_count: int,
     episodic_append_count: int,
+    provider_exception: dict[str, object | None] | None = None,
 ) -> ConversationSimpleNodeTrace:
+    output_summary: dict[str, object] = {"memory_episodic_append_count": episodic_append_count}
+    if provider_exception is not None:
+        output_summary["provider_exception"] = dict(provider_exception)
     return ConversationSimpleNodeTrace(
         node_name="brain",
         model_called=model_called,
@@ -23,5 +27,5 @@ def build_brain_node_trace(
         status=status,
         fallback_reason_code=fallback_reason_code,
         input_summary={"recent_dialogue_count": recent_dialogue_count},
-        output_summary={"memory_episodic_append_count": episodic_append_count},
+        output_summary=output_summary,
     )

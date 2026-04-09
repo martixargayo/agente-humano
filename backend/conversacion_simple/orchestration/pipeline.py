@@ -170,6 +170,7 @@ class StructuredBrainCall:
     fallback_reason_code: str | None = None
     model_attempted: bool = False
     model_succeeded: bool = False
+    provider_exception: dict[str, object | None] | None = None
 
 
 _DEFAULT_SUMMARIZER_PROMPT = """Eres un summarizer táctico de contexto conversacional para negociación.
@@ -226,6 +227,67 @@ class StructuredSummarizerCall:
     output: SummarizerOutput | None
     response_id: str | None = None
     schema_observability: dict[str, object] | None = None
+    fallback_reason_code: str | None = None
+    model_attempted: bool = False
+    model_succeeded: bool = False
+    provider_exception: dict[str, object | None] | None = None
+
+
+_SANITIZE_PATTERN_REPLACEMENTS: list[tuple[re.Pattern[str], str]] = [
+    # Bearer and token styles.
+    (re.compile(r"(?i)\b(bearer)\s+[A-Za-z0-9\-._~+/]+=*"), r"\1 [REDACTED]"),
+    (re.compile(r"(?i)\b(api[-_ ]?key|access[-_ ]?token|refresh[-_ ]?token)\b\s*[:=]\s*['\"]?[^'\"\s,}]+"), r"\1=[REDACTED]"),
+    # OpenAI keys.
+    (re.compile(r"\bsk-[A-Za-z0-9]{10,}\b"), "[REDACTED_OPENAI_KEY]"),
+    # Authorization header bodies.
+    (re.compile(r"(?i)\b(authorization)\b\s*[:=]\s*([^\s,]+(?:\s+[^\s,]+)?)"), r"\1: [REDACTED]"),
+]
+
+
+def _sanitize_exception_message(raw_message: str | None, *, max_len: int = 500) -> str | None:
+    if raw_message is None:
+        return None
+    sanitized = " ".join(raw_message.split())
+    for pattern, replacement in _SANITIZE_PATTERN_REPLACEMENTS:
+        sanitized = pattern.sub(replacement, sanitized)
+    if len(sanitized) > max_len:
+        return f"{sanitized[:max_len]}…[truncated]"
+    return sanitized
+
+
+def _extract_provider_exception_details(
+    exc: Exception,
+    *,
+    stage: Literal["brain", "summarizer"],
+    model: str,
+) -> dict[str, object | None]:
+    status_code = getattr(exc, "status_code", None)
+    if status_code is None:
+        response_obj = getattr(exc, "response", None)
+        status_code = getattr(response_obj, "status_code", None)
+    provider_code = getattr(exc, "code", None)
+    if provider_code is None:
+        error_obj = getattr(exc, "error", None)
+        provider_code = getattr(error_obj, "code", None)
+
+    exc_text = str(exc)
+    if not isinstance(status_code, int):
+        status_match = re.search(r"(?i)\berror code\s*:\s*(\d{3})\b", exc_text)
+        if status_match:
+            status_code = int(status_match.group(1))
+    if not isinstance(provider_code, str):
+        code_match = re.search(r"['\"]code['\"]\s*:\s*['\"]([^'\"]+)['\"]", exc_text)
+        if code_match:
+            provider_code = code_match.group(1)
+
+    return {
+        "provider_exception_type": type(exc).__name__,
+        "provider_exception_message": _sanitize_exception_message(exc_text),
+        "provider_exception_status_code": status_code if isinstance(status_code, int) else None,
+        "provider_exception_code": provider_code if isinstance(provider_code, str) else None,
+        "provider_exception_stage": stage,
+        "provider_model_target": model,
+    }
 
 
 def _extract_output_text(response: object) -> str | None:
@@ -266,6 +328,7 @@ def _call_brain_structured(
             fallback_reason_code="client_unavailable",
             model_attempted=False,
             model_succeeded=False,
+            provider_exception=None,
         )
     normalized_schema, schema_observability = _prepare_strict_schema(schema_name=BrainOutput.__name__, schema=BrainOutput.model_json_schema())
     validation = schema_observability.get("validation")
@@ -285,6 +348,7 @@ def _call_brain_structured(
             fallback_reason_code="schema_preflight_invalid",
             model_attempted=False,
             model_succeeded=False,
+            provider_exception=None,
         )
     try:
         response = client.responses.create(
@@ -302,12 +366,17 @@ def _call_brain_structured(
             store=False,
         )
     except Exception as exc:
+        provider_exception = _extract_provider_exception_details(exc, stage="brain", model=model)
         logger.exception(
-            "conversacion_simple_structured_call_failed stage=brain schema_name=%s schema_hash=%s runtime_version=%s error=%s",
+            "conversacion_simple_structured_call_failed stage=brain schema_name=%s schema_hash=%s runtime_version=%s provider_exception_type=%s provider_exception_status_code=%s provider_exception_code=%s provider_model_target=%s provider_exception_message=%s",
             schema_observability.get("schema_name"),
             schema_observability.get("schema_hash"),
             schema_observability.get("runtime_version"),
-            str(exc),
+            provider_exception["provider_exception_type"],
+            provider_exception["provider_exception_status_code"],
+            provider_exception["provider_exception_code"],
+            provider_exception["provider_model_target"],
+            provider_exception["provider_exception_message"],
         )
         return StructuredBrainCall(
             source="fallback",
@@ -317,6 +386,7 @@ def _call_brain_structured(
             fallback_reason_code="provider_exception",
             model_attempted=True,
             model_succeeded=False,
+            provider_exception=provider_exception,
         )
     text = _extract_output_text(response)
     response_id = _extract_response_id(response)
@@ -330,6 +400,7 @@ def _call_brain_structured(
             fallback_reason_code="empty_output_text",
             model_attempted=True,
             model_succeeded=False,
+            provider_exception=None,
         )
     try:
         payload = json.loads(text)
@@ -343,6 +414,7 @@ def _call_brain_structured(
             fallback_reason_code="json_parse_error",
             model_attempted=True,
             model_succeeded=False,
+            provider_exception=None,
         )
     return StructuredBrainCall(
         source="model",
@@ -352,6 +424,7 @@ def _call_brain_structured(
         schema_observability=schema_observability,
         model_attempted=True,
         model_succeeded=isinstance(payload, dict),
+        provider_exception=None,
     )
 
 
@@ -374,7 +447,15 @@ def _call_summarizer_structured(
     messages: list[dict[str, str]],
 ) -> StructuredSummarizerCall:
     if client is None:
-        return StructuredSummarizerCall(source="fallback", output=None, response_id=None)
+        return StructuredSummarizerCall(
+            source="fallback",
+            output=None,
+            response_id=None,
+            fallback_reason_code="client_unavailable",
+            model_attempted=False,
+            model_succeeded=False,
+            provider_exception=None,
+        )
     normalized_schema, schema_observability = _prepare_strict_schema(schema_name=SummarizerOutput.__name__, schema=SummarizerOutput.model_json_schema())
     validation = schema_observability.get("validation")
     if isinstance(validation, dict) and not bool(validation.get("valid", False)):
@@ -385,7 +466,16 @@ def _call_summarizer_structured(
             validation.get("first_mismatch"),
             schema_observability.get("runtime_version"),
         )
-        return StructuredSummarizerCall(source="fallback", output=None, response_id=None, schema_observability=schema_observability)
+        return StructuredSummarizerCall(
+            source="fallback",
+            output=None,
+            response_id=None,
+            schema_observability=schema_observability,
+            fallback_reason_code="schema_preflight_invalid",
+            model_attempted=False,
+            model_succeeded=False,
+            provider_exception=None,
+        )
     try:
         response = client.responses.create(
             model=model,
@@ -402,24 +492,65 @@ def _call_summarizer_structured(
             store=False,
         )
     except Exception as exc:
+        provider_exception = _extract_provider_exception_details(exc, stage="summarizer", model=model)
         logger.exception(
-            "conversacion_simple_structured_call_failed stage=summarizer schema_name=%s schema_hash=%s runtime_version=%s error=%s",
+            "conversacion_simple_structured_call_failed stage=summarizer schema_name=%s schema_hash=%s runtime_version=%s provider_exception_type=%s provider_exception_status_code=%s provider_exception_code=%s provider_model_target=%s provider_exception_message=%s",
             schema_observability.get("schema_name"),
             schema_observability.get("schema_hash"),
             schema_observability.get("runtime_version"),
-            str(exc),
+            provider_exception["provider_exception_type"],
+            provider_exception["provider_exception_status_code"],
+            provider_exception["provider_exception_code"],
+            provider_exception["provider_model_target"],
+            provider_exception["provider_exception_message"],
         )
-        return StructuredSummarizerCall(source="fallback", output=None, response_id=None, schema_observability=schema_observability)
+        return StructuredSummarizerCall(
+            source="fallback",
+            output=None,
+            response_id=None,
+            schema_observability=schema_observability,
+            fallback_reason_code="provider_exception",
+            model_attempted=True,
+            model_succeeded=False,
+            provider_exception=provider_exception,
+        )
     response_id = _extract_response_id(response)
     text = _extract_output_text(response)
     if not text:
-        return StructuredSummarizerCall(source="fallback", output=None, response_id=response_id, schema_observability=schema_observability)
+        return StructuredSummarizerCall(
+            source="fallback",
+            output=None,
+            response_id=response_id,
+            schema_observability=schema_observability,
+            fallback_reason_code="empty_output_text",
+            model_attempted=True,
+            model_succeeded=False,
+            provider_exception=None,
+        )
     try:
         payload = json.loads(text)
         output = SummarizerOutput.model_validate(payload)
     except Exception:
-        return StructuredSummarizerCall(source="fallback", output=None, response_id=response_id, schema_observability=schema_observability)
-    return StructuredSummarizerCall(source="model", output=output, response_id=response_id, schema_observability=schema_observability)
+        return StructuredSummarizerCall(
+            source="fallback",
+            output=None,
+            response_id=response_id,
+            schema_observability=schema_observability,
+            fallback_reason_code="json_parse_or_validation_error",
+            model_attempted=True,
+            model_succeeded=False,
+            provider_exception=None,
+        )
+    return StructuredSummarizerCall(
+        source="model",
+        output=output,
+        response_id=response_id,
+        schema_observability=schema_observability,
+        fallback_reason_code=None,
+        model_attempted=True,
+        model_succeeded=True,
+        provider_exception=None,
+    )
 
 
 def _render_structured_summary(output: SummarizerOutput) -> str:
@@ -750,6 +881,10 @@ def run_conversacion_simple_turn(
             ).strip()
             canonical_state.memory_compacted_summary = _truncate_compacted_summary(new_summary, config.compacted_summary_max_chars)
             memory_obs["memory_summary_compaction_source"] = "deterministic_fallback"
+            if summarizer_call.fallback_reason_code:
+                memory_obs["summarizer_fallback_reason_code"] = summarizer_call.fallback_reason_code
+            if summarizer_call.provider_exception is not None:
+                memory_obs["summarizer_provider_exception"] = dict(summarizer_call.provider_exception)
         memory_obs["memory_summary_archived_turns"] = len(archived_turns)
         memory_obs["memory_summary_archived_messages"] = len(flatten_turns(turns=archived_turns))
     else:
@@ -785,6 +920,8 @@ def run_conversacion_simple_turn(
     memory_obs["brain_model_succeeded"] = model_succeeded
     if fallback_reason_code:
         memory_obs["brain_fallback_reason_code"] = fallback_reason_code
+    if call.provider_exception is not None:
+        memory_obs["brain_provider_exception"] = dict(call.provider_exception)
     latency_ms = int((time.perf_counter() - started) * 1000)
 
     # Apply deterministic patch
@@ -835,6 +972,7 @@ def run_conversacion_simple_turn(
         fallback_reason_code=fallback_reason_code,
         recent_dialogue_count=len(brain_input.recent_dialogue_short),
         episodic_append_count=len(brain_output.state_patch.memory_episodic_append),
+        provider_exception=call.provider_exception,
     )
 
     turn_trace = ConversationSimpleTurnTrace(
