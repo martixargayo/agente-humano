@@ -75,9 +75,19 @@ def _resolve_flow_and_context_id(*, context_id: str | None, public_slug: str | N
 
 def _read_bound_surface_context(state: SessionState) -> tuple[str, str] | None:
     bound_neg = read_bound_context_from_session(state)
+    bound_cs = read_bound_conversacion_simple_context_from_session(state)
+    if bound_neg is not None and bound_cs is not None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "session_has_mixed_flow_bindings",
+                "session_id": state.session_id,
+                "negotiation_context_id": bound_neg.context_id,
+                "conversacion_simple_context_id": bound_cs.context_id,
+            },
+        )
     if bound_neg is not None:
         return bound_neg.flow_id, bound_neg.context_id
-    bound_cs = read_bound_conversacion_simple_context_from_session(state)
     if bound_cs is not None:
         return bound_cs.flow_id, bound_cs.context_id
     return None
@@ -330,6 +340,7 @@ def _should_auto_reset_for_fresh_opener(*, state: SessionState, message: str) ->
 
 def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: bool = False) -> dict[str, Any]:
     post_commit_housekeeping_error: str | None = None
+    resolved_flow_id: str | None = None
     try:
         with acquire_session_execution_lock(user_id=user_id, session_id=session_id):
             touch_ttl = touch_existing_session_if_present(
@@ -352,9 +363,12 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
             else:
                 base_state = get_session_state(user_id=user_id, session_id=session_id)
                 ensure_session_surface(state=base_state, surface='interfaz_usuario')
-                if _read_bound_surface_context(base_state) is None:
+                base_bound_surface_context = _read_bound_surface_context(base_state)
+                if base_bound_surface_context is None:
                     ensure_session_context(state=base_state)
-                if _should_auto_reset_for_fresh_opener(state=base_state, message=message):
+                    base_bound_surface_context = _read_bound_surface_context(base_state)
+                is_negotiation_flow = isinstance(base_bound_surface_context, tuple) and base_bound_surface_context[0] == "negociacion"
+                if is_negotiation_flow and _should_auto_reset_for_fresh_opener(state=base_state, message=message):
                     payload = create_new_conversation(user_id=user_id, base_session_id=session_id)
                     resolved_session_id = payload["session_id"]
                     auto_reset_applied = True
@@ -365,6 +379,7 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
             if bound_surface_context is None:
                 raise RuntimeError("session_context_required")
             flow_id, effective_context_id = bound_surface_context
+            resolved_flow_id = flow_id
             if flow_id == "conversacion_simple":
                 config = build_conversacion_simple_pipeline_config(context_id=effective_context_id, stateful=True)
                 turn_context = build_conversacion_simple_turn_context(
@@ -469,6 +484,8 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
             headers={"Retry-After": str(exc.retry_after_seconds)},
         ) from exc
     except Exception as exc:
+        if isinstance(exc, HTTPException):
+            raise
         if isinstance(exc, ContextContractError):
             raise_http_from_context_error(exc)
         error_id = f"iu_turn_{uuid4().hex[:10]}"
@@ -498,7 +515,7 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
         ) from exc
 
     finish_button_armed = False
-    if isinstance(state.world_state, dict):
+    if resolved_flow_id == "negociacion" and isinstance(state.world_state, dict):
         canonical = state.world_state.get("negotiation_canonical", {})
         ui_state = canonical.get("ui_state", {}) if isinstance(canonical, dict) else {}
         finish_button_armed = bool(ui_state.get("finish_button_armed", False)) if isinstance(ui_state, dict) else False

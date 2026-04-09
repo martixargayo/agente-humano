@@ -12,6 +12,7 @@ from sessions.session_lock import SessionBusyError, acquire_session_execution_lo
 from sessions.state import SessionState, get_session_state, get_session_store
 from sessions.surface_scope import ensure_session_surface
 
+from conversacion_simple.contexts import read_bound_conversacion_simple_context_from_session
 from ..orchestration.flow_config import build_negotiation_pipeline_config
 from ..orchestration.context_errors import ContextContractError
 from ..orchestration.context_errors import SessionContextConflictError
@@ -20,6 +21,7 @@ from conversacion_simple.orchestration.pipeline import run_conversacion_simple_t
 from ..state.canonical_state import build_default_canonical_state
 from ..state.shared_types import ThreadMode
 from ..traces.context_meta import build_trace_context_meta
+from ..contexts import read_bound_context_from_session
 from . import context_bridge, datasets_bridge, evals_bridge, experiments_bridge, guardrails_bridge, session_bridge, storage, trace_reader
 from .flow_adapters import get_adapter, list_supported_flow_ids
 from conversacion_simple.orchestration.flow_config import build_conversacion_simple_pipeline_config
@@ -149,6 +151,106 @@ def _build_interfaz_usuario_comparability(*, flow_id: str, resolved_entries: lis
     return {
         "comparable_to_interfaz_usuario_base": True,
         "comparability_reason": "no_overrides",
+    }
+
+
+def _build_optimizer_base_context_meta(
+    *,
+    state: SessionState,
+    flow_id: str,
+    context_id: str,
+    context_version: str | None,
+    overrides_applied: bool,
+) -> dict[str, Any]:
+    if flow_id != "conversacion_simple":
+        return build_trace_context_meta(state=state, overrides_applied=overrides_applied).model_dump(mode="json")
+
+    bound_cs = read_bound_conversacion_simple_context_from_session(state)
+    mismatch = bound_cs is None or bound_cs.context_id != context_id
+    return {
+        "flow_id": "conversacion_simple",
+        "context_id": context_id,
+        "context_version": context_version,
+        "official_context_used": True,
+        "context_scope": "official_with_overrides" if overrides_applied else "official",
+        "effective_context_id": context_id,
+        "session_bound_context_id": bound_cs.context_id if bound_cs is not None else None,
+        "config_context_id": context_id,
+        "mismatch_detected": mismatch,
+        "mismatch_reason_code": "context_contract_mismatch" if mismatch else None,
+        "context_reason_codes": ["ctx_precheck_unavailable"] if mismatch else ["ctx_bound_conversacion_simple"],
+        "context_source": "optimizador_session_bound" if bound_cs is not None else "implicit_state_fallback",
+        "execution_mode": "stateful",
+    }
+
+
+def _build_interfaz_usuario_strict_comparability(
+    *,
+    state: SessionState,
+    flow_id: str,
+    context_id: str,
+    resolved_entries: list[dict[str, Any]],
+    base_context_meta: dict[str, Any],
+    clone_used: bool,
+    new_conversation: bool,
+) -> dict[str, Any]:
+    if flow_id != "conversacion_simple":
+        return {
+            "strict_comparable_to_interfaz_usuario_base": True,
+            "strict_comparability_reason": "non_conversacion_simple_flow",
+        }
+    has_relevant_overrides = any(entry.get("category") in {"prompt", "config", "contextual"} for entry in resolved_entries)
+    if has_relevant_overrides:
+        return {
+            "strict_comparable_to_interfaz_usuario_base": False,
+            "strict_comparability_reason": "overrides_applied",
+        }
+    world = state.world_state if isinstance(state.world_state, dict) else {}
+    has_neg_binding = isinstance(world.get("negotiation_context"), dict)
+    has_cs_binding = isinstance(world.get("conversacion_simple_context"), dict)
+    if has_neg_binding and has_cs_binding:
+        return {
+            "strict_comparable_to_interfaz_usuario_base": False,
+            "strict_comparability_reason": "mixed_flow_bindings",
+        }
+    if has_neg_binding or isinstance(world.get("negotiation_canonical"), dict):
+        return {
+            "strict_comparable_to_interfaz_usuario_base": False,
+            "strict_comparability_reason": "cross_flow_negotiation_residue_present",
+        }
+    if clone_used or new_conversation:
+        return {
+            "strict_comparable_to_interfaz_usuario_base": False,
+            "strict_comparability_reason": "sandbox_clone_strategy_non_equivalent",
+        }
+    if str(base_context_meta.get("flow_id")) != "conversacion_simple":
+        return {
+            "strict_comparable_to_interfaz_usuario_base": False,
+            "strict_comparability_reason": "base_context_flow_mismatch",
+        }
+    if str(base_context_meta.get("context_id")) != context_id:
+        return {
+            "strict_comparable_to_interfaz_usuario_base": False,
+            "strict_comparability_reason": "base_context_id_mismatch",
+        }
+    if bool(base_context_meta.get("mismatch_detected")):
+        return {
+            "strict_comparable_to_interfaz_usuario_base": False,
+            "strict_comparability_reason": "base_context_mismatch_detected",
+        }
+    if read_bound_context_from_session(state) is not None:
+        return {
+            "strict_comparable_to_interfaz_usuario_base": False,
+            "strict_comparability_reason": "negotiation_binding_present",
+        }
+    if read_bound_conversacion_simple_context_from_session(state) is None:
+        return {
+            "strict_comparable_to_interfaz_usuario_base": False,
+            "strict_comparability_reason": "conversacion_simple_binding_missing",
+        }
+    return {
+        "strict_comparable_to_interfaz_usuario_base": True,
+        "strict_comparability_reason": "parity_proxy_ready",
     }
 
 
@@ -378,6 +480,22 @@ def run_sandbox_turn(
             _apply_contextual_state_overrides(state, config, resolved_entries, flow_id=base_context["flow_id"])
             comparability = _build_interfaz_usuario_comparability(flow_id=base_context["flow_id"], resolved_entries=resolved_entries)
             clone_used, new_conversation = _resolve_optimizer_contract_flags(state)
+            base_context_meta = _build_optimizer_base_context_meta(
+                state=state,
+                flow_id=base_context["flow_id"],
+                context_id=base_context["context_id"],
+                context_version=base_context.get("context_version"),
+                overrides_applied=bool(resolved_entries),
+            )
+            strict_comparability = _build_interfaz_usuario_strict_comparability(
+                state=state,
+                flow_id=base_context["flow_id"],
+                context_id=base_context["context_id"],
+                resolved_entries=resolved_entries,
+                base_context_meta=base_context_meta,
+                clone_used=clone_used,
+                new_conversation=new_conversation,
+            )
             probe_token = begin_turn_probe(
                 logical_user_message_id=logical_user_message_id,
                 logical_attempt_index=logical_attempt_index,
@@ -546,12 +664,14 @@ def run_sandbox_turn(
             "applied_overrides": experiments_bridge.describe_effective_overrides(resolved_entries),
             "comparable_to_interfaz_usuario_base": comparability["comparable_to_interfaz_usuario_base"],
             "comparability_reason": comparability["comparability_reason"],
+            "strict_comparable_to_interfaz_usuario_base": strict_comparability["strict_comparable_to_interfaz_usuario_base"],
+            "strict_comparability_reason": strict_comparability["strict_comparability_reason"],
             "mode": optimizer_state.get("mode", "mirror"),
             "workspace_version": optimizer_state.get("workspace_version", 1),
             "session_key": storage.session_key(user_id, session_id),
             "conversation_id": conversation_id,
             "versioning": versioning,
-            "base_context": build_trace_context_meta(state=state, overrides_applied=bool(resolved_entries)).model_dump(mode="json"),
+            "base_context": base_context_meta,
             "capabilities": adapter.capabilities().__dict__,
         }
 
@@ -566,6 +686,8 @@ def run_sandbox_turn(
         "effective_overrides": experiments_bridge.describe_effective_overrides(resolved_entries),
         "comparable_to_interfaz_usuario_base": comparability["comparable_to_interfaz_usuario_base"],
         "comparability_reason": comparability["comparability_reason"],
+        "strict_comparable_to_interfaz_usuario_base": strict_comparability["strict_comparable_to_interfaz_usuario_base"],
+        "strict_comparability_reason": strict_comparability["strict_comparability_reason"],
         "entry_contract": meta.get("entry_contract") if isinstance(meta, dict) else None,
     }
 
@@ -677,6 +799,10 @@ def compare_turns(turn_a: str, turn_b: str) -> dict[str, Any]:
             "b_comparable_to_interfaz_usuario_base": bool(b_meta.get("comparable_to_interfaz_usuario_base", True)),
             "a_comparability_reason": a_meta.get("comparability_reason"),
             "b_comparability_reason": b_meta.get("comparability_reason"),
+            "a_strict_comparable_to_interfaz_usuario_base": bool(a_meta.get("strict_comparable_to_interfaz_usuario_base", False)),
+            "b_strict_comparable_to_interfaz_usuario_base": bool(b_meta.get("strict_comparable_to_interfaz_usuario_base", False)),
+            "a_strict_comparability_reason": a_meta.get("strict_comparability_reason"),
+            "b_strict_comparability_reason": b_meta.get("strict_comparability_reason"),
         },
         "effective_overrides": {
             "a": a_overrides,
