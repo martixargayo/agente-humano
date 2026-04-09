@@ -1,0 +1,788 @@
+{
+  "report_version": "structured_outputs_wire_capture.v1",
+  "openai_sdk_version": "2.31.0",
+  "brain": {
+    "base_schema": {
+      "$defs": {
+        "BrainAssistantResponse": {
+          "additionalProperties": false,
+          "properties": {
+            "text": {
+              "title": "Text",
+              "type": "string"
+            }
+          },
+          "required": [
+            "text"
+          ],
+          "title": "BrainAssistantResponse",
+          "type": "object"
+        },
+        "BrainObservability": {
+          "additionalProperties": false,
+          "properties": {
+            "rationale_summary": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rationale Summary"
+            }
+          },
+          "title": "BrainObservability",
+          "type": "object"
+        },
+        "BrainStatePatch": {
+          "additionalProperties": false,
+          "properties": {
+            "conversation_state": {
+              "$ref": "#/$defs/ConversationSimpleConversationState"
+            },
+            "memory_working": {
+              "$ref": "#/$defs/ConversationSimpleMemoryWorkingState"
+            },
+            "memory_episodic_append": {
+              "items": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "title": "Memory Episodic Append",
+              "type": "array"
+            }
+          },
+          "required": [
+            "conversation_state",
+            "memory_working"
+          ],
+          "title": "BrainStatePatch",
+          "type": "object"
+        },
+        "ConversationSimpleConversationState": {
+          "additionalProperties": false,
+          "properties": {
+            "phase": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ConversationSimplePhase"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "status": {
+              "default": "active",
+              "title": "Status",
+              "type": "string"
+            },
+            "current_turn_goal": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Current Turn Goal"
+            }
+          },
+          "title": "ConversationSimpleConversationState",
+          "type": "object"
+        },
+        "ConversationSimpleMemoryWorkingState": {
+          "additionalProperties": false,
+          "properties": {
+            "current_topic": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Current Topic"
+            },
+            "pending_question": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Pending Question"
+            },
+            "last_turn_summary": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Last Turn Summary"
+            }
+          },
+          "title": "ConversationSimpleMemoryWorkingState",
+          "type": "object"
+        },
+        "ConversationSimplePhase": {
+          "enum": [
+            "apertura",
+            "desarrollo",
+            "cierre"
+          ],
+          "title": "ConversationSimplePhase",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "brain.v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "deliver",
+            "clarify",
+            "refuse"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "assistant_response": {
+          "$ref": "#/$defs/BrainAssistantResponse"
+        },
+        "state_patch": {
+          "$ref": "#/$defs/BrainStatePatch"
+        },
+        "observability": {
+          "$ref": "#/$defs/BrainObservability"
+        }
+      },
+      "required": [
+        "schema_version",
+        "status",
+        "assistant_response",
+        "state_patch"
+      ],
+      "title": "BrainOutput",
+      "type": "object"
+    },
+    "base_schema_hash": "e02e315035b6e263",
+    "normalized_schema": {
+      "$defs": {
+        "BrainAssistantResponse": {
+          "additionalProperties": false,
+          "properties": {
+            "text": {
+              "title": "Text",
+              "type": "string"
+            }
+          },
+          "required": [
+            "text"
+          ],
+          "title": "BrainAssistantResponse",
+          "type": "object"
+        },
+        "BrainObservability": {
+          "additionalProperties": false,
+          "properties": {
+            "rationale_summary": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rationale Summary"
+            }
+          },
+          "title": "BrainObservability",
+          "type": "object",
+          "required": [
+            "rationale_summary"
+          ]
+        },
+        "BrainStatePatch": {
+          "additionalProperties": false,
+          "properties": {
+            "conversation_state": {
+              "$ref": "#/$defs/ConversationSimpleConversationState"
+            },
+            "memory_working": {
+              "$ref": "#/$defs/ConversationSimpleMemoryWorkingState"
+            },
+            "memory_episodic_append": {
+              "items": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "title": "Memory Episodic Append",
+              "type": "array"
+            }
+          },
+          "required": [
+            "conversation_state",
+            "memory_working",
+            "memory_episodic_append"
+          ],
+          "title": "BrainStatePatch",
+          "type": "object"
+        },
+        "ConversationSimpleConversationState": {
+          "additionalProperties": false,
+          "properties": {
+            "phase": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ConversationSimplePhase"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "status": {
+              "default": "active",
+              "title": "Status",
+              "type": "string"
+            },
+            "current_turn_goal": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Current Turn Goal"
+            }
+          },
+          "title": "ConversationSimpleConversationState",
+          "type": "object",
+          "required": [
+            "phase",
+            "status",
+            "current_turn_goal"
+          ]
+        },
+        "ConversationSimpleMemoryWorkingState": {
+          "additionalProperties": false,
+          "properties": {
+            "current_topic": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Current Topic"
+            },
+            "pending_question": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Pending Question"
+            },
+            "last_turn_summary": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Last Turn Summary"
+            }
+          },
+          "title": "ConversationSimpleMemoryWorkingState",
+          "type": "object",
+          "required": [
+            "current_topic",
+            "pending_question",
+            "last_turn_summary"
+          ]
+        },
+        "ConversationSimplePhase": {
+          "enum": [
+            "apertura",
+            "desarrollo",
+            "cierre"
+          ],
+          "title": "ConversationSimplePhase",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "brain.v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "deliver",
+            "clarify",
+            "refuse"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "assistant_response": {
+          "$ref": "#/$defs/BrainAssistantResponse"
+        },
+        "state_patch": {
+          "$ref": "#/$defs/BrainStatePatch"
+        },
+        "observability": {
+          "$ref": "#/$defs/BrainObservability"
+        }
+      },
+      "required": [
+        "schema_version",
+        "status",
+        "assistant_response",
+        "state_patch",
+        "observability"
+      ],
+      "title": "BrainOutput",
+      "type": "object"
+    },
+    "normalized_schema_hash": "a9c3c1309609005f",
+    "validation": {
+      "valid": true,
+      "missing_required": [],
+      "extra_required": [],
+      "additional_properties_violations": [],
+      "first_mismatch": null
+    },
+    "observability": {
+      "schema_name": "BrainOutput",
+      "schema_hash": "a9c3c1309609005f",
+      "root_properties": [
+        "schema_version",
+        "status",
+        "assistant_response",
+        "state_patch",
+        "observability"
+      ],
+      "root_required": [
+        "schema_version",
+        "status",
+        "assistant_response",
+        "state_patch",
+        "observability"
+      ],
+      "validation": {
+        "valid": true,
+        "missing_required": [],
+        "extra_required": [],
+        "additional_properties_violations": [],
+        "first_mismatch": null
+      }
+    },
+    "provider_request_hash": "3d9f9605c8e11f9d",
+    "http_body_hash": "3d9f9605c8e11f9d",
+    "schema_in_provider_request_hash": "a9c3c1309609005f",
+    "schema_in_http_body_hash": "a9c3c1309609005f",
+    "provider_request_equals_http_body": true,
+    "schema_equals_normalized": true,
+    "root_required_has_memory_episodic_append": false,
+    "brainstatepatch_required_has_memory_episodic_append": true,
+    "provider_error_code": "invalid_json_schema",
+    "provider_error_message": "Error code: 400 - {'error': {'message': \"Invalid schema for response_format 'BrainOutput': In context=(), 'required' is required to be supplied and to be an array including every key in properties. Extra required key 'memory_episodic_append' supplied.\", 'type': 'invalid_request_error', 'param': 'text.format.schema', 'code': 'invalid_json_schema'}}"
+  },
+  "summarizer": {
+    "base_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "memory_summary.v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "situation_live": {
+          "title": "Situation Live",
+          "type": "string"
+        },
+        "active_proposal": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Active Proposal"
+        },
+        "latest_offer_each_side": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Latest Offer Each Side",
+          "type": "array"
+        },
+        "concessions_accumulated": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Concessions Accumulated",
+          "type": "array"
+        },
+        "open_items": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Open Items",
+          "type": "array"
+        },
+        "closed_items": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Closed Items",
+          "type": "array"
+        },
+        "operative_constraints": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Operative Constraints",
+          "type": "array"
+        },
+        "fixed_time_calculations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Fixed Time Calculations",
+          "type": "array"
+        },
+        "operative_question_live": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Operative Question Live"
+        },
+        "sensitive_info_exposed": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Sensitive Info Exposed",
+          "type": "array"
+        },
+        "agreement_progress": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agreement Progress"
+        },
+        "pending_inconsistencies": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Pending Inconsistencies",
+          "type": "array"
+        },
+        "uncertainties": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Uncertainties",
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "situation_live"
+      ],
+      "title": "SummarizerOutput",
+      "type": "object"
+    },
+    "base_schema_hash": "49cfdc476ba05132",
+    "normalized_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "memory_summary.v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "situation_live": {
+          "title": "Situation Live",
+          "type": "string"
+        },
+        "active_proposal": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Active Proposal"
+        },
+        "latest_offer_each_side": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Latest Offer Each Side",
+          "type": "array"
+        },
+        "concessions_accumulated": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Concessions Accumulated",
+          "type": "array"
+        },
+        "open_items": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Open Items",
+          "type": "array"
+        },
+        "closed_items": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Closed Items",
+          "type": "array"
+        },
+        "operative_constraints": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Operative Constraints",
+          "type": "array"
+        },
+        "fixed_time_calculations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Fixed Time Calculations",
+          "type": "array"
+        },
+        "operative_question_live": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Operative Question Live"
+        },
+        "sensitive_info_exposed": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Sensitive Info Exposed",
+          "type": "array"
+        },
+        "agreement_progress": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agreement Progress"
+        },
+        "pending_inconsistencies": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Pending Inconsistencies",
+          "type": "array"
+        },
+        "uncertainties": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Uncertainties",
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "situation_live",
+        "active_proposal",
+        "latest_offer_each_side",
+        "concessions_accumulated",
+        "open_items",
+        "closed_items",
+        "operative_constraints",
+        "fixed_time_calculations",
+        "operative_question_live",
+        "sensitive_info_exposed",
+        "agreement_progress",
+        "pending_inconsistencies",
+        "uncertainties"
+      ],
+      "title": "SummarizerOutput",
+      "type": "object"
+    },
+    "normalized_schema_hash": "894a4a59c377b566",
+    "validation": {
+      "valid": true,
+      "missing_required": [],
+      "extra_required": [],
+      "additional_properties_violations": [],
+      "first_mismatch": null
+    },
+    "observability": {
+      "schema_name": "SummarizerOutput",
+      "schema_hash": "894a4a59c377b566",
+      "root_properties": [
+        "schema_version",
+        "situation_live",
+        "active_proposal",
+        "latest_offer_each_side",
+        "concessions_accumulated",
+        "open_items",
+        "closed_items",
+        "operative_constraints",
+        "fixed_time_calculations",
+        "operative_question_live",
+        "sensitive_info_exposed",
+        "agreement_progress",
+        "pending_inconsistencies",
+        "uncertainties"
+      ],
+      "root_required": [
+        "schema_version",
+        "situation_live",
+        "active_proposal",
+        "latest_offer_each_side",
+        "concessions_accumulated",
+        "open_items",
+        "closed_items",
+        "operative_constraints",
+        "fixed_time_calculations",
+        "operative_question_live",
+        "sensitive_info_exposed",
+        "agreement_progress",
+        "pending_inconsistencies",
+        "uncertainties"
+      ],
+      "validation": {
+        "valid": true,
+        "missing_required": [],
+        "extra_required": [],
+        "additional_properties_violations": [],
+        "first_mismatch": null
+      }
+    },
+    "provider_request_hash": "c5e318da0c7442d6",
+    "http_body_hash": "c5e318da0c7442d6",
+    "schema_in_provider_request_hash": "894a4a59c377b566",
+    "schema_in_http_body_hash": "894a4a59c377b566",
+    "provider_request_equals_http_body": true,
+    "schema_equals_normalized": true
+  },
+  "raw_http_equivalence": {
+    "status_code": 400,
+    "request_hash": "3d9f9605c8e11f9d",
+    "serialized_hash": "3d9f9605c8e11f9d",
+    "equal": true
+  },
+  "local_validator_gaps": {
+    "root_anyof_schema": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "local_validation": {
+      "valid": true,
+      "missing_required": [],
+      "extra_required": [],
+      "additional_properties_violations": [],
+      "first_mismatch": null
+    }
+  }
+}

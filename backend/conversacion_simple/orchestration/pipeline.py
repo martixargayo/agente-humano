@@ -6,6 +6,7 @@ import time
 import uuid
 import logging
 import re
+from importlib import metadata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,7 +15,12 @@ from typing import Literal
 import openai
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from infra.openai.structured_outputs import build_schema_observability, normalize_schema_for_strict_json_schema, validate_strict_json_schema
+from infra.openai.structured_outputs import (
+    build_schema_observability,
+    normalize_schema_for_strict_json_schema,
+    validate_openai_structured_output_subset,
+    validate_strict_json_schema,
+)
 from infra.runtime_version import get_runtime_version_info
 from sessions.state import SessionState, add_message, save_session_state
 
@@ -318,12 +324,77 @@ def _prepare_strict_schema(
 ) -> tuple[object, dict[str, object]]:
     normalized = _normalize_schema_for_strict_json_schema(schema)
     validation_report = validate_strict_json_schema(normalized)
+    subset_validation = validate_openai_structured_output_subset(normalized)
     observability = build_schema_observability(schema_name=schema_name, schema=normalized, validation_report=validation_report)
     observability["runtime_version"] = get_runtime_version_info()
-    observability["provider_model_target"] = provider_model_target
-    observability["format_name"] = format_name
-    observability["format_strict"] = format_strict
+    observability["openai_subset_validation"] = subset_validation
     return normalized, observability
+
+
+def _package_version(package_name: str) -> str | None:
+    try:
+        return metadata.version(package_name)
+    except Exception:
+        return None
+
+
+def _provider_runtime_fingerprint(
+    *,
+    client: openai.OpenAI | None,
+    model_target: str,
+    request_payload: dict[str, object] | None,
+    schema_observability: dict[str, object] | None,
+) -> dict[str, object]:
+    runtime = get_runtime_version_info()
+    text_format = ((((request_payload or {}).get("text") or {}).get("format")) or {})
+    schema = text_format.get("schema")
+    root_properties = []
+    root_required = []
+    state_patch_properties = []
+    state_patch_required = []
+    if isinstance(schema, dict):
+        props = schema.get("properties")
+        req = schema.get("required")
+        if isinstance(props, dict):
+            root_properties = sorted(list(props.keys()))
+        if isinstance(req, list):
+            root_required = [str(item) for item in req]
+        defs = schema.get("$defs")
+        if isinstance(defs, dict):
+            bsp = defs.get("BrainStatePatch")
+            if isinstance(bsp, dict):
+                bsp_props = bsp.get("properties")
+                bsp_req = bsp.get("required")
+                if isinstance(bsp_props, dict):
+                    state_patch_properties = sorted(list(bsp_props.keys()))
+                if isinstance(bsp_req, list):
+                    state_patch_required = [str(item) for item in bsp_req]
+    base_url = None
+    if client is not None:
+        maybe_base_url = getattr(client, "base_url", None)
+        base_url = str(maybe_base_url) if maybe_base_url is not None else None
+    validation = schema_observability.get("validation") if isinstance(schema_observability, dict) else {}
+    first_mismatch = validation.get("first_mismatch") if isinstance(validation, dict) else None
+    schema_hash = schema_observability.get("schema_hash") if isinstance(schema_observability, dict) else None
+    return {
+        "git_commit": runtime.get("git_commit"),
+        "build_id": runtime.get("build_id"),
+        "service_version": runtime.get("service_version"),
+        "deploy_env": runtime.get("deploy_env"),
+        "openai_version": _package_version("openai"),
+        "httpx_version": _package_version("httpx"),
+        "provider_model_target": model_target,
+        "base_url": base_url,
+        "text_format_name": text_format.get("name") if isinstance(text_format, dict) else None,
+        "text_format_strict": text_format.get("strict") if isinstance(text_format, dict) else None,
+        "schema_hash": schema_hash,
+        "root_properties": root_properties,
+        "root_required": root_required,
+        "brain_state_patch_properties": state_patch_properties,
+        "brain_state_patch_required": state_patch_required,
+        "first_mismatch": first_mismatch,
+        "schema_serialized": schema,
+    }
 
 
 def _call_brain_structured(
@@ -350,12 +421,16 @@ def _call_brain_structured(
         format_strict=True,
     )
     validation = schema_observability.get("validation")
-    if isinstance(validation, dict) and not bool(validation.get("valid", False)):
+    subset_validation = schema_observability.get("openai_subset_validation")
+    strict_valid = isinstance(validation, dict) and bool(validation.get("valid", False))
+    subset_valid = isinstance(subset_validation, dict) and bool(subset_validation.get("valid", False))
+    if not strict_valid or not subset_valid:
         logger.error(
-            "conversacion_simple_schema_preflight_failed stage=brain schema_name=%s schema_hash=%s first_mismatch=%s runtime_version=%s",
+            "conversacion_simple_schema_preflight_failed stage=brain schema_name=%s schema_hash=%s first_mismatch=%s subset_first_violation=%s runtime_version=%s",
             schema_observability.get("schema_name"),
             schema_observability.get("schema_hash"),
-            validation.get("first_mismatch"),
+            validation.get("first_mismatch") if isinstance(validation, dict) else None,
+            subset_validation.get("first_violation") if isinstance(subset_validation, dict) else None,
             schema_observability.get("runtime_version"),
         )
         return StructuredBrainCall(
@@ -489,12 +564,16 @@ def _call_summarizer_structured(
         format_strict=True,
     )
     validation = schema_observability.get("validation")
-    if isinstance(validation, dict) and not bool(validation.get("valid", False)):
+    subset_validation = schema_observability.get("openai_subset_validation")
+    strict_valid = isinstance(validation, dict) and bool(validation.get("valid", False))
+    subset_valid = isinstance(subset_validation, dict) and bool(subset_validation.get("valid", False))
+    if not strict_valid or not subset_valid:
         logger.error(
-            "conversacion_simple_schema_preflight_failed stage=summarizer schema_name=%s schema_hash=%s first_mismatch=%s runtime_version=%s",
+            "conversacion_simple_schema_preflight_failed stage=summarizer schema_name=%s schema_hash=%s first_mismatch=%s subset_first_violation=%s runtime_version=%s",
             schema_observability.get("schema_name"),
             schema_observability.get("schema_hash"),
-            validation.get("first_mismatch"),
+            validation.get("first_mismatch") if isinstance(validation, dict) else None,
+            subset_validation.get("first_violation") if isinstance(subset_validation, dict) else None,
             schema_observability.get("runtime_version"),
         )
         return StructuredSummarizerCall(
@@ -765,6 +844,12 @@ def run_conversacion_simple_turn(
             model=config.summarizer_model_target,
             messages=summarizer_messages,
         )
+        memory_obs["summarizer_runtime_fingerprint"] = _provider_runtime_fingerprint(
+            client=client,
+            model_target=config.summarizer_model_target,
+            request_payload=summarizer_call.provider_request,
+            schema_observability=summarizer_call.schema_observability,
+        )
         if summarizer_call.provider_request is not None:
             memory_obs["summarizer_provider_request"] = summarizer_call.provider_request
         if isinstance(summarizer_call.provider_response_text, str):
@@ -804,6 +889,12 @@ def run_conversacion_simple_turn(
 
     started = time.perf_counter()
     call = _call_brain_structured(client=client, model=trace_meta.model_target, messages=brain_messages)
+    memory_obs["brain_runtime_fingerprint"] = _provider_runtime_fingerprint(
+        client=client,
+        model_target=trace_meta.model_target,
+        request_payload=call.provider_request,
+        schema_observability=call.schema_observability,
+    )
     if call.provider_request is not None:
         memory_obs["brain_provider_request"] = call.provider_request
     if isinstance(call.provider_response_text, str):

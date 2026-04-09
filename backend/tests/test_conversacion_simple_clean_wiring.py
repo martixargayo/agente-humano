@@ -112,3 +112,7 @@ def test_legacy_like_brain_payload_no_longer_coerced_and_uses_explicit_fallback(
     latest = traces[-1]
     memory_obs = latest.get("memory_observability", {})
     assert memory_obs.get("brain_fallback_reason_code") == "validation_error_after_parse"
+    runtime_fp = memory_obs.get("brain_runtime_fingerprint", {})
+    assert runtime_fp.get("provider_model_target") == "gpt-5.4"
+    assert runtime_fp.get("text_format_name") == "BrainOutput"
+    assert runtime_fp.get("text_format_strict") is True
