@@ -69,6 +69,22 @@ def test_interfaz_usuario_cs_does_not_read_finish_button_from_negotiation_ui_sta
     assert out["finish_button_armed"] is False
 
 
+def test_interfaz_usuario_cs_reads_finish_button_from_cs_canonical_even_with_negotiation_residue(monkeypatch) -> None:
+    iu_services.ensure_session(user_id="u_finish_cs", session_id="s_finish_cs", context_id="baseline")
+    state = get_session_state(user_id="u_finish_cs", session_id="s_finish_cs")
+    state.world_state["negotiation_canonical"] = {"ui_state": {"finish_button_armed": False}}
+    state.world_state["conversation_simple_canonical"] = {"ui_state": {"finish_button_armed": True}}
+
+    monkeypatch.setattr(
+        "interfaz_usuario.services.run_conversacion_simple_turn",
+        lambda *, state, user_message, config, turn_context: ("ok", state, {"turn_id": "turn-finish-cs"}),
+    )
+
+    out = iu_services.run_turn(user_id="u_finish_cs", session_id="s_finish_cs", message="hola", new_conversation=False)
+
+    assert out["finish_button_armed"] is True
+
+
 def test_interfaz_usuario_rejects_mixed_flow_bindings() -> None:
     iu_services.ensure_session(user_id="u_mixed", session_id="s_mixed", context_id="baseline")
     state = get_session_state(user_id="u_mixed", session_id="s_mixed")
@@ -83,6 +99,21 @@ def test_interfaz_usuario_rejects_mixed_flow_bindings() -> None:
 
     assert excinfo.value.status_code == 409
     assert excinfo.value.detail["error"] == "session_has_mixed_flow_bindings"
+
+
+def test_interfaz_usuario_negociacion_path_still_reads_negotiation_finish_button(monkeypatch) -> None:
+    iu_services.ensure_session(user_id="u_neg_finish", session_id="s_neg_finish", context_id="baseline_current")
+    state = get_session_state(user_id="u_neg_finish", session_id="s_neg_finish")
+    state.world_state["negotiation_canonical"] = {"ui_state": {"finish_button_armed": True}}
+    state.world_state["conversation_simple_canonical"] = {"ui_state": {"finish_button_armed": False}}
+
+    def _fake_neg_turn(*args, **kwargs):
+        return "ok-neg", kwargs["state"], {"entry_contract": {}, "trace_count": 1, "latest_turn_id": "neg-t1"}
+
+    monkeypatch.setattr("interfaz_usuario.services.execute_turn_with_contract", _fake_neg_turn)
+
+    out = iu_services.run_turn(user_id="u_neg_finish", session_id="s_neg_finish", message="hola", new_conversation=False)
+    assert out["finish_button_armed"] is True
 
 
 def test_optimizer_cs_base_context_metadata_is_flow_aware_and_strict_comparable(monkeypatch) -> None:
@@ -150,6 +181,64 @@ def test_optimizer_cs_multi_turn_no_overrides_keeps_strict_comparability(monkeyp
         user_id="u_multi",
         session_id="s_multi",
         message="seguimos",
+        conversation_id=None,
+        scope_turn_id=None,
+        repeat_from_turn_id=None,
+    )
+
+    assert first["strict_comparable_to_interfaz_usuario_base"] is True
+    assert second["strict_comparable_to_interfaz_usuario_base"] is True
+    assert first["strict_comparability_reason"] == "parity_proxy_ready"
+    assert second["strict_comparability_reason"] == "parity_proxy_ready"
+
+
+def test_optimizer_cs_latch_trace_fields_do_not_break_strict_comparability(monkeypatch) -> None:
+    opt_services.ensure_session(user_id="u_latch", session_id="s_latch", flow_id="conversacion_simple", context_id="baseline")
+    _patch_optimizer_overrides(monkeypatch)
+
+    call_count = {"n": 0}
+
+    def _fake_cs_turn(*, state, user_message, config, turn_context):
+        call_count["n"] += 1
+        canonical = state.world_state.setdefault(config.memory_key, {"ui_state": {"finish_button_armed": False}})
+        if call_count["n"] == 1:
+            canonical.setdefault("ui_state", {})["finish_button_armed"] = True
+            closure = "ready"
+            latched = False
+        else:
+            canonical.setdefault("ui_state", {})["finish_button_armed"] = True
+            closure = "not_ready"
+            latched = True
+        state.world_state.setdefault(config.traces_key, []).append(
+            {
+                "turn_id": f"t{call_count['n']}",
+                "timestamp_utc": "2026-01-01T00:00:00+00:00",
+                "final_status": "deliver",
+                "final_reply_text": "ok",
+                "closure_readiness": closure,
+                "finish_button_armed": True,
+                "finish_button_latched": latched,
+                "nodes": {"brain": {"model_called": True, "status": "deliver", "latency_ms": 1}},
+            }
+        )
+        return "ok", state, {"turn_id": f"t{call_count['n']}"}
+
+    monkeypatch.setattr("negociacion.optimizador.services.run_conversacion_simple_turn", _fake_cs_turn)
+
+    first = opt_services.run_sandbox_turn(
+        optimizer_session_id="opt-latch",
+        user_id="u_latch",
+        session_id="s_latch",
+        message="hola",
+        conversation_id=None,
+        scope_turn_id=None,
+        repeat_from_turn_id=None,
+    )
+    second = opt_services.run_sandbox_turn(
+        optimizer_session_id="opt-latch",
+        user_id="u_latch",
+        session_id="s_latch",
+        message="gracias",
         conversation_id=None,
         scope_turn_id=None,
         repeat_from_turn_id=None,

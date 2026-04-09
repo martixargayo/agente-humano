@@ -519,6 +519,10 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
         canonical = state.world_state.get("negotiation_canonical", {})
         ui_state = canonical.get("ui_state", {}) if isinstance(canonical, dict) else {}
         finish_button_armed = bool(ui_state.get("finish_button_armed", False)) if isinstance(ui_state, dict) else False
+    elif resolved_flow_id == "conversacion_simple" and isinstance(state.world_state, dict):
+        canonical = state.world_state.get("conversation_simple_canonical", {})
+        ui_state = canonical.get("ui_state", {}) if isinstance(canonical, dict) else {}
+        finish_button_armed = bool(ui_state.get("finish_button_armed", False)) if isinstance(ui_state, dict) else False
 
     return {
         "reply": reply,

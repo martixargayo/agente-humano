@@ -46,6 +46,7 @@ class ConversationSimpleConversationState(BaseModel):
     phase: ConversationSimplePhase | None = None
     status: str = "active"
     current_turn_goal: str | None = None
+    closure_readiness: Literal["not_ready", "ready"] = "not_ready"
 
 
 class ConversationSimpleUiState(BaseModel):

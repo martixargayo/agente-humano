@@ -39,6 +39,8 @@ def _mock_neg_turn(*, state, user_message, config, contract, turn_context):
 
 
 def _mock_cs_turn(*, state, user_message, config, turn_context):
+    state.world_state.setdefault(config.memory_key, {"ui_state": {"finish_button_armed": True}})
+    state.world_state[config.memory_key].setdefault("ui_state", {})["finish_button_armed"] = True
     state.world_state.setdefault(config.traces_key, []).append(
         {
             "turn_id": "cs-turn",
@@ -76,9 +78,10 @@ def test_bootstrap_finalize_turn_parity_envelope(monkeypatch) -> None:
 
     neg_turn_keys = set(turn_neg.json().keys())
     cs_turn_keys = set(turn_cs.json().keys())
-    required_external = {"reply", "user_id", "session_id", "trace_count", "entry_contract", "latest_turn_id"}
+    required_external = {"reply", "user_id", "session_id", "trace_count", "entry_contract", "latest_turn_id", "finish_button_armed"}
     assert required_external.issubset(neg_turn_keys)
     assert required_external.issubset(cs_turn_keys)
+    assert turn_cs.json()["finish_button_armed"] is True
 
 
 def test_context_conflict_parity_between_flows(monkeypatch) -> None:

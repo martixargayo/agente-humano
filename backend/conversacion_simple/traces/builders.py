@@ -13,10 +13,18 @@ def build_brain_node_trace(
     fallback_reason_code: str | None,
     recent_dialogue_count: int,
     episodic_append_count: int,
+    closure_readiness: str,
+    finish_button_armed: bool,
+    finish_button_latched: bool,
     provider_exception: dict[str, object | None] | None = None,
     include_provider_exception_details: bool = False,
 ) -> ConversationSimpleNodeTrace:
-    output_summary: dict[str, object] = {"memory_episodic_append_count": episodic_append_count}
+    output_summary: dict[str, object] = {
+        "memory_episodic_append_count": episodic_append_count,
+        "closure_readiness": closure_readiness,
+        "finish_button_armed": finish_button_armed,
+        "finish_button_latched": finish_button_latched,
+    }
     if provider_exception is not None:
         output_summary["provider_exception_present"] = True
         if include_provider_exception_details:

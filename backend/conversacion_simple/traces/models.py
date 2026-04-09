@@ -35,6 +35,9 @@ class ConversationSimpleTurnTrace(BaseModel):
     user_turn: UserTurn
     final_reply_text: str
     final_status: str
+    closure_readiness: str = "not_ready"
+    finish_button_armed: bool = False
+    finish_button_latched: bool = False
     brain_model_attempted: bool = False
     brain_model_succeeded: bool = False
     brain_fallback_reason_code: str | None = None
