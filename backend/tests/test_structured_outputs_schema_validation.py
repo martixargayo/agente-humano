@@ -12,6 +12,7 @@ from conversacion_simple.orchestration.pipeline import SummarizerOutput
 from infra.openai.structured_outputs import (
     build_schema_observability,
     normalize_schema_for_strict_json_schema,
+    validate_openai_structured_output_subset,
     validate_strict_json_schema,
 )
 
@@ -86,3 +87,67 @@ def test_schema_observability_includes_root_summary_and_first_mismatch() -> None
     assert obs["root_properties"] == ["a"]
     assert obs["root_required"] == ["ghost"]
     assert obs["validation"]["first_mismatch"]["kind"] in {"missing_required", "extra_required"}
+
+
+def test_validate_strict_json_schema_does_not_cover_openai_subset_root_anyof_limitation() -> None:
+    schema = {
+        "anyOf": [
+            {
+                "type": "object",
+                "properties": {"kind": {"type": "string"}},
+                "required": ["kind"],
+                "additionalProperties": False,
+            },
+            {
+                "type": "object",
+                "properties": {"code": {"type": "string"}},
+                "required": ["code"],
+                "additionalProperties": False,
+            },
+        ]
+    }
+    report = validate_strict_json_schema(schema)
+    # Nuestro validador local solo verifica invariantes strict internos.
+    # No valida todas las restricciones del subconjunto OpenAI (ej: root anyOf).
+    assert report["valid"] is True
+
+
+def test_validate_openai_structured_output_subset_rejects_root_anyof() -> None:
+    schema = {
+        "anyOf": [
+            {"type": "object", "properties": {"a": {"type": "string"}}, "required": ["a"], "additionalProperties": False},
+            {"type": "object", "properties": {"b": {"type": "string"}}, "required": ["b"], "additionalProperties": False},
+        ]
+    }
+    report = validate_openai_structured_output_subset(schema)
+    assert report["valid"] is False
+    assert report["first_violation"]["kind"] in {"root_not_object", "root_anyof_not_supported"}
+
+
+def test_validate_openai_structured_output_subset_detects_unsupported_keyword() -> None:
+    schema = {
+        "type": "object",
+        "properties": {"a": {"type": "string"}},
+        "required": ["a"],
+        "additionalProperties": False,
+        "allOf": [],
+    }
+    report = validate_openai_structured_output_subset(schema)
+    assert report["valid"] is False
+    assert report["first_violation"]["kind"] == "unsupported_keyword"
+
+
+def test_brainoutput_subset_validation_accepts_closed_memory_episodic_item_schema() -> None:
+    normalized = normalize_schema_for_strict_json_schema(BrainOutput.model_json_schema())
+    subset = validate_openai_structured_output_subset(normalized)
+    assert subset["valid"] is True
+    defs = normalized.get("$defs", {}) if isinstance(normalized, dict) else {}
+    patch = defs.get("BrainStatePatch", {}) if isinstance(defs, dict) else {}
+    props = patch.get("properties", {}) if isinstance(patch, dict) else {}
+    episodic = props.get("memory_episodic_append", {}) if isinstance(props, dict) else {}
+    items = episodic.get("items", {}) if isinstance(episodic, dict) else {}
+    ref = items.get("$ref") if isinstance(items, dict) else None
+    ref_key = ref.split("/")[-1] if isinstance(ref, str) and ref.startswith("#/$defs/") else None
+    item_schema = defs.get(ref_key, {}) if isinstance(defs, dict) and isinstance(ref_key, str) else {}
+    assert item_schema.get("type") == "object"
+    assert item_schema.get("additionalProperties") is False

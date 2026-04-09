@@ -79,6 +79,70 @@ def validate_strict_json_schema(schema: object) -> dict[str, Any]:
     }
 
 
+_OPENAI_UNSUPPORTED_KEYWORDS = {
+    "allOf",
+    "not",
+    "if",
+    "then",
+    "else",
+    "dependentRequired",
+    "dependentSchemas",
+    "patternProperties",
+}
+
+
+def validate_openai_structured_output_subset(schema: object) -> dict[str, Any]:
+    """Best-effort validator for OpenAI Structured Outputs subset rules."""
+
+    violations: list[dict[str, Any]] = []
+
+    def _walk(node: object, path: tuple[str, ...], *, is_root: bool = False) -> None:
+        if isinstance(node, dict):
+            if is_root:
+                node_type = node.get("type")
+                if node_type != "object":
+                    violations.append({"path": _json_path(path), "kind": "root_not_object", "value": node_type})
+                if "anyOf" in node:
+                    violations.append({"path": _json_path(path), "kind": "root_anyof_not_supported"})
+            node_type = node.get("type")
+            if node_type == "object" and node.get("additionalProperties") is not False:
+                violations.append(
+                    {
+                        "path": _json_path(path),
+                        "kind": "object_additional_properties_not_false",
+                        "value": node.get("additionalProperties"),
+                    }
+                )
+            properties = node.get("properties")
+            required = node.get("required")
+            if node_type == "object" and isinstance(properties, dict):
+                if not isinstance(required, list):
+                    violations.append({"path": _json_path(path), "kind": "object_required_missing"})
+                else:
+                    prop_keys = list(properties.keys())
+                    missing = [key for key in prop_keys if key not in required]
+                    extra = [key for key in required if key not in prop_keys]
+                    if missing:
+                        violations.append({"path": _json_path(path), "kind": "object_required_missing_keys", "keys": missing})
+                    if extra:
+                        violations.append({"path": _json_path(path), "kind": "object_required_extra_keys", "keys": extra})
+            for keyword in _OPENAI_UNSUPPORTED_KEYWORDS:
+                if keyword in node:
+                    violations.append({"path": _json_path(path), "kind": "unsupported_keyword", "keyword": keyword})
+            for key, value in node.items():
+                _walk(value, (*path, key), is_root=False)
+        elif isinstance(node, list):
+            for idx, value in enumerate(node):
+                _walk(value, (*path, f"[{idx}]"), is_root=False)
+
+    _walk(schema, tuple(), is_root=True)
+    return {
+        "valid": len(violations) == 0,
+        "violations": violations,
+        "first_violation": violations[0] if violations else None,
+    }
+
+
 def build_schema_observability(*, schema_name: str, schema: object, validation_report: dict[str, Any], max_keys: int = 20) -> dict[str, Any]:
     serialized = json.dumps(schema, ensure_ascii=False, sort_keys=True, default=str, separators=(",", ":"))
     schema_hash = hashlib.sha256(serialized.encode("utf-8")).hexdigest()[:16]

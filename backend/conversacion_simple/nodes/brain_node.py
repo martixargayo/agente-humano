@@ -26,9 +26,16 @@ class BrainTaskContract(BaseModel):
 class BrainStatePatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    class MemoryEpisodicAppendItem(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+
+        event_type: str
+        event_summary: str
+        turn_id: str | None = None
+
     conversation_state: ConversationSimpleConversationState
     memory_working: ConversationSimpleMemoryWorkingState
-    memory_episodic_append: list[dict[str, str]] = Field(default_factory=list)
+    memory_episodic_append: list[MemoryEpisodicAppendItem] = Field(default_factory=list)
 
 
 class BrainAssistantResponse(BaseModel):
