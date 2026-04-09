@@ -49,10 +49,12 @@ class ConversationStats(BaseModel):
 
 class DomainContext(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    domain: Literal["negociacion"]
+    domain: Literal["negociacion", "conversacion_simple"]
     flow_id: str | None = None
     context_id: str | None = None
     context_version: str | None = None
+    resolution_source: str | None = None
+    fallback_used: bool = False
     final_phase: str | None = None
     finish_button_was_armed: bool = False
 
@@ -86,7 +88,7 @@ class FeedbackInputBundleV1(BaseModel):
 
 class DomainRubricMetadata(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    domain: Literal["negociacion"]
+    domain: Literal["negociacion", "conversacion_simple"]
     rubric_version: str
     case_title: str
 
@@ -245,6 +247,8 @@ class Provenance(BaseModel):
     flow_id: str | None = None
     context_id: str | None = None
     context_version: str | None = None
+    resolution_source: str | None = None
+    fallback_used: bool = False
 
 
 class UiFeedbackReportV1(BaseModel):

@@ -5,17 +5,17 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
-from negociacion.contexts import resolve_default_negotiation_context, resolve_negotiation_context
+from conversacion_simple.contexts import resolve_conversacion_simple_context, resolve_default_conversacion_simple_context
 
 from evaluacion.contracts.models import DomainContext
 
-from .context_resolver import NegotiationEvaluationContext, resolve_evaluation_context_from_domain_context
+from .context_resolver import ConversationSimpleEvaluationContext, resolve_evaluation_context_from_domain_context
 
 LEGACY_EVALUATION_DIR = Path(__file__).resolve().parents[2] / 'prompts'
-LEGACY_RUBRIC_PATH = Path(__file__).resolve().parent / 'rubrics' / 'negotiation_rubric_v1.json'
+LEGACY_RUBRIC_PATH = Path(__file__).resolve().parents[1] / 'negotiation' / 'rubrics' / 'negotiation_rubric_v1.json'
 
 
-class NegotiationEvaluationAssets(BaseModel):
+class ConversationSimpleEvaluationAssets(BaseModel):
     model_config = ConfigDict(extra='forbid', arbitrary_types_allowed=True)
 
     flow_id: str
@@ -29,15 +29,15 @@ class NegotiationEvaluationAssets(BaseModel):
 
 
 @lru_cache(maxsize=8)
-def _resolve_assets_for_context_id(context_id: str) -> NegotiationEvaluationAssets:
-    resolved = resolve_negotiation_context(context_id) if context_id else resolve_default_negotiation_context()
+def _resolve_assets_for_context_id(context_id: str) -> ConversationSimpleEvaluationAssets:
+    resolved = resolve_conversacion_simple_context(context_id) if context_id else resolve_default_conversacion_simple_context()
     evaluation_dir = resolved.context_dir / 'evaluation'
     core_prompt_path = evaluation_dir / 'core_evaluator_prompt.txt'
     trajectory_prompt_path = evaluation_dir / 'trajectory_evaluator_prompt.txt'
     rubric_path = evaluation_dir / 'rubric.json'
 
     if core_prompt_path.exists() and trajectory_prompt_path.exists() and rubric_path.exists():
-        return NegotiationEvaluationAssets(
+        return ConversationSimpleEvaluationAssets(
             flow_id=resolved.flow_id,
             context_id=resolved.context_id,
             context_version=resolved.context_version,
@@ -48,7 +48,7 @@ def _resolve_assets_for_context_id(context_id: str) -> NegotiationEvaluationAsse
             fallback_used=False,
         )
 
-    return NegotiationEvaluationAssets(
+    return ConversationSimpleEvaluationAssets(
         flow_id=resolved.flow_id,
         context_id=resolved.context_id,
         context_version=resolved.context_version,
@@ -60,10 +60,8 @@ def _resolve_assets_for_context_id(context_id: str) -> NegotiationEvaluationAsse
     )
 
 
-def resolve_negotiation_evaluation_assets(domain_context: DomainContext | None) -> NegotiationEvaluationAssets:
-    if domain_context is not None and domain_context.flow_id and domain_context.flow_id != "negociacion":
-        raise RuntimeError(f"evaluation_flow_context_mismatch:negociacion:{domain_context.flow_id}")
-    context: NegotiationEvaluationContext = resolve_evaluation_context_from_domain_context(domain_context)
+def resolve_conversacion_simple_evaluation_assets(domain_context: DomainContext | None) -> ConversationSimpleEvaluationAssets:
+    context: ConversationSimpleEvaluationContext = resolve_evaluation_context_from_domain_context(domain_context)
     assets = _resolve_assets_for_context_id(context.context_id)
     return assets.model_copy(update={
         'flow_id': context.flow_id or assets.flow_id,

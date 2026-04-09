@@ -15,21 +15,19 @@ from .context_resolver import resolve_evaluation_context_from_session
 
 
 def _build_domain_context(state: SessionState) -> DomainContext:
-    canonical = state.world_state.get("negotiation_canonical", {}) if isinstance(state.world_state, dict) else {}
-    planner_state = canonical.get("planner_state", {}) if isinstance(canonical, dict) else {}
-    ui_state = canonical.get("ui_state", {}) if isinstance(canonical, dict) else {}
-    phase = planner_state.get("current_phase") if isinstance(planner_state, dict) else None
-    armed = bool(ui_state.get("finish_button_armed", False)) if isinstance(ui_state, dict) else False
+    canonical = state.world_state.get('conversation_simple_canonical', {}) if isinstance(state.world_state, dict) else {}
+    conversation_state = canonical.get('conversation_state', {}) if isinstance(canonical, dict) else {}
+    phase = conversation_state.get('phase') if isinstance(conversation_state, dict) else None
     evaluation_context = resolve_evaluation_context_from_session(state)
     return DomainContext(
-        domain="negociacion",
+        domain='conversacion_simple',
         flow_id=evaluation_context.flow_id,
         context_id=evaluation_context.context_id,
         context_version=evaluation_context.context_version,
         resolution_source=evaluation_context.resolution_source,
         fallback_used=evaluation_context.fallback_used,
         final_phase=str(phase) if phase else None,
-        finish_button_was_armed=armed,
+        finish_button_was_armed=False,
     )
 
 
@@ -41,13 +39,13 @@ def _build_derived_facts(turns):
 
     for turn in turns:
         u = turn.user_text.lower()
-        if "?" in turn.user_text:
+        if '?' in turn.user_text:
             question_turns.append(turn.turn_index)
-        if any(token in u for token in ("cerr", "acuerdo", "trato", "hoy")):
+        if any(token in u for token in ('cerr', 'acuerdo', 'trato', 'hoy')):
             close_signals += 1
-        if any(token in u for token in ("precio", "ofert", "euros", "rebaja")):
+        if any(token in u for token in ('precio', 'ofert', 'euros', 'rebaja')):
             offer_signals += 1
-        if any(token in u for token in ("no puedo", "imposible", "bloque", "difícil")):
+        if any(token in u for token in ('no puedo', 'imposible', 'bloque', 'difícil')):
             blocker_signals += 1
 
     return DerivedFacts(
@@ -59,13 +57,13 @@ def _build_derived_facts(turns):
 
 
 def _build_trace_digest(state: SessionState) -> TraceDigest:
-    traces_key = "negotiation_canonical_traces"
+    traces_key = 'conversation_simple_canonical_traces'
     raw_traces = state.world_state.get(traces_key, []) if isinstance(state.world_state, dict) else []
     traces = raw_traces if isinstance(raw_traces, list) else []
 
     guardrail_events = 0
     for trace in traces:
-        if isinstance(trace, dict) and trace.get("guardrails_triggered"):
+        if isinstance(trace, dict) and trace.get('guardrails_triggered'):
             guardrail_events += 1
     return TraceDigest(trace_count=len(traces), guardrail_events_count=guardrail_events)
 
@@ -73,10 +71,10 @@ def _build_trace_digest(state: SessionState) -> TraceDigest:
 def build_feedback_input_bundle_v1(*, state: SessionState, evaluation_id: str) -> FeedbackInputBundleV1:
     turns = pair_turns_from_history(state)
     return FeedbackInputBundleV1(
-        schema_version="feedback_input_bundle.v1",
+        schema_version='feedback_input_bundle.v1',
         evaluation_id=evaluation_id,
         session_ref=SessionRef(user_id=state.user_id, session_id=state.session_id),
-        conversation={"turns": turns},
+        conversation={'turns': turns},
         conversation_stats=build_conversation_stats(turns),
         domain_context=_build_domain_context(state),
         derived_facts=_build_derived_facts(turns),
