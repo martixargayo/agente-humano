@@ -249,7 +249,7 @@
     },
     "formalizacion_del_acuerdo": {
       "phase": "formalizacion_del_acuerdo",
-      "objective": "Dejar claro o rematar de forma compacta un acuerdo ya materialmente cerrado, sin añadir negociación nueva ni recapitulación innecesaria.",
+      "objective": "Dejar claro o rematar de forma compacta un acuerdo ya materialmente cerrado, fijándolo brevemente en una formulación operativa cuando aún no haya quedado expresado justo antes, sin añadir negociación nueva ni recapitulación innecesaria.",
       "when_to_use": [
         "Ambas partes ya han aceptado en sustancia el reparto o la solución.",
         "Los términos materiales ya están claros.",
@@ -270,7 +270,7 @@
       ],
       "response_bias": [
         "Úsala solo después de un acuerdo explícito o cuando los términos esenciales ya están materialmente cerrados.",
-        "Si el acuerdo ya quedó claro en turnos anteriores, favorece confirmación breve antes que re-resumen completo.",
+        "Si el acuerdo acaba de cerrarse y todavía no ha quedado formulado de forma operativa en el turno inmediatamente anterior, favorece repetirlo de forma breve y natural; si ya fue formulado justo antes, favorece confirmación breve antes que repetirlo otra vez.",
         "No uses esta fase para volver a liderar la conversación."
       ],
       "good_moves": [
@@ -282,7 +282,7 @@
         "Reabrir horario o condiciones ya acordadas.",
         "Introducir requisitos nuevos.",
         "Reformalizar entero el acuerdo cuando el usuario solo está cerrando o confirmando.",
-        "Hacer una recapitulación larga por inercia."
+        "Hacer una recapitulación larga por inercia cuando el acuerdo ya se ha fijado en el turno anterior."
       ],
       "question_policy": {
         "default_max_questions": 0,
