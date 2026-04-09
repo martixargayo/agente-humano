@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from evaluacion.contracts.models import DomainContext
 from evaluacion.domains.router import build_feedback_input_bundle_v1, resolve_flow_id_from_state
 from sessions.state import SessionState
 
@@ -76,3 +77,23 @@ def test_router_rejects_ambiguous_legacy_signals() -> None:
 
     with pytest.raises(RuntimeError, match='legacy_signals_multiple'):
         resolve_flow_id_from_state(state)
+
+
+def test_router_assets_rejects_missing_flow_id() -> None:
+    """Verify that resolve_evaluation_assets fails explicitly with flow_id=None, not silently defaulting"""
+    from evaluacion.domains.router import resolve_evaluation_assets
+
+    dc = DomainContext(domain='conversacion_simple', flow_id=None, context_id='x')
+
+    with pytest.raises(RuntimeError, match='evaluation_assets_resolution_error:flow_id_missing'):
+        resolve_evaluation_assets(dc)
+
+
+def test_router_rubric_rejects_missing_flow_id() -> None:
+    """Verify that load_domain_rubric_v1 fails explicitly with flow_id=None"""
+    from evaluacion.domains.router import load_domain_rubric_v1
+
+    dc = DomainContext(domain='conversacion_simple', flow_id=None, context_id='x')
+
+    with pytest.raises(RuntimeError, match='evaluation_rubric_loading_error:flow_id_missing'):
+        load_domain_rubric_v1(dc)

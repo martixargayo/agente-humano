@@ -69,9 +69,12 @@ def build_feedback_input_bundle_v1(*, state: SessionState, evaluation_id: str) -
     if adapter is None:
         raise RuntimeError(f'evaluation_unsupported_flow:{flow_id}')
     bundle = adapter.build_feedback_input_bundle_v1(state=state, evaluation_id=evaluation_id)
-    merged_source = bundle.domain_context.resolution_source or flow_resolution_source
-    if merged_source != flow_resolution_source:
-        merged_source = f'{flow_resolution_source}+{merged_source}'
+    # Router-level resolution source takes precedence; merge with inner source only if different
+    inner_source = bundle.domain_context.resolution_source
+    if inner_source and inner_source != flow_resolution_source:
+        merged_source = f'{flow_resolution_source}→{inner_source}'
+    else:
+        merged_source = flow_resolution_source
     bundle.domain_context.resolution_source = merged_source
     bundle.domain_context.fallback_used = bool(bundle.domain_context.fallback_used or fallback_used)
     return bundle
@@ -80,16 +83,20 @@ def build_feedback_input_bundle_v1(*, state: SessionState, evaluation_id: str) -
 def resolve_evaluation_assets(domain_context: DomainContext):
     if domain_context.flow_id == 'conversacion_simple':
         return resolve_conversacion_simple_evaluation_assets(domain_context)
-    if domain_context.flow_id == 'negociacion' or not domain_context.flow_id:
+    if domain_context.flow_id == 'negociacion':
         return resolve_negotiation_evaluation_assets(domain_context)
+    if not domain_context.flow_id:
+        raise RuntimeError('evaluation_assets_resolution_error:flow_id_missing')
     raise RuntimeError(f'evaluation_unsupported_flow:{domain_context.flow_id}')
 
 
 def load_domain_rubric_v1(domain_context: DomainContext) -> NegotiationDomainRubricV1:
     if domain_context.flow_id == 'conversacion_simple':
         return load_conversacion_simple_rubric_v1(domain_context)
-    if domain_context.flow_id == 'negociacion' or not domain_context.flow_id:
+    if domain_context.flow_id == 'negociacion':
         return load_negotiation_rubric_v1(domain_context)
+    if not domain_context.flow_id:
+        raise RuntimeError('evaluation_rubric_loading_error:flow_id_missing')
     raise RuntimeError(f'evaluation_unsupported_flow:{domain_context.flow_id}')
 
 

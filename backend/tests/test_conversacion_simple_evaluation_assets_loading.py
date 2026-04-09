@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from evaluacion.contracts.models import DomainContext
 from evaluacion.domains.conversacion_simple.assets_loader import resolve_conversacion_simple_evaluation_assets
 
@@ -42,3 +44,19 @@ def test_conversacion_simple_assets_fallback_when_context_assets_missing(monkeyp
 
     assert assets.resolution_source == 'legacy_fallback'
     assert assets.fallback_used is True
+    # CRITICAL: Verify fallback uses conversacion_simple rubric, NOT negotiation
+    assert 'conversacion_simple' in str(assets.rubric_path), f"Expected conversacion_simple in path, got {assets.rubric_path}"
+    assert 'negotiation' not in str(assets.rubric_path), f"Fallback must NOT use negotiation rubric, got {assets.rubric_path}"
+
+
+def test_conversacion_simple_assets_never_fallback_to_negotiation() -> None:
+    """CRITICAL: Ensure fallback NEVER silently switches to negotiation rubric"""
+    from evaluacion.domains.conversacion_simple.assets_loader import LEGACY_RUBRIC_PATH
+
+    # Verify the constant doesn't point to negotiation
+    assert 'negotiation' not in str(LEGACY_RUBRIC_PATH), (
+        f"LEGACY_RUBRIC_PATH must point to conversacion_simple, got {LEGACY_RUBRIC_PATH}"
+    )
+    assert 'conversacion_simple' in str(LEGACY_RUBRIC_PATH) or 'baseline' in str(LEGACY_RUBRIC_PATH), (
+        f"LEGACY_RUBRIC_PATH should point to conversacion_simple context, got {LEGACY_RUBRIC_PATH}"
+    )
