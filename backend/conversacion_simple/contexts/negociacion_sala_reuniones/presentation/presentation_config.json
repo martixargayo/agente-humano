@@ -4,7 +4,7 @@
   },
   "avatar": {
     "model": {
-      "url": "assets/FaceVolumen.glb"
+      "url": "/interfaz_usuario/avatar_runtime/assets/FaceVolumen.glb"
     }
   }
 }
