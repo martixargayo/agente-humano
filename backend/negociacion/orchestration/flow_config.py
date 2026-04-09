@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any, Callable, List, Literal, Sequence, TypedD
 import openai
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from infra.openai.structured_outputs import normalize_schema_for_strict_json_schema
 from sessions.state import SessionState, add_message, save_session_state
 
 from ..state.canonical_state import (
@@ -781,22 +782,7 @@ def freeze_prompt_artifacts(
 
 
 def _normalize_schema_for_strict_json_schema(schema: object) -> object:
-    """Normalize JSON Schema so every object with properties has full required keys.
-
-    OpenAI Structured Outputs strict mode requires each object to explicitly list
-    every key from `properties` in `required`; optionality must be expressed with
-    nullable types (e.g. anyOf[..., null]) instead of omitting keys from required.
-    """
-
-    if isinstance(schema, dict):
-        normalized = {key: _normalize_schema_for_strict_json_schema(value) for key, value in schema.items()}
-        properties = normalized.get("properties")
-        if isinstance(properties, dict):
-            normalized["required"] = list(properties.keys())
-        return normalized
-    if isinstance(schema, list):
-        return [_normalize_schema_for_strict_json_schema(item) for item in schema]
-    return schema
+    return normalize_schema_for_strict_json_schema(schema)
 
 
 def _call_structured(

@@ -12,6 +12,7 @@ from typing import Literal
 import openai
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from infra.openai.structured_outputs import normalize_schema_for_strict_json_schema
 from sessions.state import SessionState, add_message, save_session_state
 
 from ..contexts import (
@@ -229,11 +230,7 @@ def _extract_response_id(response: object) -> str | None:
 
 
 def _normalize_schema_for_strict_json_schema(schema: object) -> object:
-    if isinstance(schema, dict):
-        return {key: _normalize_schema_for_strict_json_schema(value) for key, value in schema.items()}
-    if isinstance(schema, list):
-        return [_normalize_schema_for_strict_json_schema(item) for item in schema]
-    return schema
+    return normalize_schema_for_strict_json_schema(schema)
 
 
 def _call_brain_structured(
