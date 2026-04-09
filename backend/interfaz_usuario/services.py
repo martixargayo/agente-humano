@@ -370,6 +370,8 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
                 turn_context = build_conversacion_simple_turn_context(
                     state=state,
                     entrypoint="/api/interfaz_usuario/negociacion/turn",
+                    entry_surface="interfaz_usuario",
+                    context_source="interfaz_usuario_session_bound",
                     requested_context_id=effective_context_id,
                 )
                 reply, _, cs_meta = run_conversacion_simple_turn(
