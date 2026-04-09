@@ -135,3 +135,19 @@ def test_validate_openai_structured_output_subset_detects_unsupported_keyword() 
     report = validate_openai_structured_output_subset(schema)
     assert report["valid"] is False
     assert report["first_violation"]["kind"] == "unsupported_keyword"
+
+
+def test_brainoutput_subset_validation_accepts_closed_memory_episodic_item_schema() -> None:
+    normalized = normalize_schema_for_strict_json_schema(BrainOutput.model_json_schema())
+    subset = validate_openai_structured_output_subset(normalized)
+    assert subset["valid"] is True
+    defs = normalized.get("$defs", {}) if isinstance(normalized, dict) else {}
+    patch = defs.get("BrainStatePatch", {}) if isinstance(defs, dict) else {}
+    props = patch.get("properties", {}) if isinstance(patch, dict) else {}
+    episodic = props.get("memory_episodic_append", {}) if isinstance(props, dict) else {}
+    items = episodic.get("items", {}) if isinstance(episodic, dict) else {}
+    ref = items.get("$ref") if isinstance(items, dict) else None
+    ref_key = ref.split("/")[-1] if isinstance(ref, str) and ref.startswith("#/$defs/") else None
+    item_schema = defs.get(ref_key, {}) if isinstance(defs, dict) and isinstance(ref_key, str) else {}
+    assert item_schema.get("type") == "object"
+    assert item_schema.get("additionalProperties") is False

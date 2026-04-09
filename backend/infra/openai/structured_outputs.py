@@ -118,6 +118,28 @@ def validate_openai_structured_output_subset(schema: object) -> dict[str, Any]:
                     violations.append({"path": _json_path(path), "kind": "root_not_object", "value": node_type})
                 if "anyOf" in node:
                     violations.append({"path": _json_path(path), "kind": "root_anyof_not_supported"})
+            node_type = node.get("type")
+            if node_type == "object" and node.get("additionalProperties") is not False:
+                violations.append(
+                    {
+                        "path": _json_path(path),
+                        "kind": "object_additional_properties_not_false",
+                        "value": node.get("additionalProperties"),
+                    }
+                )
+            properties = node.get("properties")
+            required = node.get("required")
+            if node_type == "object" and isinstance(properties, dict):
+                if not isinstance(required, list):
+                    violations.append({"path": _json_path(path), "kind": "object_required_missing"})
+                else:
+                    prop_keys = list(properties.keys())
+                    missing = [key for key in prop_keys if key not in required]
+                    extra = [key for key in required if key not in prop_keys]
+                    if missing:
+                        violations.append({"path": _json_path(path), "kind": "object_required_missing_keys", "keys": missing})
+                    if extra:
+                        violations.append({"path": _json_path(path), "kind": "object_required_extra_keys", "keys": extra})
             for keyword in _OPENAI_UNSUPPORTED_KEYWORDS:
                 if keyword in node:
                     violations.append({"path": _json_path(path), "kind": "unsupported_keyword", "keyword": keyword})

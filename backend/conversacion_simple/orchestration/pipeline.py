@@ -753,14 +753,12 @@ def apply_brain_output_to_state(*, canonical_state: ConversationSimpleCanonicalS
     canonical_state.memory_working = brain_output.state_patch.memory_working.model_copy(deep=True)
     append_items: list[ConversationSimpleMemoryEpisodicItem] = []
     for item in brain_output.state_patch.memory_episodic_append:
-        event_type = item.get("event_type")
-        event_summary = item.get("event_summary")
-        if not isinstance(event_type, str) or not isinstance(event_summary, str):
-            continue
+        event_type = item.event_type
+        event_summary = item.event_summary
         if event_type not in {"important_fact", "intent", "constraint", "commitment"}:
             continue
         append_items.append(
-            ConversationSimpleMemoryEpisodicItem(event_type=event_type, event_summary=event_summary, turn_id=item.get("turn_id") or turn_id)
+            ConversationSimpleMemoryEpisodicItem(event_type=event_type, event_summary=event_summary, turn_id=item.turn_id or turn_id)
         )
     canonical_state.memory_episodic.extend(append_items)
     canonical_state.trace.turn_id = turn_id

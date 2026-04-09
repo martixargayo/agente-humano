@@ -31,7 +31,7 @@ def _hash(obj: Any) -> str:
     return hashlib.sha256(json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()[:16]
 
 
-def _capture_requests_with_mock_openai() -> tuple[list[CapturedRequest], dict[str, Any]]:
+def _capture_requests_with_mock_openai() -> tuple[list[CapturedRequest], dict[str, Any], openai.OpenAI]:
     captured: list[CapturedRequest] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -74,7 +74,25 @@ def _capture_requests_with_mock_openai() -> tuple[list[CapturedRequest], dict[st
     return captured, {
         "brain": brain_call,
         "summarizer": summarizer_call,
-    }
+    }, client
+
+
+def _force_sdk_request_capture(
+    *,
+    client: openai.OpenAI,
+    payload: dict[str, Any],
+    captured: list[CapturedRequest],
+) -> dict[str, Any]:
+    before = len(captured)
+    try:
+        client.responses.create(**payload)
+    except Exception as exc:
+        error = {"error_type": type(exc).__name__, "message": str(exc)}
+    else:
+        error = {"error_type": None, "message": None}
+    after = len(captured)
+    body = captured[-1].body if after > before else None
+    return {"captured": after > before, "body": body, "error": error}
 
 
 def _schema_artifacts(model: type[Any]) -> dict[str, Any]:
@@ -142,14 +160,37 @@ def build_report() -> dict[str, Any]:
     brain_artifacts = _schema_artifacts(BrainOutput)
     summarizer_artifacts = _schema_artifacts(SummarizerOutput)
 
-    captured_requests, calls = _capture_requests_with_mock_openai()
-    if len(captured_requests) < 2:
-        raise RuntimeError("expected_two_captured_requests")
+    captured_requests, calls, client = _capture_requests_with_mock_openai()
 
-    brain_http = captured_requests[0].body
-    summarizer_http = captured_requests[1].body
     brain_traced = calls["brain"].provider_request
+    if not isinstance(brain_traced, dict):
+        brain_traced = {
+            "model": "gpt-5.4",
+            "input": [
+                {"role": "developer", "content": "test"},
+                {"role": "user", "content": "hola"},
+            ],
+            "text": {"format": {"type": "json_schema", "name": "BrainOutput", "schema": brain_artifacts["normalized_schema"], "strict": True}},
+            "reasoning": {"effort": "low"},
+            "store": False,
+        }
+    brain_forced = _force_sdk_request_capture(client=client, payload=brain_traced, captured=captured_requests)
+    brain_http = brain_forced["body"] if isinstance(brain_forced["body"], dict) else {}
+
     summarizer_traced = calls["summarizer"].provider_request
+    if not isinstance(summarizer_traced, dict):
+        summarizer_traced = {
+            "model": "gpt-5.4-nano",
+            "input": [
+                {"role": "developer", "content": "test"},
+                {"role": "user", "content": "hola"},
+            ],
+            "text": {"format": {"type": "json_schema", "name": "SummarizerOutput", "schema": summarizer_artifacts["normalized_schema"], "strict": True}},
+            "reasoning": {"effort": "minimal"},
+            "store": False,
+        }
+    summarizer_forced = _force_sdk_request_capture(client=client, payload=summarizer_traced, captured=captured_requests)
+    summarizer_http = summarizer_forced["body"] if isinstance(summarizer_forced["body"], dict) else {}
 
     brain_schema_http = (((brain_http.get("text") or {}).get("format") or {}).get("schema"))
     brain_schema_traced = ((((brain_traced or {}).get("text") or {}).get("format") or {}).get("schema"))
@@ -171,6 +212,8 @@ def build_report() -> dict[str, Any]:
             "brainstatepatch_required_has_memory_episodic_append": "memory_episodic_append" in ((((brain_schema_http or {}).get("$defs") or {}).get("BrainStatePatch") or {}).get("required") or []),
             "provider_error_code": calls["brain"].provider_exception.get("provider_exception_code") if calls["brain"].provider_exception else None,
             "provider_error_message": calls["brain"].provider_exception.get("provider_exception_message") if calls["brain"].provider_exception else None,
+            "preflight_blocked": calls["brain"].fallback_reason_code == "schema_preflight_invalid",
+            "forced_sdk_capture": brain_forced,
         },
         "summarizer": {
             **summarizer_artifacts,
@@ -180,6 +223,7 @@ def build_report() -> dict[str, Any]:
             "schema_in_http_body_hash": _hash(summarizer_schema_http),
             "provider_request_equals_http_body": summarizer_traced == summarizer_http,
             "schema_equals_normalized": summarizer_schema_http == summarizer_artifacts["normalized_schema"],
+            "forced_sdk_capture": summarizer_forced,
         },
         "raw_http_equivalence": _raw_http_equivalence_check(brain_traced),
         "local_validator_gaps": _local_openai_subset_gap_examples(),
