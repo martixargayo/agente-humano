@@ -187,6 +187,7 @@ class StructuredBrainCall:
     provider_exception: dict[str, object | None] | None = None
     provider_request: dict[str, object] | None = None
     provider_response_text: str | None = None
+    timings_ms: dict[str, float] | None = None
 
 
 _DEFAULT_SUMMARIZER_PROMPT = """Eres un summarizer táctico de contexto conversacional para negociación.
@@ -458,6 +459,8 @@ def _call_brain_structured(
     model: str,
     messages: list[dict[str, str]],
 ) -> StructuredBrainCall:
+    timings_ms: dict[str, float] = {}
+    total_started = time.perf_counter()
     if client is None:
         return StructuredBrainCall(
             source="fallback",
@@ -467,7 +470,9 @@ def _call_brain_structured(
             model_attempted=False,
             model_succeeded=False,
             provider_exception=None,
+            timings_ms=timings_ms,
         )
+    schema_started = time.perf_counter()
     normalized_schema, schema_observability = _prepare_strict_schema(
         schema_name=BrainOutput.__name__,
         schema=BrainOutput.model_json_schema(),
@@ -475,6 +480,7 @@ def _call_brain_structured(
         format_name=BrainOutput.__name__,
         format_strict=True,
     )
+    timings_ms["schema_prepare"] = round((time.perf_counter() - schema_started) * 1000, 3)
     validation = schema_observability.get("validation")
     subset_validation = schema_observability.get("openai_subset_validation")
     strict_valid = isinstance(validation, dict) and bool(validation.get("valid", False))
@@ -497,6 +503,7 @@ def _call_brain_structured(
             model_attempted=False,
             model_succeeded=False,
             provider_exception=None,
+            timings_ms=timings_ms,
         )
     request_payload: dict[str, object] = {
         "model": model,
@@ -513,7 +520,9 @@ def _call_brain_structured(
         "store": False,
     }
     try:
+        provider_started = time.perf_counter()
         response = client.responses.create(**request_payload)
+        timings_ms["provider_responses_create"] = round((time.perf_counter() - provider_started) * 1000, 3)
     except Exception as exc:
         provider_exception = _extract_provider_exception_details(exc, stage="brain", model=model)
         logger.exception(
@@ -537,9 +546,12 @@ def _call_brain_structured(
             model_succeeded=False,
             provider_exception=provider_exception,
             provider_request=request_payload,
+            timings_ms=timings_ms,
         )
+    output_extract_started = time.perf_counter()
     text = _extract_output_text(response)
     response_id = _extract_response_id(response)
+    timings_ms["extract_output_text"] = round((time.perf_counter() - output_extract_started) * 1000, 3)
     if not text:
         return StructuredBrainCall(
             source="fallback",
@@ -552,9 +564,12 @@ def _call_brain_structured(
             model_succeeded=False,
             provider_exception=None,
             provider_request=request_payload,
+            timings_ms=timings_ms,
         )
     try:
+        json_load_started = time.perf_counter()
         payload = json.loads(text)
+        timings_ms["json_loads"] = round((time.perf_counter() - json_load_started) * 1000, 3)
     except Exception:
         return StructuredBrainCall(
             source="fallback",
@@ -568,7 +583,9 @@ def _call_brain_structured(
             provider_exception=None,
             provider_request=request_payload,
             provider_response_text=text,
+            timings_ms=timings_ms,
         )
+    timings_ms["total"] = round((time.perf_counter() - total_started) * 1000, 3)
     return StructuredBrainCall(
         source="model",
         parsed_json=payload if isinstance(payload, dict) else None,
@@ -580,6 +597,7 @@ def _call_brain_structured(
         provider_exception=None,
         provider_request=request_payload,
         provider_response_text=text,
+        timings_ms=timings_ms,
     )
 
 
@@ -847,21 +865,40 @@ def run_conversacion_simple_turn(
     config: ConversationSimpleTurnConfig,
     turn_context: TurnExecutionContext | None,
 ) -> tuple[str, SessionState, dict[str, object]]:
+    turn_started = time.perf_counter()
+    stage_timings_ms: dict[str, int] = {}
+    stage_timings_precise_ms: dict[str, float] = {}
+
+    def _record_stage(name: str, started_at: float) -> None:
+        elapsed_ms = round((time.perf_counter() - started_at) * 1000, 3)
+        stage_timings_precise_ms[name] = elapsed_ms
+        stage_timings_ms[name] = int(elapsed_ms)
+
+    validate_started = time.perf_counter()
     effective_context_id = _validate_turn_context(state=state, config=config, turn_context=turn_context)
+    _record_stage("validate_turn_context", validate_started)
+    repo_started = time.perf_counter()
     repo = ConversationSimpleStateRepository(
         memory_key=config.memory_key,
         recent_dialogue_key=config.recent_dialogue_key,
         traces_key=config.traces_key,
     )
+    _record_stage("repository_init", repo_started)
+    load_state_started = time.perf_counter()
     canonical_state = repo.load_state(state, config)
+    _record_stage("load_canonical_state", load_state_started)
+    load_recent_started = time.perf_counter()
     recent_dialogue = repo.load_recent_dialogue(state)
+    _record_stage("load_recent_dialogue", load_recent_started)
     memory_obs: dict[str, object] = {}
     runtime_version = get_runtime_version_info()
     forensic_enabled = _is_trace_forensic_enabled()
 
     turn_id = str(uuid.uuid4())
     now_iso = datetime.now(timezone.utc).isoformat()
+    user_turn_started = time.perf_counter()
     user_turn = _build_user_turn(user_message, now_iso)
+    _record_stage("build_user_turn", user_turn_started)
     trace_meta = TraceMeta(
         turn_id=turn_id,
         prompt_version="brain_v1",
@@ -869,21 +906,29 @@ def run_conversacion_simple_turn(
         model_target=config.brain_model_target,
     )
 
+    prompts_started = time.perf_counter()
     prompts_dir = Path(config.prompts_dir)
     prompt_text = (prompts_dir / "brain_prompt.txt").read_text(encoding="utf-8").strip()
     summarizer_prompt = _resolve_summarizer_prompt(prompts_dir)
+    _record_stage("load_prompts", prompts_started)
+    client_started = time.perf_counter()
     client = _build_client()
+    _record_stage("build_openai_client", client_started)
     llm_call_attempted = client is not None
 
+    add_user_started = time.perf_counter()
     add_message(state, role="user", content=user_message)
     recent_dialogue.append(DialogueMessage(role="user", text=user_turn.normalized_text))
+    _record_stage("add_user_message", add_user_started)
     # TRIM AFTER USER MESSAGE: Determine if summarizer should trigger by comparing turn count
     # This is the trigger point for archiving old turns beyond context_limit_turns.
+    trim_user_started = time.perf_counter()
     recent_dialogue, archived_turns, recent_metrics_user = trim_recent_dialogue_by_turns(
         recent_dialogue=recent_dialogue,
         context_limit_turns=config.context_limit_turns,
         keep_last_n_turns=config.keep_last_n_turns,
     )
+    _record_stage("trim_recent_dialogue_after_user", trim_user_started)
     memory_obs.update(recent_metrics_user)
     if archived_turns:
         summarizer_input = SummarizerInput(
@@ -896,11 +941,13 @@ def run_conversacion_simple_turn(
             ],
         )
         summarizer_messages = _build_summarizer_messages(summarizer_prompt=summarizer_prompt, payload=summarizer_input)
+        summarizer_started = time.perf_counter()
         summarizer_call = _call_summarizer_structured(
             client=client,
             model=config.summarizer_model_target,
             messages=summarizer_messages,
         )
+        _record_stage("summarizer_call", summarizer_started)
         memory_obs["summarizer_runtime_fingerprint"] = _provider_runtime_fingerprint(
             client=client,
             model_target=config.summarizer_model_target,
@@ -940,6 +987,7 @@ def run_conversacion_simple_turn(
         memory_obs["memory_summary_archived_turns"] = 0
         memory_obs["memory_summary_archived_messages"] = 0
 
+    brain_input_started = time.perf_counter()
     brain_input = build_brain_input(
         canonical_state=canonical_state,
         recent_dialogue=recent_dialogue,
@@ -947,7 +995,10 @@ def run_conversacion_simple_turn(
         trace_meta=trace_meta,
         recent_dialogue_short_max=config.recent_dialogue_short_max_messages,
     )
+    _record_stage("build_brain_input", brain_input_started)
+    brain_messages_started = time.perf_counter()
     brain_messages = build_brain_messages(prompt_text, brain_input)
+    _record_stage("build_brain_messages", brain_messages_started)
 
     started = time.perf_counter()
     call = _call_brain_structured(client=client, model=trace_meta.model_target, messages=brain_messages)
@@ -965,12 +1016,14 @@ def run_conversacion_simple_turn(
     compact_brain_schema_obs = _compact_schema_observability(call.schema_observability, forensic_enabled=forensic_enabled)
     if compact_brain_schema_obs is not None:
         memory_obs["brain_schema_observability"] = compact_brain_schema_obs
+    parse_started = time.perf_counter()
     brain_output, parse_fallback_reason_code = _parse_brain_output_strict(
         payload=call.parsed_json,
         allow_fallback=True,
         user_message=user_message,
         fallback_reason_code=call.fallback_reason_code,
     )
+    _record_stage("parse_and_validate_brain_output", parse_started)
     fallback_reason_code = parse_fallback_reason_code or (call.fallback_reason_code if call.source != "model" else None)
     model_attempted = call.model_attempted
     model_succeeded = call.source == "model" and fallback_reason_code is None
@@ -982,23 +1035,37 @@ def run_conversacion_simple_turn(
     if call.provider_exception is not None:
         memory_obs["brain_provider_exception"] = dict(call.provider_exception)
     latency_ms = int((time.perf_counter() - started) * 1000)
+    stage_timings_ms["brain_call"] = latency_ms
+    stage_timings_precise_ms["brain_call"] = round((time.perf_counter() - started) * 1000, 3)
+    provider_timings = call.timings_ms or {}
+    if provider_timings:
+        for key, value in provider_timings.items():
+            stage_key = f"brain_call_{key}"
+            stage_timings_precise_ms[stage_key] = value
+            stage_timings_ms[stage_key] = int(value)
 
     # Apply deterministic patch
+    patch_started = time.perf_counter()
     apply_brain_output_to_state(canonical_state=canonical_state, brain_output=brain_output, turn_id=turn_id)
+    _record_stage("apply_brain_output_to_state", patch_started)
 
+    assistant_state_started = time.perf_counter()
     reply = _normalize_reply_text(brain_output.assistant_response.text)
     add_message(state, role="assistant", content=reply)
     recent_dialogue.append(DialogueMessage(role="assistant", text=reply))
+    _record_stage("normalize_and_add_assistant_message", assistant_state_started)
     # TRIM AFTER ASSISTANT RESPONSE: Ensure total turn count stays within bounds after adding assistant message.
     # This second trim applies the same limit to maintain invariant: len(recent_dialogue_turns) <= keep_last_n_turns
     # Note: If the assistant message completes the 20th turn, this trim is a no-op. It only triggers if
     # adding the assistant would exceed keep_last_n_turns. In practice with context_limit_turns == keep_last_n_turns,
     # this is mostly idempotent, but necessary for consistency.
+    trim_assistant_started = time.perf_counter()
     recent_dialogue, archived_turns_after_assistant, recent_metrics_assistant = trim_recent_dialogue_by_turns(
         recent_dialogue=recent_dialogue,
         context_limit_turns=config.context_limit_turns,
         keep_last_n_turns=config.keep_last_n_turns,
     )
+    _record_stage("trim_recent_dialogue_after_assistant", trim_assistant_started)
     memory_obs.update(recent_metrics_assistant)
     if archived_turns_after_assistant:
         memory_obs["memory_post_assistant_archived_turns"] = len(archived_turns_after_assistant)
@@ -1014,14 +1081,17 @@ def run_conversacion_simple_turn(
             reason=schedule_reason,
             retry_limit=config.maintenance_retry_limit,
         )
+    maintenance_started = time.perf_counter()
     maintenance_obs = run_memory_maintenance_best_effort(
         canonical_state=canonical_state,
         high_resolution_limit=config.max_episodic_high_resolution_items,
         compacted_summary_max_chars=config.compacted_summary_max_chars,
         simulate_failure=config.maintenance_force_failure,
     )
+    _record_stage("memory_maintenance", maintenance_started)
     memory_obs.update(maintenance_obs)
 
+    node_trace_started = time.perf_counter()
     node_trace = build_brain_node_trace(
         latency_ms=latency_ms,
         status=brain_output.status,
@@ -1037,7 +1107,9 @@ def run_conversacion_simple_turn(
         provider_exception=call.provider_exception,
         include_provider_exception_details=forensic_enabled,
     )
+    _record_stage("build_brain_node_trace", node_trace_started)
 
+    turn_trace_started = time.perf_counter()
     turn_trace = ConversationSimpleTurnTrace(
         turn_id=turn_id,
         timestamp_utc=now_iso,
@@ -1054,16 +1126,26 @@ def run_conversacion_simple_turn(
         brain_model_succeeded=model_succeeded,
         brain_fallback_reason_code=fallback_reason_code,
         context_id=effective_context_id,
-        stage_timings_ms={"brain_call": latency_ms},
+        stage_timings_ms=stage_timings_ms,
         memory_observability=memory_obs,
         nodes={"brain": node_trace},
         runtime_version=runtime_version,
     )
+    _record_stage("build_turn_trace", turn_trace_started)
 
+    save_canonical_started = time.perf_counter()
     repo.save_state(state, canonical_state)
+    _record_stage("save_canonical_state", save_canonical_started)
+    save_recent_started = time.perf_counter()
     repo.save_recent_dialogue(state, recent_dialogue)
+    _record_stage("save_recent_dialogue", save_recent_started)
+    append_trace_started = time.perf_counter()
     repo.append_trace(state, turn_trace)
+    _record_stage("append_turn_trace", append_trace_started)
+    persist_started = time.perf_counter()
     save_session_state(state)
+    _record_stage("save_session_state", persist_started)
+    _record_stage("turn_total", turn_started)
 
     meta = {
         "turn_id": turn_id,
@@ -1073,5 +1155,7 @@ def run_conversacion_simple_turn(
         "response_id": call.response_id,
         "closure_readiness": brain_output.state_patch.conversation_state.closure_readiness,
         "finish_button_armed": canonical_state.ui_state.finish_button_armed,
+        "stage_timings_ms": stage_timings_ms,
+        "stage_timings_precise_ms": stage_timings_precise_ms,
     }
     return reply, state, meta

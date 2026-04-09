@@ -6,6 +6,7 @@ from typing import Any
 
 import logging
 import secrets
+import time
 
 from fastapi import HTTPException
 
@@ -339,16 +340,27 @@ def _should_auto_reset_for_fresh_opener(*, state: SessionState, message: str) ->
 
 
 def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: bool = False) -> dict[str, Any]:
+    turn_started = time.perf_counter()
+    timing_ms: dict[str, int] = {}
+    timing_precise_ms: dict[str, float] = {}
+
+    def _mark(stage: str, started_at: float) -> None:
+        elapsed_ms = round((time.perf_counter() - started_at) * 1000, 3)
+        timing_precise_ms[stage] = elapsed_ms
+        timing_ms[stage] = int(elapsed_ms)
+
     post_commit_housekeeping_error: str | None = None
     resolved_flow_id: str | None = None
     try:
         with acquire_session_execution_lock(user_id=user_id, session_id=session_id):
+            touch_started = time.perf_counter()
             touch_ttl = touch_existing_session_if_present(
                 user_id=user_id,
                 session_id=session_id,
                 scope="active",
                 reason="interfaz_usuario_turn_lock_acquired",
             )
+            _mark("touch_existing_session", touch_started)
             logger.info(
                 "interfaz_usuario_turn_started session=%s new_conversation=%s ttl_seconds=%s",
                 f"{user_id}:{session_id}",
@@ -358,30 +370,53 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
             resolved_session_id = session_id
             auto_reset_applied = False
             if new_conversation:
+                new_conv_started = time.perf_counter()
                 payload = create_new_conversation(user_id=user_id, base_session_id=session_id)
                 resolved_session_id = payload["session_id"]
+                _mark("create_new_conversation", new_conv_started)
             else:
+                load_base_started = time.perf_counter()
                 base_state = get_session_state(user_id=user_id, session_id=session_id)
+                _mark("load_base_state", load_base_started)
+                surface_guard_started = time.perf_counter()
                 ensure_session_surface(state=base_state, surface='interfaz_usuario')
+                _mark("ensure_surface_base_state", surface_guard_started)
+                read_bound_started = time.perf_counter()
                 base_bound_surface_context = _read_bound_surface_context(base_state)
+                _mark("read_bound_surface_context_base", read_bound_started)
                 if base_bound_surface_context is None:
+                    ensure_ctx_started = time.perf_counter()
                     ensure_session_context(state=base_state)
+                    _mark("ensure_session_context_legacy_backfill", ensure_ctx_started)
+                    read_bound_after_started = time.perf_counter()
                     base_bound_surface_context = _read_bound_surface_context(base_state)
+                    _mark("read_bound_surface_context_after_backfill", read_bound_after_started)
                 is_negotiation_flow = isinstance(base_bound_surface_context, tuple) and base_bound_surface_context[0] == "negociacion"
                 if is_negotiation_flow and _should_auto_reset_for_fresh_opener(state=base_state, message=message):
+                    auto_new_conv_started = time.perf_counter()
                     payload = create_new_conversation(user_id=user_id, base_session_id=session_id)
                     resolved_session_id = payload["session_id"]
                     auto_reset_applied = True
+                    _mark("auto_reset_create_new_conversation", auto_new_conv_started)
 
+            load_active_started = time.perf_counter()
             state = get_session_state(user_id=user_id, session_id=resolved_session_id)
+            _mark("load_active_state", load_active_started)
+            ensure_surface_active_started = time.perf_counter()
             ensure_session_surface(state=state, surface='interfaz_usuario')
+            _mark("ensure_surface_active_state", ensure_surface_active_started)
+            read_bound_active_started = time.perf_counter()
             bound_surface_context = _read_bound_surface_context(state)
+            _mark("read_bound_surface_context_active", read_bound_active_started)
             if bound_surface_context is None:
                 raise RuntimeError("session_context_required")
             flow_id, effective_context_id = bound_surface_context
             resolved_flow_id = flow_id
             if flow_id == "conversacion_simple":
+                config_started = time.perf_counter()
                 config = build_conversacion_simple_pipeline_config(context_id=effective_context_id, stateful=True)
+                _mark("build_conversacion_simple_pipeline_config", config_started)
+                turn_context_started = time.perf_counter()
                 turn_context = build_conversacion_simple_turn_context(
                     state=state,
                     entrypoint="/api/interfaz_usuario/negociacion/turn",
@@ -389,12 +424,15 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
                     context_source="interfaz_usuario_session_bound",
                     requested_context_id=effective_context_id,
                 )
+                _mark("build_conversacion_simple_turn_context", turn_context_started)
+                pipeline_started = time.perf_counter()
                 reply, _, cs_meta = run_conversacion_simple_turn(
                     state=state,
                     user_message=message,
                     config=config,
                     turn_context=turn_context,
                 )
+                _mark("run_conversacion_simple_turn", pipeline_started)
                 meta = {
                     "trace_count": len(resolve_traces(state)),
                     "latest_turn_id": cs_meta.get("turn_id"),
@@ -426,6 +464,8 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
                         "flow_id": flow_id,
                         "context_id": effective_context_id,
                     },
+                    "latency_pipeline_stage_timings_ms": cs_meta.get("stage_timings_ms"),
+                    "latency_pipeline_stage_timings_precise_ms": cs_meta.get("stage_timings_precise_ms"),
                 }
             else:
                 bound_context = ensure_session_context(state=state, requested_context_id=effective_context_id)
@@ -450,7 +490,9 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
                     turn_context=turn_context,
                 )
             try:
+                ttl_started = time.perf_counter()
                 apply_session_ttl(state, scope="active", reason="interfaz_usuario_turn_completed")
+                _mark("apply_session_ttl_completed", ttl_started)
             except Exception as post_commit_exc:
                 post_commit_housekeeping_error = _diagnostic_from_exception(post_commit_exc)
                 logger.warning(
@@ -538,4 +580,12 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
         "auto_reset_applied": auto_reset_applied,
         "finish_button_armed": finish_button_armed,
         "post_commit_housekeeping_error": post_commit_housekeeping_error,
+        "latency_breakdown_ms": {
+            "surface_stage_timings_ms": timing_ms,
+            "surface_stage_timings_precise_ms": timing_precise_ms,
+            "pipeline_stage_timings_ms": meta.get("latency_pipeline_stage_timings_ms") or {},
+            "pipeline_stage_timings_precise_ms": meta.get("latency_pipeline_stage_timings_precise_ms") or {},
+            "surface_total_ms": int((time.perf_counter() - turn_started) * 1000),
+            "surface_total_precise_ms": round((time.perf_counter() - turn_started) * 1000, 3),
+        },
     }

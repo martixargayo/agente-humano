@@ -1,0 +1,2184 @@
+{
+  "report_name": "forensics_interfaz_usuario_conversacion_simple_latency",
+  "context_id": "negociacion_sala_reuniones",
+  "generated_at": "2026-04-09T17:07:32Z",
+  "openai_key_present": false,
+  "experiments": [
+    {
+      "label": "single_short",
+      "fake_openai": true,
+      "forensic": false,
+      "disable_persistence": false,
+      "turns": [
+        {
+          "label": "single_short_t1",
+          "message": "hola",
+          "http_total_ms": 159.434,
+          "backend_total_ms": 149.08,
+          "pre_openai_ms": 28.406,
+          "openai_ms": 120.337,
+          "post_openai_ms": 0.337,
+          "parse_json_ms": 0.0,
+          "pydantic_validate_ms": 0.113,
+          "apply_patch_ms": 0.123,
+          "save_state_ms": 0.041,
+          "append_trace_ms": 0.06,
+          "response_status": 200,
+          "response_reply_len": 93,
+          "surface_total_ms": 152.562,
+          "pipeline_turn_total_ms": 149.031,
+          "stage_breakdown": {
+            "surface::touch_existing_session": 0.09,
+            "surface::load_base_state": 0.012,
+            "surface::ensure_surface_base_state": 0.005,
+            "surface::read_bound_surface_context_base": 0.068,
+            "surface::load_active_state": 0.005,
+            "surface::ensure_surface_active_state": 0.001,
+            "surface::read_bound_surface_context_active": 0.008,
+            "surface::build_conversacion_simple_pipeline_config": 0.451,
+            "surface::build_conversacion_simple_turn_context": 0.375,
+            "surface::run_conversacion_simple_turn": 149.093,
+            "surface::apply_session_ttl_completed": 1.224,
+            "pipeline::validate_turn_context": 0.775,
+            "pipeline::repository_init": 0.011,
+            "pipeline::load_canonical_state": 1.924,
+            "pipeline::load_recent_dialogue": 0.004,
+            "pipeline::build_user_turn": 0.046,
+            "pipeline::load_prompts": 0.44,
+            "pipeline::build_openai_client": 0.013,
+            "pipeline::add_user_message": 0.038,
+            "pipeline::trim_recent_dialogue_after_user": 0.022,
+            "pipeline::build_brain_input": 0.052,
+            "pipeline::build_brain_messages": 1.062,
+            "pipeline::parse_and_validate_brain_output": 0.128,
+            "pipeline::brain_call": 124.364,
+            "pipeline::apply_brain_output_to_state": 0.128,
+            "pipeline::normalize_and_add_assistant_message": 0.088,
+            "pipeline::trim_recent_dialogue_after_assistant": 0.016,
+            "pipeline::memory_maintenance": 0.013,
+            "pipeline::build_brain_node_trace": 0.092,
+            "pipeline::build_turn_trace": 0.04,
+            "pipeline::save_canonical_state": 0.295,
+            "pipeline::save_recent_dialogue": 0.031,
+            "pipeline::append_turn_trace": 0.064,
+            "pipeline::save_session_state": 0.045,
+            "pipeline::turn_total": 149.031
+          }
+        }
+      ],
+      "aggregates_ms": {
+        "http_total_ms": {
+          "avg": 159.434,
+          "p50": 159.434,
+          "p95": 159.434
+        },
+        "backend_total_ms": {
+          "avg": 149.08,
+          "p50": 149.08,
+          "p95": 149.08
+        },
+        "pre_openai_ms": {
+          "avg": 28.406,
+          "p50": 28.406,
+          "p95": 28.406
+        },
+        "openai_ms": {
+          "avg": 120.337,
+          "p50": 120.337,
+          "p95": 120.337
+        },
+        "post_openai_ms": {
+          "avg": 0.337,
+          "p50": 0.337,
+          "p95": 0.337
+        },
+        "parse_json_ms": {
+          "avg": 0.0,
+          "p50": 0.0,
+          "p95": 0.0
+        },
+        "pydantic_validate_ms": {
+          "avg": 0.113,
+          "p50": 0.113,
+          "p95": 0.113
+        },
+        "apply_patch_ms": {
+          "avg": 0.123,
+          "p50": 0.123,
+          "p95": 0.123
+        },
+        "save_state_ms": {
+          "avg": 0.041,
+          "p50": 0.041,
+          "p95": 0.041
+        },
+        "append_trace_ms": {
+          "avg": 0.06,
+          "p50": 0.06,
+          "p95": 0.06
+        },
+        "surface_total_ms": {
+          "avg": 152.562,
+          "p50": 152.562,
+          "p95": 152.562
+        },
+        "pipeline_turn_total_ms": {
+          "avg": 149.031,
+          "p50": 149.031,
+          "p95": 149.031
+        }
+      },
+      "stage_aggregates_ms": {
+        "surface::touch_existing_session": {
+          "avg": 0.09,
+          "p50": 0.09,
+          "p95": 0.09
+        },
+        "surface::load_base_state": {
+          "avg": 0.012,
+          "p50": 0.012,
+          "p95": 0.012
+        },
+        "surface::ensure_surface_base_state": {
+          "avg": 0.005,
+          "p50": 0.005,
+          "p95": 0.005
+        },
+        "surface::read_bound_surface_context_base": {
+          "avg": 0.068,
+          "p50": 0.068,
+          "p95": 0.068
+        },
+        "surface::load_active_state": {
+          "avg": 0.005,
+          "p50": 0.005,
+          "p95": 0.005
+        },
+        "surface::ensure_surface_active_state": {
+          "avg": 0.001,
+          "p50": 0.001,
+          "p95": 0.001
+        },
+        "surface::read_bound_surface_context_active": {
+          "avg": 0.008,
+          "p50": 0.008,
+          "p95": 0.008
+        },
+        "surface::build_conversacion_simple_pipeline_config": {
+          "avg": 0.451,
+          "p50": 0.451,
+          "p95": 0.451
+        },
+        "surface::build_conversacion_simple_turn_context": {
+          "avg": 0.375,
+          "p50": 0.375,
+          "p95": 0.375
+        },
+        "surface::run_conversacion_simple_turn": {
+          "avg": 149.093,
+          "p50": 149.093,
+          "p95": 149.093
+        },
+        "surface::apply_session_ttl_completed": {
+          "avg": 1.224,
+          "p50": 1.224,
+          "p95": 1.224
+        },
+        "pipeline::validate_turn_context": {
+          "avg": 0.775,
+          "p50": 0.775,
+          "p95": 0.775
+        },
+        "pipeline::repository_init": {
+          "avg": 0.011,
+          "p50": 0.011,
+          "p95": 0.011
+        },
+        "pipeline::load_canonical_state": {
+          "avg": 1.924,
+          "p50": 1.924,
+          "p95": 1.924
+        },
+        "pipeline::load_recent_dialogue": {
+          "avg": 0.004,
+          "p50": 0.004,
+          "p95": 0.004
+        },
+        "pipeline::build_user_turn": {
+          "avg": 0.046,
+          "p50": 0.046,
+          "p95": 0.046
+        },
+        "pipeline::load_prompts": {
+          "avg": 0.44,
+          "p50": 0.44,
+          "p95": 0.44
+        },
+        "pipeline::build_openai_client": {
+          "avg": 0.013,
+          "p50": 0.013,
+          "p95": 0.013
+        },
+        "pipeline::add_user_message": {
+          "avg": 0.038,
+          "p50": 0.038,
+          "p95": 0.038
+        },
+        "pipeline::trim_recent_dialogue_after_user": {
+          "avg": 0.022,
+          "p50": 0.022,
+          "p95": 0.022
+        },
+        "pipeline::build_brain_input": {
+          "avg": 0.052,
+          "p50": 0.052,
+          "p95": 0.052
+        },
+        "pipeline::build_brain_messages": {
+          "avg": 1.062,
+          "p50": 1.062,
+          "p95": 1.062
+        },
+        "pipeline::parse_and_validate_brain_output": {
+          "avg": 0.128,
+          "p50": 0.128,
+          "p95": 0.128
+        },
+        "pipeline::brain_call": {
+          "avg": 124.364,
+          "p50": 124.364,
+          "p95": 124.364
+        },
+        "pipeline::apply_brain_output_to_state": {
+          "avg": 0.128,
+          "p50": 0.128,
+          "p95": 0.128
+        },
+        "pipeline::normalize_and_add_assistant_message": {
+          "avg": 0.088,
+          "p50": 0.088,
+          "p95": 0.088
+        },
+        "pipeline::trim_recent_dialogue_after_assistant": {
+          "avg": 0.016,
+          "p50": 0.016,
+          "p95": 0.016
+        },
+        "pipeline::memory_maintenance": {
+          "avg": 0.013,
+          "p50": 0.013,
+          "p95": 0.013
+        },
+        "pipeline::build_brain_node_trace": {
+          "avg": 0.092,
+          "p50": 0.092,
+          "p95": 0.092
+        },
+        "pipeline::build_turn_trace": {
+          "avg": 0.04,
+          "p50": 0.04,
+          "p95": 0.04
+        },
+        "pipeline::save_canonical_state": {
+          "avg": 0.295,
+          "p50": 0.295,
+          "p95": 0.295
+        },
+        "pipeline::save_recent_dialogue": {
+          "avg": 0.031,
+          "p50": 0.031,
+          "p95": 0.031
+        },
+        "pipeline::append_turn_trace": {
+          "avg": 0.064,
+          "p50": 0.064,
+          "p95": 0.064
+        },
+        "pipeline::save_session_state": {
+          "avg": 0.045,
+          "p50": 0.045,
+          "p95": 0.045
+        },
+        "pipeline::turn_total": {
+          "avg": 149.031,
+          "p50": 149.031,
+          "p95": 149.031
+        }
+      }
+    },
+    {
+      "label": "cold_vs_warm_short",
+      "fake_openai": true,
+      "forensic": false,
+      "disable_persistence": false,
+      "turns": [
+        {
+          "label": "cold_vs_warm_short_t1",
+          "message": "hola",
+          "http_total_ms": 137.938,
+          "backend_total_ms": 129.257,
+          "pre_openai_ms": 8.678,
+          "openai_ms": 120.33,
+          "post_openai_ms": 0.249,
+          "parse_json_ms": 0.0,
+          "pydantic_validate_ms": 0.107,
+          "apply_patch_ms": 0.062,
+          "save_state_ms": 0.016,
+          "append_trace_ms": 0.064,
+          "response_status": 200,
+          "response_reply_len": 93,
+          "surface_total_ms": 130.767,
+          "pipeline_turn_total_ms": 129.214,
+          "stage_breakdown": {
+            "surface::touch_existing_session": 0.069,
+            "surface::load_base_state": 0.011,
+            "surface::ensure_surface_base_state": 0.157,
+            "surface::read_bound_surface_context_base": 0.029,
+            "surface::load_active_state": 0.01,
+            "surface::ensure_surface_active_state": 0.002,
+            "surface::read_bound_surface_context_active": 0.05,
+            "surface::build_conversacion_simple_pipeline_config": 0.37,
+            "surface::build_conversacion_simple_turn_context": 0.226,
+            "surface::run_conversacion_simple_turn": 129.268,
+            "surface::apply_session_ttl_completed": 0.211,
+            "pipeline::validate_turn_context": 0.569,
+            "pipeline::repository_init": 0.006,
+            "pipeline::load_canonical_state": 1.579,
+            "pipeline::load_recent_dialogue": 0.005,
+            "pipeline::build_user_turn": 0.012,
+            "pipeline::load_prompts": 0.34,
+            "pipeline::build_openai_client": 0.009,
+            "pipeline::add_user_message": 0.017,
+            "pipeline::trim_recent_dialogue_after_user": 0.012,
+            "pipeline::build_brain_input": 0.028,
+            "pipeline::build_brain_messages": 1.495,
+            "pipeline::parse_and_validate_brain_output": 0.127,
+            "pipeline::brain_call": 124.47,
+            "pipeline::apply_brain_output_to_state": 0.066,
+            "pipeline::normalize_and_add_assistant_message": 0.033,
+            "pipeline::trim_recent_dialogue_after_assistant": 0.023,
+            "pipeline::memory_maintenance": 0.006,
+            "pipeline::build_brain_node_trace": 0.022,
+            "pipeline::build_turn_trace": 0.03,
+            "pipeline::save_canonical_state": 0.232,
+            "pipeline::save_recent_dialogue": 0.01,
+            "pipeline::append_turn_trace": 0.068,
+            "pipeline::save_session_state": 0.019,
+            "pipeline::turn_total": 129.214
+          }
+        },
+        {
+          "label": "cold_vs_warm_short_t2",
+          "message": "hola",
+          "http_total_ms": 133.245,
+          "backend_total_ms": 125.264,
+          "pre_openai_ms": 4.742,
+          "openai_ms": 120.29,
+          "post_openai_ms": 0.232,
+          "parse_json_ms": 0.0,
+          "pydantic_validate_ms": 0.099,
+          "apply_patch_ms": 0.073,
+          "save_state_ms": 0.016,
+          "append_trace_ms": 0.044,
+          "response_status": 200,
+          "response_reply_len": 93,
+          "surface_total_ms": 126.415,
+          "pipeline_turn_total_ms": 125.224,
+          "stage_breakdown": {
+            "surface::touch_existing_session": 0.059,
+            "surface::load_base_state": 0.012,
+            "surface::ensure_surface_base_state": 0.006,
+            "surface::read_bound_surface_context_base": 0.03,
+            "surface::load_active_state": 0.004,
+            "surface::ensure_surface_active_state": 0.001,
+            "surface::read_bound_surface_context_active": 0.034,
+            "surface::build_conversacion_simple_pipeline_config": 0.299,
+            "surface::build_conversacion_simple_turn_context": 0.164,
+            "surface::run_conversacion_simple_turn": 125.276,
+            "surface::apply_session_ttl_completed": 0.189,
+            "pipeline::validate_turn_context": 0.504,
+            "pipeline::repository_init": 0.005,
+            "pipeline::load_canonical_state": 0.066,
+            "pipeline::load_recent_dialogue": 0.011,
+            "pipeline::build_user_turn": 0.012,
+            "pipeline::load_prompts": 0.134,
+            "pipeline::build_openai_client": 0.007,
+            "pipeline::add_user_message": 0.011,
+            "pipeline::trim_recent_dialogue_after_user": 0.013,
+            "pipeline::build_brain_input": 0.027,
+            "pipeline::build_brain_messages": 0.432,
+            "pipeline::parse_and_validate_brain_output": 0.112,
+            "pipeline::brain_call": 123.322,
+            "pipeline::apply_brain_output_to_state": 0.078,
+            "pipeline::normalize_and_add_assistant_message": 0.028,
+            "pipeline::trim_recent_dialogue_after_assistant": 0.016,
+            "pipeline::memory_maintenance": 0.007,
+            "pipeline::build_brain_node_trace": 0.03,
+            "pipeline::build_turn_trace": 0.073,
+            "pipeline::save_canonical_state": 0.205,
+            "pipeline::save_recent_dialogue": 0.013,
+            "pipeline::append_turn_trace": 0.048,
+            "pipeline::save_session_state": 0.018,
+            "pipeline::turn_total": 125.224
+          }
+        },
+        {
+          "label": "cold_vs_warm_short_t3",
+          "message": "hola",
+          "http_total_ms": 133.031,
+          "backend_total_ms": 124.715,
+          "pre_openai_ms": 4.218,
+          "openai_ms": 120.28,
+          "post_openai_ms": 0.217,
+          "parse_json_ms": 0.0,
+          "pydantic_validate_ms": 0.099,
+          "apply_patch_ms": 0.058,
+          "save_state_ms": 0.016,
+          "append_trace_ms": 0.044,
+          "response_status": 200,
+          "response_reply_len": 93,
+          "surface_total_ms": 126.517,
+          "pipeline_turn_total_ms": 124.676,
+          "stage_breakdown": {
+            "surface::touch_existing_session": 0.058,
+            "surface::load_base_state": 0.094,
+            "surface::ensure_surface_base_state": 0.016,
+            "surface::read_bound_surface_context_base": 0.031,
+            "surface::load_active_state": 0.017,
+            "surface::ensure_surface_active_state": 0.002,
+            "surface::read_bound_surface_context_active": 0.01,
+            "surface::build_conversacion_simple_pipeline_config": 0.397,
+            "surface::build_conversacion_simple_turn_context": 0.291,
+            "surface::run_conversacion_simple_turn": 124.728,
+            "surface::apply_session_ttl_completed": 0.17,
+            "pipeline::validate_turn_context": 0.436,
+            "pipeline::repository_init": 0.005,
+            "pipeline::load_canonical_state": 0.068,
+            "pipeline::load_recent_dialogue": 0.027,
+            "pipeline::build_user_turn": 0.012,
+            "pipeline::load_prompts": 0.139,
+            "pipeline::build_openai_client": 0.007,
+            "pipeline::add_user_message": 0.011,
+            "pipeline::trim_recent_dialogue_after_user": 0.014,
+            "pipeline::build_brain_input": 0.026,
+            "pipeline::build_brain_messages": 0.292,
+            "pipeline::parse_and_validate_brain_output": 0.112,
+            "pipeline::brain_call": 123.013,
+            "pipeline::apply_brain_output_to_state": 0.063,
+            "pipeline::normalize_and_add_assistant_message": 0.028,
+            "pipeline::trim_recent_dialogue_after_assistant": 0.016,
+            "pipeline::memory_maintenance": 0.007,
+            "pipeline::build_brain_node_trace": 0.02,
+            "pipeline::build_turn_trace": 0.027,
+            "pipeline::save_canonical_state": 0.241,
+            "pipeline::save_recent_dialogue": 0.017,
+            "pipeline::append_turn_trace": 0.047,
+            "pipeline::save_session_state": 0.019,
+            "pipeline::turn_total": 124.676
+          }
+        },
+        {
+          "label": "cold_vs_warm_short_t4",
+          "message": "hola",
+          "http_total_ms": 133.145,
+          "backend_total_ms": 125.164,
+          "pre_openai_ms": 4.301,
+          "openai_ms": 120.266,
+          "post_openai_ms": 0.597,
+          "parse_json_ms": 0.0,
+          "pydantic_validate_ms": 0.119,
+          "apply_patch_ms": 0.399,
+          "save_state_ms": 0.017,
+          "append_trace_ms": 0.062,
+          "response_status": 200,
+          "response_reply_len": 93,
+          "surface_total_ms": 127.154,
+          "pipeline_turn_total_ms": 125.124,
+          "stage_breakdown": {
+            "surface::touch_existing_session": 0.058,
+            "surface::load_base_state": 0.013,
+            "surface::ensure_surface_base_state": 0.005,
+            "surface::read_bound_surface_context_base": 0.027,
+            "surface::load_active_state": 0.004,
+            "surface::ensure_surface_active_state": 0.001,
+            "surface::read_bound_surface_context_active": 0.007,
+            "surface::build_conversacion_simple_pipeline_config": 0.975,
+            "surface::build_conversacion_simple_turn_context": 0.247,
+            "surface::run_conversacion_simple_turn": 125.181,
+            "surface::apply_session_ttl_completed": 0.256,
+            "pipeline::validate_turn_context": 0.582,
+            "pipeline::repository_init": 0.005,
+            "pipeline::load_canonical_state": 0.063,
+            "pipeline::load_recent_dialogue": 0.023,
+            "pipeline::build_user_turn": 0.012,
+            "pipeline::load_prompts": 0.132,
+            "pipeline::build_openai_client": 0.007,
+            "pipeline::add_user_message": 0.011,
+            "pipeline::trim_recent_dialogue_after_user": 0.014,
+            "pipeline::build_brain_input": 0.027,
+            "pipeline::build_brain_messages": 0.264,
+            "pipeline::parse_and_validate_brain_output": 0.134,
+            "pipeline::brain_call": 123.059,
+            "pipeline::apply_brain_output_to_state": 0.406,
+            "pipeline::normalize_and_add_assistant_message": 0.031,
+            "pipeline::trim_recent_dialogue_after_assistant": 0.018,
+            "pipeline::memory_maintenance": 0.006,
+            "pipeline::build_brain_node_trace": 0.02,
+            "pipeline::build_turn_trace": 0.029,
+            "pipeline::save_canonical_state": 0.158,
+            "pipeline::save_recent_dialogue": 0.026,
+            "pipeline::append_turn_trace": 0.067,
+            "pipeline::save_session_state": 0.02,
+            "pipeline::turn_total": 125.124
+          }
+        },
+        {
+          "label": "cold_vs_warm_short_t5",
+          "message": "hola",
+          "http_total_ms": 133.302,
+          "backend_total_ms": 124.868,
+          "pre_openai_ms": 4.337,
+          "openai_ms": 120.282,
+          "post_openai_ms": 0.249,
+          "parse_json_ms": 0.0,
+          "pydantic_validate_ms": 0.09,
+          "apply_patch_ms": 0.102,
+          "save_state_ms": 0.015,
+          "append_trace_ms": 0.042,
+          "response_status": 200,
+          "response_reply_len": 93,
+          "surface_total_ms": 126.627,
+          "pipeline_turn_total_ms": 124.827,
+          "stage_breakdown": {
+            "surface::touch_existing_session": 0.056,
+            "surface::load_base_state": 0.012,
+            "surface::ensure_surface_base_state": 0.005,
+            "surface::read_bound_surface_context_base": 0.028,
+            "surface::load_active_state": 0.004,
+            "surface::ensure_surface_active_state": 0.001,
+            "surface::read_bound_surface_context_active": 0.007,
+            "surface::build_conversacion_simple_pipeline_config": 0.323,
+            "surface::build_conversacion_simple_turn_context": 0.183,
+            "surface::run_conversacion_simple_turn": 124.881,
+            "surface::apply_session_ttl_completed": 0.587,
+            "pipeline::validate_turn_context": 0.498,
+            "pipeline::repository_init": 0.005,
+            "pipeline::load_canonical_state": 0.062,
+            "pipeline::load_recent_dialogue": 0.027,
+            "pipeline::build_user_turn": 0.011,
+            "pipeline::load_prompts": 0.135,
+            "pipeline::build_openai_client": 0.007,
+            "pipeline::add_user_message": 0.012,
+            "pipeline::trim_recent_dialogue_after_user": 0.018,
+            "pipeline::build_brain_input": 0.041,
+            "pipeline::build_brain_messages": 0.273,
+            "pipeline::parse_and_validate_brain_output": 0.104,
+            "pipeline::brain_call": 123.039,
+            "pipeline::apply_brain_output_to_state": 0.106,
+            "pipeline::normalize_and_add_assistant_message": 0.027,
+            "pipeline::trim_recent_dialogue_after_assistant": 0.019,
+            "pipeline::memory_maintenance": 0.007,
+            "pipeline::build_brain_node_trace": 0.022,
+            "pipeline::build_turn_trace": 0.031,
+            "pipeline::save_canonical_state": 0.209,
+            "pipeline::save_recent_dialogue": 0.023,
+            "pipeline::append_turn_trace": 0.046,
+            "pipeline::save_session_state": 0.018,
+            "pipeline::turn_total": 124.827
+          }
+        },
+        {
+          "label": "cold_vs_warm_short_t6",
+          "message": "hola",
+          "http_total_ms": 135.802,
+          "backend_total_ms": 127.738,
+          "pre_openai_ms": 7.101,
+          "openai_ms": 120.322,
+          "post_openai_ms": 0.315,
+          "parse_json_ms": 0.0,
+          "pydantic_validate_ms": 0.127,
+          "apply_patch_ms": 0.088,
+          "save_state_ms": 0.025,
+          "append_trace_ms": 0.075,
+          "response_status": 200,
+          "response_reply_len": 93,
+          "surface_total_ms": 129.099,
+          "pipeline_turn_total_ms": 127.665,
+          "stage_breakdown": {
+            "surface::touch_existing_session": 0.056,
+            "surface::load_base_state": 0.013,
+            "surface::ensure_surface_base_state": 0.006,
+            "surface::read_bound_surface_context_base": 0.054,
+            "surface::load_active_state": 0.033,
+            "surface::ensure_surface_active_state": 0.002,
+            "surface::read_bound_surface_context_active": 0.013,
+            "surface::build_conversacion_simple_pipeline_config": 0.385,
+            "surface::build_conversacion_simple_turn_context": 0.174,
+            "surface::run_conversacion_simple_turn": 127.755,
+            "surface::apply_session_ttl_completed": 0.241,
+            "pipeline::validate_turn_context": 0.415,
+            "pipeline::repository_init": 0.004,
+            "pipeline::load_canonical_state": 0.084,
+            "pipeline::load_recent_dialogue": 0.042,
+            "pipeline::build_user_turn": 0.012,
+            "pipeline::load_prompts": 0.475,
+            "pipeline::build_openai_client": 0.099,
+            "pipeline::add_user_message": 0.027,
+            "pipeline::trim_recent_dialogue_after_user": 0.07,
+            "pipeline::build_brain_input": 0.044,
+            "pipeline::build_brain_messages": 0.419,
+            "pipeline::parse_and_validate_brain_output": 0.148,
+            "pipeline::brain_call": 124.979,
+            "pipeline::apply_brain_output_to_state": 0.094,
+            "pipeline::normalize_and_add_assistant_message": 0.035,
+            "pipeline::trim_recent_dialogue_after_assistant": 0.029,
+            "pipeline::memory_maintenance": 0.011,
+            "pipeline::build_brain_node_trace": 0.029,
+            "pipeline::build_turn_trace": 0.083,
+            "pipeline::save_canonical_state": 0.366,
+            "pipeline::save_recent_dialogue": 0.051,
+            "pipeline::append_turn_trace": 0.081,
+            "pipeline::save_session_state": 0.029,
+            "pipeline::turn_total": 127.665
+          }
+        }
+      ],
+      "aggregates_ms": {
+        "http_total_ms": {
+          "avg": 134.41,
+          "p50": 133.274,
+          "p95": 135.802
+        },
+        "backend_total_ms": {
+          "avg": 126.168,
+          "p50": 125.214,
+          "p95": 127.738
+        },
+        "pre_openai_ms": {
+          "avg": 5.563,
+          "p50": 4.54,
+          "p95": 7.101
+        },
+        "openai_ms": {
+          "avg": 120.295,
+          "p50": 120.286,
+          "p95": 120.322
+        },
+        "post_openai_ms": {
+          "avg": 0.31,
+          "p50": 0.249,
+          "p95": 0.315
+        },
+        "parse_json_ms": {
+          "avg": 0.0,
+          "p50": 0.0,
+          "p95": 0.0
+        },
+        "pydantic_validate_ms": {
+          "avg": 0.107,
+          "p50": 0.103,
+          "p95": 0.119
+        },
+        "apply_patch_ms": {
+          "avg": 0.13,
+          "p50": 0.08,
+          "p95": 0.102
+        },
+        "save_state_ms": {
+          "avg": 0.018,
+          "p50": 0.016,
+          "p95": 0.017
+        },
+        "append_trace_ms": {
+          "avg": 0.055,
+          "p50": 0.053,
+          "p95": 0.064
+        },
+        "surface_total_ms": {
+          "avg": 127.763,
+          "p50": 126.891,
+          "p95": 129.099
+        },
+        "pipeline_turn_total_ms": {
+          "avg": 126.122,
+          "p50": 125.174,
+          "p95": 127.665
+        }
+      },
+      "stage_aggregates_ms": {
+        "surface::touch_existing_session": {
+          "avg": 0.059,
+          "p50": 0.058,
+          "p95": 0.059
+        },
+        "surface::load_base_state": {
+          "avg": 0.026,
+          "p50": 0.013,
+          "p95": 0.013
+        },
+        "surface::ensure_surface_base_state": {
+          "avg": 0.033,
+          "p50": 0.006,
+          "p95": 0.016
+        },
+        "surface::read_bound_surface_context_base": {
+          "avg": 0.033,
+          "p50": 0.029,
+          "p95": 0.031
+        },
+        "surface::load_active_state": {
+          "avg": 0.012,
+          "p50": 0.007,
+          "p95": 0.017
+        },
+        "surface::ensure_surface_active_state": {
+          "avg": 0.002,
+          "p50": 0.002,
+          "p95": 0.002
+        },
+        "surface::read_bound_surface_context_active": {
+          "avg": 0.02,
+          "p50": 0.011,
+          "p95": 0.034
+        },
+        "surface::build_conversacion_simple_pipeline_config": {
+          "avg": 0.458,
+          "p50": 0.378,
+          "p95": 0.397
+        },
+        "surface::build_conversacion_simple_turn_context": {
+          "avg": 0.214,
+          "p50": 0.205,
+          "p95": 0.247
+        },
+        "surface::run_conversacion_simple_turn": {
+          "avg": 126.181,
+          "p50": 125.228,
+          "p95": 127.755
+        },
+        "surface::apply_session_ttl_completed": {
+          "avg": 0.276,
+          "p50": 0.226,
+          "p95": 0.256
+        },
+        "pipeline::validate_turn_context": {
+          "avg": 0.501,
+          "p50": 0.501,
+          "p95": 0.569
+        },
+        "pipeline::repository_init": {
+          "avg": 0.005,
+          "p50": 0.005,
+          "p95": 0.005
+        },
+        "pipeline::load_canonical_state": {
+          "avg": 0.32,
+          "p50": 0.067,
+          "p95": 0.084
+        },
+        "pipeline::load_recent_dialogue": {
+          "avg": 0.023,
+          "p50": 0.025,
+          "p95": 0.027
+        },
+        "pipeline::build_user_turn": {
+          "avg": 0.012,
+          "p50": 0.012,
+          "p95": 0.012
+        },
+        "pipeline::load_prompts": {
+          "avg": 0.226,
+          "p50": 0.137,
+          "p95": 0.34
+        },
+        "pipeline::build_openai_client": {
+          "avg": 0.023,
+          "p50": 0.007,
+          "p95": 0.009
+        },
+        "pipeline::add_user_message": {
+          "avg": 0.015,
+          "p50": 0.011,
+          "p95": 0.017
+        },
+        "pipeline::trim_recent_dialogue_after_user": {
+          "avg": 0.024,
+          "p50": 0.014,
+          "p95": 0.018
+        },
+        "pipeline::build_brain_input": {
+          "avg": 0.032,
+          "p50": 0.028,
+          "p95": 0.041
+        },
+        "pipeline::build_brain_messages": {
+          "avg": 0.529,
+          "p50": 0.355,
+          "p95": 0.432
+        },
+        "pipeline::parse_and_validate_brain_output": {
+          "avg": 0.123,
+          "p50": 0.119,
+          "p95": 0.134
+        },
+        "pipeline::brain_call": {
+          "avg": 123.647,
+          "p50": 123.191,
+          "p95": 124.47
+        },
+        "pipeline::apply_brain_output_to_state": {
+          "avg": 0.136,
+          "p50": 0.086,
+          "p95": 0.106
+        },
+        "pipeline::normalize_and_add_assistant_message": {
+          "avg": 0.03,
+          "p50": 0.029,
+          "p95": 0.033
+        },
+        "pipeline::trim_recent_dialogue_after_assistant": {
+          "avg": 0.02,
+          "p50": 0.018,
+          "p95": 0.023
+        },
+        "pipeline::memory_maintenance": {
+          "avg": 0.007,
+          "p50": 0.007,
+          "p95": 0.007
+        },
+        "pipeline::build_brain_node_trace": {
+          "avg": 0.024,
+          "p50": 0.022,
+          "p95": 0.029
+        },
+        "pipeline::build_turn_trace": {
+          "avg": 0.046,
+          "p50": 0.03,
+          "p95": 0.073
+        },
+        "pipeline::save_canonical_state": {
+          "avg": 0.235,
+          "p50": 0.221,
+          "p95": 0.241
+        },
+        "pipeline::save_recent_dialogue": {
+          "avg": 0.023,
+          "p50": 0.02,
+          "p95": 0.026
+        },
+        "pipeline::append_turn_trace": {
+          "avg": 0.059,
+          "p50": 0.058,
+          "p95": 0.068
+        },
+        "pipeline::save_session_state": {
+          "avg": 0.021,
+          "p50": 0.019,
+          "p95": 0.02
+        },
+        "pipeline::turn_total": {
+          "avg": 126.122,
+          "p50": 125.174,
+          "p95": 127.665
+        }
+      }
+    },
+    {
+      "label": "multi_turn",
+      "fake_openai": true,
+      "forensic": false,
+      "disable_persistence": false,
+      "turns": [
+        {
+          "label": "multi_turn_t1",
+          "message": "hola",
+          "http_total_ms": 137.309,
+          "backend_total_ms": 127.903,
+          "pre_openai_ms": 7.45,
+          "openai_ms": 120.231,
+          "post_openai_ms": 0.222,
+          "parse_json_ms": 0.0,
+          "pydantic_validate_ms": 0.099,
+          "apply_patch_ms": 0.057,
+          "save_state_ms": 0.018,
+          "append_trace_ms": 0.048,
+          "response_status": 200,
+          "response_reply_len": 93,
+          "surface_total_ms": 129.776,
+          "pipeline_turn_total_ms": 127.854,
+          "stage_breakdown": {
+            "surface::touch_existing_session": 0.056,
+            "surface::load_base_state": 0.012,
+            "surface::ensure_surface_base_state": 0.005,
+            "surface::read_bound_surface_context_base": 0.026,
+            "surface::load_active_state": 0.004,
+            "surface::ensure_surface_active_state": 0.001,
+            "surface::read_bound_surface_context_active": 0.008,
+            "surface::build_conversacion_simple_pipeline_config": 0.363,
+            "surface::build_conversacion_simple_turn_context": 0.207,
+            "surface::run_conversacion_simple_turn": 127.915,
+            "surface::apply_session_ttl_completed": 0.37,
+            "pipeline::validate_turn_context": 0.488,
+            "pipeline::repository_init": 0.005,
+            "pipeline::load_canonical_state": 2.181,
+            "pipeline::load_recent_dialogue": 0.005,
+            "pipeline::build_user_turn": 0.012,
+            "pipeline::load_prompts": 0.153,
+            "pipeline::build_openai_client": 0.008,
+            "pipeline::add_user_message": 0.015,
+            "pipeline::trim_recent_dialogue_after_user": 0.012,
+            "pipeline::build_brain_input": 0.11,
+            "pipeline::build_brain_messages": 0.358,
+            "pipeline::parse_and_validate_brain_output": 0.114,
+            "pipeline::brain_call": 123.732,
+            "pipeline::apply_brain_output_to_state": 0.06,
+            "pipeline::normalize_and_add_assistant_message": 0.028,
+            "pipeline::trim_recent_dialogue_after_assistant": 0.014,
+            "pipeline::memory_maintenance": 0.006,
+            "pipeline::build_brain_node_trace": 0.022,
+            "pipeline::build_turn_trace": 0.029,
+            "pipeline::save_canonical_state": 0.376,
+            "pipeline::save_recent_dialogue": 0.012,
+            "pipeline::append_turn_trace": 0.052,
+            "pipeline::save_session_state": 0.021,
+            "pipeline::turn_total": 127.854
+          }
+        },
+        {
+          "label": "multi_turn_t2",
+          "message": "quiero reservar la sala de reuniones para mañana",
+          "http_total_ms": 133.959,
+          "backend_total_ms": 124.895,
+          "pre_openai_ms": 4.337,
+          "openai_ms": 120.258,
+          "post_openai_ms": 0.3,
+          "parse_json_ms": 0.0,
+          "pydantic_validate_ms": 0.128,
+          "apply_patch_ms": 0.059,
+          "save_state_ms": 0.029,
+          "append_trace_ms": 0.084,
+          "response_status": 200,
+          "response_reply_len": 93,
+          "surface_total_ms": 127.113,
+          "pipeline_turn_total_ms": 124.851,
+          "stage_breakdown": {
+            "surface::touch_existing_session": 0.268,
+            "surface::load_base_state": 0.063,
+            "surface::ensure_surface_base_state": 0.004,
+            "surface::read_bound_surface_context_base": 0.028,
+            "surface::load_active_state": 0.004,
+            "surface::ensure_surface_active_state": 0.001,
+            "surface::read_bound_surface_context_active": 0.007,
+            "surface::build_conversacion_simple_pipeline_config": 0.368,
+            "surface::build_conversacion_simple_turn_context": 0.219,
+            "surface::run_conversacion_simple_turn": 124.906,
+            "surface::apply_session_ttl_completed": 0.488,
+            "pipeline::validate_turn_context": 0.512,
+            "pipeline::repository_init": 0.005,
+            "pipeline::load_canonical_state": 0.088,
+            "pipeline::load_recent_dialogue": 0.011,
+            "pipeline::build_user_turn": 0.013,
+            "pipeline::load_prompts": 0.13,
+            "pipeline::build_openai_client": 0.007,
+            "pipeline::add_user_message": 0.011,
+            "pipeline::trim_recent_dialogue_after_user": 0.013,
+            "pipeline::build_brain_input": 0.026,
+            "pipeline::build_brain_messages": 0.266,
+            "pipeline::parse_and_validate_brain_output": 0.143,
+            "pipeline::brain_call": 123.143,
+            "pipeline::apply_brain_output_to_state": 0.063,
+            "pipeline::normalize_and_add_assistant_message": 0.027,
+            "pipeline::trim_recent_dialogue_after_assistant": 0.016,
+            "pipeline::memory_maintenance": 0.007,
+            "pipeline::build_brain_node_trace": 0.02,
+            "pipeline::build_turn_trace": 0.029,
+            "pipeline::save_canonical_state": 0.195,
+            "pipeline::save_recent_dialogue": 0.012,
+            "pipeline::append_turn_trace": 0.089,
+            "pipeline::save_session_state": 0.033,
+            "pipeline::turn_total": 124.851
+          }
+        },
+        {
+          "label": "multi_turn_t3",
+          "message": "somos 8 personas y necesitamos proyector",
+          "http_total_ms": 133.926,
+          "backend_total_ms": 126.188,
+          "pre_openai_ms": 4.484,
+          "openai_ms": 121.447,
+          "post_openai_ms": 0.257,
+          "parse_json_ms": 0.0,
+          "pydantic_validate_ms": 0.127,
+          "apply_patch_ms": 0.059,
+          "save_state_ms": 0.026,
+          "append_trace_ms": 0.045,
+          "response_status": 200,
+          "response_reply_len": 93,
+          "surface_total_ms": 127.544,
+          "pipeline_turn_total_ms": 126.125,
+          "stage_breakdown": {
+            "surface::touch_existing_session": 0.102,
+            "surface::load_base_state": 0.013,
+            "surface::ensure_surface_base_state": 0.006,
+            "surface::read_bound_surface_context_base": 0.028,
+            "surface::load_active_state": 0.004,
+            "surface::ensure_surface_active_state": 0.001,
+            "surface::read_bound_surface_context_active": 0.007,
+            "surface::build_conversacion_simple_pipeline_config": 0.28,
+            "surface::build_conversacion_simple_turn_context": 0.236,
+            "surface::run_conversacion_simple_turn": 126.206,
+            "surface::apply_session_ttl_completed": 0.186,
+            "pipeline::validate_turn_context": 0.492,
+            "pipeline::repository_init": 0.004,
+            "pipeline::load_canonical_state": 0.096,
+            "pipeline::load_recent_dialogue": 0.016,
+            "pipeline::build_user_turn": 0.011,
+            "pipeline::load_prompts": 0.113,
+            "pipeline::build_openai_client": 0.006,
+            "pipeline::add_user_message": 0.009,
+            "pipeline::trim_recent_dialogue_after_user": 0.011,
+            "pipeline::build_brain_input": 0.022,
+            "pipeline::build_brain_messages": 0.305,
+            "pipeline::parse_and_validate_brain_output": 0.142,
+            "pipeline::brain_call": 124.256,
+            "pipeline::apply_brain_output_to_state": 0.063,
+            "pipeline::normalize_and_add_assistant_message": 0.026,
+            "pipeline::trim_recent_dialogue_after_assistant": 0.017,
+            "pipeline::memory_maintenance": 0.009,
+            "pipeline::build_brain_node_trace": 0.022,
+            "pipeline::build_turn_trace": 0.031,
+            "pipeline::save_canonical_state": 0.279,
+            "pipeline::save_recent_dialogue": 0.019,
+            "pipeline::append_turn_trace": 0.049,
+            "pipeline::save_session_state": 0.03,
+            "pipeline::turn_total": 126.125
+          }
+        },
+        {
+          "label": "multi_turn_t4",
+          "message": "presupuesto limitado, ¿qué opciones hay?",
+          "http_total_ms": 132.378,
+          "backend_total_ms": 125.217,
+          "pre_openai_ms": 4.725,
+          "openai_ms": 120.276,
+          "post_openai_ms": 0.216,
+          "parse_json_ms": 0.0,
+          "pydantic_validate_ms": 0.097,
+          "apply_patch_ms": 0.059,
+          "save_state_ms": 0.016,
+          "append_trace_ms": 0.044,
+          "response_status": 200,
+          "response_reply_len": 93,
+          "surface_total_ms": 126.419,
+          "pipeline_turn_total_ms": 125.183,
+          "stage_breakdown": {
+            "surface::touch_existing_session": 0.053,
+            "surface::load_base_state": 0.013,
+            "surface::ensure_surface_base_state": 0.005,
+            "surface::read_bound_surface_context_base": 0.049,
+            "surface::load_active_state": 0.005,
+            "surface::ensure_surface_active_state": 0.001,
+            "surface::read_bound_surface_context_active": 0.008,
+            "surface::build_conversacion_simple_pipeline_config": 0.348,
+            "surface::build_conversacion_simple_turn_context": 0.171,
+            "surface::run_conversacion_simple_turn": 125.291,
+            "surface::apply_session_ttl_completed": 0.18,
+            "pipeline::validate_turn_context": 0.458,
+            "pipeline::repository_init": 0.005,
+            "pipeline::load_canonical_state": 0.062,
+            "pipeline::load_recent_dialogue": 0.023,
+            "pipeline::build_user_turn": 0.013,
+            "pipeline::load_prompts": 0.126,
+            "pipeline::build_openai_client": 0.008,
+            "pipeline::add_user_message": 0.011,
+            "pipeline::trim_recent_dialogue_after_user": 0.014,
+            "pipeline::build_brain_input": 0.026,
+            "pipeline::build_brain_messages": 0.269,
+            "pipeline::parse_and_validate_brain_output": 0.112,
+            "pipeline::brain_call": 123.277,
+            "pipeline::apply_brain_output_to_state": 0.062,
+            "pipeline::normalize_and_add_assistant_message": 0.063,
+            "pipeline::trim_recent_dialogue_after_assistant": 0.018,
+            "pipeline::memory_maintenance": 0.007,
+            "pipeline::build_brain_node_trace": 0.02,
+            "pipeline::build_turn_trace": 0.326,
+            "pipeline::save_canonical_state": 0.167,
+            "pipeline::save_recent_dialogue": 0.019,
+            "pipeline::append_turn_trace": 0.047,
+            "pipeline::save_session_state": 0.019,
+            "pipeline::turn_total": 125.183
+          }
+        }
+      ],
+      "aggregates_ms": {
+        "http_total_ms": {
+          "avg": 134.393,
+          "p50": 133.942,
+          "p95": 133.959
+        },
+        "backend_total_ms": {
+          "avg": 126.051,
+          "p50": 125.703,
+          "p95": 126.188
+        },
+        "pre_openai_ms": {
+          "avg": 5.249,
+          "p50": 4.604,
+          "p95": 4.725
+        },
+        "openai_ms": {
+          "avg": 120.553,
+          "p50": 120.267,
+          "p95": 120.276
+        },
+        "post_openai_ms": {
+          "avg": 0.249,
+          "p50": 0.239,
+          "p95": 0.257
+        },
+        "parse_json_ms": {
+          "avg": 0.0,
+          "p50": 0.0,
+          "p95": 0.0
+        },
+        "pydantic_validate_ms": {
+          "avg": 0.113,
+          "p50": 0.113,
+          "p95": 0.127
+        },
+        "apply_patch_ms": {
+          "avg": 0.058,
+          "p50": 0.059,
+          "p95": 0.059
+        },
+        "save_state_ms": {
+          "avg": 0.022,
+          "p50": 0.022,
+          "p95": 0.026
+        },
+        "append_trace_ms": {
+          "avg": 0.055,
+          "p50": 0.046,
+          "p95": 0.048
+        },
+        "surface_total_ms": {
+          "avg": 127.713,
+          "p50": 127.328,
+          "p95": 127.544
+        },
+        "pipeline_turn_total_ms": {
+          "avg": 126.003,
+          "p50": 125.654,
+          "p95": 126.125
+        }
+      },
+      "stage_aggregates_ms": {
+        "surface::touch_existing_session": {
+          "avg": 0.12,
+          "p50": 0.079,
+          "p95": 0.102
+        },
+        "surface::load_base_state": {
+          "avg": 0.025,
+          "p50": 0.013,
+          "p95": 0.013
+        },
+        "surface::ensure_surface_base_state": {
+          "avg": 0.005,
+          "p50": 0.005,
+          "p95": 0.005
+        },
+        "surface::read_bound_surface_context_base": {
+          "avg": 0.033,
+          "p50": 0.028,
+          "p95": 0.028
+        },
+        "surface::load_active_state": {
+          "avg": 0.004,
+          "p50": 0.004,
+          "p95": 0.004
+        },
+        "surface::ensure_surface_active_state": {
+          "avg": 0.001,
+          "p50": 0.001,
+          "p95": 0.001
+        },
+        "surface::read_bound_surface_context_active": {
+          "avg": 0.007,
+          "p50": 0.007,
+          "p95": 0.008
+        },
+        "surface::build_conversacion_simple_pipeline_config": {
+          "avg": 0.34,
+          "p50": 0.355,
+          "p95": 0.363
+        },
+        "surface::build_conversacion_simple_turn_context": {
+          "avg": 0.208,
+          "p50": 0.213,
+          "p95": 0.219
+        },
+        "surface::run_conversacion_simple_turn": {
+          "avg": 126.079,
+          "p50": 125.749,
+          "p95": 126.206
+        },
+        "surface::apply_session_ttl_completed": {
+          "avg": 0.306,
+          "p50": 0.278,
+          "p95": 0.37
+        },
+        "pipeline::validate_turn_context": {
+          "avg": 0.487,
+          "p50": 0.49,
+          "p95": 0.492
+        },
+        "pipeline::repository_init": {
+          "avg": 0.005,
+          "p50": 0.005,
+          "p95": 0.005
+        },
+        "pipeline::load_canonical_state": {
+          "avg": 0.607,
+          "p50": 0.092,
+          "p95": 0.096
+        },
+        "pipeline::load_recent_dialogue": {
+          "avg": 0.014,
+          "p50": 0.013,
+          "p95": 0.016
+        },
+        "pipeline::build_user_turn": {
+          "avg": 0.012,
+          "p50": 0.013,
+          "p95": 0.013
+        },
+        "pipeline::load_prompts": {
+          "avg": 0.131,
+          "p50": 0.128,
+          "p95": 0.13
+        },
+        "pipeline::build_openai_client": {
+          "avg": 0.007,
+          "p50": 0.007,
+          "p95": 0.008
+        },
+        "pipeline::add_user_message": {
+          "avg": 0.011,
+          "p50": 0.011,
+          "p95": 0.011
+        },
+        "pipeline::trim_recent_dialogue_after_user": {
+          "avg": 0.013,
+          "p50": 0.013,
+          "p95": 0.013
+        },
+        "pipeline::build_brain_input": {
+          "avg": 0.046,
+          "p50": 0.026,
+          "p95": 0.026
+        },
+        "pipeline::build_brain_messages": {
+          "avg": 0.299,
+          "p50": 0.287,
+          "p95": 0.305
+        },
+        "pipeline::parse_and_validate_brain_output": {
+          "avg": 0.128,
+          "p50": 0.128,
+          "p95": 0.142
+        },
+        "pipeline::brain_call": {
+          "avg": 123.602,
+          "p50": 123.505,
+          "p95": 123.732
+        },
+        "pipeline::apply_brain_output_to_state": {
+          "avg": 0.062,
+          "p50": 0.062,
+          "p95": 0.063
+        },
+        "pipeline::normalize_and_add_assistant_message": {
+          "avg": 0.036,
+          "p50": 0.028,
+          "p95": 0.028
+        },
+        "pipeline::trim_recent_dialogue_after_assistant": {
+          "avg": 0.016,
+          "p50": 0.017,
+          "p95": 0.017
+        },
+        "pipeline::memory_maintenance": {
+          "avg": 0.007,
+          "p50": 0.007,
+          "p95": 0.007
+        },
+        "pipeline::build_brain_node_trace": {
+          "avg": 0.021,
+          "p50": 0.021,
+          "p95": 0.022
+        },
+        "pipeline::build_turn_trace": {
+          "avg": 0.104,
+          "p50": 0.03,
+          "p95": 0.031
+        },
+        "pipeline::save_canonical_state": {
+          "avg": 0.254,
+          "p50": 0.237,
+          "p95": 0.279
+        },
+        "pipeline::save_recent_dialogue": {
+          "avg": 0.015,
+          "p50": 0.015,
+          "p95": 0.019
+        },
+        "pipeline::append_turn_trace": {
+          "avg": 0.059,
+          "p50": 0.051,
+          "p95": 0.052
+        },
+        "pipeline::save_session_state": {
+          "avg": 0.026,
+          "p50": 0.026,
+          "p95": 0.03
+        },
+        "pipeline::turn_total": {
+          "avg": 126.003,
+          "p50": 125.654,
+          "p95": 126.125
+        }
+      }
+    },
+    {
+      "label": "rich_context_forensic_on",
+      "fake_openai": true,
+      "forensic": true,
+      "disable_persistence": false,
+      "turns": [
+        {
+          "label": "rich_context_forensic_on_t1",
+          "message": "Necesito cerrar una negociación de alquiler de sala con catering, pantalla, y acceso desde las 8:00 a 18:00 para 12 personas.",
+          "http_total_ms": 137.985,
+          "backend_total_ms": 130.418,
+          "pre_openai_ms": 9.624,
+          "openai_ms": 120.33,
+          "post_openai_ms": 0.464,
+          "parse_json_ms": 0.0,
+          "pydantic_validate_ms": 0.139,
+          "apply_patch_ms": 0.174,
+          "save_state_ms": 0.025,
+          "append_trace_ms": 0.126,
+          "response_status": 200,
+          "response_reply_len": 93,
+          "surface_total_ms": 131.84,
+          "pipeline_turn_total_ms": 130.354,
+          "stage_breakdown": {
+            "surface::touch_existing_session": 0.078,
+            "surface::load_base_state": 0.024,
+            "surface::ensure_surface_base_state": 0.005,
+            "surface::read_bound_surface_context_base": 0.051,
+            "surface::load_active_state": 0.008,
+            "surface::ensure_surface_active_state": 0.003,
+            "surface::read_bound_surface_context_active": 0.009,
+            "surface::build_conversacion_simple_pipeline_config": 0.419,
+            "surface::build_conversacion_simple_turn_context": 0.189,
+            "surface::run_conversacion_simple_turn": 130.435,
+            "surface::apply_session_ttl_completed": 0.27,
+            "pipeline::validate_turn_context": 0.406,
+            "pipeline::repository_init": 0.007,
+            "pipeline::load_canonical_state": 1.754,
+            "pipeline::load_recent_dialogue": 0.004,
+            "pipeline::build_user_turn": 0.015,
+            "pipeline::load_prompts": 0.186,
+            "pipeline::build_openai_client": 0.008,
+            "pipeline::add_user_message": 0.015,
+            "pipeline::trim_recent_dialogue_after_user": 0.013,
+            "pipeline::build_brain_input": 0.034,
+            "pipeline::build_brain_messages": 0.484,
+            "pipeline::parse_and_validate_brain_output": 0.164,
+            "pipeline::brain_call": 126.274,
+            "pipeline::apply_brain_output_to_state": 0.181,
+            "pipeline::normalize_and_add_assistant_message": 0.044,
+            "pipeline::trim_recent_dialogue_after_assistant": 0.022,
+            "pipeline::memory_maintenance": 0.011,
+            "pipeline::build_brain_node_trace": 0.032,
+            "pipeline::build_turn_trace": 0.049,
+            "pipeline::save_canonical_state": 0.433,
+            "pipeline::save_recent_dialogue": 0.018,
+            "pipeline::append_turn_trace": 0.133,
+            "pipeline::save_session_state": 0.03,
+            "pipeline::turn_total": 130.354
+          }
+        },
+        {
+          "label": "rich_context_forensic_on_t2",
+          "message": "Incluye requerimientos de confidencialidad y posibilidad de ampliar horario sin penalización alta.",
+          "http_total_ms": 133.99,
+          "backend_total_ms": 125.656,
+          "pre_openai_ms": 5.13,
+          "openai_ms": 120.315,
+          "post_openai_ms": 0.211,
+          "parse_json_ms": 0.0,
+          "pydantic_validate_ms": 0.095,
+          "apply_patch_ms": 0.059,
+          "save_state_ms": 0.015,
+          "append_trace_ms": 0.042,
+          "response_status": 200,
+          "response_reply_len": 93,
+          "surface_total_ms": 127.224,
+          "pipeline_turn_total_ms": 125.618,
+          "stage_breakdown": {
+            "surface::touch_existing_session": 0.113,
+            "surface::load_base_state": 0.019,
+            "surface::ensure_surface_base_state": 0.007,
+            "surface::read_bound_surface_context_base": 0.039,
+            "surface::load_active_state": 0.007,
+            "surface::ensure_surface_active_state": 0.002,
+            "surface::read_bound_surface_context_active": 0.013,
+            "surface::build_conversacion_simple_pipeline_config": 0.45,
+            "surface::build_conversacion_simple_turn_context": 0.287,
+            "surface::run_conversacion_simple_turn": 125.669,
+            "surface::apply_session_ttl_completed": 0.186,
+            "pipeline::validate_turn_context": 0.836,
+            "pipeline::repository_init": 0.007,
+            "pipeline::load_canonical_state": 0.099,
+            "pipeline::load_recent_dialogue": 0.021,
+            "pipeline::build_user_turn": 0.021,
+            "pipeline::load_prompts": 0.214,
+            "pipeline::build_openai_client": 0.01,
+            "pipeline::add_user_message": 0.018,
+            "pipeline::trim_recent_dialogue_after_user": 0.02,
+            "pipeline::build_brain_input": 0.038,
+            "pipeline::build_brain_messages": 0.427,
+            "pipeline::parse_and_validate_brain_output": 0.113,
+            "pipeline::brain_call": 123.296,
+            "pipeline::apply_brain_output_to_state": 0.063,
+            "pipeline::normalize_and_add_assistant_message": 0.027,
+            "pipeline::trim_recent_dialogue_after_assistant": 0.015,
+            "pipeline::memory_maintenance": 0.008,
+            "pipeline::build_brain_node_trace": 0.02,
+            "pipeline::build_turn_trace": 0.03,
+            "pipeline::save_canonical_state": 0.194,
+            "pipeline::save_recent_dialogue": 0.013,
+            "pipeline::append_turn_trace": 0.045,
+            "pipeline::save_session_state": 0.017,
+            "pipeline::turn_total": 125.618
+          }
+        }
+      ],
+      "aggregates_ms": {
+        "http_total_ms": {
+          "avg": 135.988,
+          "p50": 135.988,
+          "p95": 133.99
+        },
+        "backend_total_ms": {
+          "avg": 128.037,
+          "p50": 128.037,
+          "p95": 125.656
+        },
+        "pre_openai_ms": {
+          "avg": 7.377,
+          "p50": 7.377,
+          "p95": 5.13
+        },
+        "openai_ms": {
+          "avg": 120.322,
+          "p50": 120.322,
+          "p95": 120.315
+        },
+        "post_openai_ms": {
+          "avg": 0.338,
+          "p50": 0.338,
+          "p95": 0.211
+        },
+        "parse_json_ms": {
+          "avg": 0.0,
+          "p50": 0.0,
+          "p95": 0.0
+        },
+        "pydantic_validate_ms": {
+          "avg": 0.117,
+          "p50": 0.117,
+          "p95": 0.095
+        },
+        "apply_patch_ms": {
+          "avg": 0.116,
+          "p50": 0.116,
+          "p95": 0.059
+        },
+        "save_state_ms": {
+          "avg": 0.02,
+          "p50": 0.02,
+          "p95": 0.015
+        },
+        "append_trace_ms": {
+          "avg": 0.084,
+          "p50": 0.084,
+          "p95": 0.042
+        },
+        "surface_total_ms": {
+          "avg": 129.532,
+          "p50": 129.532,
+          "p95": 127.224
+        },
+        "pipeline_turn_total_ms": {
+          "avg": 127.986,
+          "p50": 127.986,
+          "p95": 125.618
+        }
+      },
+      "stage_aggregates_ms": {
+        "surface::touch_existing_session": {
+          "avg": 0.096,
+          "p50": 0.096,
+          "p95": 0.078
+        },
+        "surface::load_base_state": {
+          "avg": 0.021,
+          "p50": 0.021,
+          "p95": 0.019
+        },
+        "surface::ensure_surface_base_state": {
+          "avg": 0.006,
+          "p50": 0.006,
+          "p95": 0.005
+        },
+        "surface::read_bound_surface_context_base": {
+          "avg": 0.045,
+          "p50": 0.045,
+          "p95": 0.039
+        },
+        "surface::load_active_state": {
+          "avg": 0.007,
+          "p50": 0.007,
+          "p95": 0.007
+        },
+        "surface::ensure_surface_active_state": {
+          "avg": 0.003,
+          "p50": 0.003,
+          "p95": 0.002
+        },
+        "surface::read_bound_surface_context_active": {
+          "avg": 0.011,
+          "p50": 0.011,
+          "p95": 0.009
+        },
+        "surface::build_conversacion_simple_pipeline_config": {
+          "avg": 0.434,
+          "p50": 0.434,
+          "p95": 0.419
+        },
+        "surface::build_conversacion_simple_turn_context": {
+          "avg": 0.238,
+          "p50": 0.238,
+          "p95": 0.189
+        },
+        "surface::run_conversacion_simple_turn": {
+          "avg": 128.052,
+          "p50": 128.052,
+          "p95": 125.669
+        },
+        "surface::apply_session_ttl_completed": {
+          "avg": 0.228,
+          "p50": 0.228,
+          "p95": 0.186
+        },
+        "pipeline::validate_turn_context": {
+          "avg": 0.621,
+          "p50": 0.621,
+          "p95": 0.406
+        },
+        "pipeline::repository_init": {
+          "avg": 0.007,
+          "p50": 0.007,
+          "p95": 0.007
+        },
+        "pipeline::load_canonical_state": {
+          "avg": 0.926,
+          "p50": 0.926,
+          "p95": 0.099
+        },
+        "pipeline::load_recent_dialogue": {
+          "avg": 0.013,
+          "p50": 0.013,
+          "p95": 0.004
+        },
+        "pipeline::build_user_turn": {
+          "avg": 0.018,
+          "p50": 0.018,
+          "p95": 0.015
+        },
+        "pipeline::load_prompts": {
+          "avg": 0.2,
+          "p50": 0.2,
+          "p95": 0.186
+        },
+        "pipeline::build_openai_client": {
+          "avg": 0.009,
+          "p50": 0.009,
+          "p95": 0.008
+        },
+        "pipeline::add_user_message": {
+          "avg": 0.017,
+          "p50": 0.017,
+          "p95": 0.015
+        },
+        "pipeline::trim_recent_dialogue_after_user": {
+          "avg": 0.017,
+          "p50": 0.017,
+          "p95": 0.013
+        },
+        "pipeline::build_brain_input": {
+          "avg": 0.036,
+          "p50": 0.036,
+          "p95": 0.034
+        },
+        "pipeline::build_brain_messages": {
+          "avg": 0.456,
+          "p50": 0.456,
+          "p95": 0.427
+        },
+        "pipeline::parse_and_validate_brain_output": {
+          "avg": 0.139,
+          "p50": 0.139,
+          "p95": 0.113
+        },
+        "pipeline::brain_call": {
+          "avg": 124.785,
+          "p50": 124.785,
+          "p95": 123.296
+        },
+        "pipeline::apply_brain_output_to_state": {
+          "avg": 0.122,
+          "p50": 0.122,
+          "p95": 0.063
+        },
+        "pipeline::normalize_and_add_assistant_message": {
+          "avg": 0.035,
+          "p50": 0.035,
+          "p95": 0.027
+        },
+        "pipeline::trim_recent_dialogue_after_assistant": {
+          "avg": 0.018,
+          "p50": 0.018,
+          "p95": 0.015
+        },
+        "pipeline::memory_maintenance": {
+          "avg": 0.009,
+          "p50": 0.009,
+          "p95": 0.008
+        },
+        "pipeline::build_brain_node_trace": {
+          "avg": 0.026,
+          "p50": 0.026,
+          "p95": 0.02
+        },
+        "pipeline::build_turn_trace": {
+          "avg": 0.04,
+          "p50": 0.04,
+          "p95": 0.03
+        },
+        "pipeline::save_canonical_state": {
+          "avg": 0.314,
+          "p50": 0.314,
+          "p95": 0.194
+        },
+        "pipeline::save_recent_dialogue": {
+          "avg": 0.015,
+          "p50": 0.015,
+          "p95": 0.013
+        },
+        "pipeline::append_turn_trace": {
+          "avg": 0.089,
+          "p50": 0.089,
+          "p95": 0.045
+        },
+        "pipeline::save_session_state": {
+          "avg": 0.024,
+          "p50": 0.024,
+          "p95": 0.017
+        },
+        "pipeline::turn_total": {
+          "avg": 127.986,
+          "p50": 127.986,
+          "p95": 125.618
+        }
+      }
+    },
+    {
+      "label": "multi_turn_no_persistence",
+      "fake_openai": true,
+      "forensic": false,
+      "disable_persistence": true,
+      "turns": [
+        {
+          "label": "multi_turn_no_persistence_t1",
+          "message": "hola",
+          "http_total_ms": 137.147,
+          "backend_total_ms": 127.555,
+          "pre_openai_ms": 7.125,
+          "openai_ms": 120.281,
+          "post_openai_ms": 0.149,
+          "parse_json_ms": 0.0,
+          "pydantic_validate_ms": 0.091,
+          "apply_patch_ms": 0.058,
+          "save_state_ms": 0.0,
+          "append_trace_ms": 0.0,
+          "response_status": 200,
+          "response_reply_len": 93,
+          "surface_total_ms": 130.88,
+          "pipeline_turn_total_ms": 127.516,
+          "stage_breakdown": {
+            "surface::touch_existing_session": 0.709,
+            "surface::load_base_state": 0.019,
+            "surface::ensure_surface_base_state": 0.006,
+            "surface::read_bound_surface_context_base": 0.032,
+            "surface::load_active_state": 0.009,
+            "surface::ensure_surface_active_state": 0.001,
+            "surface::read_bound_surface_context_active": 0.008,
+            "surface::build_conversacion_simple_pipeline_config": 0.285,
+            "surface::build_conversacion_simple_turn_context": 0.168,
+            "surface::run_conversacion_simple_turn": 127.566,
+            "surface::apply_session_ttl_completed": 0.837,
+            "pipeline::validate_turn_context": 0.564,
+            "pipeline::repository_init": 0.006,
+            "pipeline::load_canonical_state": 1.101,
+            "pipeline::load_recent_dialogue": 0.004,
+            "pipeline::build_user_turn": 0.021,
+            "pipeline::load_prompts": 0.191,
+            "pipeline::build_openai_client": 0.012,
+            "pipeline::add_user_message": 0.022,
+            "pipeline::trim_recent_dialogue_after_user": 0.019,
+            "pipeline::build_brain_input": 0.03,
+            "pipeline::build_brain_messages": 0.491,
+            "pipeline::parse_and_validate_brain_output": 0.104,
+            "pipeline::brain_call": 124.097,
+            "pipeline::apply_brain_output_to_state": 0.061,
+            "pipeline::normalize_and_add_assistant_message": 0.026,
+            "pipeline::trim_recent_dialogue_after_assistant": 0.014,
+            "pipeline::memory_maintenance": 0.006,
+            "pipeline::build_brain_node_trace": 0.02,
+            "pipeline::build_turn_trace": 0.029,
+            "pipeline::save_canonical_state": 0.236,
+            "pipeline::save_recent_dialogue": 0.011,
+            "pipeline::append_turn_trace": 0.003,
+            "pipeline::save_session_state": 0.002,
+            "pipeline::turn_total": 127.516
+          }
+        },
+        {
+          "label": "multi_turn_no_persistence_t2",
+          "message": "segunda",
+          "http_total_ms": 131.839,
+          "backend_total_ms": 124.969,
+          "pre_openai_ms": 4.458,
+          "openai_ms": 120.258,
+          "post_openai_ms": 0.253,
+          "parse_json_ms": 0.0,
+          "pydantic_validate_ms": 0.192,
+          "apply_patch_ms": 0.061,
+          "save_state_ms": 0.0,
+          "append_trace_ms": 0.0,
+          "response_status": 200,
+          "response_reply_len": 93,
+          "surface_total_ms": 126.22,
+          "pipeline_turn_total_ms": 124.926,
+          "stage_breakdown": {
+            "surface::touch_existing_session": 0.058,
+            "surface::load_base_state": 0.014,
+            "surface::ensure_surface_base_state": 0.006,
+            "surface::read_bound_surface_context_base": 0.028,
+            "surface::load_active_state": 0.004,
+            "surface::ensure_surface_active_state": 0.001,
+            "surface::read_bound_surface_context_active": 0.008,
+            "surface::build_conversacion_simple_pipeline_config": 0.338,
+            "surface::build_conversacion_simple_turn_context": 0.278,
+            "surface::run_conversacion_simple_turn": 124.98,
+            "surface::apply_session_ttl_completed": 0.187,
+            "pipeline::validate_turn_context": 0.584,
+            "pipeline::repository_init": 0.005,
+            "pipeline::load_canonical_state": 0.064,
+            "pipeline::load_recent_dialogue": 0.012,
+            "pipeline::build_user_turn": 0.011,
+            "pipeline::load_prompts": 0.193,
+            "pipeline::build_openai_client": 0.008,
+            "pipeline::add_user_message": 0.016,
+            "pipeline::trim_recent_dialogue_after_user": 0.013,
+            "pipeline::build_brain_input": 0.026,
+            "pipeline::build_brain_messages": 0.264,
+            "pipeline::parse_and_validate_brain_output": 0.206,
+            "pipeline::brain_call": 123.145,
+            "pipeline::apply_brain_output_to_state": 0.065,
+            "pipeline::normalize_and_add_assistant_message": 0.029,
+            "pipeline::trim_recent_dialogue_after_assistant": 0.023,
+            "pipeline::memory_maintenance": 0.008,
+            "pipeline::build_brain_node_trace": 0.021,
+            "pipeline::build_turn_trace": 0.028,
+            "pipeline::save_canonical_state": 0.244,
+            "pipeline::save_recent_dialogue": 0.013,
+            "pipeline::append_turn_trace": 0.003,
+            "pipeline::save_session_state": 0.002,
+            "pipeline::turn_total": 124.926
+          }
+        },
+        {
+          "label": "multi_turn_no_persistence_t3",
+          "message": "tercera",
+          "http_total_ms": 134.065,
+          "backend_total_ms": 124.829,
+          "pre_openai_ms": 4.417,
+          "openai_ms": 120.262,
+          "post_openai_ms": 0.15,
+          "parse_json_ms": 0.0,
+          "pydantic_validate_ms": 0.092,
+          "apply_patch_ms": 0.058,
+          "save_state_ms": 0.0,
+          "append_trace_ms": 0.0,
+          "response_status": 200,
+          "response_reply_len": 93,
+          "surface_total_ms": 126.1,
+          "pipeline_turn_total_ms": 124.787,
+          "stage_breakdown": {
+            "surface::touch_existing_session": 0.078,
+            "surface::load_base_state": 0.03,
+            "surface::ensure_surface_base_state": 0.005,
+            "surface::read_bound_surface_context_base": 0.03,
+            "surface::load_active_state": 0.026,
+            "surface::ensure_surface_active_state": 0.001,
+            "surface::read_bound_surface_context_active": 0.021,
+            "surface::build_conversacion_simple_pipeline_config": 0.363,
+            "surface::build_conversacion_simple_turn_context": 0.192,
+            "surface::run_conversacion_simple_turn": 124.841,
+            "surface::apply_session_ttl_completed": 0.182,
+            "pipeline::validate_turn_context": 0.445,
+            "pipeline::repository_init": 0.005,
+            "pipeline::load_canonical_state": 0.065,
+            "pipeline::load_recent_dialogue": 0.017,
+            "pipeline::build_user_turn": 0.011,
+            "pipeline::load_prompts": 0.302,
+            "pipeline::build_openai_client": 0.01,
+            "pipeline::add_user_message": 0.018,
+            "pipeline::trim_recent_dialogue_after_user": 0.014,
+            "pipeline::build_brain_input": 0.028,
+            "pipeline::build_brain_messages": 0.368,
+            "pipeline::parse_and_validate_brain_output": 0.104,
+            "pipeline::brain_call": 122.892,
+            "pipeline::apply_brain_output_to_state": 0.063,
+            "pipeline::normalize_and_add_assistant_message": 0.027,
+            "pipeline::trim_recent_dialogue_after_assistant": 0.016,
+            "pipeline::memory_maintenance": 0.008,
+            "pipeline::build_brain_node_trace": 0.022,
+            "pipeline::build_turn_trace": 0.028,
+            "pipeline::save_canonical_state": 0.286,
+            "pipeline::save_recent_dialogue": 0.018,
+            "pipeline::append_turn_trace": 0.004,
+            "pipeline::save_session_state": 0.003,
+            "pipeline::turn_total": 124.787
+          }
+        },
+        {
+          "label": "multi_turn_no_persistence_t4",
+          "message": "cuarta",
+          "http_total_ms": 133.885,
+          "backend_total_ms": 125.869,
+          "pre_openai_ms": 5.439,
+          "openai_ms": 120.279,
+          "post_openai_ms": 0.151,
+          "parse_json_ms": 0.0,
+          "pydantic_validate_ms": 0.092,
+          "apply_patch_ms": 0.059,
+          "save_state_ms": 0.0,
+          "append_trace_ms": 0.0,
+          "response_status": 200,
+          "response_reply_len": 93,
+          "surface_total_ms": 127.052,
+          "pipeline_turn_total_ms": 125.831,
+          "stage_breakdown": {
+            "surface::touch_existing_session": 0.057,
+            "surface::load_base_state": 0.014,
+            "surface::ensure_surface_base_state": 0.005,
+            "surface::read_bound_surface_context_base": 0.044,
+            "surface::load_active_state": 0.004,
+            "surface::ensure_surface_active_state": 0.001,
+            "surface::read_bound_surface_context_active": 0.007,
+            "surface::build_conversacion_simple_pipeline_config": 0.364,
+            "surface::build_conversacion_simple_turn_context": 0.167,
+            "surface::run_conversacion_simple_turn": 125.882,
+            "surface::apply_session_ttl_completed": 0.2,
+            "pipeline::validate_turn_context": 0.648,
+            "pipeline::repository_init": 0.005,
+            "pipeline::load_canonical_state": 0.064,
+            "pipeline::load_recent_dialogue": 0.023,
+            "pipeline::build_user_turn": 0.012,
+            "pipeline::load_prompts": 0.132,
+            "pipeline::build_openai_client": 0.008,
+            "pipeline::add_user_message": 0.012,
+            "pipeline::trim_recent_dialogue_after_user": 0.014,
+            "pipeline::build_brain_input": 0.025,
+            "pipeline::build_brain_messages": 0.259,
+            "pipeline::parse_and_validate_brain_output": 0.106,
+            "pipeline::brain_call": 122.954,
+            "pipeline::apply_brain_output_to_state": 0.064,
+            "pipeline::normalize_and_add_assistant_message": 0.061,
+            "pipeline::trim_recent_dialogue_after_assistant": 0.018,
+            "pipeline::memory_maintenance": 0.007,
+            "pipeline::build_brain_node_trace": 0.022,
+            "pipeline::build_turn_trace": 0.029,
+            "pipeline::save_canonical_state": 1.299,
+            "pipeline::save_recent_dialogue": 0.029,
+            "pipeline::append_turn_trace": 0.004,
+            "pipeline::save_session_state": 0.002,
+            "pipeline::turn_total": 125.831
+          }
+        }
+      ],
+      "aggregates_ms": {
+        "http_total_ms": {
+          "avg": 134.234,
+          "p50": 133.975,
+          "p95": 134.065
+        },
+        "backend_total_ms": {
+          "avg": 125.805,
+          "p50": 125.419,
+          "p95": 125.869
+        },
+        "pre_openai_ms": {
+          "avg": 5.36,
+          "p50": 4.949,
+          "p95": 5.439
+        },
+        "openai_ms": {
+          "avg": 120.27,
+          "p50": 120.27,
+          "p95": 120.279
+        },
+        "post_openai_ms": {
+          "avg": 0.176,
+          "p50": 0.15,
+          "p95": 0.151
+        },
+        "parse_json_ms": {
+          "avg": 0.0,
+          "p50": 0.0,
+          "p95": 0.0
+        },
+        "pydantic_validate_ms": {
+          "avg": 0.117,
+          "p50": 0.092,
+          "p95": 0.092
+        },
+        "apply_patch_ms": {
+          "avg": 0.059,
+          "p50": 0.058,
+          "p95": 0.059
+        },
+        "save_state_ms": {
+          "avg": 0.0,
+          "p50": 0.0,
+          "p95": 0.0
+        },
+        "append_trace_ms": {
+          "avg": 0.0,
+          "p50": 0.0,
+          "p95": 0.0
+        },
+        "surface_total_ms": {
+          "avg": 127.563,
+          "p50": 126.636,
+          "p95": 127.052
+        },
+        "pipeline_turn_total_ms": {
+          "avg": 125.765,
+          "p50": 125.379,
+          "p95": 125.831
+        }
+      },
+      "stage_aggregates_ms": {
+        "surface::touch_existing_session": {
+          "avg": 0.225,
+          "p50": 0.068,
+          "p95": 0.078
+        },
+        "surface::load_base_state": {
+          "avg": 0.019,
+          "p50": 0.017,
+          "p95": 0.019
+        },
+        "surface::ensure_surface_base_state": {
+          "avg": 0.005,
+          "p50": 0.005,
+          "p95": 0.006
+        },
+        "surface::read_bound_surface_context_base": {
+          "avg": 0.034,
+          "p50": 0.031,
+          "p95": 0.032
+        },
+        "surface::load_active_state": {
+          "avg": 0.011,
+          "p50": 0.006,
+          "p95": 0.009
+        },
+        "surface::ensure_surface_active_state": {
+          "avg": 0.001,
+          "p50": 0.001,
+          "p95": 0.001
+        },
+        "surface::read_bound_surface_context_active": {
+          "avg": 0.011,
+          "p50": 0.008,
+          "p95": 0.008
+        },
+        "surface::build_conversacion_simple_pipeline_config": {
+          "avg": 0.338,
+          "p50": 0.351,
+          "p95": 0.363
+        },
+        "surface::build_conversacion_simple_turn_context": {
+          "avg": 0.201,
+          "p50": 0.18,
+          "p95": 0.192
+        },
+        "surface::run_conversacion_simple_turn": {
+          "avg": 125.817,
+          "p50": 125.431,
+          "p95": 125.882
+        },
+        "surface::apply_session_ttl_completed": {
+          "avg": 0.351,
+          "p50": 0.194,
+          "p95": 0.2
+        },
+        "pipeline::validate_turn_context": {
+          "avg": 0.56,
+          "p50": 0.574,
+          "p95": 0.584
+        },
+        "pipeline::repository_init": {
+          "avg": 0.005,
+          "p50": 0.005,
+          "p95": 0.005
+        },
+        "pipeline::load_canonical_state": {
+          "avg": 0.324,
+          "p50": 0.065,
+          "p95": 0.065
+        },
+        "pipeline::load_recent_dialogue": {
+          "avg": 0.014,
+          "p50": 0.015,
+          "p95": 0.017
+        },
+        "pipeline::build_user_turn": {
+          "avg": 0.014,
+          "p50": 0.011,
+          "p95": 0.012
+        },
+        "pipeline::load_prompts": {
+          "avg": 0.205,
+          "p50": 0.192,
+          "p95": 0.193
+        },
+        "pipeline::build_openai_client": {
+          "avg": 0.009,
+          "p50": 0.009,
+          "p95": 0.01
+        },
+        "pipeline::add_user_message": {
+          "avg": 0.017,
+          "p50": 0.017,
+          "p95": 0.018
+        },
+        "pipeline::trim_recent_dialogue_after_user": {
+          "avg": 0.015,
+          "p50": 0.014,
+          "p95": 0.014
+        },
+        "pipeline::build_brain_input": {
+          "avg": 0.027,
+          "p50": 0.027,
+          "p95": 0.028
+        },
+        "pipeline::build_brain_messages": {
+          "avg": 0.346,
+          "p50": 0.316,
+          "p95": 0.368
+        },
+        "pipeline::parse_and_validate_brain_output": {
+          "avg": 0.13,
+          "p50": 0.105,
+          "p95": 0.106
+        },
+        "pipeline::brain_call": {
+          "avg": 123.272,
+          "p50": 123.049,
+          "p95": 123.145
+        },
+        "pipeline::apply_brain_output_to_state": {
+          "avg": 0.063,
+          "p50": 0.064,
+          "p95": 0.064
+        },
+        "pipeline::normalize_and_add_assistant_message": {
+          "avg": 0.036,
+          "p50": 0.028,
+          "p95": 0.029
+        },
+        "pipeline::trim_recent_dialogue_after_assistant": {
+          "avg": 0.018,
+          "p50": 0.017,
+          "p95": 0.018
+        },
+        "pipeline::memory_maintenance": {
+          "avg": 0.007,
+          "p50": 0.007,
+          "p95": 0.008
+        },
+        "pipeline::build_brain_node_trace": {
+          "avg": 0.021,
+          "p50": 0.021,
+          "p95": 0.022
+        },
+        "pipeline::build_turn_trace": {
+          "avg": 0.029,
+          "p50": 0.029,
+          "p95": 0.029
+        },
+        "pipeline::save_canonical_state": {
+          "avg": 0.516,
+          "p50": 0.265,
+          "p95": 0.286
+        },
+        "pipeline::save_recent_dialogue": {
+          "avg": 0.018,
+          "p50": 0.015,
+          "p95": 0.018
+        },
+        "pipeline::append_turn_trace": {
+          "avg": 0.004,
+          "p50": 0.004,
+          "p95": 0.004
+        },
+        "pipeline::save_session_state": {
+          "avg": 0.002,
+          "p50": 0.002,
+          "p95": 0.002
+        },
+        "pipeline::turn_total": {
+          "avg": 125.765,
+          "p50": 125.379,
+          "p95": 125.831
+        }
+      }
+    }
+  ],
+  "real_openai_experiment": null,
+  "notes": [
+    "Los tiempos miden ruta HTTP TestClient -> FastAPI -> servicio real sin red frontend.",
+    "openai_ms representa el coste observado alrededor de _call_brain_structured.",
+    "La métrica parse_json_ms en esta campaña mide parse residual en _parse_brain_output_strict; el json.loads principal ocurre dentro de _call_brain_structured."
+  ]
+}

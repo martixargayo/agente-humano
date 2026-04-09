@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from .presentation_models import PresentationConfig
 
@@ -102,3 +102,4 @@ class NegotiationTurnResponse(BaseModel):
     auto_reset_applied: bool = False
     finish_button_armed: bool = False
     post_commit_housekeeping_error: str | None = None
+    latency_breakdown_ms: dict[str, object] = Field(default_factory=dict)
