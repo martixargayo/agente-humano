@@ -36,3 +36,4 @@ class ConversationSimpleTurnTrace(BaseModel):
     stage_timings_ms: dict[str, int] = Field(default_factory=dict)
     memory_observability: dict[str, object] = Field(default_factory=dict)
     nodes: dict[str, ConversationSimpleNodeTrace] = Field(default_factory=dict)
+    runtime_version: dict[str, str | None] = Field(default_factory=dict)

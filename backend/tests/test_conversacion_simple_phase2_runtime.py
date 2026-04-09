@@ -385,6 +385,13 @@ def test_structured_call_enforces_json_schema_without_prompt_embedded_schema() -
     assert isinstance(fmt, dict)
     assert fmt.get("type") == "json_schema"
     assert fmt.get("strict") is True
+    schema = fmt.get("schema")
+    assert isinstance(schema, dict)
+    assert _collect_required_mismatches(schema) == []
+    assert schema.get("additionalProperties") is False
+    assert isinstance(out.schema_observability, dict)
+    assert out.schema_observability.get("schema_name") == "BrainOutput"
+    assert out.schema_observability.get("validation", {}).get("valid") is True
 
 
 def test_normalized_brain_output_schema_preserves_required_lists() -> None:
@@ -433,10 +440,49 @@ def test_structured_summarizer_wiring_keeps_json_schema_strict_and_additional_pr
     assert isinstance(fmt, dict)
     assert fmt.get("type") == "json_schema"
     assert fmt.get("strict") is True
-    schema = fmt.get("schema")
-    assert isinstance(schema, dict)
-    assert _collect_required_mismatches(schema) == []
-    assert schema.get("additionalProperties") is False
+    assert isinstance(out.schema_observability, dict)
+    assert out.schema_observability.get("schema_name") == "SummarizerOutput"
+    assert out.schema_observability.get("validation", {}).get("valid") is True
+
+
+def test_structured_call_provider_error_keeps_schema_observability() -> None:
+    class _FailingResponses:
+        def create(self, **kwargs):
+            raise RuntimeError(
+                "Error code: 400 - {'error': {'message': \"Invalid schema for response_format 'BrainOutput': "
+                "In context=(), 'required' is required to be supplied and to be an array including every key in properties. "
+                "Extra required key 'memory_episodic_append' supplied.\", 'type': 'invalid_request_error', "
+                "'param': 'text.format.schema', 'code': 'invalid_json_schema'}}"
+            )
+
+    class _FailingClient:
+        responses = _FailingResponses()
+
+    out = _call_brain_structured(
+        client=_FailingClient(),
+        model="gpt-5-nano",
+        messages=[{"role": "developer", "content": "prompt"}, {"role": "user", "content": "payload"}],
+    )
+
+    assert out.source == "fallback"
+    assert isinstance(out.schema_observability, dict)
+    assert out.schema_observability.get("schema_name") == "BrainOutput"
+    assert out.schema_observability.get("schema_hash")
+
+
+def test_turn_trace_includes_runtime_version_info(monkeypatch) -> None:
+    monkeypatch.setattr("conversacion_simple.orchestration.pipeline._build_client", lambda: None)
+    state = SessionState(user_id="u", session_id="s")
+    _bind(state)
+    config = build_conversacion_simple_pipeline_config(context_id="baseline", stateful=True)
+    turn_context = build_conversacion_simple_turn_context(state=state, entrypoint="/tests", requested_context_id="baseline")
+
+    run_conversacion_simple_turn(state=state, user_message="hola", config=config, turn_context=turn_context)
+
+    trace = state.world_state[config.traces_key][-1]
+    runtime_version = trace.get("runtime_version")
+    assert isinstance(runtime_version, dict)
+    assert "git_commit" in runtime_version
 
 
 def test_context_precheck_mismatch_raises() -> None:

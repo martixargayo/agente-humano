@@ -4,6 +4,7 @@ import json
 import os
 import time
 import uuid
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,7 +13,8 @@ from typing import Literal
 import openai
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from infra.openai.structured_outputs import normalize_schema_for_strict_json_schema
+from infra.openai.structured_outputs import build_schema_observability, normalize_schema_for_strict_json_schema, validate_strict_json_schema
+from infra.runtime_version import get_runtime_version_info
 from sessions.state import SessionState, add_message, save_session_state
 
 from ..contexts import (
@@ -36,6 +38,8 @@ from ..state import (
 from ..traces import ConversationSimpleTurnTrace, build_brain_node_trace
 from .flow_config import ConversationSimpleTurnConfig
 from negociacion.orchestration.turn_execution_context import TurnExecutionContext
+
+logger = logging.getLogger(__name__)
 
 
 def _compact_recent(recent: list[DialogueMessage], max_messages: int) -> list[DialogueMessage]:
@@ -160,6 +164,7 @@ class StructuredBrainCall:
     parsed_json: dict | None
     response: object | None
     response_id: str | None = None
+    schema_observability: dict[str, object] | None = None
 
 
 _DEFAULT_SUMMARIZER_PROMPT = """Eres un summarizer táctico de contexto conversacional para negociación.
@@ -215,6 +220,7 @@ class StructuredSummarizerCall:
     source: Literal["model", "fallback"]
     output: SummarizerOutput | None
     response_id: str | None = None
+    schema_observability: dict[str, object] | None = None
 
 
 def _extract_output_text(response: object) -> str | None:
@@ -233,6 +239,14 @@ def _normalize_schema_for_strict_json_schema(schema: object) -> object:
     return normalize_schema_for_strict_json_schema(schema)
 
 
+def _prepare_strict_schema(*, schema_name: str, schema: object) -> tuple[object, dict[str, object]]:
+    normalized = _normalize_schema_for_strict_json_schema(schema)
+    validation_report = validate_strict_json_schema(normalized)
+    observability = build_schema_observability(schema_name=schema_name, schema=normalized, validation_report=validation_report)
+    observability["runtime_version"] = get_runtime_version_info()
+    return normalized, observability
+
+
 def _call_brain_structured(
     *,
     client: openai.OpenAI | None,
@@ -241,33 +255,55 @@ def _call_brain_structured(
 ) -> StructuredBrainCall:
     if client is None:
         return StructuredBrainCall(source="fallback", parsed_json=None, response=None)
-    response = client.responses.create(
-        model=model,
-        input=messages,
-        text={
-            "format": {
-                "type": "json_schema",
-                "name": BrainOutput.__name__,
-                "schema": _normalize_schema_for_strict_json_schema(BrainOutput.model_json_schema()),
-                "strict": True,
-            }
-        },
-        reasoning={"effort": "low"},
-        store=False,
-    )
+    normalized_schema, schema_observability = _prepare_strict_schema(schema_name=BrainOutput.__name__, schema=BrainOutput.model_json_schema())
+    validation = schema_observability.get("validation")
+    if isinstance(validation, dict) and not bool(validation.get("valid", False)):
+        logger.error(
+            "conversacion_simple_schema_preflight_failed stage=brain schema_name=%s schema_hash=%s first_mismatch=%s runtime_version=%s",
+            schema_observability.get("schema_name"),
+            schema_observability.get("schema_hash"),
+            validation.get("first_mismatch"),
+            schema_observability.get("runtime_version"),
+        )
+        return StructuredBrainCall(source="fallback", parsed_json=None, response=None, schema_observability=schema_observability)
+    try:
+        response = client.responses.create(
+            model=model,
+            input=messages,
+            text={
+                "format": {
+                    "type": "json_schema",
+                    "name": BrainOutput.__name__,
+                    "schema": normalized_schema,
+                    "strict": True,
+                }
+            },
+            reasoning={"effort": "low"},
+            store=False,
+        )
+    except Exception as exc:
+        logger.exception(
+            "conversacion_simple_structured_call_failed stage=brain schema_name=%s schema_hash=%s runtime_version=%s error=%s",
+            schema_observability.get("schema_name"),
+            schema_observability.get("schema_hash"),
+            schema_observability.get("runtime_version"),
+            str(exc),
+        )
+        return StructuredBrainCall(source="fallback", parsed_json=None, response=None, schema_observability=schema_observability)
     text = _extract_output_text(response)
     response_id = _extract_response_id(response)
     if not text:
-        return StructuredBrainCall(source="fallback", parsed_json=None, response=response, response_id=response_id)
+        return StructuredBrainCall(source="fallback", parsed_json=None, response=response, response_id=response_id, schema_observability=schema_observability)
     try:
         payload = json.loads(text)
     except Exception:
-        return StructuredBrainCall(source="fallback", parsed_json=None, response=response, response_id=response_id)
+        return StructuredBrainCall(source="fallback", parsed_json=None, response=response, response_id=response_id, schema_observability=schema_observability)
     return StructuredBrainCall(
         source="model",
         parsed_json=payload if isinstance(payload, dict) else None,
         response=response,
         response_id=response_id,
+        schema_observability=schema_observability,
     )
 
 
@@ -291,30 +327,51 @@ def _call_summarizer_structured(
 ) -> StructuredSummarizerCall:
     if client is None:
         return StructuredSummarizerCall(source="fallback", output=None, response_id=None)
-    response = client.responses.create(
-        model=model,
-        input=messages,
-        text={
-            "format": {
-                "type": "json_schema",
-                "name": SummarizerOutput.__name__,
-                "schema": _normalize_schema_for_strict_json_schema(SummarizerOutput.model_json_schema()),
-                "strict": True,
-            }
-        },
-        reasoning={"effort": "minimal"},
-        store=False,
-    )
+    normalized_schema, schema_observability = _prepare_strict_schema(schema_name=SummarizerOutput.__name__, schema=SummarizerOutput.model_json_schema())
+    validation = schema_observability.get("validation")
+    if isinstance(validation, dict) and not bool(validation.get("valid", False)):
+        logger.error(
+            "conversacion_simple_schema_preflight_failed stage=summarizer schema_name=%s schema_hash=%s first_mismatch=%s runtime_version=%s",
+            schema_observability.get("schema_name"),
+            schema_observability.get("schema_hash"),
+            validation.get("first_mismatch"),
+            schema_observability.get("runtime_version"),
+        )
+        return StructuredSummarizerCall(source="fallback", output=None, response_id=None, schema_observability=schema_observability)
+    try:
+        response = client.responses.create(
+            model=model,
+            input=messages,
+            text={
+                "format": {
+                    "type": "json_schema",
+                    "name": SummarizerOutput.__name__,
+                    "schema": normalized_schema,
+                    "strict": True,
+                }
+            },
+            reasoning={"effort": "minimal"},
+            store=False,
+        )
+    except Exception as exc:
+        logger.exception(
+            "conversacion_simple_structured_call_failed stage=summarizer schema_name=%s schema_hash=%s runtime_version=%s error=%s",
+            schema_observability.get("schema_name"),
+            schema_observability.get("schema_hash"),
+            schema_observability.get("runtime_version"),
+            str(exc),
+        )
+        return StructuredSummarizerCall(source="fallback", output=None, response_id=None, schema_observability=schema_observability)
     response_id = _extract_response_id(response)
     text = _extract_output_text(response)
     if not text:
-        return StructuredSummarizerCall(source="fallback", output=None, response_id=response_id)
+        return StructuredSummarizerCall(source="fallback", output=None, response_id=response_id, schema_observability=schema_observability)
     try:
         payload = json.loads(text)
         output = SummarizerOutput.model_validate(payload)
     except Exception:
-        return StructuredSummarizerCall(source="fallback", output=None, response_id=response_id)
-    return StructuredSummarizerCall(source="model", output=output, response_id=response_id)
+        return StructuredSummarizerCall(source="fallback", output=None, response_id=response_id, schema_observability=schema_observability)
+    return StructuredSummarizerCall(source="model", output=output, response_id=response_id, schema_observability=schema_observability)
 
 
 def _render_structured_summary(output: SummarizerOutput) -> str:
@@ -545,6 +602,7 @@ def run_conversacion_simple_turn(
     canonical_state = repo.load_state(state, config)
     recent_dialogue = repo.load_recent_dialogue(state)
     memory_obs: dict[str, object] = {}
+    runtime_version = get_runtime_version_info()
 
     turn_id = str(uuid.uuid4())
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -589,6 +647,8 @@ def run_conversacion_simple_turn(
             model=config.summarizer_model_target,
             messages=summarizer_messages,
         )
+        if summarizer_call.schema_observability is not None:
+            memory_obs["summarizer_schema_observability"] = summarizer_call.schema_observability
         if summarizer_call.output is not None:
             new_summary = _render_structured_summary(summarizer_call.output)
             canonical_state.memory_compacted_summary = _truncate_compacted_summary(new_summary, config.compacted_summary_max_chars)
@@ -618,6 +678,8 @@ def run_conversacion_simple_turn(
 
     started = time.perf_counter()
     call = _call_brain_structured(client=client, model=trace_meta.model_target, messages=brain_messages)
+    if call.schema_observability is not None:
+        memory_obs["brain_schema_observability"] = call.schema_observability
     brain_output = _parse_brain_output_strict(
         payload=call.parsed_json,
         allow_fallback=call.source != "model",
@@ -685,6 +747,7 @@ def run_conversacion_simple_turn(
         stage_timings_ms={"brain_call": latency_ms},
         memory_observability=memory_obs,
         nodes={"brain": node_trace},
+        runtime_version=runtime_version,
     )
 
     repo.save_state(state, canonical_state)
