@@ -13,9 +13,11 @@ from conversacion_simple.orchestration.flow_config import build_conversacion_sim
 from conversacion_simple.orchestration.pipeline import (
     SummarizerOutput,
     StructuredBrainCall,
+    StructuredSummarizerCall,
     _call_brain_structured,
     _call_summarizer_structured,
     _normalize_schema_for_strict_json_schema,
+    _sanitize_exception_message,
     run_conversacion_simple_turn,
 )
 from conversacion_simple.nodes.brain_node import BrainOutput
@@ -471,6 +473,102 @@ def test_structured_call_provider_error_keeps_schema_observability() -> None:
     assert out.fallback_reason_code == "provider_exception"
     assert out.model_attempted is True
     assert out.model_succeeded is False
+    provider_exc = out.provider_exception
+    assert isinstance(provider_exc, dict)
+    assert provider_exc["provider_exception_type"] == "RuntimeError"
+    assert provider_exc["provider_exception_stage"] == "brain"
+    assert provider_exc["provider_model_target"] == "gpt-5-nano"
+    assert provider_exc["provider_exception_status_code"] == 400
+    assert provider_exc["provider_exception_code"] == "invalid_json_schema"
+    assert "invalid schema" in str(provider_exc["provider_exception_message"]).lower()
+
+
+def test_exception_message_sanitizer_redacts_credentials_and_truncates() -> None:
+    raw = (
+        "Authorization: Bearer sk-super-secret-token "
+        "api_key=sk-super-secret-token "
+        "access_token=abc123456789 "
+        + ("x" * 1200)
+    )
+    sanitized = _sanitize_exception_message(raw, max_len=180)
+    assert isinstance(sanitized, str)
+    assert "super-secret-token" not in sanitized
+    assert "abc123456789" not in sanitized
+    assert "authorization: [redacted]" in sanitized.lower()
+    assert sanitized.endswith("…[truncated]")
+
+
+def test_provider_exception_observability_is_propagated_without_secret_leaks(monkeypatch) -> None:
+    secret = "sk-top-secret-1234567890"
+
+    class _SecretFailingResponses:
+        def create(self, **kwargs):
+            raise RuntimeError(f"Authorization: Bearer {secret}; code=rate_limit_exceeded")
+
+    class _SecretFailingClient:
+        responses = _SecretFailingResponses()
+
+    monkeypatch.setattr("conversacion_simple.orchestration.pipeline._build_client", lambda: _SecretFailingClient())
+    state = SessionState(user_id="u", session_id="s")
+    _bind(state)
+    config = build_conversacion_simple_pipeline_config(context_id="baseline", stateful=True)
+    turn_context = build_conversacion_simple_turn_context(state=state, entrypoint="/tests", requested_context_id="baseline")
+
+    _, updated, _ = run_conversacion_simple_turn(state=state, user_message="hola", config=config, turn_context=turn_context)
+    trace = updated.world_state[config.traces_key][-1]
+    provider_exc = trace["memory_observability"]["brain_provider_exception"]
+    node_provider_exc = trace["nodes"]["brain"]["output_summary"]["provider_exception"]
+    assert trace["brain_fallback_reason_code"] == "provider_exception"
+    assert provider_exc["provider_exception_type"] == "RuntimeError"
+    assert provider_exc["provider_exception_stage"] == "brain"
+    assert provider_exc["provider_model_target"] == config.brain_model_target
+    assert secret not in str(provider_exc["provider_exception_message"])
+    assert node_provider_exc["provider_exception_type"] == "RuntimeError"
+
+
+def test_summarizer_provider_exception_observability_is_captured(monkeypatch) -> None:
+    monkeypatch.setattr("conversacion_simple.orchestration.pipeline._build_client", lambda: object())
+
+    def _fake_brain(**kwargs):
+        return StructuredBrainCall(source="model", parsed_json=_valid_brain_output(), response=None, model_attempted=True, model_succeeded=True)
+
+    def _fake_summarizer(**kwargs):
+        return StructuredSummarizerCall(
+            source="fallback",
+            output=None,
+            response_id="sum-1",
+            fallback_reason_code="provider_exception",
+            model_attempted=True,
+            model_succeeded=False,
+            provider_exception={
+                "provider_exception_type": "APIStatusError",
+                "provider_exception_message": "Error code: 503 service unavailable",
+                "provider_exception_status_code": 503,
+                "provider_exception_code": "service_unavailable",
+                "provider_exception_stage": "summarizer",
+                "provider_model_target": "gpt-5.4-nano",
+            },
+        )
+
+    monkeypatch.setattr("conversacion_simple.orchestration.pipeline._call_brain_structured", _fake_brain)
+    monkeypatch.setattr("conversacion_simple.orchestration.pipeline._call_summarizer_structured", _fake_summarizer)
+
+    state = SessionState(user_id="u", session_id="s")
+    _bind(state)
+    config = build_conversacion_simple_pipeline_config(context_id="baseline", stateful=True)
+    turn_context = build_conversacion_simple_turn_context(state=state, entrypoint="/tests", requested_context_id="baseline")
+
+    for i in range(21):
+        run_conversacion_simple_turn(state=state, user_message=f"turno {i}", config=config, turn_context=turn_context)
+
+    trace = state.world_state[config.traces_key][-1]
+    obs = trace["memory_observability"]
+    assert trace["brain_model_succeeded"] is True
+    assert trace["brain_fallback_reason_code"] is None
+    assert obs["memory_summary_compaction_source"] == "deterministic_fallback"
+    assert obs["summarizer_fallback_reason_code"] == "provider_exception"
+    assert obs["summarizer_provider_exception"]["provider_exception_stage"] == "summarizer"
+    assert obs["summarizer_provider_exception"]["provider_exception_status_code"] == 503
 
 
 def test_structured_call_fallback_reason_codes_for_empty_and_parse_error() -> None:
