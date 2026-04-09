@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -13,24 +13,15 @@ from negociacion.state.shared_types import ThreadMode
 
 
 class ConversationSimplePersonaState(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    policy: dict[str, str] = Field(default_factory=dict)
-    expressive: dict[str, str] = Field(default_factory=dict)
+    model_config = ConfigDict(extra="allow")
 
 
 class ConversationSimpleBriefState(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    schema_version: str = "conversation_brief.v1"
-    objective: str = ""
-    constraints: list[str] = Field(default_factory=list)
+    model_config = ConfigDict(extra="allow")
 
 
 class ConversationSimplePhaseCardsState(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    phase_cards: dict[str, dict[str, object]] = Field(default_factory=dict)
+    model_config = ConfigDict(extra="allow")
 
 
 class ConversationSimpleMemoryEpisodicItem(BaseModel):
@@ -113,13 +104,9 @@ def _load_persona_defaults(context_id: str | None = None) -> dict[str, object]:
 
 
 def parse_conversation_simple_brief_payload(payload: dict[str, object]) -> ConversationSimpleBriefState:
-    objective = payload.get("objective")
-    constraints = payload.get("constraints")
-    return ConversationSimpleBriefState(
-        schema_version=str(payload.get("schema_version") or "conversation_brief.v1"),
-        objective=objective if isinstance(objective, str) else "",
-        constraints=[item for item in constraints if isinstance(item, str)] if isinstance(constraints, list) else [],
-    )
+    if not isinstance(payload, dict):
+        return ConversationSimpleBriefState()
+    return ConversationSimpleBriefState.model_validate(payload)
 
 
 def _load_conversation_brief_defaults(context_id: str | None = None) -> ConversationSimpleBriefState:
@@ -136,15 +123,9 @@ def _load_conversation_brief_defaults(context_id: str | None = None) -> Conversa
 
 
 def parse_conversation_simple_phase_cards_payload(payload: dict[str, object]) -> ConversationSimplePhaseCardsState:
-    raw_phase_cards = payload.get("phase_cards")
-    if not isinstance(raw_phase_cards, dict):
-        return ConversationSimplePhaseCardsState(phase_cards={})
-    normalized: dict[str, dict[str, object]] = {}
-    for phase_name, phase_payload in raw_phase_cards.items():
-        if not isinstance(phase_name, str) or not isinstance(phase_payload, dict):
-            continue
-        normalized[phase_name] = {k: v for k, v in phase_payload.items() if isinstance(k, str)}
-    return ConversationSimplePhaseCardsState(phase_cards=normalized)
+    if not isinstance(payload, dict):
+        return ConversationSimplePhaseCardsState()
+    return ConversationSimplePhaseCardsState.model_validate(payload)
 
 
 def _load_phase_cards_defaults(context_id: str | None = None) -> ConversationSimplePhaseCardsState:
@@ -171,8 +152,7 @@ def build_default_conversation_simple_canonical_state(
 ) -> ConversationSimpleCanonicalState:
     timestamp = now_iso or datetime.now(timezone.utc).isoformat()
     persona_raw = _load_persona_defaults(context_id=context_id)
-    policy = persona_raw.get("policy") if isinstance(persona_raw.get("policy"), dict) else {}
-    expressive = persona_raw.get("expressive") if isinstance(persona_raw.get("expressive"), dict) else {}
+    persona_payload: dict[str, Any] = persona_raw if isinstance(persona_raw, dict) else {}
     return ConversationSimpleCanonicalState(
         session=SessionMeta(
             session_id=session_id,
@@ -182,10 +162,7 @@ def build_default_conversation_simple_canonical_state(
             updated_at=timestamp,
         ),
         openai_thread=OpenAIThreadState(thread_mode=thread_mode, conversation_id=None, previous_response_id=None),
-        persona=ConversationSimplePersonaState(
-            policy={k: v for k, v in policy.items() if isinstance(k, str) and isinstance(v, str)},
-            expressive={k: v for k, v in expressive.items() if isinstance(k, str) and isinstance(v, str)},
-        ),
+        persona=ConversationSimplePersonaState.model_validate(persona_payload),
         conversation_brief=_load_conversation_brief_defaults(context_id=context_id),
         phase_cards=_load_phase_cards_defaults(context_id=context_id),
         memory_episodic=[],
