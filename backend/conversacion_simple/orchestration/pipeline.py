@@ -306,11 +306,21 @@ def _normalize_schema_for_strict_json_schema(schema: object) -> object:
     return normalize_schema_for_strict_json_schema(schema)
 
 
-def _prepare_strict_schema(*, schema_name: str, schema: object) -> tuple[object, dict[str, object]]:
+def _prepare_strict_schema(
+    *,
+    schema_name: str,
+    schema: object,
+    provider_model_target: str,
+    format_name: str,
+    format_strict: bool,
+) -> tuple[object, dict[str, object]]:
     normalized = _normalize_schema_for_strict_json_schema(schema)
     validation_report = validate_strict_json_schema(normalized)
     observability = build_schema_observability(schema_name=schema_name, schema=normalized, validation_report=validation_report)
     observability["runtime_version"] = get_runtime_version_info()
+    observability["provider_model_target"] = provider_model_target
+    observability["format_name"] = format_name
+    observability["format_strict"] = format_strict
     return normalized, observability
 
 
@@ -330,7 +340,13 @@ def _call_brain_structured(
             model_succeeded=False,
             provider_exception=None,
         )
-    normalized_schema, schema_observability = _prepare_strict_schema(schema_name=BrainOutput.__name__, schema=BrainOutput.model_json_schema())
+    normalized_schema, schema_observability = _prepare_strict_schema(
+        schema_name=BrainOutput.__name__,
+        schema=BrainOutput.model_json_schema(),
+        provider_model_target=model,
+        format_name=BrainOutput.__name__,
+        format_strict=True,
+    )
     validation = schema_observability.get("validation")
     if isinstance(validation, dict) and not bool(validation.get("valid", False)):
         logger.error(
@@ -456,7 +472,13 @@ def _call_summarizer_structured(
             model_succeeded=False,
             provider_exception=None,
         )
-    normalized_schema, schema_observability = _prepare_strict_schema(schema_name=SummarizerOutput.__name__, schema=SummarizerOutput.model_json_schema())
+    normalized_schema, schema_observability = _prepare_strict_schema(
+        schema_name=SummarizerOutput.__name__,
+        schema=SummarizerOutput.model_json_schema(),
+        provider_model_target=model,
+        format_name=SummarizerOutput.__name__,
+        format_strict=True,
+    )
     validation = schema_observability.get("validation")
     if isinstance(validation, dict) and not bool(validation.get("valid", False)):
         logger.error(
