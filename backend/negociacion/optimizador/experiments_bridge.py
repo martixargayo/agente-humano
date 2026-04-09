@@ -30,7 +30,6 @@ _ALLOWED_CONFIG_FIELDS: dict[str, type] = {
 }
 
 _CS_ALLOWED_CONFIG_FIELDS: dict[str, type] = {
-    "max_recent_dialogue_messages": int,
     "episodic_compaction_trigger_count": int,
     "episodic_compaction_trigger_chars": int,
     "max_episodic_high_resolution_items": int,
@@ -117,6 +116,7 @@ def apply_overrides(
     context_id: str | None = None,
     flow_id: str | None = None,
 ) -> tuple[Any, TemporaryDirectory | None]:
+    effective_flow_id = flow_id or getattr(base_config, "flow_id", None)
     config_patch: dict[str, Any] = {}
     for entry in entries:
         if entry["category"] == "config":
@@ -131,9 +131,9 @@ def apply_overrides(
     tempdir = TemporaryDirectory(prefix="optimizador_prompts_")
     tmp_dir = Path(tempdir.name)
 
-    _copy_base_prompt_bundle(tmp_dir, context_id=context_id, prompts_dir=Path(base_config.prompts_dir), flow_id=flow_id)
+    _copy_base_prompt_bundle(tmp_dir, context_id=context_id, prompts_dir=Path(base_config.prompts_dir), flow_id=effective_flow_id)
 
-    prompt_files = _CS_PROMPT_FILES if flow_id == "conversacion_simple" else PROMPT_FILES
+    prompt_files = _CS_PROMPT_FILES if effective_flow_id == "conversacion_simple" else PROMPT_FILES
     for entry in prompt_entries:
         file_name = prompt_files.get(entry["key"])
         if file_name:

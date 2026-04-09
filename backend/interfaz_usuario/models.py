@@ -52,14 +52,30 @@ class NegotiationTurnRequest(BaseModel):
 
 
 class EntryConfigSnapshot(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     memory_key: str
-    thread_mode_default: str
-    model_memory: str
-    model_phase_classifier: str
-    model_planner: str
-    model_executor: str
-    max_recent_messages: int
-    max_executor_recent_turns: int
+    flow_id: str | None = None
+    context_id: str | None = None
+    brain_model_target: str | None = None
+    summarizer_model_target: str | None = None
+    context_limit_turns: int | None = None
+    keep_last_n_turns: int | None = None
+    recent_dialogue_short_max_messages: int | None = None
+    episodic_compaction_trigger_count: int | None = None
+    episodic_compaction_trigger_chars: int | None = None
+    max_episodic_high_resolution_items: int | None = None
+    maintenance_retry_limit: int | None = None
+    compacted_summary_max_chars: int | None = None
+    maintenance_force_failure: bool | None = None
+    thread_mode_default: str | None = None
+    model_memory: str | None = None
+    model_phase_classifier: str | None = None
+    model_planner: str | None = None
+    model_executor: str | None = None
+    max_recent_messages: int | None = None
+    max_executor_recent_turns: int | None = None
+
 
 
 class EntryContractPayload(BaseModel):

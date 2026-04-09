@@ -134,6 +134,24 @@ def _resolve_optimizer_contract_flags(state: SessionState) -> tuple[bool, bool]:
     return clone_used, new_conversation
 
 
+def _build_interfaz_usuario_comparability(*, flow_id: str, resolved_entries: list[dict[str, Any]]) -> dict[str, Any]:
+    if flow_id != "conversacion_simple":
+        return {
+            "comparable_to_interfaz_usuario_base": True,
+            "comparability_reason": "non_conversacion_simple_flow",
+        }
+    has_relevant_overrides = any(entry.get("category") in {"prompt", "config", "contextual"} for entry in resolved_entries)
+    if has_relevant_overrides:
+        return {
+            "comparable_to_interfaz_usuario_base": False,
+            "comparability_reason": "overrides_applied",
+        }
+    return {
+        "comparable_to_interfaz_usuario_base": True,
+        "comparability_reason": "no_overrides",
+    }
+
+
 def list_sessions() -> list[dict[str, Any]]:
     return session_bridge.list_sessions()
 
@@ -338,8 +356,27 @@ def run_sandbox_turn(
                 conversation_id=conversation_id,
                 turn_id=scope_turn_id,
             )
-            config, tempdir = experiments_bridge.apply_overrides(base_config, resolved_entries, context_id=base_context["context_id"], flow_id=base_context["flow_id"])
+            if base_context["flow_id"] == "conversacion_simple":
+                prompt_override_keys = sorted(
+                    str(entry.get("key"))
+                    for entry in resolved_entries
+                    if entry.get("category") == "prompt"
+                )
+                if prompt_override_keys:
+                    raise HTTPException(
+                        status_code=400,
+                        detail={
+                            "error": "conversacion_simple_prompt_override_not_supported",
+                            "message": (
+                                "Prompt overrides en conversacion_simple están bloqueados: "
+                                "rompen el contrato de contexto oficial/prompts_dir."
+                            ),
+                            "rejected_prompt_override_keys": prompt_override_keys,
+                        },
+                    )
+            config, tempdir = experiments_bridge.apply_overrides(base_config, resolved_entries, context_id=base_context["context_id"])
             _apply_contextual_state_overrides(state, config, resolved_entries, flow_id=base_context["flow_id"])
+            comparability = _build_interfaz_usuario_comparability(flow_id=base_context["flow_id"], resolved_entries=resolved_entries)
             clone_used, new_conversation = _resolve_optimizer_contract_flags(state)
             probe_token = begin_turn_probe(
                 logical_user_message_id=logical_user_message_id,
@@ -430,6 +467,8 @@ def run_sandbox_turn(
             },
             headers={"Retry-After": str(exc.retry_after_seconds)},
         ) from exc
+    except HTTPException:
+        raise
     except Exception as exc:
         if isinstance(exc, ContextContractError):
             raise_http_from_context_error(exc)
@@ -505,6 +544,8 @@ def run_sandbox_turn(
             "optimizer_session_id": optimizer_session_id,
             "used_overrides": bool(resolved_entries),
             "applied_overrides": experiments_bridge.describe_effective_overrides(resolved_entries),
+            "comparable_to_interfaz_usuario_base": comparability["comparable_to_interfaz_usuario_base"],
+            "comparability_reason": comparability["comparability_reason"],
             "mode": optimizer_state.get("mode", "mirror"),
             "workspace_version": optimizer_state.get("workspace_version", 1),
             "session_key": storage.session_key(user_id, session_id),
@@ -523,6 +564,8 @@ def run_sandbox_turn(
         "post_commit_housekeeping_error": post_commit_housekeeping_error,
         "turn_title": derive_turn_title(latest, turns) if latest else None,
         "effective_overrides": experiments_bridge.describe_effective_overrides(resolved_entries),
+        "comparable_to_interfaz_usuario_base": comparability["comparable_to_interfaz_usuario_base"],
+        "comparability_reason": comparability["comparability_reason"],
         "entry_contract": meta.get("entry_contract") if isinstance(meta, dict) else None,
     }
 
@@ -630,6 +673,10 @@ def compare_turns(turn_a: str, turn_b: str) -> dict[str, Any]:
             "same_optimizer_session": a_meta.get("optimizer_session_id") == b_meta.get("optimizer_session_id"),
             "a_optimizer_session": a_meta.get("optimizer_session_id"),
             "b_optimizer_session": b_meta.get("optimizer_session_id"),
+            "a_comparable_to_interfaz_usuario_base": bool(a_meta.get("comparable_to_interfaz_usuario_base", True)),
+            "b_comparable_to_interfaz_usuario_base": bool(b_meta.get("comparable_to_interfaz_usuario_base", True)),
+            "a_comparability_reason": a_meta.get("comparability_reason"),
+            "b_comparability_reason": b_meta.get("comparability_reason"),
         },
         "effective_overrides": {
             "a": a_overrides,
