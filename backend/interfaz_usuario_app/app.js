@@ -22,7 +22,18 @@ class ApiError extends Error {
   }
 }
 
+const turnPerfEvents = [];
+
+function recordTurnPerf(event, extra = {}) {
+  const ts = performance?.now ? performance.now() : Date.now();
+  const payload = { event, ts, ...extra };
+  turnPerfEvents.push(payload);
+  if (turnPerfEvents.length > 200) turnPerfEvents.shift();
+  window.__iuTurnPerfEvents = turnPerfEvents;
+}
+
 async function api(path, opts = {}) {
+  recordTurnPerf('request_started', { path });
   const r = await fetch(`/api/interfaz_usuario${path}`, {
     headers: { 'Content-Type': 'application/json' },
     ...opts,
@@ -64,7 +75,9 @@ async function api(path, opts = {}) {
       },
     });
   }
-  return r.json();
+  const parsed = await r.json();
+  recordTurnPerf('response_body_parsed', { path, status: r.status });
+  return parsed;
 }
 
 function ids() {
@@ -1071,17 +1084,21 @@ function stopVoiceCapture() {
 }
 
 async function transcribeAudio(blob) {
+  recordTurnPerf('stt_request_started', { blob_bytes: blob?.size || 0 });
   const audioFile = new File([blob], 'grabacion.webm', { type: recorderMimeType });
   const formData = new FormData();
   formData.append('file', audioFile);
   const response = await fetch('/stt_google', { method: 'POST', body: formData });
   if (!response.ok) throw new Error(await response.text());
   const data = await response.json();
+  recordTurnPerf('stt_response_received', { text_len: (data?.text || '').length });
   return (data?.text || '').trim();
 }
 
 async function playTtsWithAvatar(replyText) {
+  recordTurnPerf('tts_request_started_internal', { reply_len: replyText.length });
   const audioData = await requestTTS(replyText, getPresentationVoiceConfig());
+  recordTurnPerf('tts_audio_ready', { audio_bytes: audioData.arrayBuffer.byteLength });
   const ctx = getOrCreateAudioContext();
   const decoded = await ctx.decodeAudioData(audioData.arrayBuffer.slice(0));
   const analyser = ctx.createAnalyser();
@@ -1099,6 +1116,7 @@ async function playTtsWithAvatar(replyText) {
   });
 
   await ctx.resume();
+  recordTurnPerf('tts_play_started', { mode: currentInputMode });
   await new Promise((resolve) => {
     source.onended = () => {
       withAvatarRuntime((runtime) => {
@@ -2434,17 +2452,25 @@ async function runNegotiationTurnFromText(message, { allowWhileVoiceTurn = false
   syncSessionBoundaryReset();
   if (!message || turnInFlight || (voiceTurnInFlight && !allowWhileVoiceTurn)) return false;
 
+  const handlerStartedAt = performance.now();
+  recordTurnPerf('send_clicked', { mode: 'text', message_len: message.length });
   turnInFlight = true;
   updateUi();
   try {
+    recordTurnPerf('click_send_to_handler', { mode: 'text' });
     const payload = { ...ids(), message, new_conversation: false };
+    recordTurnPerf('frontend_payload_ready', { payload_bytes: JSON.stringify(payload).length });
     updateReplyText('...');
     setStatusText('Procesando…');
     withAvatarRuntime((runtime) => { runtime.setMode('THINKING'); runtime.setTalkLevel(0); });
 
+    recordTurnPerf('turn_request_started', { mode: 'text' });
     const out = await api('/negociacion/turn', { method: 'POST', body: JSON.stringify(payload) });
+    recordTurnPerf('turn_response_received', { mode: 'text' });
     clearSessionBusyState();
+    recordTurnPerf('reply_render_started', { mode: 'text' });
     updateReplyText(out.reply || '');
+    recordTurnPerf('reply_render_finished', { mode: 'text', elapsed_since_handler_ms: performance.now() - handlerStartedAt });
     armFinishButton(out.finish_button_armed);
     setLatestTraceCount(out.trace_count);
 
@@ -2457,7 +2483,9 @@ async function runNegotiationTurnFromText(message, { allowWhileVoiceTurn = false
 
     if (out.reply) {
       try {
+        recordTurnPerf('tts_request_started', { mode: 'text', reply_len: out.reply.length });
         await playTtsWithAvatar(out.reply);
+        recordTurnPerf('tts_play_finished', { mode: 'text' });
       } catch (err) {
         console.warn('[tts] Error reproduciendo TTS; fallback visual', err);
         withAvatarRuntime((runtime) => {
@@ -2592,6 +2620,7 @@ ui.modeWrite.addEventListener('click', () => {
 ui.sendTextBtn.addEventListener('click', handleSend);
 async function handleFinishTurn() {
   if (turnInFlight || voiceTurnInFlight || ui.finishTurnBtn.disabled || getActiveSessionBusyState()) return;
+  recordTurnPerf('send_clicked', { mode: 'voice' });
   voiceTurnInFlight = true;
   updateUi();
   setStatusText('Procesando…');
@@ -2600,7 +2629,9 @@ async function handleFinishTurn() {
   ui.finishTurnBtn.classList.add('highlight');
 
   try {
+    recordTurnPerf('voice_capture_stop_requested', {});
     const blob = await stopVoiceCapture();
+    recordTurnPerf('voice_capture_blob_ready', { blob_bytes: blob?.size || 0 });
     teardownMic();
     if (!blob || !blob.size) throw new Error('No se capturó audio.');
     const text = await transcribeAudio(blob);
