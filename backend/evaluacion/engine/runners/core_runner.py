@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from evaluacion.contracts.models import CoreRunnerInputV1, FeedbackReportCoreV1, KeyMoment
-from evaluacion.domains.negotiation.assets_loader import resolve_negotiation_evaluation_assets
+from evaluacion.domains.router import resolve_evaluation_assets
 from evaluacion.engine.flow_config import CORE_MODEL
 from evaluacion.engine.runners.common import load_prompt_text, run_structured
 
@@ -69,7 +69,7 @@ def _fallback_output(core_input: CoreRunnerInputV1) -> FeedbackReportCoreV1:
 
 
 def run_core_evaluator(core_input: CoreRunnerInputV1) -> tuple[FeedbackReportCoreV1, str]:
-    prompt = load_prompt_text(resolve_negotiation_evaluation_assets(core_input.domain_context).core_prompt_path)
+    prompt = load_prompt_text(resolve_evaluation_assets(core_input.domain_context).core_prompt_path)
     parsed = run_structured(
         model=CORE_MODEL,
         developer_prompt=prompt,

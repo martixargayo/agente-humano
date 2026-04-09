@@ -4,13 +4,17 @@ from pydantic import BaseModel, ConfigDict
 
 from sessions.state import SessionState
 
-from negociacion.contexts import read_bound_context_from_session, resolve_default_negotiation_context, resolve_negotiation_context
+from conversacion_simple.contexts import (
+    read_bound_conversacion_simple_context_from_session,
+    resolve_conversacion_simple_context,
+    resolve_default_conversacion_simple_context,
+)
 
 from evaluacion.contracts.models import DomainContext
 
 
-class NegotiationEvaluationContext(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+class ConversationSimpleEvaluationContext(BaseModel):
+    model_config = ConfigDict(extra='forbid')
 
     flow_id: str
     context_id: str
@@ -19,11 +23,11 @@ class NegotiationEvaluationContext(BaseModel):
     fallback_used: bool = False
 
 
-def _resolve_from_domain_context(domain_context: DomainContext) -> NegotiationEvaluationContext:
-    if domain_context.flow_id and domain_context.flow_id != "negociacion":
-        raise RuntimeError(f"evaluation_flow_context_mismatch:negociacion:{domain_context.flow_id}")
-    resolved = resolve_negotiation_context(domain_context.context_id)
-    return NegotiationEvaluationContext(
+def _resolve_from_domain_context(domain_context: DomainContext) -> ConversationSimpleEvaluationContext:
+    if domain_context.flow_id and domain_context.flow_id != 'conversacion_simple':
+        raise RuntimeError(f"evaluation_flow_context_mismatch:conversacion_simple:{domain_context.flow_id}")
+    resolved = resolve_conversacion_simple_context(domain_context.context_id)
+    return ConversationSimpleEvaluationContext(
         flow_id=resolved.flow_id,
         context_id=resolved.context_id,
         context_version=domain_context.context_version or resolved.context_version,
@@ -32,12 +36,12 @@ def _resolve_from_domain_context(domain_context: DomainContext) -> NegotiationEv
     )
 
 
-def resolve_evaluation_context_from_domain_context(domain_context: DomainContext | None) -> NegotiationEvaluationContext:
+def resolve_evaluation_context_from_domain_context(domain_context: DomainContext | None) -> ConversationSimpleEvaluationContext:
     if domain_context is not None and domain_context.context_id:
         return _resolve_from_domain_context(domain_context)
 
-    resolved = resolve_default_negotiation_context()
-    return NegotiationEvaluationContext(
+    resolved = resolve_default_conversacion_simple_context()
+    return ConversationSimpleEvaluationContext(
         flow_id=resolved.flow_id,
         context_id=resolved.context_id,
         context_version=resolved.context_version,
@@ -49,8 +53,8 @@ def resolve_evaluation_context_from_domain_context(domain_context: DomainContext
 def resolve_evaluation_context_from_session(
     state: SessionState,
     domain_context: DomainContext | None = None,
-) -> NegotiationEvaluationContext:
-    bound = read_bound_context_from_session(state)
+) -> ConversationSimpleEvaluationContext:
+    bound = read_bound_conversacion_simple_context_from_session(state)
     explicit = domain_context if (domain_context is not None and domain_context.context_id) else None
 
     if bound is not None:
@@ -59,7 +63,7 @@ def resolve_evaluation_context_from_session(
                 raise RuntimeError(f"evaluation_flow_context_conflict:{bound.flow_id}:{explicit.flow_id}")
             if explicit.context_id != bound.context_id:
                 raise RuntimeError(f"evaluation_context_conflict:{bound.context_id}:{explicit.context_id}")
-        return NegotiationEvaluationContext(
+        return ConversationSimpleEvaluationContext(
             flow_id=bound.flow_id,
             context_id=bound.context_id,
             context_version=bound.context_version,
@@ -70,8 +74,8 @@ def resolve_evaluation_context_from_session(
     if explicit is not None:
         return _resolve_from_domain_context(explicit)
 
-    resolved = resolve_default_negotiation_context()
-    return NegotiationEvaluationContext(
+    resolved = resolve_default_conversacion_simple_context()
+    return ConversationSimpleEvaluationContext(
         flow_id=resolved.flow_id,
         context_id=resolved.context_id,
         context_version=resolved.context_version,

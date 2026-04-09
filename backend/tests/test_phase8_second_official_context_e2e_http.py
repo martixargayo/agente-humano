@@ -26,7 +26,7 @@ class Phase8SecondOfficialContextE2EHttpTests(unittest.TestCase):
         self.client = TestClient(app)
 
     @staticmethod
-    def _fake_runtime_turn(current_state, user_message: str, current_config):
+    def _fake_runtime_turn(current_state, user_message: str, current_config, **kwargs):
         traces_key = f'{current_config.memory_key}_traces'
         traces = current_state.world_state.setdefault(traces_key, [])
         turn_index = len(traces) + 1

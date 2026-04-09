@@ -113,7 +113,7 @@ class Phase8SecondOfficialContextTests(unittest.TestCase):
 
         captured = {}
 
-        def fake_execute_turn_with_contract(*, state, user_message, config, contract):
+        def fake_execute_turn_with_contract(*, state, user_message, config, contract, **kwargs):
             captured['prompts_dir'] = config.prompts_dir
             return (
                 'reply-runtime',
@@ -134,10 +134,12 @@ class Phase8SecondOfficialContextTests(unittest.TestCase):
 
         config = build_negotiation_pipeline_config(context_id=NEW_CONTEXT_ID)
 
-        def fake_turn(current_state, user_message, current_config):
+        def fake_turn(current_state, user_message, current_config, **kwargs):
             current_state.world_state[f'{current_config.memory_key}_traces'] = [{'turn_id': 'turn-new'}]
             current_state.world_state[current_config.memory_key] = {'openai_thread': {}}
             return 'ok', current_state
+
+        from interfaz_usuario.services import build_interfaz_usuario_turn_context
 
         with patch('negociacion.orchestration.turn_contract.run_negotiation_cognitive_turn', side_effect=fake_turn):
             _, updated_state, _ = execute_turn_with_contract(
@@ -149,6 +151,11 @@ class Phase8SecondOfficialContextTests(unittest.TestCase):
                     entrypoint='/api/interfaz_usuario/negociacion/turn',
                     overrides_applied=False,
                     optimizer_wrapper_used=False,
+                ),
+                turn_context=build_interfaz_usuario_turn_context(
+                    state=state,
+                    entrypoint='/api/interfaz_usuario/negociacion/turn',
+                    requested_context_id=NEW_CONTEXT_ID,
                 ),
             )
 
@@ -224,7 +231,7 @@ class Phase8SecondOfficialContextTests(unittest.TestCase):
         resolved = resolve_negotiation_context(NEW_CONTEXT_ID)
         captured = {}
 
-        def fake_execute_turn_with_contract(*, state, user_message, config, contract):
+        def fake_execute_turn_with_contract(*, state, user_message, config, contract, **kwargs):
             captured['prompts_dir'] = config.prompts_dir
             captured['phase_cards'] = Path(config.prompts_dir, 'phase_cards.json').read_text(encoding='utf-8')
             captured['persona'] = Path(config.prompts_dir, 'persona.json').read_text(encoding='utf-8')

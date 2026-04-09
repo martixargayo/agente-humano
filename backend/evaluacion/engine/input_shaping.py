@@ -6,7 +6,7 @@ from evaluacion.contracts.models import (
     FeedbackInputBundleV1,
     TrajectoryRunnerInputV1,
 )
-from evaluacion.domains.negotiation import load_negotiation_rubric_v1
+from evaluacion.domains.router import load_domain_rubric_v1
 from evaluacion.engine.flow_config import MAX_TEXT_CHARS_PER_SIDE, MAX_TURNS_FOR_EVAL
 
 
@@ -39,7 +39,7 @@ def shape_core_input(bundle: FeedbackInputBundleV1) -> CoreRunnerInputV1:
         conversation=bundle.conversation.model_copy(update={"turns": selected}),
         conversation_stats=bundle.conversation_stats,
         domain_context=bundle.domain_context,
-        domain_rubric=load_negotiation_rubric_v1(bundle.domain_context),
+        domain_rubric=load_domain_rubric_v1(bundle.domain_context),
     )
 
 

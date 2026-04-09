@@ -19,7 +19,7 @@ from evaluacion.contracts.models import (
     TurnTrajectoryV1,
     UiFeedbackReportV1,
 )
-from evaluacion.domains.negotiation import build_feedback_input_bundle_v1
+from evaluacion.domains.router import build_feedback_input_bundle_v1
 from evaluacion.engine.assembler import assemble_ui_report
 from evaluacion.engine.flow_config import (
     ASYNC_START_DELAY_MS,
@@ -72,6 +72,8 @@ def _run_pipeline_from_bundle(*, evaluation_id: str, bundle: FeedbackInputBundle
                 "flow_id": str(bundle.domain_context.flow_id or ""),
                 "context_id": str(bundle.domain_context.context_id or ""),
                 "context_version": str(bundle.domain_context.context_version or ""),
+                "resolution_source": str(bundle.domain_context.resolution_source or ""),
+                "fallback_used": str(bool(bundle.domain_context.fallback_used)).lower(),
             },
             stage_latencies_ms={"building_inputs": int((time.perf_counter() - t0) * 1000)},
         )
@@ -132,6 +134,8 @@ def _run_pipeline_from_bundle(*, evaluation_id: str, bundle: FeedbackInputBundle
             flow_id=bundle.domain_context.flow_id,
             context_id=bundle.domain_context.context_id,
             context_version=bundle.domain_context.context_version,
+            resolution_source=bundle.domain_context.resolution_source,
+            fallback_used=bundle.domain_context.fallback_used,
         )
         report: UiFeedbackReportV1 = assemble_ui_report(
             core=core_output,
