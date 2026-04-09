@@ -5,6 +5,8 @@ import os
 import time
 import uuid
 import logging
+import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -165,6 +167,9 @@ class StructuredBrainCall:
     response: object | None
     response_id: str | None = None
     schema_observability: dict[str, object] | None = None
+    fallback_reason_code: str | None = None
+    model_attempted: bool = False
+    model_succeeded: bool = False
 
 
 _DEFAULT_SUMMARIZER_PROMPT = """Eres un summarizer táctico de contexto conversacional para negociación.
@@ -254,7 +259,14 @@ def _call_brain_structured(
     messages: list[dict[str, str]],
 ) -> StructuredBrainCall:
     if client is None:
-        return StructuredBrainCall(source="fallback", parsed_json=None, response=None)
+        return StructuredBrainCall(
+            source="fallback",
+            parsed_json=None,
+            response=None,
+            fallback_reason_code="client_unavailable",
+            model_attempted=False,
+            model_succeeded=False,
+        )
     normalized_schema, schema_observability = _prepare_strict_schema(schema_name=BrainOutput.__name__, schema=BrainOutput.model_json_schema())
     validation = schema_observability.get("validation")
     if isinstance(validation, dict) and not bool(validation.get("valid", False)):
@@ -265,7 +277,15 @@ def _call_brain_structured(
             validation.get("first_mismatch"),
             schema_observability.get("runtime_version"),
         )
-        return StructuredBrainCall(source="fallback", parsed_json=None, response=None, schema_observability=schema_observability)
+        return StructuredBrainCall(
+            source="fallback",
+            parsed_json=None,
+            response=None,
+            schema_observability=schema_observability,
+            fallback_reason_code="schema_preflight_invalid",
+            model_attempted=False,
+            model_succeeded=False,
+        )
     try:
         response = client.responses.create(
             model=model,
@@ -289,21 +309,49 @@ def _call_brain_structured(
             schema_observability.get("runtime_version"),
             str(exc),
         )
-        return StructuredBrainCall(source="fallback", parsed_json=None, response=None, schema_observability=schema_observability)
+        return StructuredBrainCall(
+            source="fallback",
+            parsed_json=None,
+            response=None,
+            schema_observability=schema_observability,
+            fallback_reason_code="provider_exception",
+            model_attempted=True,
+            model_succeeded=False,
+        )
     text = _extract_output_text(response)
     response_id = _extract_response_id(response)
     if not text:
-        return StructuredBrainCall(source="fallback", parsed_json=None, response=response, response_id=response_id, schema_observability=schema_observability)
+        return StructuredBrainCall(
+            source="fallback",
+            parsed_json=None,
+            response=response,
+            response_id=response_id,
+            schema_observability=schema_observability,
+            fallback_reason_code="empty_output_text",
+            model_attempted=True,
+            model_succeeded=False,
+        )
     try:
         payload = json.loads(text)
     except Exception:
-        return StructuredBrainCall(source="fallback", parsed_json=None, response=response, response_id=response_id, schema_observability=schema_observability)
+        return StructuredBrainCall(
+            source="fallback",
+            parsed_json=None,
+            response=response,
+            response_id=response_id,
+            schema_observability=schema_observability,
+            fallback_reason_code="json_parse_error",
+            model_attempted=True,
+            model_succeeded=False,
+        )
     return StructuredBrainCall(
         source="model",
         parsed_json=payload if isinstance(payload, dict) else None,
         response=response,
         response_id=response_id,
         schema_observability=schema_observability,
+        model_attempted=True,
+        model_succeeded=isinstance(payload, dict),
     )
 
 
@@ -404,14 +452,53 @@ def _resolve_summarizer_prompt(prompts_dir: Path) -> str:
     return _DEFAULT_SUMMARIZER_PROMPT
 
 
-def _brain_fallback() -> BrainOutput:
+def _normalize_text_for_intent_detection(value: str) -> str:
+    lowered = value.strip().lower()
+    normalized = unicodedata.normalize("NFD", lowered)
+    no_accents = "".join(ch for ch in normalized if unicodedata.category(ch) != "Mn")
+    compact = " ".join(no_accents.split())
+    return re.sub(r"[¿?¡!.,;:]", "", compact)
+
+
+def _fallback_social_intent(user_message: str) -> Literal["greeting", "identity", "other"]:
+    normalized = _normalize_text_for_intent_detection(user_message)
+    if not normalized:
+        return "other"
+    greetings = {"hola", "buenas", "buen dia", "buenos dias", "buenas tardes", "buenas noches", "hey"}
+    if normalized in greetings:
+        return "greeting"
+    identity_patterns = (
+        "como te llamas",
+        "cual es tu nombre",
+        "quien eres",
+        "eres diego",
+        "sos diego",
+        "tu nombre",
+    )
+    if any(pattern in normalized for pattern in identity_patterns):
+        return "identity"
+    return "other"
+
+
+def _brain_fallback(*, user_message: str, fallback_reason_code: str | None) -> BrainOutput:
+    social_intent = _fallback_social_intent(user_message)
+    if social_intent == "greeting":
+        fallback_text = "Hola, soy Diego. Encantado de hablar contigo."
+    elif social_intent == "identity":
+        fallback_text = "Sí, soy Diego."
+    else:
+        fallback_text = "Para ayudarte bien con esto, compárteme un poco más de detalle."
     return BrainOutput(
         schema_version="brain.v1",
         status="clarify",
-        assistant_response={"text": "¿Me compartes un poco más de contexto para ayudarte mejor?"},
+        assistant_response={"text": fallback_text},
         state_patch={
             "conversation_state": {"phase": None, "status": "active", "current_turn_goal": "pedir aclaración mínima"},
-            "memory_working": {"current_topic": None, "pending_question": None, "last_turn_summary": "aclaración solicitada"},
+            "memory_working": {
+                "current_topic": None,
+                "pending_question": None,
+                "last_turn_summary": f"fallback:{fallback_reason_code or 'unknown_fallback'}",
+            },
             "memory_episodic_append": [],
         },
     )
@@ -534,20 +621,23 @@ def _parse_brain_output_strict(
     payload: dict | None,
     allow_fallback: bool,
     canonical_state: ConversationSimpleCanonicalState,
-) -> BrainOutput:
+    user_message: str,
+    fallback_reason_code: str | None = None,
+) -> tuple[BrainOutput, str | None]:
     if payload is None:
         if allow_fallback:
-            return _brain_fallback()
+            resolved_reason = fallback_reason_code or "unknown_fallback"
+            return _brain_fallback(user_message=user_message, fallback_reason_code=resolved_reason), resolved_reason
         raise RuntimeError("conversacion_simple_brain_output_missing_json")
     payload = _coerce_legacy_brain_output_payload(payload=payload, canonical_state=canonical_state)
     try:
         output = BrainOutput.model_validate(payload)
     except ValidationError as exc:
         if allow_fallback:
-            return _brain_fallback()
+            return _brain_fallback(user_message=user_message, fallback_reason_code="validation_error_after_parse"), "validation_error_after_parse"
         raise RuntimeError("conversacion_simple_brain_output_validation_error") from exc
     output.assistant_response.text = _normalize_reply_text(output.assistant_response.text)
-    return output
+    return output, None
 
 
 def apply_brain_output_to_state(*, canonical_state: ConversationSimpleCanonicalState, brain_output: BrainOutput, turn_id: str) -> None:
@@ -680,11 +770,21 @@ def run_conversacion_simple_turn(
     call = _call_brain_structured(client=client, model=trace_meta.model_target, messages=brain_messages)
     if call.schema_observability is not None:
         memory_obs["brain_schema_observability"] = call.schema_observability
-    brain_output = _parse_brain_output_strict(
+    brain_output, parse_fallback_reason_code = _parse_brain_output_strict(
         payload=call.parsed_json,
         allow_fallback=call.source != "model",
         canonical_state=canonical_state,
+        user_message=user_message,
+        fallback_reason_code=call.fallback_reason_code,
     )
+    fallback_reason_code = parse_fallback_reason_code or (call.fallback_reason_code if call.source != "model" else None)
+    model_attempted = call.model_attempted
+    model_succeeded = call.source == "model" and fallback_reason_code is None
+    model_called = model_succeeded
+    memory_obs["brain_model_attempted"] = model_attempted
+    memory_obs["brain_model_succeeded"] = model_succeeded
+    if fallback_reason_code:
+        memory_obs["brain_fallback_reason_code"] = fallback_reason_code
     latency_ms = int((time.perf_counter() - started) * 1000)
 
     # Apply deterministic patch
@@ -729,7 +829,10 @@ def run_conversacion_simple_turn(
     node_trace = build_brain_node_trace(
         latency_ms=latency_ms,
         status=brain_output.status,
-        model_called=call.source == "model",
+        model_called=model_called,
+        model_attempted=model_attempted,
+        model_succeeded=model_succeeded,
+        fallback_reason_code=fallback_reason_code,
         recent_dialogue_count=len(brain_input.recent_dialogue_short),
         episodic_append_count=len(brain_output.state_patch.memory_episodic_append),
     )
@@ -743,6 +846,9 @@ def run_conversacion_simple_turn(
         user_turn=user_turn,
         final_reply_text=reply,
         final_status=brain_output.status,
+        brain_model_attempted=model_attempted,
+        brain_model_succeeded=model_succeeded,
+        brain_fallback_reason_code=fallback_reason_code,
         context_id=effective_context_id,
         stage_timings_ms={"brain_call": latency_ms},
         memory_observability=memory_obs,

@@ -10,8 +10,11 @@ class ConversationSimpleNodeTrace(BaseModel):
 
     node_name: str
     model_called: bool
+    model_attempted: bool = False
+    model_succeeded: bool = False
     latency_ms: int
     status: str
+    fallback_reason_code: str | None = None
     input_summary: dict[str, object] = Field(default_factory=dict)
     output_summary: dict[str, object] = Field(default_factory=dict)
 
@@ -32,6 +35,9 @@ class ConversationSimpleTurnTrace(BaseModel):
     user_turn: UserTurn
     final_reply_text: str
     final_status: str
+    brain_model_attempted: bool = False
+    brain_model_succeeded: bool = False
+    brain_fallback_reason_code: str | None = None
     context_id: str | None = None
     stage_timings_ms: dict[str, int] = Field(default_factory=dict)
     memory_observability: dict[str, object] = Field(default_factory=dict)
