@@ -468,6 +468,135 @@ def test_structured_call_provider_error_keeps_schema_observability() -> None:
     assert isinstance(out.schema_observability, dict)
     assert out.schema_observability.get("schema_name") == "BrainOutput"
     assert out.schema_observability.get("schema_hash")
+    assert out.fallback_reason_code == "provider_exception"
+    assert out.model_attempted is True
+    assert out.model_succeeded is False
+
+
+def test_structured_call_fallback_reason_codes_for_empty_and_parse_error() -> None:
+    class _EmptyResponse:
+        id = "resp_empty"
+        output_text = ""
+
+    class _BadJsonResponse:
+        id = "resp_bad_json"
+        output_text = "{not-json"
+
+    class _EmptyResponses:
+        def create(self, **kwargs):
+            return _EmptyResponse()
+
+    class _BadJsonResponses:
+        def create(self, **kwargs):
+            return _BadJsonResponse()
+
+    class _EmptyClient:
+        responses = _EmptyResponses()
+
+    class _BadJsonClient:
+        responses = _BadJsonResponses()
+
+    empty = _call_brain_structured(
+        client=_EmptyClient(),
+        model="gpt-5-nano",
+        messages=[{"role": "developer", "content": "prompt"}, {"role": "user", "content": "payload"}],
+    )
+    bad_json = _call_brain_structured(
+        client=_BadJsonClient(),
+        model="gpt-5-nano",
+        messages=[{"role": "developer", "content": "prompt"}, {"role": "user", "content": "payload"}],
+    )
+
+    assert empty.source == "fallback"
+    assert empty.fallback_reason_code == "empty_output_text"
+    assert empty.model_attempted is True
+    assert empty.model_succeeded is False
+    assert bad_json.source == "fallback"
+    assert bad_json.fallback_reason_code == "json_parse_error"
+    assert bad_json.model_attempted is True
+    assert bad_json.model_succeeded is False
+
+
+def test_fallback_observability_and_social_ux_for_trivial_turns(monkeypatch) -> None:
+    monkeypatch.setattr("conversacion_simple.orchestration.pipeline._build_client", lambda: None)
+    state = SessionState(user_id="u", session_id="s")
+    _bind(state)
+    config = build_conversacion_simple_pipeline_config(context_id="baseline", stateful=True)
+    turn_context = build_conversacion_simple_turn_context(state=state, entrypoint="/tests", requested_context_id="baseline")
+
+    reply_hola, updated, _ = run_conversacion_simple_turn(state=state, user_message="hola", config=config, turn_context=turn_context)
+    trace_hola = updated.world_state[config.traces_key][-1]
+    brain_hola = trace_hola["nodes"]["brain"]
+    assert reply_hola != "¿Me compartes un poco más de contexto para ayudarte mejor?"
+    assert "hola" in reply_hola.lower() or "diego" in reply_hola.lower()
+    assert trace_hola["brain_fallback_reason_code"] == "client_unavailable"
+    assert trace_hola["brain_model_attempted"] is False
+    assert trace_hola["brain_model_succeeded"] is False
+    assert brain_hola["fallback_reason_code"] == "client_unavailable"
+    assert brain_hola["model_attempted"] is False
+    assert brain_hola["model_succeeded"] is False
+    assert brain_hola["model_called"] is False
+    assert trace_hola["memory_observability"]["brain_fallback_reason_code"] == "client_unavailable"
+
+    reply_identity, updated, _ = run_conversacion_simple_turn(
+        state=state,
+        user_message="¿Cómo te llamas?",
+        config=config,
+        turn_context=turn_context,
+    )
+    assert reply_identity != "¿Me compartes un poco más de contexto para ayudarte mejor?"
+    assert "diego" in reply_identity.lower()
+
+
+def test_fallback_non_trivial_turn_keeps_prudent_response(monkeypatch) -> None:
+    monkeypatch.setattr("conversacion_simple.orchestration.pipeline._build_client", lambda: None)
+    state = SessionState(user_id="u", session_id="s")
+    _bind(state)
+    config = build_conversacion_simple_pipeline_config(context_id="baseline", stateful=True)
+    turn_context = build_conversacion_simple_turn_context(state=state, entrypoint="/tests", requested_context_id="baseline")
+
+    reply, updated, _ = run_conversacion_simple_turn(
+        state=state,
+        user_message="Necesito cerrar el reparto de horas para el jueves",
+        config=config,
+        turn_context=turn_context,
+    )
+    trace = updated.world_state[config.traces_key][-1]
+    assert reply == "Para ayudarte bien con esto, compárteme un poco más de detalle."
+    assert trace["final_reply_text"] == reply
+    assert trace["brain_fallback_reason_code"] == "client_unavailable"
+
+
+def test_fallback_reason_validation_error_after_parse(monkeypatch) -> None:
+    monkeypatch.setattr("conversacion_simple.orchestration.pipeline._build_client", lambda: object())
+
+    def _fake_call(**kwargs):
+        return StructuredBrainCall(
+            source="fallback",
+            parsed_json={"schema_version": "brain.v1", "status": "deliver"},
+            response=None,
+            fallback_reason_code="json_parse_error",
+            model_attempted=True,
+            model_succeeded=False,
+        )
+
+    monkeypatch.setattr("conversacion_simple.orchestration.pipeline._call_brain_structured", _fake_call)
+
+    state = SessionState(user_id="u", session_id="s")
+    _bind(state)
+    config = build_conversacion_simple_pipeline_config(context_id="baseline", stateful=True)
+    turn_context = build_conversacion_simple_turn_context(state=state, entrypoint="/tests", requested_context_id="baseline")
+
+    reply, updated, meta = run_conversacion_simple_turn(state=state, user_message="hola", config=config, turn_context=turn_context)
+
+    trace = updated.world_state[config.traces_key][-1]
+    brain = trace["nodes"]["brain"]
+    assert reply
+    assert meta["pipeline_topology"] == "single_llm"
+    assert trace["brain_fallback_reason_code"] == "validation_error_after_parse"
+    assert brain["fallback_reason_code"] == "validation_error_after_parse"
+    assert brain["model_attempted"] is True
+    assert brain["model_succeeded"] is False
 
 
 def test_turn_trace_includes_runtime_version_info(monkeypatch) -> None:
