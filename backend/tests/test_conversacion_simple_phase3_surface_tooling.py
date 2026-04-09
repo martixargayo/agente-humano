@@ -35,6 +35,13 @@ def test_interfaz_usuario_turn_routes_to_conversacion_simple(monkeypatch) -> Non
 
     def _fake_cs_turn(*, state, user_message, config, turn_context):
         called["cs"] += 1
+        canonical = state.world_state.setdefault(
+            config.memory_key,
+            {
+                "ui_state": {"finish_button_armed": True},
+            },
+        )
+        canonical.setdefault("ui_state", {})["finish_button_armed"] = True
         return "respuesta cs", state, {"turn_id": "turn-cs"}
 
     def _fake_neg(*args, **kwargs):
@@ -47,6 +54,7 @@ def test_interfaz_usuario_turn_routes_to_conversacion_simple(monkeypatch) -> Non
     out = iu_services.run_turn(user_id="u_cs", session_id="s_cs", message="hola")
 
     assert out["reply"] == "respuesta cs"
+    assert out["finish_button_armed"] is True
     assert called == {"cs": 1, "neg": 0}
 
 

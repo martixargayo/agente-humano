@@ -763,7 +763,7 @@ def _brain_fallback(*, user_message: str, fallback_reason_code: str | None) -> B
         status="clarify",
         assistant_response={"text": fallback_text},
         state_patch={
-            "conversation_state": {"phase": None, "status": "active", "current_turn_goal": "pedir aclaración mínima"},
+            "conversation_state": {"phase": None, "status": "active", "current_turn_goal": "pedir aclaración mínima", "closure_readiness": "not_ready"},
             "memory_working": {
                 "current_topic": None,
                 "pending_question": None,
@@ -804,6 +804,8 @@ def _parse_brain_output_strict(
 
 
 def apply_brain_output_to_state(*, canonical_state: ConversationSimpleCanonicalState, brain_output: BrainOutput, turn_id: str) -> None:
+    armed_prev = bool(canonical_state.ui_state.finish_button_armed)
+    closure_ready_now = brain_output.state_patch.conversation_state.closure_readiness == "ready"
     canonical_state.conversation_state = brain_output.state_patch.conversation_state.model_copy(deep=True)
     canonical_state.memory_working = brain_output.state_patch.memory_working.model_copy(deep=True)
     append_items: list[ConversationSimpleMemoryEpisodicItem] = []
@@ -816,6 +818,7 @@ def apply_brain_output_to_state(*, canonical_state: ConversationSimpleCanonicalS
             ConversationSimpleMemoryEpisodicItem(event_type=event_type, event_summary=event_summary, turn_id=item.turn_id or turn_id)
         )
     canonical_state.memory_episodic.extend(append_items)
+    canonical_state.ui_state.finish_button_armed = armed_prev or closure_ready_now
     canonical_state.trace.turn_id = turn_id
     canonical_state.trace.last_status = brain_output.status
 
@@ -1028,6 +1031,9 @@ def run_conversacion_simple_turn(
         fallback_reason_code=fallback_reason_code,
         recent_dialogue_count=len(brain_input.recent_dialogue_short),
         episodic_append_count=len(brain_output.state_patch.memory_episodic_append),
+        closure_readiness=brain_output.state_patch.conversation_state.closure_readiness,
+        finish_button_armed=canonical_state.ui_state.finish_button_armed,
+        finish_button_latched=canonical_state.ui_state.finish_button_armed and brain_output.state_patch.conversation_state.closure_readiness != "ready",
         provider_exception=call.provider_exception,
         include_provider_exception_details=forensic_enabled,
     )
@@ -1041,6 +1047,9 @@ def run_conversacion_simple_turn(
         user_turn=user_turn,
         final_reply_text=reply,
         final_status=brain_output.status,
+        closure_readiness=brain_output.state_patch.conversation_state.closure_readiness,
+        finish_button_armed=canonical_state.ui_state.finish_button_armed,
+        finish_button_latched=canonical_state.ui_state.finish_button_armed and brain_output.state_patch.conversation_state.closure_readiness != "ready",
         brain_model_attempted=model_attempted,
         brain_model_succeeded=model_succeeded,
         brain_fallback_reason_code=fallback_reason_code,
@@ -1062,5 +1071,7 @@ def run_conversacion_simple_turn(
         "node_names": ["brain"],
         "llm_call_count": 1 if llm_call_attempted else 0,
         "response_id": call.response_id,
+        "closure_readiness": brain_output.state_patch.conversation_state.closure_readiness,
+        "finish_button_armed": canonical_state.ui_state.finish_button_armed,
     }
     return reply, state, meta

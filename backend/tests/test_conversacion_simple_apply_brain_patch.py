@@ -20,7 +20,7 @@ def _build_output() -> BrainOutput:
             "status": "deliver",
             "assistant_response": {"text": "ok"},
             "state_patch": {
-                "conversation_state": {"phase": "desarrollo", "status": "active", "current_turn_goal": "goal"},
+                "conversation_state": {"phase": "desarrollo", "status": "active", "current_turn_goal": "goal", "closure_readiness": "not_ready"},
                 "memory_working": {"current_topic": "tema", "pending_question": None, "last_turn_summary": "sum"},
                 "memory_episodic_append": [
                     {"event_type": "important_fact", "event_summary": "fact", "turn_id": "t1"}
@@ -44,6 +44,43 @@ def test_apply_brain_output_to_state_is_deterministic() -> None:
     assert [m.model_dump(mode="json") for m in s1.memory_episodic] == [m.model_dump(mode="json") for m in s2.memory_episodic]
     assert s1.trace.turn_id == "turn-x"
     assert len(s1.memory_episodic) == 1
+    assert s1.ui_state.finish_button_armed is False
+
+
+def test_apply_brain_output_sets_finish_button_when_closure_ready_and_latches() -> None:
+    state = build_default_conversation_simple_canonical_state(session_id="s", thread_mode=ThreadMode.conversation, context_id="baseline")
+    ready_output = BrainOutput.model_validate(
+        {
+            "schema_version": "brain.v1",
+            "status": "deliver",
+            "assistant_response": {"text": "cerramos"},
+            "state_patch": {
+                "conversation_state": {"phase": "cierre", "status": "active", "current_turn_goal": "confirmar", "closure_readiness": "ready"},
+                "memory_working": {"current_topic": "tema", "pending_question": None, "last_turn_summary": "ok"},
+                "memory_episodic_append": [],
+            },
+        }
+    )
+    not_ready_output = BrainOutput.model_validate(
+        {
+            "schema_version": "brain.v1",
+            "status": "deliver",
+            "assistant_response": {"text": "matiz"},
+            "state_patch": {
+                "conversation_state": {"phase": "desarrollo", "status": "active", "current_turn_goal": "afinar", "closure_readiness": "not_ready"},
+                "memory_working": {"current_topic": "tema", "pending_question": None, "last_turn_summary": "ok"},
+                "memory_episodic_append": [],
+            },
+        }
+    )
+
+    apply_brain_output_to_state(canonical_state=state, brain_output=ready_output, turn_id="turn-ready")
+    assert state.ui_state.finish_button_armed is True
+    assert state.conversation_state.closure_readiness == "ready"
+
+    apply_brain_output_to_state(canonical_state=state, brain_output=not_ready_output, turn_id="turn-after")
+    assert state.ui_state.finish_button_armed is True
+    assert state.conversation_state.closure_readiness == "not_ready"
 
 
 def test_schema_normalization_preserves_pydantic_required_keys() -> None:

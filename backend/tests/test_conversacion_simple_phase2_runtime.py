@@ -39,7 +39,7 @@ def _valid_brain_output() -> dict:
         "status": "deliver",
         "assistant_response": {"text": "respuesta brain"},
         "state_patch": {
-            "conversation_state": {"phase": "desarrollo", "status": "active", "current_turn_goal": "avanzar"},
+            "conversation_state": {"phase": "desarrollo", "status": "active", "current_turn_goal": "avanzar", "closure_readiness": "not_ready"},
             "memory_working": {"current_topic": "tema", "pending_question": None, "last_turn_summary": "resumen"},
             "memory_episodic_append": [
                 {"event_type": "important_fact", "event_summary": "hecho", "turn_id": "t1"}
@@ -135,11 +135,11 @@ def test_legacy_response_text_payload_is_coerced(monkeypatch) -> None:
     [
         (
             {
-                "schema_version": "brain.v1",
-                "status": "deliver",
-                "assistant_response": {"text": "canon"},
-                "state_patch": {
-                    "conversation_state": {"phase": "desarrollo", "status": "active", "current_turn_goal": "g"},
+                    "schema_version": "brain.v1",
+                    "status": "deliver",
+                    "assistant_response": {"text": "canon"},
+                    "state_patch": {
+                    "conversation_state": {"phase": "desarrollo", "status": "active", "current_turn_goal": "g", "closure_readiness": "not_ready"},
                     "memory_working": {"current_topic": "topic-canon", "pending_question": None, "last_turn_summary": "s"},
                     "memory_episodic_append": [],
                 },
@@ -278,6 +278,149 @@ def test_unknown_phase_keeps_strict_validation(monkeypatch) -> None:
     trace = updated.world_state[config.traces_key][-1]
     assert "No pude completar la generación del turno" in reply
     assert trace["brain_fallback_reason_code"] == "validation_error_after_parse"
+
+
+@pytest.mark.parametrize(
+    ("closure_readiness", "expected_armed"),
+    [
+        ("not_ready", False),
+        ("ready", True),
+    ],
+)
+def test_closure_readiness_derives_finish_button_armed(monkeypatch, closure_readiness: str, expected_armed: bool) -> None:
+    def _fake_call(**kwargs):
+        payload = _valid_brain_output()
+        payload["state_patch"]["conversation_state"]["closure_readiness"] = closure_readiness
+        payload["assistant_response"]["text"] = f"respuesta {closure_readiness}"
+        return StructuredBrainCall(source="model", parsed_json=payload, response=None)
+
+    monkeypatch.setattr("conversacion_simple.orchestration.pipeline._call_brain_structured", _fake_call)
+
+    state = SessionState(user_id="u", session_id="s")
+    _bind(state)
+    config = build_conversacion_simple_pipeline_config(context_id="baseline", stateful=True)
+    turn_context = build_conversacion_simple_turn_context(state=state, entrypoint="/tests", requested_context_id="baseline")
+
+    _, updated, meta = run_conversacion_simple_turn(state=state, user_message="hola", config=config, turn_context=turn_context)
+    canonical = updated.world_state[config.memory_key]
+    trace = updated.world_state[config.traces_key][-1]
+
+    assert canonical["conversation_state"]["closure_readiness"] == closure_readiness
+    assert canonical["ui_state"]["finish_button_armed"] is expected_armed
+    assert meta["closure_readiness"] == closure_readiness
+    assert meta["finish_button_armed"] is expected_armed
+    assert trace["closure_readiness"] == closure_readiness
+    assert trace["finish_button_armed"] is expected_armed
+
+
+def test_finish_button_latch_persists_after_ready_then_not_ready(monkeypatch) -> None:
+    outputs = [
+        {
+            **_valid_brain_output(),
+            "assistant_response": {"text": "acuerdo confirmado"},
+            "state_patch": {
+                **_valid_brain_output()["state_patch"],
+                "conversation_state": {"phase": "cierre", "status": "active", "current_turn_goal": "cerrar", "closure_readiness": "ready"},
+            },
+        },
+        {
+            **_valid_brain_output(),
+            "assistant_response": {"text": "gracias"},
+            "state_patch": {
+                **_valid_brain_output()["state_patch"],
+                "conversation_state": {"phase": "cierre", "status": "active", "current_turn_goal": "despedir", "closure_readiness": "not_ready"},
+            },
+        },
+    ]
+
+    def _fake_call(**kwargs):
+        payload = outputs.pop(0)
+        return StructuredBrainCall(source="model", parsed_json=payload, response=None)
+
+    monkeypatch.setattr("conversacion_simple.orchestration.pipeline._call_brain_structured", _fake_call)
+
+    state = SessionState(user_id="u", session_id="s")
+    _bind(state)
+    config = build_conversacion_simple_pipeline_config(context_id="baseline", stateful=True)
+    turn_context = build_conversacion_simple_turn_context(state=state, entrypoint="/tests", requested_context_id="baseline")
+
+    run_conversacion_simple_turn(state=state, user_message="turno 1", config=config, turn_context=turn_context)
+    _, updated, _ = run_conversacion_simple_turn(state=state, user_message="turno 2", config=config, turn_context=turn_context)
+
+    canonical = updated.world_state[config.memory_key]
+    trace = updated.world_state[config.traces_key][-1]
+    assert canonical["conversation_state"]["closure_readiness"] == "not_ready"
+    assert canonical["ui_state"]["finish_button_armed"] is True
+    assert trace["finish_button_armed"] is True
+    assert trace["finish_button_latched"] is True
+
+
+def test_trace_includes_closure_fields_without_forensic_payload_by_default(monkeypatch) -> None:
+    def _fake_call(**kwargs):
+        payload = _valid_brain_output()
+        payload["state_patch"]["conversation_state"]["closure_readiness"] = "ready"
+        return StructuredBrainCall(
+            source="model",
+            parsed_json=payload,
+            response=None,
+            model_attempted=True,
+            model_succeeded=True,
+            provider_request={"should_not": "be_exposed_without_forensic"},
+            provider_response_text="raw output",
+        )
+
+    monkeypatch.setattr("conversacion_simple.orchestration.pipeline._call_brain_structured", _fake_call)
+
+    state = SessionState(user_id="u", session_id="s")
+    _bind(state)
+    config = build_conversacion_simple_pipeline_config(context_id="baseline", stateful=True)
+    turn_context = build_conversacion_simple_turn_context(state=state, entrypoint="/tests", requested_context_id="baseline")
+
+    _, updated, _ = run_conversacion_simple_turn(state=state, user_message="hola", config=config, turn_context=turn_context)
+    trace = updated.world_state[config.traces_key][-1]
+    node_summary = trace["nodes"]["brain"]["output_summary"]
+
+    assert trace["closure_readiness"] == "ready"
+    assert trace["finish_button_armed"] is True
+    assert trace["finish_button_latched"] is False
+    assert node_summary["closure_readiness"] == "ready"
+    assert node_summary["finish_button_armed"] is True
+    assert node_summary["finish_button_latched"] is False
+    assert "brain_provider_request" not in trace["memory_observability"]
+    assert "brain_provider_response_text" not in trace["memory_observability"]
+
+
+@pytest.mark.parametrize(
+    ("scenario", "brain_closure_readiness", "expected_armed"),
+    [
+        ("propuesta_inicial", "not_ready", False),
+        ("acercamiento_sin_aceptacion_mutua", "not_ready", False),
+        ("sensacion_positiva_sin_cierre", "not_ready", False),
+        ("acuerdo_parcial_con_fleco_material", "not_ready", False),
+        ("acuerdo_claro_aceptado_por_ambas_partes", "ready", True),
+        ("acuerdo_claro_con_formalizacion_breve", "ready", True),
+    ],
+)
+def test_semantic_gate_scenarios_are_conservative_by_contract(
+    monkeypatch, scenario: str, brain_closure_readiness: str, expected_armed: bool
+) -> None:
+    def _fake_call(**kwargs):
+        payload = _valid_brain_output()
+        payload["assistant_response"]["text"] = f"escenario:{scenario}"
+        payload["state_patch"]["conversation_state"]["closure_readiness"] = brain_closure_readiness
+        return StructuredBrainCall(source="model", parsed_json=payload, response=None)
+
+    monkeypatch.setattr("conversacion_simple.orchestration.pipeline._call_brain_structured", _fake_call)
+
+    state = SessionState(user_id="u", session_id=f"s-{scenario}")
+    _bind(state)
+    config = build_conversacion_simple_pipeline_config(context_id="baseline", stateful=True)
+    turn_context = build_conversacion_simple_turn_context(state=state, entrypoint="/tests", requested_context_id="baseline")
+
+    _, updated, _ = run_conversacion_simple_turn(state=state, user_message=scenario, config=config, turn_context=turn_context)
+    canonical = updated.world_state[config.memory_key]
+    assert canonical["conversation_state"]["closure_readiness"] == brain_closure_readiness
+    assert canonical["ui_state"]["finish_button_armed"] is expected_armed
 
 
 def test_legacy_memory_patch_and_response_object_are_normalized(monkeypatch) -> None:
