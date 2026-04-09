@@ -9,6 +9,7 @@ from ..state.canonical_state import (
     ConversationSimpleBriefState,
     ConversationSimpleConversationState,
     ConversationSimpleMemoryWorkingState,
+    ConversationSimplePhaseCardsState,
     ConversationSimplePersonaState,
 )
 
@@ -49,8 +50,10 @@ class BrainInput(BaseModel):
     task_contract: BrainTaskContract
     persona: ConversationSimplePersonaState
     conversation_brief: ConversationSimpleBriefState
+    phase_cards: ConversationSimplePhaseCardsState
     conversation_state: ConversationSimpleConversationState
     memory_working: ConversationSimpleMemoryWorkingState
+    memory_compacted_summary: str
     recent_dialogue_short: list[DialogueMessage]
     user_turn: UserTurn
     trace_meta: TraceMeta

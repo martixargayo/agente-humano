@@ -27,6 +27,12 @@ class ConversationSimpleBriefState(BaseModel):
     constraints: list[str] = Field(default_factory=list)
 
 
+class ConversationSimplePhaseCardsState(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    phase_cards: dict[str, dict[str, object]] = Field(default_factory=dict)
+
+
 class ConversationSimpleMemoryEpisodicItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -83,6 +89,7 @@ class ConversationSimpleCanonicalState(BaseModel):
     openai_thread: OpenAIThreadState
     persona: ConversationSimplePersonaState
     conversation_brief: ConversationSimpleBriefState
+    phase_cards: ConversationSimplePhaseCardsState = Field(default_factory=ConversationSimplePhaseCardsState)
     memory_episodic: list[ConversationSimpleMemoryEpisodicItem] = Field(default_factory=list)
     memory_compacted_summary: str = ""
     memory_maintenance: ConversationSimpleMemoryMaintenanceState = Field(default_factory=ConversationSimpleMemoryMaintenanceState)
@@ -128,6 +135,31 @@ def _load_conversation_brief_defaults(context_id: str | None = None) -> Conversa
     return parse_conversation_simple_brief_payload(raw if isinstance(raw, dict) else {})
 
 
+def parse_conversation_simple_phase_cards_payload(payload: dict[str, object]) -> ConversationSimplePhaseCardsState:
+    raw_phase_cards = payload.get("phase_cards")
+    if not isinstance(raw_phase_cards, dict):
+        return ConversationSimplePhaseCardsState(phase_cards={})
+    normalized: dict[str, dict[str, object]] = {}
+    for phase_name, phase_payload in raw_phase_cards.items():
+        if not isinstance(phase_name, str) or not isinstance(phase_payload, dict):
+            continue
+        normalized[phase_name] = {k: v for k, v in phase_payload.items() if isinstance(k, str)}
+    return ConversationSimplePhaseCardsState(phase_cards=normalized)
+
+
+def _load_phase_cards_defaults(context_id: str | None = None) -> ConversationSimplePhaseCardsState:
+    path = (
+        resolve_conversacion_simple_context(context_id).phase_cards_path
+        if context_id
+        else resolve_default_conversacion_simple_context().phase_cards_path
+    )
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        raw = {}
+    return parse_conversation_simple_phase_cards_payload(raw if isinstance(raw, dict) else {})
+
+
 def build_default_conversation_simple_canonical_state(
     *,
     session_id: str,
@@ -155,6 +187,7 @@ def build_default_conversation_simple_canonical_state(
             expressive={k: v for k, v in expressive.items() if isinstance(k, str) and isinstance(v, str)},
         ),
         conversation_brief=_load_conversation_brief_defaults(context_id=context_id),
+        phase_cards=_load_phase_cards_defaults(context_id=context_id),
         memory_episodic=[],
         memory_compacted_summary="",
         memory_maintenance=ConversationSimpleMemoryMaintenanceState(),

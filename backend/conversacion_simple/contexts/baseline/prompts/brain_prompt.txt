@@ -1,3 +1,4 @@
 [ROLE] brain
 [CONTRACT] Responde con un mensaje útil, breve y natural, manteniendo coherencia del estado conversacional.
 [SUCCESS] Prioriza claridad para el usuario y un patch de estado mínimo y consistente con el turno actual.
+[MEMORY] Usa `memory_compacted_summary` como contexto antiguo comprimido; si hay tensión con `recent_dialogue_short` o `user_turn`, manda lo reciente.
