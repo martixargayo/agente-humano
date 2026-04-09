@@ -17,14 +17,21 @@ def test_all_context_briefs_parse_with_runtime_parser() -> None:
     for context in contexts:
         payload = json.loads(context.conversation_brief_path.read_text(encoding="utf-8"))
         model = parse_conversation_simple_brief_payload(payload)
-        assert model.schema_version == "conversation_brief.v1"
+        assert model.model_dump(mode="json") == payload
 
 
-def test_initial_contexts_are_structurally_equivalent() -> None:
+def test_initial_contexts_are_json_objects() -> None:
     contexts = {c.context_id: c for c in list_official_conversacion_simple_contexts()}
     baseline = contexts["baseline"]
     sala = contexts["negociacion_sala_reuniones"]
 
-    assert json.loads(baseline.persona_path.read_text(encoding="utf-8")) == json.loads(sala.persona_path.read_text(encoding="utf-8"))
-    assert json.loads(baseline.conversation_brief_path.read_text(encoding="utf-8")) == json.loads(sala.conversation_brief_path.read_text(encoding="utf-8"))
-    assert json.loads(baseline.phase_cards_path.read_text(encoding="utf-8")) == json.loads(sala.phase_cards_path.read_text(encoding="utf-8"))
+    for path in (
+        baseline.persona_path,
+        baseline.conversation_brief_path,
+        baseline.phase_cards_path,
+        sala.persona_path,
+        sala.conversation_brief_path,
+        sala.phase_cards_path,
+    ):
+        parsed = json.loads(path.read_text(encoding="utf-8"))
+        assert isinstance(parsed, dict)

@@ -108,14 +108,17 @@ def _apply_contextual_state_overrides(state: Any, config: Any, entries: list[dic
     persona_value = persona_entry.get("value")
     if not isinstance(persona_value, dict):
         return
-    policy = persona_value.get("policy")
-    expressive = persona_value.get("expressive")
-    if not isinstance(policy, dict) or not isinstance(expressive, dict):
-        return
     import copy
 
     updated = copy.deepcopy(raw)
-    updated["persona"] = {"policy": policy, "expressive": expressive}
+    if flow_id == "conversacion_simple":
+        updated["persona"] = persona_value
+    else:
+        policy = persona_value.get("policy")
+        expressive = persona_value.get("expressive")
+        if not isinstance(policy, dict) or not isinstance(expressive, dict):
+            return
+        updated["persona"] = {"policy": policy, "expressive": expressive}
     state.world_state[memory_key] = updated
 
 

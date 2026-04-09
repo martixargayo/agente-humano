@@ -205,10 +205,6 @@ def _validate_contextual_value(key: str, value: Any) -> None:
     elif key == "persona":
         if not isinstance(value, dict):
             raise ValueError("persona override debe ser objeto JSON")
-        policy = value.get("policy")
-        expressive = value.get("expressive")
-        if not isinstance(policy, dict) or not isinstance(expressive, dict):
-            raise ValueError("persona override requiere policy y expressive")
 
 
 def _validate_entry(entry: OverrideEntry) -> None:
