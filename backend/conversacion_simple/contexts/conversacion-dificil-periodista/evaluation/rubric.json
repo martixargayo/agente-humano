@@ -3,12 +3,12 @@
   "metadata": {
     "domain": "conversacion_simple",
     "rubric_version": "1.0.0",
-    "case_title": "Conversación simple (sala de reuniones) guiada por acuerdos sostenibles"
+    "case_title": "Conversación difícil de cambio de pensamiento y conducta"
   },
   "blocks": [
     {
       "block_id": "valores",
-      "title": "Valores",
+      "title": "Entrar sin juzgar ni confrontar",
       "evaluates": "Si el usuario protege la calidad real del acuerdo: conoce sus límites, distingue acuerdo de buen acuerdo, resiste anclajes desfavorables, concede con criterio y evita aceptar algo peor que su alternativa razonable.",
       "positive_signals": [
         "Muestra que no necesita cerrar a cualquier precio.",
@@ -36,7 +36,7 @@
     },
     {
       "block_id": "vision",
-      "title": "Visión",
+      "title": "Preguntar para descubrir",
       "evaluates": "Si el usuario entiende la estructura profunda de la negociación: distingue posiciones de intereses, descubre motivaciones reales y elige una estrategia coherente con el contexto en vez de reaccionar solo a la superficie.",
       "positive_signals": [
         "Hace preguntas para entender antes de contraargumentar.",
@@ -64,7 +64,7 @@
     },
     {
       "block_id": "relacion",
-      "title": "Relación",
+      "title": "Reformular ideas",
       "evaluates": "Si el usuario construye una interacción que favorece escucha, confianza y cooperación sin perder firmeza ni caer en manipulación, agresividad o deterioro innecesario del vínculo.",
       "positive_signals": [
         "Valida preocupaciones relevantes antes de contradecir.",
@@ -92,7 +92,7 @@
     },
     {
       "block_id": "proceso",
-      "title": "Proceso",
+      "title": "Llegar a un acuerdo conjunto",
       "evaluates": "Si el usuario conduce la negociación con método: preparación, secuencia, generación de opciones, propuestas bien sostenidas, gestión del rechazo, concesiones con criterio y cierre claro.",
       "positive_signals": [
         "Se nota preparación previa o claridad de objetivos y límites.",

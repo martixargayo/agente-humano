@@ -4,7 +4,13 @@ from evaluacion.contracts.models import FeedbackReportCoreV1, TurnTrajectoryV1
 from evaluacion.engine.flow_config import RECONCILE_SCORE_TOLERANCE
 
 
-def reconcile_outputs(*, core: FeedbackReportCoreV1, trajectory: TurnTrajectoryV1, turn_count: int) -> TurnTrajectoryV1:
+def reconcile_outputs(
+    *,
+    core: FeedbackReportCoreV1,
+    trajectory: TurnTrajectoryV1,
+    turn_count: int,
+    context_id: str | None = None,
+) -> TurnTrajectoryV1:
     expected = turn_count
     actual = len(trajectory.trajectory)
     if expected > 0 and actual == 0:
@@ -16,4 +22,20 @@ def reconcile_outputs(*, core: FeedbackReportCoreV1, trajectory: TurnTrajectoryV
     if abs(core.score_global_100 - mean_block_score) > RECONCILE_SCORE_TOLERANCE:
         raise ValueError("reconciliation_global_vs_blocks_mismatch")
 
-    return trajectory
+    if not trajectory.trajectory:
+        return trajectory
+
+    conviction = trajectory.conviction_level_0_100
+    if conviction is None:
+        conviction = int(trajectory.trajectory[-1].agreement_closeness_score_0_100)
+
+    if context_id == "conversacion-dificil-periodista":
+        if core.interaction_outcome == "agreement_reached":
+            conviction = max(conviction, 75)
+        else:
+            conviction = min(conviction, 74)
+
+    conviction = max(1, min(100, int(conviction)))
+    updated_rows = list(trajectory.trajectory)
+    updated_rows[-1] = updated_rows[-1].model_copy(update={"agreement_closeness_score_0_100": conviction})
+    return trajectory.model_copy(update={"trajectory": updated_rows, "conviction_level_0_100": conviction})
