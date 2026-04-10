@@ -3803,6 +3803,8 @@ let waveAnimationId = null;
 let recorderMimeType = 'audio/webm;codecs=opus';
 let discardRecording = false;
 let orbLevel = 0;
+const EMPTY_STT_MESSAGES = ['Transcripción vacía', 'No se capturó audio. Intenta grabar de nuevo.'];
+const EMPTY_STT_AI_REPLY = 'No te he oído bien, creo que no se te escucha. ¿Puedes repetirlo?';
 
 function computeIdlePulse(timeMs) {
   return 0.08 * (0.5 + 0.5 * Math.sin((timeMs * 2 * Math.PI) / 3800));
@@ -3900,12 +3902,20 @@ async function startRecording() {
       await sendTextTurn(text);
     } catch (err) {
       console.error('Error al transcribir/enviar audio:', err);
-      updateReplyText(err?.message || 'Error de transcripción');
-      flashStatus('No se pudo transcribir.');
-      if (currentInputMode === InputMode.TALK) {
-        enterListening();
+      const errorMessage = String(err?.message || '');
+      const isEmptyStt = EMPTY_STT_MESSAGES.some((knownMessage) => knownMessage === errorMessage);
+
+      if (isEmptyStt) {
+        updateReplyText(EMPTY_STT_AI_REPLY);
+        await enterSpeaking(EMPTY_STT_AI_REPLY);
       } else {
-        enterIdle();
+        updateReplyText(err?.message || 'Error de transcripción');
+        flashStatus('No se pudo transcribir.');
+        if (currentInputMode === InputMode.TALK) {
+          enterListening();
+        } else {
+          enterIdle();
+        }
       }
     } finally {
       teardownMic();
