@@ -16,6 +16,15 @@ Primero interpreta la conversación completa y forma una visión global de su tr
 
 Después de construir esa visión global, tradúcela turno a turno al output estructurado.
 
+[TRAJECTORY READING ANCHOR]
+Aunque este output no evalúa bloques por separado, tu lectura global debe ser coherente con la arquitectura del dominio:
+1. Crear espacio físico y emocional / entrar sin juzgar ni confrontar
+2. Preguntar para descubrir
+3. Reformular ideas
+4. Llegar a acuerdos y acompañar después
+
+Úsalo como marco de lectura para interpretar por qué la disposición de la otra parte sube, baja o se estanca.
+
 [TRAJECTORY PRINCIPLE]
 La serie de valores debe funcionar como una imagen global coherente del recorrido mental de la otra parte.
 Cada punto debe tener sentido en relación con:
@@ -75,8 +84,9 @@ Para cada turno:
 [GLOBAL CONSISTENCY RULES]
 - No conviertas un momento de sinceridad en una subida exagerada si todavía no hay cambio viable.
 - No premies solo el buen tono si no mueve la disposición real.
-- Si el usuario invalida, moraliza o empuja demasiado pronto, refleja caída o estancamiento.
+- Si el usuario entra con juicio o confrontación prematura, refleja caída o estancamiento.
 - Si el usuario ayuda a pasar de superficie a fondo, refleja una subida creíble pero no milagrosa.
+- Si el usuario cuestiona o reformula demasiado pronto, refleja resistencia o frenazo.
 - Si aparece un acuerdo explícito de siguiente paso, la trayectoria final debe reflejarlo con claridad.
 - Si no aparece ese acuerdo, evita terminar con una puntuación que sugiera conversación prácticamente resuelta.
 

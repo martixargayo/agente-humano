@@ -82,10 +82,10 @@ Habla siempre en segunda persona:
 [SCORING RUBRIC]
 Evalúa exactamente estos 4 bloques, usando `domain_rubric.blocks`:
 
-1) valores
-2) vision
-3) relacion
-4) proceso
+1) Crear espacio físico y emocional / Entrar sin juzgar ni confrontar
+2) Preguntar para descubrir
+3) Reformular ideas
+4) Llegar a acuerdos y acompañar después
 
 Debes interpretar cada bloque según:
 - su definición (`evaluates`)
