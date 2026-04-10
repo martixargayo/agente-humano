@@ -45,7 +45,6 @@ def _valid_brain_output() -> dict:
                 {"event_type": "important_fact", "event_summary": "hecho", "turn_id": "t1"}
             ],
         },
-        "observability": {"rationale_summary": "ok"},
     }
 
 
@@ -524,7 +523,7 @@ def test_structured_call_enforces_json_schema_without_prompt_embedded_schema() -
             '{"schema_version":"brain.v1","status":"deliver","assistant_response":{"text":"ok"},'
             '"state_patch":{"conversation_state":{"phase":"desarrollo","status":"active","current_turn_goal":"g"},'
             '"memory_working":{"current_topic":null,"pending_question":null,"last_turn_summary":"s"},'
-            '"memory_episodic_append":[]},"observability":{"rationale_summary":"ok"}}'
+            '"memory_episodic_append":[]}}'
         )
 
     class _FakeResponses:
@@ -569,8 +568,6 @@ def test_normalized_brain_output_schema_preserves_required_lists() -> None:
     base = BrainOutput.model_json_schema()
     normalized = _normalize_schema_for_strict_json_schema(base)
     assert _collect_required_mismatches(normalized) == []
-    assert "observability" in normalized.get("required", [])
-    assert "rationale_summary" in normalized.get("$defs", {}).get("BrainObservability", {}).get("required", [])
 
 
 def test_normalized_summarizer_output_schema_has_full_required() -> None:

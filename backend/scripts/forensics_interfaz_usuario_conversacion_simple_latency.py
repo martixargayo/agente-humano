@@ -127,8 +127,8 @@ def _instrument_pipeline(per_turn: list[dict[str, float | str | int]], *, fake_o
         yield
 
 
-def _fake_structured_call(*, client: Any, model: str, messages: list[dict[str, str]]) -> cs_pipeline.StructuredBrainCall:
-    _ = (client, model, messages)
+def _fake_structured_call(*, client: Any, model: str, messages: list[dict[str, str]], max_output_tokens: int | None = None) -> cs_pipeline.StructuredBrainCall:
+    _ = (client, model, messages, max_output_tokens)
     time.sleep(0.12)
     return cs_pipeline.StructuredBrainCall(
         source="model",
@@ -150,7 +150,6 @@ def _fake_structured_call(*, client: Any, model: str, messages: list[dict[str, s
                 },
                 "memory_episodic_append": [],
             },
-            "observability": {"rationale_summary": "fake"},
         },
         response=object(),
         response_id="resp_fake_123",

@@ -46,7 +46,6 @@ def test_brain_call_builds_explicit_provider_request_payload() -> None:
             "memory_working": {"current_topic": None, "pending_question": None, "last_turn_summary": "x"},
             "memory_episodic_append": [],
         },
-        "observability": {"rationale_summary": None},
     }
     client = _Client(json.dumps(payload, ensure_ascii=False))
     out = _call_brain_structured(client=client, model="gpt-5.4", messages=[{"role": "user", "content": "hola"}])
@@ -128,7 +127,6 @@ def test_trace_observability_is_compact_in_normal_mode(monkeypatch) -> None:
             "memory_working": {"current_topic": None, "pending_question": None, "last_turn_summary": "x"},
             "memory_episodic_append": [],
         },
-        "observability": {"rationale_summary": None},
     }
     client = _Client(json.dumps(payload, ensure_ascii=False))
     monkeypatch.setattr("conversacion_simple.orchestration.pipeline._build_client", lambda: client)
@@ -169,7 +167,6 @@ def test_trace_observability_persists_heavy_fields_in_forensic_mode(monkeypatch)
             "memory_working": {"current_topic": None, "pending_question": None, "last_turn_summary": "x"},
             "memory_episodic_append": [],
         },
-        "observability": {"rationale_summary": None},
     }
     client = _Client(json.dumps(payload, ensure_ascii=False))
     monkeypatch.setattr("conversacion_simple.orchestration.pipeline._build_client", lambda: client)

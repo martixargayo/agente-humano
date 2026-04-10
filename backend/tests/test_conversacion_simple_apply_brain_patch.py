@@ -26,7 +26,6 @@ def _build_output() -> BrainOutput:
                     {"event_type": "important_fact", "event_summary": "fact", "turn_id": "t1"}
                 ],
             },
-            "observability": {"rationale_summary": "r"},
         }
     )
 
@@ -86,6 +85,4 @@ def test_apply_brain_output_sets_finish_button_when_closure_ready_and_latches() 
 def test_schema_normalization_preserves_pydantic_required_keys() -> None:
     base = BrainOutput.model_json_schema()
     normalized = _normalize_schema_for_strict_json_schema(base)
-    assert "observability" in normalized.get("required", [])
-    assert "rationale_summary" in normalized.get("$defs", {}).get("BrainObservability", {}).get("required", [])
     assert "memory_episodic_append" in normalized.get("$defs", {}).get("BrainStatePatch", {}).get("required", [])

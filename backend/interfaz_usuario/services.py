@@ -449,6 +449,7 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
                             "context_id": config.context_id,
                             "brain_model_target": config.brain_model_target,
                             "summarizer_model_target": config.summarizer_model_target,
+                            "brain_max_output_tokens": config.brain_max_output_tokens,
                             "context_limit_turns": config.context_limit_turns,
                             "keep_last_n_turns": config.keep_last_n_turns,
                             "recent_dialogue_short_max_messages": config.recent_dialogue_short_max_messages,

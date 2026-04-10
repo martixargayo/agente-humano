@@ -458,6 +458,7 @@ def _call_brain_structured(
     client: openai.OpenAI | None,
     model: str,
     messages: list[dict[str, str]],
+    max_output_tokens: int | None = None,
 ) -> StructuredBrainCall:
     timings_ms: dict[str, float] = {}
     total_started = time.perf_counter()
@@ -519,6 +520,8 @@ def _call_brain_structured(
         "reasoning": {"effort": "low"},
         "store": False,
     }
+    if isinstance(max_output_tokens, int) and max_output_tokens > 0:
+        request_payload["max_output_tokens"] = max_output_tokens
     try:
         provider_started = time.perf_counter()
         response = client.responses.create(**request_payload)
@@ -1001,7 +1004,12 @@ def run_conversacion_simple_turn(
     _record_stage("build_brain_messages", brain_messages_started)
 
     started = time.perf_counter()
-    call = _call_brain_structured(client=client, model=trace_meta.model_target, messages=brain_messages)
+    call = _call_brain_structured(
+        client=client,
+        model=trace_meta.model_target,
+        messages=brain_messages,
+        max_output_tokens=config.brain_max_output_tokens,
+    )
     memory_obs["brain_runtime_fingerprint"] = _provider_runtime_fingerprint(
         client=client,
         model_target=trace_meta.model_target,
