@@ -96,6 +96,36 @@ def set_tts_prefetch_hook(hook: Callable[[str], None] | None) -> None:
     global _tts_prefetch_hook
     _tts_prefetch_hook = hook
 
+
+def get_tts_prefetch_hook() -> Callable[[str], None] | None:
+    return _tts_prefetch_hook
+
+
+def safe_invoke_tts_prefetch_hook(reply: str) -> None:
+    """Fire the configured TTS-prefetch hook in a best-effort manner.
+
+    Swallows all exceptions (log + side-effect probe record), so that any
+    failure in TTS prefetch cannot ever block or break the turn pipeline.
+    This helper is the single public entry point used by conversational
+    flows that want to kick TTS generation in parallel with session
+    persistence work.
+    """
+    hook = _tts_prefetch_hook
+    if hook is None:
+        return
+    hook_error: str | None = None
+    try:
+        hook(reply)
+    except Exception as exc:  # pragma: no cover - defensive
+        hook_error = str(exc)
+        logger.warning("tts_prefetch_hook_error=%s", exc)
+    finally:
+        record_side_effect_hook(
+            hook_name="tts_prefetch_hook",
+            payload={"reply_chars": len(reply or "")},
+            error=hook_error,
+        )
+
 OPENAI_MIN_VERSION = "1.40.0"
 PHASE_CLASSIFIER_INPUT_SCHEMA_VERSION = "phase_classifier_input.v1"
 PHASE_CLASSIFIER_OUTPUT_SCHEMA_VERSION = "phase_classifier.v1"
@@ -1443,15 +1473,7 @@ def run_negotiation_cognitive_turn(
         nodes = {log.node.value: log for log in logs}
         reply = executor_output.spoken_text
 
-    if _tts_prefetch_hook is not None:
-        hook_error: str | None = None
-        try:
-            _tts_prefetch_hook(reply)
-        except Exception as exc:
-            hook_error = str(exc)
-            logger.warning("tts_prefetch_hook_error=%s", exc)
-        finally:
-            record_side_effect_hook(hook_name="tts_prefetch_hook", payload={"reply_chars": len(reply or "")}, error=hook_error)
+    safe_invoke_tts_prefetch_hook(reply)
 
     add_message(state, role="assistant", content=reply)
     recent_dialogue.append(MemoryDialogueMessage(role="assistant", text=reply))

@@ -33,7 +33,7 @@ def test_interfaz_usuario_turn_routes_to_conversacion_simple(monkeypatch) -> Non
 
     called = {"cs": 0, "neg": 0}
 
-    def _fake_cs_turn(*, state, user_message, config, turn_context):
+    def _fake_cs_turn(*, state, user_message, config, turn_context, **kwargs):
         called["cs"] += 1
         canonical = state.world_state.setdefault(
             config.memory_key,
@@ -194,7 +194,7 @@ def test_trace_reader_supports_single_brain_node() -> None:
 def test_optimizador_marks_non_comparable_when_conversacion_simple_has_overrides(monkeypatch) -> None:
     opt_services.ensure_session(user_id="u_cmp", session_id="s_cmp", flow_id="conversacion_simple", context_id="baseline")
 
-    def _fake_cs_turn(*, state, user_message, config, turn_context):
+    def _fake_cs_turn(*, state, user_message, config, turn_context, **kwargs):
         state.world_state.setdefault("conversation_simple_canonical_traces", []).append(
             {
                 "turn_id": "turn-cmp",

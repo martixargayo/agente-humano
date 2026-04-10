@@ -316,7 +316,7 @@ def _build_speech_client() -> speech.SpeechClient | None:
 speech_client = _build_speech_client()
 
 # Google STT config desde .env
-GOOGLE_STT_MODEL = os.getenv("GOOGLE_STT_MODEL", "latest_long")
+GOOGLE_STT_MODEL = os.getenv("GOOGLE_STT_MODEL", "latest_short")
 GOOGLE_STT_LANGUAGE = os.getenv("GOOGLE_STT_LANGUAGE", "es-ES")
 GOOGLE_STT_PUNCT = os.getenv("GOOGLE_STT_PUNCTUATION", "true").lower() == "true"
 GOOGLE_STT_ENCODING = os.getenv("GOOGLE_STT_ENCODING", "WEBM_OPUS")

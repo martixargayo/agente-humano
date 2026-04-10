@@ -1073,7 +1073,7 @@ function stopVoiceCapture() {
         mediaRecorder.requestData();
         setTimeout(() => {
           try { mediaRecorder.stop(); } catch (err) { reject(err); }
-        }, 150);
+        }, 60);
       } else {
         mediaRecorder.stop();
       }

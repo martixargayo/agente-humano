@@ -154,6 +154,10 @@ class SessionStore(Protocol):
 
     def save(self, state: SessionState) -> None: ...
 
+    def save_with_ttl(self, state: SessionState, *, ttl_seconds: int) -> None:
+        """Atomic SAVE+EXPIRE. Default implementations MAY fall back to save()+touch()."""
+        ...
+
     def delete(self, *, user_id: str, session_id: str) -> None: ...
 
     def clear(self) -> None: ...
@@ -190,6 +194,12 @@ class InMemorySessionStore:
         with self._lock:
             state.last_updated = datetime.now(timezone.utc)
             self._sessions[key] = state
+
+    def save_with_ttl(self, state: SessionState, *, ttl_seconds: int) -> None:
+        # In-memory backend does not support TTL; save() is sufficient. The
+        # ttl_seconds argument is accepted for protocol compatibility only.
+        _ = ttl_seconds
+        self.save(state)
 
     def delete(self, *, user_id: str, session_id: str) -> None:
         key = _make_key(user_id, session_id)
