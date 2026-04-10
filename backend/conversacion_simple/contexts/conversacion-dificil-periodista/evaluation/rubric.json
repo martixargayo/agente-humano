@@ -1,34 +1,52 @@
 {
-  "schema_version": "change_conversation_domain_rubric.v1",
+  "schema_version": "negotiation_domain_rubric.v1",
   "metadata": {
     "domain": "conversacion_simple",
     "rubric_version": "1.1.0",
     "case_title": "Conversación difícil de cambio de pensamiento y conducta"
   },
   "global_guide": {
-    "primary_goal_reading": "El objetivo no es ganar una discusión ni sonar empático en abstracto. El objetivo es facilitar que la otra parte revise su interpretación, baje su resistencia y acepte un siguiente paso de cambio creíble.",
-    "sequence_reading": [
-      "Primero hay que crear espacio físico y emocional y entrar sin juzgar ni confrontar.",
-      "Después hay que preguntar para descubrir qué pensamiento, emoción o creencia está sosteniendo la resistencia.",
-      "Luego hay que reformular ideas: cuestionar la validez del pensamiento, buscar una perspectiva más equilibrada y convertir el obstáculo en oportunidad.",
-      "Finalmente hay que llegar a acuerdos claros, realistas y compartidos, idealmente con idea de seguimiento."
+    "principles": [
+      "El objetivo no es ganar una discusión ni sonar empático en abstracto. El objetivo es facilitar que la otra parte revise su interpretación, baje su resistencia y acepte un siguiente paso de cambio creíble.",
+      "En este dominio suele ser mejor empezar por hechos, situaciones reales del trabajo y ejemplos concretos antes de subir demasiado pronto a lenguaje abstracto sobre identidad, valor o emociones.",
+      "No basta con que la otra parte se abra, se sincere o reconozca malestar. El objetivo solo se considera logrado si acepta de forma suficientemente clara un siguiente paso de cambio o acompañamiento.",
+      "Una buena conversación de cambio no se mide solo por el alivio momentáneo o la catarsis. El cierre debe dejar un compromiso claro y una base para acompañamiento posterior.",
+      "La secuencia importa: apertura segura, descubrimiento real, reformulación creíble y cierre con compromiso concreto."
     ],
-    "concrete_first_reading": "En este dominio suele ser mejor empezar por hechos, situaciones reales del trabajo y ejemplos concretos antes de subir demasiado pronto a lenguaje abstracto sobre identidad, valor o emociones.",
-    "result_reading": "No basta con que la otra parte se abra, se sincere o reconozca malestar. El objetivo solo se considera logrado si acepta de forma suficientemente clara un siguiente paso de cambio o acompañamiento.",
-    "follow_up_reading": "Una buena conversación de cambio no se mide solo por el alivio momentáneo o la catarsis. El cierre debe dejar un compromiso claro y una base para acompañamiento posterior.",
-    "common_global_failures": [
+    "transversal_errors": [
       "Entrar demasiado pronto a convencer o corregir.",
       "Hablar más de la cuenta y escuchar poco.",
       "Quedarse en conducta visible sin llegar al pensamiento que la sostiene.",
       "Intentar reencuadrar antes de comprender de verdad.",
       "Presionar con positividad vacía o excesiva.",
       "Cerrar en abstracto sin aterrizar un paso siguiente claro."
+    ],
+    "progress_signals": [
+      "La otra parte reduce defensividad y se mantiene en la conversación sin cerrarse.",
+      "Aparece comprensión del pensamiento o emoción que sostiene la resistencia.",
+      "La reformulación abre una perspectiva más equilibrada sin invalidar la experiencia de la otra parte.",
+      "Se acuerda un siguiente paso concreto, viable y explícitamente aceptado.",
+      "Queda definida una base mínima de seguimiento o acompañamiento posterior."
+    ],
+    "deterioration_signals": [
+      "Sube la confrontación o el juicio y la otra parte se cierra más.",
+      "La conversación se queda en quejas superficiales sin llegar al núcleo del problema.",
+      "Se intenta reencuadrar demasiado pronto y la otra parte lo percibe como imposición.",
+      "Hay catarsis o alivio momentáneo, pero sin compromiso verificable de cambio.",
+      "El cierre queda ambiguo o forzado, con riesgo alto de incumplimiento."
+    ],
+    "tone_and_rhythm_reminders": [
+      "Empieza por observaciones concretas y tono sereno antes de proponer lecturas más abstractas.",
+      "Alterna escuchar, preguntar y sintetizar para no convertir la conversación en sermón o interrogatorio.",
+      "Valida la experiencia de la otra parte antes de desafiar creencias rígidas.",
+      "Asegura que el cierre deje responsabilidades, próximo paso y expectativa de seguimiento claras.",
+      "Si el transcript no muestra evidencia suficiente, evalúa con prudencia y evita sobreafirmar."
     ]
   },
   "blocks": [
     {
       "block_id": "valores",
-      "title": "Crear espacio físico y emocional / Entrar sin juzgar ni confrontar",
+      "title": "Entrar sin juzgar ni confrontar",
       "evaluates": "Si el usuario crea una atmósfera mínima de confianza, abre la conversación con respeto y observación, y consigue introducir el tema sin activar defensa innecesaria.",
       "positive_signals": [
         "Abre con tono humano, sereno y respetuoso.",
@@ -106,7 +124,7 @@
     },
     {
       "block_id": "proceso",
-      "title": "Llegar a acuerdos y acompañar después",
+      "title": "Llegar a un acuerdo conjunto",
       "evaluates": "Si el usuario convierte la apertura conseguida en un acuerdo claro, realista y compartido, y deja bien planteado el siguiente paso o el seguimiento, en vez de quedarse solo en catarsis.",
       "positive_signals": [
         "Aterriza un siguiente paso concreto, pequeño y creíble.",
