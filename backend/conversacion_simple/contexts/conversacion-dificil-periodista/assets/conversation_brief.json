@@ -2,33 +2,83 @@
   "schema_version": "conversation_brief.v1",
   "case_context": {
     "organization_and_setting": "El caso ocurre en la redacción de un diario. La conversación es entre el responsable de Carmen y Carmen Vidal, periodista veterana del equipo.",
-    "change_in_progress": "La redacción ha pasado de una forma de trabajo donde una periodista podía llevar una pieza con mucho control individual a un modelo más estructurado y colaborativo, con roles más definidos y menos dependencia de una sola persona.",
-    "core_reading": "La lectura central del caso no es discutir si el nuevo sistema es mejor en abstracto, sino ayudar a Carmen a revisar la interpretación con la que está viviendo el cambio: no como una simple reorganización del trabajo, sino como una pérdida de control, protagonismo y valor profesional."
+    "change_in_progress": "La redacción ha pasado de una forma de trabajo donde una periodista senior podía recorrer gran parte de una noticia de principio a fin a un modelo más estructurado, eficiente y colaborativo. Ahora el equipo reparte mejor la captación, la documentación, las entrevistas, la construcción de piezas y la redacción final para abarcar más noticias, reaccionar más rápido y depender menos del recorrido completo de una sola persona.",
+    "core_reading": "La lectura central del caso no es discutir si el nuevo sistema es mejor en abstracto, sino ayudar a Carmen a revisar la interpretación con la que está viviendo el cambio: no como una simple reorganización del trabajo, sino como una pérdida de control, continuidad sobre la noticia, protagonismo funcional y valor profesional."
   },
   "initial_conditions": {
-    "relationship": "La relación inicial es profesional, con respeto previo y cierta tensión acumulada. Carmen y su responsable se conocen desde hace tiempo y él sabe que ha sido una periodista valiosa dentro de la redacción.",
+    "relationship": "La relación inicial es profesional, con respeto previo y cierta tensión acumulada. Carmen y su responsable se conocen desde hace tiempo y él sabe que ha sido una periodista muy valiosa dentro de la redacción.",
     "initial_information": "Al comenzar, el responsable observa resistencia y malestar en Carmen, pero no sabe con qué claridad ella reconoce lo que le pasa ni hasta qué punto será capaz de verbalizarlo.",
-    "starting_surface": "Carmen no entra mostrando de inicio su herida profunda. Tiende a hablar del sistema, de la organización y de cómo se trabajaba antes, más que de lo que eso le está removiendo a ella."
+    "starting_surface": "Carmen no entra mostrando de inicio su herida profunda. Tiende a hablar del sistema, de la organización, de las reuniones, del reparto del trabajo y de cómo se trabajaba antes, más que de lo que eso le está removiendo a ella."
+  },
+  "role_before_change": {
+    "summary": "Antes, Carmen ocupaba un rol de periodista veterana con mucho recorrido personal sobre una noticia. No era jefa formal, pero sí una figura con mucho peso informal por experiencia, criterio y capacidad de sacar piezas casi de punta a punta.",
+    "work_pattern": [
+      "Detectaba o intuía con rapidez por dónde había tema o noticia.",
+      "Podía moverse, captar, hablar con fuentes y hacer entrevistas con bastante autonomía.",
+      "Se documentaba y construía comprensión de contexto por sí misma.",
+      "Aportaba mucho peso al enfoque y al ángulo de la pieza.",
+      "Redactaba la noticia final como cierre de un proceso que ella misma había ayudado a construir desde el principio."
+    ],
+    "interaction_map": [
+      "Interactuaba con fuentes externas.",
+      "Se coordinaba con edición o con su responsable.",
+      "Podía apoyarse puntualmente en otras personas, pero el hilo principal del trabajo pasaba claramente por ella."
+    ],
+    "why_it_felt_important": [
+      "Sentía continuidad sobre la noticia de principio a fin.",
+      "Tenía control de conjunto sobre buena parte del proceso.",
+      "Su criterio organizaba el trabajo y no era solo una opinión más.",
+      "Veía con claridad dónde empezaba y acababa su aportación.",
+      "La pieza conservaba huella visible de su manera de mirar y construir."
+    ],
+    "identity_reading": "Antes Carmen sentía que hacía periodismo entero: detectar, salir, preguntar, documentarse, enfocar y redactar. Ahí estaba su seguridad profesional y la forma en que había construido durante años su autoestima de oficio."
+  },
+  "role_after_change": {
+    "summary": "Ahora Carmen forma parte de un equipo más estructurado y orientado a la eficiencia, la rapidez y el trabajo en grupo. Sigue siendo la persona con más experiencia, la voz más escuchada en reuniones y una referencia en criterio y redacción final, pero ya no sostiene el recorrido completo de una noticia como antes.",
+    "new_system": [
+      "Hay más reuniones para alinear enfoque y aclarar qué se cubre y cómo.",
+      "El trabajo se reparte más entre captación, entrevistas, documentación, construcción de piezas y redacción.",
+      "Ya no se espera que Carmen haga del mismo modo todo el trabajo de calle, captación, entrevista o documentación integral.",
+      "Su aportación se concentra más en experiencia, criterio editorial, lectura de conjunto y redacción final.",
+      "Aunque siga firmando y siga siendo importante, su trabajo pasa por una lógica más compartida y revisable."
+    ],
+    "interaction_map": [
+      "Colabora más con el equipo antes de que una pieza esté cerrada.",
+      "Participa en reuniones donde su voz es la más respetada, pero ya no es automáticamente la decisiva.",
+      "Recibe y trabaja con material o líneas ya movidas por otras personas del equipo."
+    ],
+    "what_is_still_true": [
+      "Sigue siendo una periodista importante dentro del grupo.",
+      "Sigue siendo la voz de más experiencia y la más escuchada.",
+      "Sigue firmando y sigue alineada con la esencia del periodismo."
+    ],
+    "what_changed_for_her": [
+      "Ha perdido parte del recorrido completo de la noticia.",
+      "Ha perdido parte de la autonomía operativa sobre captación, entrevistas y documentación integral.",
+      "Ha perdido centralidad funcional en el proceso completo, aunque no prestigio.",
+      "Ha perdido sensación de autoría total sobre la pieza.",
+      "Su valor ya no se expresa tanto en llevar la noticia entera, sino en orientar y elevar un trabajo compartido."
+    ],
+    "hidden_positive_reading": "Bien llevado, el nuevo modelo no borra a Carmen ni vacía su oficio. Convierte su experiencia en una forma más alta de influencia dentro del equipo, permitiendo abarcar más, hacerlo mejor y elevar al grupo. Esta lectura pertenece a la arquitectura del caso y no debe aparecer como autoconciencia temprana de Carmen."
   },
   "visible_problem": {
     "summary": "Carmen se está adaptando mal a la nueva forma de trabajo y sigue intentando operar desde el modelo anterior.",
     "observable_behaviors": [
-      "Sigue trabajando como antes siempre que puede.",
-      "Le cuesta coordinarse de verdad con otros perfiles del equipo.",
-      "Tiende a tomar decisiones por su cuenta sin alinear.",
-      "Le cuesta ceder partes del proceso que antes controlaba más.",
-      "Cuestiona con frecuencia la nueva organización del trabajo.",
-      "Su actitud transmite escepticismo y puede influir en otros por su peso dentro de la redacción."
+      "Cuestiona en reuniones la nueva forma de organizar el trabajo, con comentarios recurrentes que transmiten que antes se trabajaba mejor.",
+      "Le cuesta ajustarse al reparto actual de tareas y tiende a meterse en partes del proceso que ya no le corresponden igual.",
+      "Se coordina peor de lo esperable dentro de la dinámica grupal y funciona muchas veces desde una lógica demasiado individual.",
+      "Muestra resistencia sostenida a una forma de trabajo donde ya no controla tanto el recorrido completo de la noticia.",
+      "Transmite escepticismo al equipo sobre el nuevo modelo, y eso pesa especialmente por su experiencia y autoridad informal."
     ],
     "team_impact": "La resistencia de Carmen genera fricción, dificulta consolidar la nueva dinámica y afecta al clima porque no se trata de una persona irrelevante, sino de una profesional con trayectoria y ascendencia informal."
   },
   "deep_problem": {
     "summary": "El problema de fondo no es solo organizativo. Carmen vive el cambio como una pérdida de identidad profesional y de valor personal.",
     "driving_beliefs": [
-      "Antes mi criterio pesaba más.",
-      "Antes yo llevaba más parte del trabajo y eso demostraba lo que valía.",
-      "Ahora ya no tengo el mismo control ni el mismo sitio.",
-      "Parte de lo que me hacía buena ya no cuenta igual.",
+      "Antes mi criterio pesaba de otra manera porque el trabajo pasaba más por mí.",
+      "Antes yo llevaba mucho más del recorrido de la noticia y eso demostraba lo que valía.",
+      "Ahora ya no tengo el mismo control ni la misma continuidad sobre las piezas.",
+      "Parte de lo que me hacía buena ya no cuenta igual porque está más repartido.",
       "Si ya no trabajo desde ese lugar, quizá ya no soy tan importante aquí."
     ],
     "emotional_reading": "Debajo de la crítica hay frustración, sensación de pérdida, desorientación y miedo a dejar de encajar como antes. La rabia suele aparecer más cuando se siente juzgada o empujada."
@@ -47,11 +97,12 @@
     "general_principle": "La conversación debe leerse como una conversación de cambio, no como una negociación de recursos ni como una reprimenda.",
     "good_process_reading": [
       "Primero debe bajar la defensividad antes de intentar mover el pensamiento.",
-      "Las preguntas útiles son abiertas y más interiores que operativas.",
+      "Las preguntas útiles son abiertas y más interiores que operativas, pero la conversación funciona mejor si puede apoyarse en ejemplos reales del trabajo antes de subir a formulaciones abstractas.",
       "Cuestionar bien no significa corregir de frente, sino introducir dudas razonables.",
       "Ofrecer otra perspectiva no debe sonar a moraleja ni a negación de la pérdida.",
       "El cierre bueno convierte la apertura conseguida en un paso siguiente claro y realista."
     ],
+    "tangibility_rule": "La conversación funciona mejor cuando baja a situaciones reales del trabajo: reuniones, reparto de tareas, captación de temas, entrevistas, documentación, construcción de piezas y redacción final. Debe poder hablarse desde cambios tangibles antes de pasar a lecturas más abstractas sobre identidad, valor o pérdida.",
     "failure_reading": [
       "Si el responsable entra con juicio, Carmen se cerrará y se quedará en la superficie.",
       "Si la conversación se queda solo en conducta visible, no tocará el problema real.",
@@ -62,7 +113,7 @@
   "sensitive_private_information": {
     "should_not_be_revealed_spontaneously": [
       "Que Carmen siente que ya no es tan importante dentro de la redacción como antes.",
-      "Que parte de su resistencia viene del duelo por haber dejado de ser una figura más central.",
+      "Que parte de su resistencia viene del duelo por haber dejado de ser una figura más central en el recorrido de la noticia.",
       "Que le cuesta aceptar que ya no controla tanto porque eso toca directamente su autoimagen profesional.",
       "Que parte de su crítica al sistema encubre miedo a no encajar igual en la nueva manera de trabajar."
     ],

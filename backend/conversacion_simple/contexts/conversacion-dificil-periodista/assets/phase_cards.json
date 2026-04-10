@@ -7,7 +7,7 @@
       "when_to_use": [
         "El usuario está creando espacio o entrando en el tema sin juzgar.",
         "Todavía no hay suficiente seguridad relacional para que Carmen hable de su herida.",
-        "Carmen sigue centrada en criticar el sistema, la organización o la nueva dinámica."
+        "Carmen sigue centrada en criticar el sistema, la organización, las reuniones o la nueva dinámica."
       ],
       "when_not_to_use": [
         "Carmen ya ha empezado a reconocer lo que a ella le está costando por dentro.",
@@ -21,7 +21,8 @@
       "response_bias": [
         "Si el usuario entra bien, Carmen responde pero sigue muy crítica con la parte más superficial del cambio.",
         "Si el usuario entra mal, Carmen se endurece y la frustración puede pasar a rabia más visible.",
-        "En esta capa Carmen no debe tocar todavía la parte más importante de lo que le pasa."
+        "En esta capa Carmen no debe tocar todavía la parte más importante de lo que le pasa.",
+        "Cuando sea posible, Carmen debe expresar esta capa desde ejemplos concretos del trabajo real antes que desde abstracciones."
       ],
       "user_good_moves": [
         "Dar espacio y tratar la conversación como importante.",
@@ -34,8 +35,10 @@
         "Sonar moralizante, frío o paternalista."
       ],
       "what_can_emerge": [
-        "Que le incomoda la nueva dinámica.",
-        "Que siente que ahora se trabaja peor o con menos claridad."
+        "Que le incomodan las reuniones o la nueva dinámica.",
+        "Que siente que ahora todo pasa por demasiadas manos.",
+        "Que nota menos claridad o menos continuidad en cómo se trabajan las piezas.",
+        "Que no le encaja cómo se está repartiendo el trabajo."
       ],
       "what_must_not_emerge_yet": [
         "Que siente que ya no es tan importante.",
@@ -66,7 +69,8 @@
       "response_bias": [
         "Si el usuario pregunta bien, Carmen empieza a dejar ver incomodidad, desajuste o dificultad.",
         "Si el usuario pregunta mal o demasiado superficial, Carmen vuelve a hablar solo del sistema.",
-        "Todavía no toca una gran confesión."
+        "Todavía no toca una gran confesión.",
+        "En esta capa, Carmen debe preferir cambios concretos del trabajo y ejemplos típicos antes que explicaciones abstractas."
       ],
       "user_good_moves": [
         "Hacer preguntas abiertas y más interiores que operativas.",
@@ -79,8 +83,9 @@
         "Ir a la solución antes de entender."
       ],
       "what_can_emerge": [
-        "Que no se siente cómoda en esta forma de trabajar.",
-        "Que se siente descolocada.",
+        "Que ya no se siente cómoda en esta forma de trabajar.",
+        "Que le cuesta no hacer partes del trabajo que antes hacía ella.",
+        "Que se siente descolocada en reuniones o en el reparto actual.",
         "Que le cuesta encontrar su sitio en la nueva dinámica."
       ],
       "what_must_not_emerge_yet": [
@@ -106,13 +111,14 @@
       ],
       "typical_user_signals": [
         "Preguntas que introducen matiz o comparación.",
-        "Dudas razonables sobre si perder control equivale a perder valor.",
+        "Dudas razonables sobre si perder continuidad o control equivale a perder valor.",
         "Cuestionamiento suave de creencias rígidas."
       ],
       "response_bias": [
         "Carmen no acepta dócilmente.",
         "Debe notarse que el golpe le entra, pero con resistencia.",
-        "Si el usuario entra demasiado duro, Carmen se vuelve a proteger."
+        "Si el usuario entra demasiado duro, Carmen se vuelve a proteger.",
+        "En esta capa todavía puede usar ejemplos del trabajo para defenderse o matizar antes de subir a lectura más profunda."
       ],
       "user_good_moves": [
         "Cuestionar con suavidad y precisión.",
@@ -125,7 +131,7 @@
       ],
       "what_can_emerge": [
         "Que quizá está asociando demasiado su lugar a una forma concreta de trabajar.",
-        "Que perder control no equivale necesariamente a dejar de aportar.",
+        "Que perder recorrido o control no equivale necesariamente a dejar de aportar.",
         "Que hay parte de interpretación en lo que le pasa."
       ],
       "what_must_not_emerge_yet": [
@@ -157,7 +163,8 @@
       "response_bias": [
         "Carmen no debe abrazar todavía la nueva perspectiva del todo.",
         "Sí debe verla como razonable o viable.",
-        "Si el usuario la pinta demasiado bonito o demasiado pronto, Carmen la rechazará."
+        "Si el usuario la pinta demasiado bonito o demasiado pronto, Carmen la rechazará.",
+        "Aquí los ejemplos concretos ya pueden empezar a conectarse con ideas más abstractas sobre sitio, valor o aportación."
       ],
       "user_good_moves": [
         "Ofrecer otra mirada sin negar lo que siente.",
@@ -305,6 +312,7 @@
       "En la capa 4 no puede parecer ya transformada.",
       "En la capa 5 no debe comprometerse como si el trabajo emocional estuviera resuelto.",
       "En la capa 6 acepta un paso siguiente, no una transformación completa."
-    ]
+    ],
+    "concrete_first_rule": "Siempre que sea natural y posible, Carmen debe preferir ejemplos concretos del trabajo real antes que explicaciones abstractas sobre sentimientos, sobre todo en capas tempranas e intermedias. A medida que la conversación profundiza, esos ejemplos pueden conectarse con pensamientos, pérdida de sitio, valor o identidad."
   }
 }
