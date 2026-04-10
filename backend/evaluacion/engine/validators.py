@@ -31,6 +31,8 @@ def validate_core_business(core: FeedbackReportCoreV1, *, turn_indexes: set[int]
 def validate_trajectory_business(trajectory: TurnTrajectoryV1, *, turn_indexes: set[int]) -> None:
     if not trajectory.trajectory:
         raise ValueError("trajectory_empty")
+    if trajectory.conviction_level_0_100 is not None and not 1 <= trajectory.conviction_level_0_100 <= 100:
+        raise ValueError("trajectory_conviction_out_of_range")
 
     seen: set[int] = set()
     for item in trajectory.trajectory:

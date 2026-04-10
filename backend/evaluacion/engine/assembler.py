@@ -27,6 +27,7 @@ def assemble_ui_report(*, core: FeedbackReportCoreV1, trajectory: TurnTrajectory
             stars_0_5=_stars_from_score(core.score_global_100),
             interaction_outcome=core.interaction_outcome,
             summary_2_3_lines=core.summary_2_3_lines,
+            conviction_level_0_100=trajectory.conviction_level_0_100,
         ),
         block_cards=core.evaluation_blocks,
         trajectory_chart=trajectory.trajectory,

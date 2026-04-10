@@ -114,6 +114,7 @@ def _run_pipeline_from_bundle(*, evaluation_id: str, bundle: FeedbackInputBundle
             core=core_output,
             trajectory=trajectory_output,
             turn_count=max(len(bundle.conversation.turns), 1),
+            context_id=bundle.domain_context.context_id,
         )
         job = REPOSITORY.get_job(evaluation_id=evaluation_id)
         if job is None:

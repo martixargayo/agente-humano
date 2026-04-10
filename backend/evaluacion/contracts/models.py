@@ -208,6 +208,7 @@ class TurnTrajectoryV1(BaseModel):
 
     schema_version: Literal["turn_trajectory.v1"]
     trajectory: list[TrajectoryTurn]
+    conviction_level_0_100: int | None = None
 
 
 class UiHeader(BaseModel):
@@ -218,6 +219,7 @@ class UiHeader(BaseModel):
     stars_0_5: float
     interaction_outcome: InteractionOutcome
     summary_2_3_lines: str
+    conviction_level_0_100: int | None = None
 
 
 class KeyMomentsPanel(BaseModel):

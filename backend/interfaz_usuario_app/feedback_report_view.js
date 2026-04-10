@@ -8,6 +8,22 @@
     relacion: 'Relación',
     proceso: 'Proceso',
   };
+  const DIFFICULT_CONTEXT_ID = 'conversacion-dificil-periodista';
+  const DIFFICULT_BLOCK_LABELS = {
+    valores: 'Entrar sin juzgar ni confrontar',
+    vision: 'Preguntar para descubrir',
+    relacion: 'Reformular ideas',
+    proceso: 'Llegar a un acuerdo conjunto',
+  };
+
+  function isDifficultConversationContext(report) {
+    return String(report?.provenance?.context_id || '') === DIFFICULT_CONTEXT_ID;
+  }
+
+  function resolveBlockLabel(block, report) {
+    const mapping = isDifficultConversationContext(report) ? DIFFICULT_BLOCK_LABELS : BLOCK_LABELS;
+    return mapping[block?.block_id] || block?.title || '';
+  }
 
   function orderBlocks(blocks = []) {
     const rank = { valores: 0, vision: 1, relacion: 2, proceso: 3 };
@@ -195,31 +211,40 @@
     return `${estMinutes}:00 min`;
   }
 
-  function resultFirstLine(outcome) {
+  function resultFirstLine(outcome, options = {}) {
+    if (options.isDifficultConversation) {
+      if (outcome === 'agreement_reached') return 'Lograste un compromiso concreto de cambio con la otra persona.';
+      return 'Todavía no lograste un compromiso claro de cambio en esta conversación.';
+    }
     if (outcome === 'agreement_reached') return 'Lograste un acuerdo: cerraste la negociación en términos aceptables para ambas partes.';
     return 'No cerraste un acuerdo final en esta conversación.';
   }
 
-  function buildResultSummary(outcome, summary) {
-    return `${resultFirstLine(outcome)} ${summary || ''}`.trim();
+  function buildResultSummary(outcome, summary, options = {}) {
+    return `${resultFirstLine(outcome, options)} ${summary || ''}`.trim();
   }
 
-  function helpReason(turn, previousTurn) {
+  function helpReason(turn, previousTurn, options = {}) {
     if (!turn) return '';
     const current = Number(turn.agreement_closeness_score_0_100 || 0);
     const previous = Number(previousTurn?.agreement_closeness_score_0_100 || current);
     const delta = current - previous;
+    if (options.isDifficultConversation) {
+      if (delta > 0) return 'Este turno aumentó el convencimiento hacia el cambio.';
+      if (delta < 0) return 'Este turno redujo el convencimiento hacia el cambio.';
+      return 'Este turno dejó el convencimiento casi en el mismo punto.';
+    }
     if (delta > 0) return 'Este turno te acercó al entendimiento.';
     if (delta < 0) return 'Este turno te alejó del entendimiento.';
     return 'Este turno dejó la negociación casi en el mismo punto.';
   }
 
-  function tooltipMarkup(turn, previousTurn) {
+  function tooltipMarkup(turn, previousTurn, options = {}) {
     return `
       <h4>Turno ${Number(turn?.turn_index || 0)}</h4>
       <p><strong>Tú:</strong> ${escapeHtml(turn?.user_excerpt || '')}</p>
       <p><strong>Él:</strong> ${escapeHtml(turn?.counterpart_excerpt || '')}</p>
-      <p>${escapeHtml(helpReason(turn, previousTurn))} ${escapeHtml(turn?.impact_reason || '')}</p>
+      <p>${escapeHtml(helpReason(turn, previousTurn, options))} ${escapeHtml(turn?.impact_reason || '')}</p>
       <p><strong>Pensamiento del otro:</strong> ${escapeHtml(turn?.counterpart_thought_effect || '')}</p>
     `;
   }
@@ -239,7 +264,7 @@
     return clean.slice(0, 90).trim();
   }
 
-  function renderChart(svg, trajectory, handlers) {
+  function renderChart(svg, trajectory, handlers, options = {}) {
     const width = 980;
     const height = 360;
     const pad = { top: 18, right: 18, bottom: 38, left: 20 };
@@ -290,6 +315,37 @@
       circle.addEventListener('click', (ev) => handlers.onClick(idx, ev));
       svg.appendChild(circle);
     });
+
+    if (Number.isFinite(options.convictionLevel) && values.length > 0) {
+      const lastIdx = values.length - 1;
+      const boxW = 220;
+      const boxH = 34;
+      const anchorX = xFor(lastIdx) + 10;
+      const anchorY = yFor(values[lastIdx]) - boxH - 8;
+      const clampedX = Math.max(pad.left + 2, Math.min(anchorX, width - pad.right - boxW - 2));
+      const clampedY = Math.max(pad.top + 2, Math.min(anchorY, height - pad.bottom - boxH - 4));
+
+      const scoreBadge = document.createElementNS(NS, 'rect');
+      scoreBadge.setAttribute('x', String(clampedX));
+      scoreBadge.setAttribute('y', String(clampedY));
+      scoreBadge.setAttribute('rx', '8');
+      scoreBadge.setAttribute('ry', '8');
+      scoreBadge.setAttribute('width', String(boxW));
+      scoreBadge.setAttribute('height', String(boxH));
+      scoreBadge.setAttribute('fill', '#FFFFFF');
+      scoreBadge.setAttribute('stroke', '#D0D5DD');
+      scoreBadge.setAttribute('stroke-width', '1.2');
+      svg.appendChild(scoreBadge);
+
+      const scoreText = document.createElementNS(NS, 'text');
+      scoreText.setAttribute('x', String(clampedX + 10));
+      scoreText.setAttribute('y', String(clampedY + 22));
+      scoreText.setAttribute('fill', '#101828');
+      scoreText.setAttribute('font-size', '13');
+      scoreText.setAttribute('font-weight', '600');
+      scoreText.textContent = `Nivel de convencimiento: ${Math.round(options.convictionLevel)}/100`;
+      svg.appendChild(scoreText);
+    }
 
     const xStart = document.createElementNS(NS, 'text');
     xStart.setAttribute('x', String(pad.left));
@@ -897,7 +953,7 @@
       const lines = getCardChecks(block.checks).slice(0, 3);
       return `
         <rect x="${x}" y="${y}" width="486" height="124" rx="18" fill="#FFFFFF" stroke="${stroke}" stroke-width="3" />
-        <text x="${x + 24}" y="${y + 34}" font-size="24" font-weight="600" fill="#101828">${escapeXml(BLOCK_LABELS[block.block_id] || block.title || '')}</text>
+        <text x="${x + 24}" y="${y + 34}" font-size="24" font-weight="600" fill="#101828">${escapeXml(resolveBlockLabel(block, report))}</text>
         <text x="${x + 24}" y="${y + 68}" font-size="18" font-weight="600" fill="${stroke}">${escapeXml(block.status_visual || '')}</text>
         ${lines.map((line, lineIdx) => `<text x="${x + 24}" y="${y + 96 + lineIdx * 22}" font-size="18" fill="#475467">• ${escapeXml(line.micro_explanation || '')}</text>`).join('')}
       `;
@@ -978,6 +1034,10 @@
     const activityName = header.activity_name || 'Compra de un Mustang clásico';
     const durationLabel = durationFromReport(report, trajectory.length);
     const outcome = header.interaction_outcome;
+    const difficultConversation = isDifficultConversationContext(report);
+    const resolvedConvictionLevel = Number.isFinite(Number(header.conviction_level_0_100))
+      ? Number(header.conviction_level_0_100)
+      : Number(trajectory[trajectory.length - 1]?.agreement_closeness_score_0_100 || NaN);
     const agreementReached = outcome === 'agreement_reached';
 
     container.classList.add('feedback-report-root');
@@ -999,16 +1059,16 @@
             <h2>Resultado</h2>
             <span class="fb-result-dot ${agreementReached ? 'ok' : 'bad'}" aria-hidden="true"></span>
           </div>
-          <p>${escapeHtml(buildResultSummary(outcome, header.summary_2_3_lines))}</p>
+          <p>${escapeHtml(buildResultSummary(outcome, header.summary_2_3_lines, { isDifficultConversation: difficultConversation }))}</p>
         </section>
 
         <section class="fb-grid-cards" aria-label="Resumen por dimensión"></section>
 
         <section class="fb-card fb-chart-card">
-          <div class="fb-chart-top"><h2>Cercanía al entendimiento</h2></div>
-          <p class="fb-chart-hint">Pasa el ratón por encima de cada momento de la conversación para conocer más.</p>
+          <div class="fb-chart-top"><h2>${difficultConversation ? 'Evolución del convencimiento al cambio' : 'Cercanía al entendimiento'}</h2></div>
+          <p class="fb-chart-hint">${difficultConversation ? 'La curva refleja cómo evolucionó la apertura al cambio y termina en el nivel final de convencimiento.' : 'Pasa el ratón por encima de cada momento de la conversación para conocer más.'}</p>
           <div class="fb-chart-shell">
-            <svg class="fb-chart" role="img" aria-label="Serie de cercanía al entendimiento por turno"></svg>
+            <svg class="fb-chart" role="img" aria-label="${difficultConversation ? 'Serie de convencimiento al cambio por turno' : 'Serie de cercanía al entendimiento por turno'}"></svg>
             <aside class="fb-turn-tooltip hidden" aria-live="polite"></aside>
           </div>
         </section>
@@ -1030,7 +1090,7 @@
       const card = document.createElement('article');
       card.className = `fb-card fb-skill-card ${status}`;
       card.innerHTML = `
-        <div class="fb-skill-top"><h3>${escapeHtml(BLOCK_LABELS[section.block_id] || section.title || '')}</h3><span class="fb-badge ${status}">${escapeHtml(section.status_visual || '')}</span></div>
+        <div class="fb-skill-top"><h3>${escapeHtml(resolveBlockLabel(section, report))}</h3><span class="fb-badge ${status}">${escapeHtml(section.status_visual || '')}</span></div>
         <ul>${checks}</ul>
       `;
       blockRoot.appendChild(card);
@@ -1068,7 +1128,7 @@
     const showTooltip = (index, event) => {
       const turn = trajectory[index];
       if (!turn) return;
-      tooltip.innerHTML = tooltipMarkup(turn, trajectory[index - 1] || null);
+      tooltip.innerHTML = tooltipMarkup(turn, trajectory[index - 1] || null, { isDifficultConversation: difficultConversation });
       tooltip.classList.remove('hidden');
       placeTooltip(tooltip, chartShell, event);
     };
@@ -1085,7 +1145,7 @@
           }
           showTooltip(idx, ev);
         },
-      });
+      }, { convictionLevel: resolvedConvictionLevel });
 
       chartShell.addEventListener('mouseleave', () => {
         if (stickyIndex === null) tooltip.classList.add('hidden');

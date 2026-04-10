@@ -37,7 +37,8 @@ def _fallback_output(trajectory_input: TrajectoryRunnerInputV1) -> TurnTrajector
             )
         ]
 
-    return TurnTrajectoryV1(schema_version="turn_trajectory.v1", trajectory=rows)
+    conviction = rows[-1].agreement_closeness_score_0_100 if rows else 40
+    return TurnTrajectoryV1(schema_version="turn_trajectory.v1", trajectory=rows, conviction_level_0_100=conviction)
 
 
 def run_trajectory_evaluator(trajectory_input: TrajectoryRunnerInputV1) -> tuple[TurnTrajectoryV1, str]:
