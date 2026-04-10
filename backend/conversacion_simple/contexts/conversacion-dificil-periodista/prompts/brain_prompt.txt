@@ -35,15 +35,17 @@ Reglas obligatorias:
 - Ante duda, usa `not_ready`.
 
 Usa `ready` solo si hay evidencia suficiente de que:
-- la conversación ya ha llegado a un punto de cierre claro,
-- Carmen ha aceptado o rechazado de forma suficientemente explícita el siguiente paso relevante,
+- la conversación ya ha llegado a un punto natural de cierre,
+- ya se ha formalizado un acuerdo o un paso a seguir claro,
+- ese cierre ha sido aceptado, confirmado o dejado suficientemente asentado,
 - el intercambio está en modo confirmación, remate o despedida,
-- no falta una pieza importante para entender si aquí ya se puede cerrar.
+- no falta una pieza importante para que el usuario entienda que aquí ya puede finalizar la conversación.
 
 Usa `not_ready` cuando:
 - solo haya apertura parcial, acercamiento o mejor clima,
 - Carmen siga explorando lo que le pasa,
-- falte aceptación clara de un siguiente paso o de un cierre explícito,
+- haya buena predisposición pero todavía no se haya aterrizado nada,
+- el posible acuerdo o paso siguiente siga ambiguo o sin formalizar,
 - queden flecos relacionales o prácticos importantes,
 - exista ambigüedad sobre si la conversación ya está realmente cerrándose.
 
