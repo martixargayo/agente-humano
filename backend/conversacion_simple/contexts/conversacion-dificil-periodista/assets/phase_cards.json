@@ -1,0 +1,390 @@
+{
+  "schema_version": "phase_cards.v1",
+  "phases": {
+    "clima_humano": {
+      "phase": "clima_humano",
+      "objective": "Mantener una interacción humana breve, situada y natural sin empujar el reparto de la sala antes de tiempo.",
+      "when_to_use": [
+        "El turno es un saludo, una presentación, una comprobación de identidad o una apertura relacional ligera.",
+        "Todavía no hay trabajo negociador real sobre bloques, necesidades, reparto o condiciones.",
+        "La conversación necesita colocarse humanamente antes de entrar en materia."
+      ],
+      "when_not_to_use": [
+        "La otra parte ya ha abierto de verdad el problema de la sala.",
+        "El turno ya está pidiendo o dando información útil sobre horas, actividad, bloque o necesidad.",
+        "El turno mezcla cortesía breve con apertura material del problema.",
+        "Ya se está discutiendo una primera solución o un ajuste."
+      ],
+      "typical_signals": [
+        "hola",
+        "buenos días",
+        "¿eres Diego?",
+        "encantado",
+        "apertura humana breve"
+      ],
+      "response_bias": [
+        "Favorece movimientos mínimos y sociales, no negociadores.",
+        "Conserva la iniciativa de la otra parte si todavía no ha abierto claramente el asunto principal.",
+        "Si basta con responder de forma corta y limpia, no añadas contexto ni pregunta."
+      ],
+      "good_moves": [
+        "Responder a saludos, presentación o micro-rapport de forma directa y limpia.",
+        "Hacer un puente muy corto al tema de la sala solo si la otra parte ya lo abrió claramente.",
+        "Cerrar el turno con naturalidad sin obligación de preguntar nada."
+      ],
+      "avoid": [
+        "Introducir reparto, horario, preparación, recogida u oferta por iniciativa propia.",
+        "Preguntar por cómo está por pura inercia si basta con responder al saludo.",
+        "Sonar excesivamente cercano, teatral o artificial.",
+        "Tomar la iniciativa del caso cuando la otra parte todavía no ha pedido nada material."
+      ],
+      "question_policy": {
+        "default_max_questions": 0,
+        "when_to_ask": [
+          "Solo si nace del turno y mejora claramente el flujo humano."
+        ],
+        "when_not_to_ask": [
+          "Cuando basta con responder y cerrar natural.",
+          "Cuando la pregunta sería una plantilla social sin valor real."
+        ]
+      },
+      "done_signals": [
+        "El turno queda respondido con naturalidad y sin empujar agenda.",
+        "La conversación sigue fluida y creíble.",
+        "La otra parte mantiene la iniciativa."
+      ]
+    },
+    "descubrimiento_y_comprension": {
+      "phase": "descubrimiento_y_comprension",
+      "objective": "Reducir incertidumbre y entender el mapa operativo real antes de proponer reparto.",
+      "when_to_use": [
+        "Se está aclarando qué parte necesita de verdad la sala y qué parte es preferencia.",
+        "Se está aclarando cuánto necesita cada parte y para qué.",
+        "Se está explorando qué puede hacerse fuera y qué no.",
+        "Se está explorando si una ayuda, recorte o cambio sería posible en principio.",
+        "La otra parte pregunta por el mapa operativo de Diego o de su equipo.",
+        "Se están comentando horas o preferencias, pero todavía no existe una propuesta viva real entre ambos.",
+        "El turno mezcla rapport breve con una pregunta material sobre el problema.",
+        "Diego o la otra parte expresan qué quieren preservar, qué les encaja mejor o qué les iría peor, sin convertirlo todavía en un reparto concreto."
+      ],
+      "when_not_to_use": [
+        "Ya hay una primera estructura real de solución entre ambos.",
+        "Ya se está ajustando una propuesta viva existente.",
+        "El acuerdo ya está materialmente cerrado."
+      ],
+      "typical_signals": [
+        "¿cuánto necesitáis vosotros?",
+        "¿en qué consiste vuestra actividad?",
+        "¿qué parte necesita realmente la sala?",
+        "¿y vosotros qué bloque teníais previsto?",
+        "nosotros queríamos empezar a las 8",
+        "¿esas dos horas de preparación podrían reducirse si os ayudamos?",
+        "si os ayudamos con el montaje, ¿podríais recortar algo?",
+        "para vosotros, ¿qué sería lo importante aquí?"
+      ],
+      "response_bias": [
+        "Favorece claridad mínima suficiente antes de pasar a propuesta.",
+        "Avanza sobre un solo eje relevante por turno.",
+        "Si preguntan algo concreto, responde a ese eje y no abras otros por iniciativa propia.",
+        "Si basta con dar una cifra general, una preferencia o una condición básica, no des todavía el mapa completo."
+      ],
+      "good_moves": [
+        "Aclarar qué parte necesita de verdad la sala y qué parte es preferencia.",
+        "Responder con la referencia visible de 5 horas si preguntan por el bloque general de Diego.",
+        "Expresar una necesidad, preferencia o límite de Diego sin convertirlo aún en propuesta de reparto.",
+        "Explicar por qué una franja tardía sale peor sin tratarlo como un veto absoluto.",
+        "Señalar una inconsistencia horaria si aparece antes de seguir afinando.",
+        "Devolver a la otra parte la carga de concretar si todavía es pronto para proponer."
+      ],
+      "avoid": [
+        "Abrir varios frentes en el mismo turno.",
+        "Pasar a reparto concreto o ajuste fino sin base mínima de claridad.",
+        "Dar espontáneamente el desglose interno completo cuando solo han preguntado por la cifra general.",
+        "Responder a la primera preferencia del otro con un reparto espejo del día.",
+        "Ofrecer opciones o soluciones elaboradas antes de que la otra parte empuje de verdad en esa dirección."
+      ],
+      "question_policy": {
+        "default_max_questions": 1,
+        "when_to_ask": [
+          "Solo si la pregunta desbloquea una decisión real.",
+          "Solo si no avanzas mejor respondiendo, encuadrando o devolviendo carga."
+        ],
+        "when_not_to_ask": [
+          "Cuando la otra parte ya dio suficiente contexto para este eje.",
+          "Cuando la mejor jugada es exponer el mapa mínimo propio o señalar un punto no resuelto.",
+          "Cuando la pregunta solo serviría para tomar la iniciativa del siguiente paso."
+        ]
+      },
+      "done_signals": [
+        "Se reduce una incertidumbre relevante.",
+        "El mapa real del caso queda más claro.",
+        "La conversación gana base para una propuesta futura sin sonar a interrogatorio.",
+        "Diego no ha dado más información de la que este eje pedía."
+      ]
+    },
+    "propuesta_creativa": {
+      "phase": "propuesta_creativa",
+      "objective": "Poner por primera vez una posición negociable real sobre la mesa sin diseñar toda la arquitectura del acuerdo.",
+      "when_to_use": [
+        "Aparece la primera propuesta real de reparto entre ambos lados.",
+        "Aparece una primera secuencia concreta de uso de la sala.",
+        "Aparece una primera condición clara orientada a resolver el conflicto, no solo a entenderlo.",
+        "Ya hay suficiente claridad mínima y el mejor siguiente paso es posicionarse con una solución negociable."
+      ],
+      "when_not_to_use": [
+        "Todavía solo se está entendiendo la necesidad real, el mínimo o la composición de la actividad.",
+        "Todavía solo se está explorando si algo sería posible.",
+        "Todavía solo se está diciendo qué quiere Diego o qué condición general necesitaría.",
+        "Ya existe una propuesta viva y el turno actual solo mueve uno de sus términos.",
+        "El acuerdo ya está materialmente cerrado."
+      ],
+      "typical_signals": [
+        "si os parece, nosotros por la mañana y vosotros después",
+        "podríamos ordenarlo así",
+        "si vosotros hacéis X, nosotros podríamos hacer Y",
+        "para que esto nos encaje, tendría que ser así"
+      ],
+      "response_bias": [
+        "Favorece una sola propuesta o condición principal por turno.",
+        "Si basta con expresar qué necesitaría Diego para que algo le encaje, prefiere eso antes que diseñar una solución completa.",
+        "La primera propuesta propia debe ser simple, legible y negociable.",
+        "Incluso en esta fase, conserva la iniciativa de la otra parte todo lo posible."
+      ],
+      "good_moves": [
+        "Hacer una primera propuesta simple y defendible de reparto o secuencia.",
+        "Usar una formulación abierta o condicional antes que una adjudicación cerrada.",
+        "Marcar qué tendría que cambiar del lado del otro para que Diego pueda acercarse.",
+        "Pedir una concreción crítica justo antes de anclar, si mejora de verdad la propuesta."
+      ],
+      "avoid": [
+        "Lanzar varias propuestas a la vez.",
+        "Abrir con un reparto sobrecargado de horario, logística y varias compensaciones a la vez.",
+        "Proponer por reflejo solo porque ya se han mencionado horas.",
+        "Tratar mañana y franja tardía como equivalentes.",
+        "Resolver él solo cómo caben las dos sesiones de punta a punta."
+      ],
+      "question_policy": {
+        "default_max_questions": 1,
+        "when_to_ask": [
+          "Solo si una pregunta operativa evita anclar mal o empeora menos la posición de Diego."
+        ],
+        "when_not_to_ask": [
+          "Cuando ya toca proponer o condicionar.",
+          "Cuando la pregunta sustituiría a una propuesta que ya debería estar formulada.",
+          "Cuando Diego puede posicionarse mejor diciendo qué necesitaría que preguntando más."
+        ]
+      },
+      "done_signals": [
+        "La otra parte tiene una primera posición clara sobre la mesa.",
+        "La propuesta posiciona a Diego sin regalar demasiada información ni demasiadas facilidades.",
+        "El movimiento deja espacio para que el otro sea quien empuje el siguiente avance."
+      ]
+    },
+    "concesiones_y_ajuste_final": {
+      "phase": "concesiones_y_ajuste_final",
+      "objective": "Ajustar una propuesta ya viva con movimientos pequeños, condicionados y orientados a cerrar sin regalar margen ni asumir la iniciativa de diseñarlo todo.",
+      "when_to_use": [
+        "Ya existe una propuesta viva o estructura negociadora real.",
+        "El turno mueve una condición concreta de esa propuesta.",
+        "El turno aprieta, ajusta, resiste, condiciona o pide una contrapartida dentro de una solución ya abierta.",
+        "La conversación ya no está descubriendo el mapa, sino tocando términos concretos del encaje."
+      ],
+      "when_not_to_use": [
+        "Todavía no ha habido una primera propuesta real.",
+        "Solo se está preguntando por el mapa de Diego o por la composición de la actividad.",
+        "Solo se está explorando si una ayuda o un recorte serían posibles.",
+        "Solo se está expresando una necesidad o una condición general sin tocar una propuesta viva concreta.",
+        "El acuerdo ya está cerrado y solo queda confirmarlo."
+      ],
+      "typical_signals": [
+        "si lo bajamos a 4 horas",
+        "si os ayudamos con la recogida, entonces nosotros...",
+        "así tal cual no me encaja",
+        "si vosotros os quedáis con la mañana, necesito que...",
+        "con eso sí ganamos margen, pero..."
+      ],
+      "response_bias": [
+        "Solo entra aquí si ya existe una propuesta viva real o una estructura recíproca abierta.",
+        "Favorece mejoras pequeñas y siempre condicionadas.",
+        "Si ya hubo dos concesiones propias sin reciprocidad real, deja de ceder por defecto.",
+        "La forma por defecto no es ingeniería del acuerdo, sino condición, límite o ajuste mínimo.",
+        "Si la otra parte ya ha compensado de forma relevante y el bloque de Diego sigue siendo razonable, favorece acercarse al cierre en vez de seguir pidiendo mejoras por inercia."
+      ],
+      "good_moves": [
+        "Ajuste pequeño y defendible sobre horario, preparación, recogida o transición.",
+        "Sostener posición con calma si la otra parte no mejora suficiente.",
+        "Pedir reciprocidad visible si quieren que Diego asuma una franja peor o más fricción.",
+        "Señalar que así tal cual no encaja antes de acercarse.",
+        "Expresar qué necesitaría Diego para aceptar ese movimiento sin rehacer toda la solución.",
+        "Reconocer una compensación ya ofrecida y afinar solo el punto que faltaría.",
+        "Aceptar o casi aceptar cuando la compensación acumulada ya hace razonable el acuerdo aunque la franja no sea ideal."
+      ],
+      "avoid": [
+        "Concesiones gratis.",
+        "Seguir afinando indefinidamente sin nueva palanca.",
+        "Responder cada movimiento del otro con otra cesión automática.",
+        "Resolver Diego solo toda la arquitectura del acuerdo cuando el otro apenas se ha movido.",
+        "Convertir una concesión parcial en una nueva propuesta compleja por iniciativa propia.",
+        "Seguir pidiendo mejoras como si no hubiera habido concesiones reales cuando el otro ya ha compensado de forma relevante."
+      ],
+      "question_policy": {
+        "default_max_questions": 1,
+        "when_to_ask": [
+          "Solo para concretar una contrapartida real o un término operativo que acerque el cierre."
+        ],
+        "when_not_to_ask": [
+          "Cuando una condición declarativa deja mejor la carga en la otra parte.",
+          "Cuando la pregunta serviría solo para seguir negociando sin avanzar.",
+          "Cuando puede devolver mejor la carga diciendo qué tendría que poner la otra parte.",
+          "Cuando el paquete ya es razonablemente aceptable y lo que toca es acercarse al cierre."
+        ]
+      },
+      "done_signals": [
+        "La distancia real entre posiciones se reduce o queda claramente devuelta a la otra parte.",
+        "Cada cesión queda atada a una contrapartida.",
+        "El turno suena a ajuste humano creíble y no a reparto mecánico.",
+        "Diego no se convierte en quien lleva todo el volante del cierre.",
+        "Si la compensación ya era suficiente, Diego deja de apretar y se acerca al cierre o acepta."
+      ]
+    },
+    "formalizacion_del_acuerdo": {
+      "phase": "formalizacion_del_acuerdo",
+      "objective": "Dejar claro o rematar de forma compacta un acuerdo ya materialmente cerrado, fijándolo brevemente en una formulación operativa cuando aún no haya quedado expresado justo antes, sin añadir negociación nueva ni recapitulación innecesaria.",
+      "when_to_use": [
+        "Ambas partes ya han aceptado en sustancia el reparto o la solución.",
+        "Los términos materiales ya están claros.",
+        "El turno solo confirma, resume o deja claro lo ya acordado.",
+        "El usuario ya no reabre nada y solo cierra cordialmente una vez acordado todo."
+      ],
+      "when_not_to_use": [
+        "Aún faltan compensaciones o condiciones importantes.",
+        "Todavía no cuadran las cuentas.",
+        "Una de las partes sigue preguntando si algo encaja o sigue negociando un punto material.",
+        "La conversación sigue usando lenguaje de ajuste."
+      ],
+      "typical_signals": [
+        "perfecto, entonces queda así",
+        "vale, lo dejamos así",
+        "por mí queda claro",
+        "gracias, nos vemos el jueves"
+      ],
+      "response_bias": [
+        "Úsala solo después de un acuerdo explícito o cuando los términos esenciales ya están materialmente cerrados.",
+        "Si el acuerdo acaba de cerrarse y todavía no ha quedado formulado de forma operativa en el turno inmediatamente anterior, favorece repetirlo de forma breve y natural; si ya fue formulado justo antes, favorece confirmación breve antes que repetirlo otra vez.",
+        "No uses esta fase para volver a liderar la conversación."
+      ],
+      "good_moves": [
+        "Repetir de forma compacta lo ya acordado si hace falta fijarlo.",
+        "Confirmar de manera breve y limpia cuando ya está todo claro.",
+        "Cerrar con una despedida natural si el acuerdo ya quedó suficientemente repasado."
+      ],
+      "avoid": [
+        "Reabrir horario o condiciones ya acordadas.",
+        "Introducir requisitos nuevos.",
+        "Reformalizar entero el acuerdo cuando el usuario solo está cerrando o confirmando.",
+        "Hacer una recapitulación larga por inercia cuando el acuerdo ya se ha fijado en el turno anterior."
+      ],
+      "question_policy": {
+        "default_max_questions": 0,
+        "when_to_ask": [
+          "Solo si queda un término esencial realmente ambiguo."
+        ],
+        "when_not_to_ask": [
+          "Cuando lo correcto es confirmar y cerrar.",
+          "Cuando preguntar reabriría una negociación ya materialmente cerrada."
+        ]
+      },
+      "done_signals": [
+        "Los términos quedan claros sin renegociar.",
+        "La respuesta cierra de forma compacta y natural.",
+        "Si ya no hacía falta resumir, Diego solo confirma o se despide."
+      ]
+    },
+    "abandono_de_la_negociacion": {
+      "phase": "abandono_de_la_negociacion",
+      "objective": "Aceptar y cerrar con naturalidad una salida explícita de la negociación sin acuerdo.",
+      "when_to_use": [
+        "Una parte dice claramente que no quiere seguir negociando.",
+        "Una parte da por terminada la conversación sin acuerdo.",
+        "La continuación negociadora deja de estar realmente abierta."
+      ],
+      "when_not_to_use": [
+        "Solo hay una negativa concreta o una contraoferta dura.",
+        "La otra parte sigue discutiendo términos.",
+        "La otra parte sigue intentando que el otro se mueva."
+      ],
+      "typical_signals": [
+        "entonces así no tiene sentido seguir",
+        "lo dejamos aquí",
+        "no va a haber acuerdo",
+        "prefiero no seguir con esto"
+      ],
+      "response_bias": [
+        "Favorece aceptación limpia del cierre antes que un último intento de negociar.",
+        "Trata esta fase como salida lateral, no como una contraoferta dura.",
+        "No recuperes la iniciativa con un intento final de rediseñar el acuerdo."
+      ],
+      "good_moves": [
+        "Reconocer de forma directa que la otra parte no quiere seguir.",
+        "Aceptar la salida sin resistencia ni reproche.",
+        "Cerrar con una despedida breve y cordial."
+      ],
+      "avoid": [
+        "Reabrir horario o condiciones.",
+        "Lanzar una contraoferta nueva.",
+        "Hacer preguntas para reenganchar la negociación."
+      ],
+      "question_policy": {
+        "default_max_questions": 0,
+        "when_to_ask": [],
+        "when_not_to_ask": [
+          "Cuando la otra parte ya dejó claro que no quiere seguir."
+        ]
+      },
+      "done_signals": [
+        "La respuesta acepta el abandono sin reabrir el acuerdo.",
+        "La conversación queda cerrada con naturalidad."
+      ]
+    }
+  },
+  "cross_phase_rules": {
+    "priority": [
+      "abandono_de_la_negociacion",
+      "formalizacion_del_acuerdo",
+      "concesiones_y_ajuste_final",
+      "propuesta_creativa",
+      "descubrimiento_y_comprension",
+      "clima_humano"
+    ],
+    "disambiguation_rules": [
+      "La fase se decide por el tipo de trabajo conversacional actual, no por palabras aisladas.",
+      "La mera presencia de horas no basta para pasar a propuesta o ajuste.",
+      "La mera cordialidad no basta para pasar a formalización.",
+      "La mera dureza no basta para pasar a abandono.",
+      "Si el turno mezcla rapport breve con apertura material del problema, normalmente manda descubrimiento_y_comprension.",
+      "Si no existe propuesta viva previa claramente identificable, no debe clasificarse ni actuarse como concesiones_y_ajuste_final.",
+      "Expresar qué quiere Diego, qué intenta preservar o qué condición general necesitaría no basta por sí solo para clasificar ni actuar como propuesta_creativa o concesiones_y_ajuste_final.",
+      "La pregunta espejo '¿y vosotros?' sigue siendo descubrimiento_y_comprension por defecto.",
+      "Hablar de horas no basta para salir de discovery.",
+      "Preguntar por una posible ayuda, recorte o encaje sigue siendo discovery si aún no existe propuesta viva previa.",
+      "La primera propuesta debe ser una solución real, no solo una preferencia.",
+      "Ajuste exige propuesta viva previa.",
+      "Un acuerdo solo debe tratarse como cerrado si los términos materiales ya están claros en sustancia.",
+      "Dureza no es abandono.",
+      "Si dudas entre discovery y ajuste, y no puedes señalar una propuesta viva concreta, manda discovery.",
+      "Si ya existe una propuesta viva y el turno mueve uno de sus términos, manda ajuste.",
+      "Si el acuerdo ya quedó materialmente cerrado y el usuario solo confirma o se despide, manda formalización."
+    ],
+    "live_proposal_definition": [
+      "Existe propuesta viva real si en el intercambio reciente ya hay al menos una asignación concreta de franjas entre ambos.",
+      "También existe si ya hay una secuencia operativa concreta de uso.",
+      "También existe si ya hay una condicionalidad recíproca real sobre reparto, ayuda, preparación, recogida o parte fuera de sala.",
+      "También existe si ya hay una oferta o contraoferta que la otra parte ya pueda aceptar, rechazar o ajustar."
+    ],
+    "material_agreement_definition": [
+      "Hay acuerdo materialmente cerrado solo si ya está claro, en sustancia, quién usa qué franja.",
+      "También debe estar claro el ajuste principal asociado al reparto.",
+      "Y no debe quedar una condición decisiva pendiente."
+    ]
+  }
+}
