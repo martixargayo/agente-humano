@@ -42,7 +42,6 @@ def _valid_brain_output(reply_text: str = "respuesta") -> dict:
             "memory_working": {"current_topic": "tema", "pending_question": None, "last_turn_summary": "resumen"},
             "memory_episodic_append": [],
         },
-        "observability": {"rationale_summary": "ok"},
     }
 
 

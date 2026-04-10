@@ -31,7 +31,6 @@ def _brain_output() -> dict:
             "memory_working": {"current_topic": "tema", "pending_question": None, "last_turn_summary": "resumen"},
             "memory_episodic_append": [{"event_type": "important_fact", "event_summary": "fact", "turn_id": "t1"}],
         },
-        "observability": {"rationale_summary": "ok"},
     }
 
 

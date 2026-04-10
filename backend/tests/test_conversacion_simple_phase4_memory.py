@@ -35,7 +35,6 @@ def _valid_brain_output(event_summary: str = "hecho") -> dict:
                 {"event_type": "important_fact", "event_summary": event_summary, "turn_id": "t1"}
             ],
         },
-        "observability": {"rationale_summary": "ok"},
     }
 
 

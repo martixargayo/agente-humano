@@ -59,6 +59,7 @@ class EntryConfigSnapshot(BaseModel):
     context_id: str | None = None
     brain_model_target: str | None = None
     summarizer_model_target: str | None = None
+    brain_max_output_tokens: int | None = None
     context_limit_turns: int | None = None
     keep_last_n_turns: int | None = None
     recent_dialogue_short_max_messages: int | None = None

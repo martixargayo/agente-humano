@@ -90,7 +90,6 @@ class _FakeResponse:
                 "memory_working": {"current_topic": None, "pending_question": None, "last_turn_summary": "s"},
                 "memory_episodic_append": [],
             },
-            "observability": {"rationale_summary": "ok"},
         }
     )
 

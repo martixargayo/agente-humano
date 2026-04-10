@@ -29,7 +29,7 @@ class _FakeBrainResponse:
         '{"schema_version":"brain.v1","status":"deliver","assistant_response":{"text":"ok"},'
         '"state_patch":{"conversation_state":{"phase":"desarrollo","status":"active","current_turn_goal":"goal"},'
         '"memory_working":{"current_topic":null,"pending_question":null,"last_turn_summary":"ok"},'
-        '"memory_episodic_append":[]},"observability":{"rationale_summary":"ok"}}'
+        '"memory_episodic_append":[]}}'
     )
 
 

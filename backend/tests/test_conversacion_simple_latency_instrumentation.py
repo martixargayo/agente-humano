@@ -7,8 +7,8 @@ from conversacion_simple.orchestration import pipeline as cs_pipeline
 from sessions.state import get_session_state, reset_session_store
 
 
-def _fake_brain_call(*, client, model, messages):
-    _ = (client, model, messages)
+def _fake_brain_call(*, client, model, messages, max_output_tokens=None):
+    _ = (client, model, messages, max_output_tokens)
     return cs_pipeline.StructuredBrainCall(
         source="model",
         parsed_json={
@@ -29,7 +29,6 @@ def _fake_brain_call(*, client, model, messages):
                 },
                 "memory_episodic_append": [],
             },
-            "observability": {"rationale_summary": "test"},
         },
         response=object(),
         response_id="resp_test",

@@ -44,12 +44,6 @@ class BrainAssistantResponse(BaseModel):
     text: str
 
 
-class BrainObservability(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    rationale_summary: str | None = None
-
-
 class BrainInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -73,4 +67,3 @@ class BrainOutput(BaseModel):
     status: Literal["deliver", "clarify", "refuse"]
     assistant_response: BrainAssistantResponse
     state_patch: BrainStatePatch
-    observability: BrainObservability = Field(default_factory=BrainObservability)

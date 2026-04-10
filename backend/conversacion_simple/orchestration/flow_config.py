@@ -21,6 +21,7 @@ class ConversationSimpleTurnConfig(BaseModel):
     prompts_dir: str
     brain_model_target: str = "gpt-5.4"
     summarizer_model_target: str = "gpt-5.4-nano"
+    brain_max_output_tokens: int = 512
     context_limit_turns: int = 20
     keep_last_n_turns: int = 20
     recent_dialogue_short_max_messages: int = 8
@@ -44,6 +45,7 @@ def build_conversacion_simple_pipeline_config(*, context_id: str | None = None, 
         prompts_dir=str(resolved_context.prompts_dir),
         brain_model_target="gpt-5.4",
         summarizer_model_target="gpt-5.4-nano",
+        brain_max_output_tokens=512,
         context_limit_turns=20,
         keep_last_n_turns=20,
         recent_dialogue_short_max_messages=8,
