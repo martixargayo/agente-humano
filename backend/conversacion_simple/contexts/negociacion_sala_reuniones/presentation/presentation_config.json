@@ -3,8 +3,8 @@
     "shell_theme": "realistic"
   },
   "background": {
-    "type": "none",
-    "url": null,
+    "type": "image",
+    "url": "fondo_sala_reuniones.png",
     "size": "cover",
     "position": "center center"
   },
