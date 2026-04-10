@@ -8,6 +8,8 @@ from typing import Any, Type
 import openai
 from pydantic import BaseModel
 
+from infra.openai.structured_outputs import normalize_schema_for_strict_json_schema
+
 
 def load_prompt_text(path: Path) -> str:
     return path.read_text(encoding="utf-8").strip()
@@ -35,7 +37,7 @@ def run_structured(
         return None
 
     user_message = f"BEGIN_INPUT_JSON\n{json.dumps(user_payload, ensure_ascii=False)}\nEND_INPUT_JSON"
-    schema = output_model.model_json_schema()
+    schema = normalize_schema_for_strict_json_schema(output_model.model_json_schema())
 
     response = client.responses.create(
         model=model,
