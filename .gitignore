@@ -11,3 +11,6 @@ backend/__pycache__/
 
 # Otros
 *.pyc
+
+# Test-generated artifacts (snapshot validation, etc.)
+artifacts/
