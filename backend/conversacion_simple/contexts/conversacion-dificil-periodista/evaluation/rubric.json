@@ -2,71 +2,73 @@
   "schema_version": "change_conversation_domain_rubric.v1",
   "metadata": {
     "domain": "conversacion_simple",
-    "rubric_version": "1.0.0",
+    "rubric_version": "1.1.0",
     "case_title": "Conversación difícil de cambio de pensamiento y conducta"
   },
   "global_guide": {
-    "primary_goal_reading": "El objetivo no es ganar una discusión ni sonar empático en abstracto. El objetivo es aumentar de forma realista la disposición de la otra parte a revisar su interpretación y aceptar un siguiente paso creíble de cambio.",
+    "primary_goal_reading": "El objetivo no es ganar una discusión ni sonar empático en abstracto. El objetivo es facilitar que la otra parte revise su interpretación, baje su resistencia y acepte un siguiente paso de cambio creíble.",
     "sequence_reading": [
-      "Primero hay que bajar defensividad antes de profundizar.",
-      "Después hay que descubrir qué pensamiento o pérdida está sosteniendo la resistencia.",
-      "Luego hay que cuestionar y reformular sin invalidar.",
-      "Finalmente hay que aterrizar un paso siguiente pequeño, claro y creíble."
+      "Primero hay que crear espacio físico y emocional y entrar sin juzgar ni confrontar.",
+      "Después hay que preguntar para descubrir qué pensamiento, emoción o creencia está sosteniendo la resistencia.",
+      "Luego hay que reformular ideas: cuestionar la validez del pensamiento, buscar una perspectiva más equilibrada y convertir el obstáculo en oportunidad.",
+      "Finalmente hay que llegar a acuerdos claros, realistas y compartidos, idealmente con idea de seguimiento."
     ],
     "concrete_first_reading": "En este dominio suele ser mejor empezar por hechos, situaciones reales del trabajo y ejemplos concretos antes de subir demasiado pronto a lenguaje abstracto sobre identidad, valor o emociones.",
-    "agreement_reading": "No basta con que la otra parte se abra o reconozca malestar. El objetivo solo se considera logrado si acepta de forma suficientemente clara un siguiente paso de cambio o acompañamiento.",
+    "result_reading": "No basta con que la otra parte se abra, se sincere o reconozca malestar. El objetivo solo se considera logrado si acepta de forma suficientemente clara un siguiente paso de cambio o acompañamiento.",
+    "follow_up_reading": "Una buena conversación de cambio no se mide solo por el alivio momentáneo o la catarsis. El cierre debe dejar un compromiso claro y una base para acompañamiento posterior.",
     "common_global_failures": [
-      "Entrar demasiado pronto a convencer.",
-      "Intentar reencuadrar antes de entender.",
+      "Entrar demasiado pronto a convencer o corregir.",
+      "Hablar más de la cuenta y escuchar poco.",
+      "Quedarse en conducta visible sin llegar al pensamiento que la sostiene.",
+      "Intentar reencuadrar antes de comprender de verdad.",
       "Presionar con positividad vacía o excesiva.",
-      "Confundir sinceridad emocional con acuerdo real.",
-      "Cerrar en abstracto sin aterrizar nada."
+      "Cerrar en abstracto sin aterrizar un paso siguiente claro."
     ]
   },
   "blocks": [
     {
       "block_id": "valores",
-      "title": "Entrar sin juzgar ni confrontar",
-      "evaluates": "Si el usuario baja la defensividad inicial de la otra parte, protege su dignidad y abre la conversación sin juicio, confrontación prematura ni presión innecesaria.",
+      "title": "Crear espacio físico y emocional / Entrar sin juzgar ni confrontar",
+      "evaluates": "Si el usuario crea una atmósfera mínima de confianza, abre la conversación con respeto y observación, y consigue introducir el tema sin activar defensa innecesaria.",
       "positive_signals": [
-        "Introduce el tema desde observación y preocupación, no desde acusación.",
-        "Habla con respeto hacia la trayectoria o valor de la otra parte.",
-        "Mantiene tono humano y sereno al abrir la conversación.",
-        "Evita moralizar o corregir demasiado pronto.",
+        "Abre con tono humano, sereno y respetuoso.",
+        "Hace sentir que el espacio de conversación importa y no es solo un correctivo.",
+        "Introduce el tema desde observación y preocupación, no desde etiqueta o acusación.",
+        "Habla desde el 'yo' o desde lo que ha notado, en vez de culpar o definir a la otra parte.",
         "Consigue que la otra parte se quede en la conversación sin cerrarse del todo."
       ],
       "negative_signals": [
-        "Entra con juicio, etiqueta o confrontación prematura.",
-        "Suena paternalista, frío o moralizante.",
-        "Defiende el cambio demasiado pronto en vez de abrir espacio.",
-        "Activa más rabia o cierre desde el principio.",
-        "Hace sentir a la otra parte tratada como problema a corregir."
+        "Entra con juicio, confrontación o etiqueta demasiado pronto.",
+        "Suena paternalista, frío, moralizante o correctivo.",
+        "Defiende el cambio antes de generar escucha.",
+        "Activa más rabia, más cierre o más superficialidad defensiva desde el inicio.",
+        "Hace sentir a la otra parte tratada como problema y no como persona."
       ],
       "common_mistakes": [
         "Confundir claridad con dureza inicial.",
-        "Creer que una apertura cordial basta aunque el tono posterior sea invalidador.",
-        "Intentar llevar rápido a la otra parte al fondo sin haber bajado defensividad.",
-        "Abrir con una tesis en vez de con observación."
+        "Creer que basta con una apertura cordial si el tono posterior activa defensa.",
+        "Ir demasiado rápido al fondo sin haber creado condiciones de apertura.",
+        "Abrir con una tesis o un sermón en vez de con observación y cuidado."
       ],
-      "evaluator_focus": "Valorar si el usuario crea condiciones mínimas de seguridad relacional para que la otra parte pueda abrirse, en vez de provocar cierre o resistencia extra."
+      "evaluator_focus": "Valorar si el usuario reduce la defensividad inicial y abre una conversación segura y digna, o si provoca cierre, rabia o resistencia añadida desde el comienzo."
     },
     {
       "block_id": "vision",
       "title": "Preguntar para descubrir",
-      "evaluates": "Si el usuario explora bien lo que está sosteniendo la resistencia: distingue superficie y fondo, usa preguntas útiles y llega a la vivencia real de la otra parte sin quedarse solo en conducta visible.",
+      "evaluates": "Si el usuario escucha de verdad y usa preguntas abiertas para descubrir el pensamiento, la emoción o la creencia que está detrás de la conducta resistente, en vez de quedarse solo en la superficie.",
       "positive_signals": [
-        "Hace preguntas abiertas en vez de cerradas o acusatorias.",
-        "Explora qué le está costando de verdad a la otra parte.",
-        "Distingue queja superficial de pérdida o preocupación más profunda.",
-        "Usa ejemplos concretos del trabajo para entender el conflicto real.",
-        "Escucha y profundiza sin convertir la conversación en interrogatorio."
+        "Hace preguntas abiertas que no se responden con sí o no.",
+        "Escucha más de lo que habla y deja espacio para que la otra parte se explique.",
+        "Explora qué ha cambiado, qué preocupa o qué está influyendo en cómo se siente la otra parte.",
+        "Distingue conducta visible de pensamiento, emoción o interpretación de fondo.",
+        "Usa hechos y ejemplos del trabajo real para llegar a la vivencia interna."
       ],
       "negative_signals": [
-        "Se queda solo en la conducta visible o en la discusión del sistema.",
-        "Hace preguntas cerradas, superficiales o repetitivas.",
-        "Va demasiado pronto a la solución.",
-        "No llega a descubrir qué interpretación o pérdida sostiene la resistencia.",
-        "Habla demasiado y escucha poco."
+        "Se queda discutiendo solo la queja superficial o la conducta visible.",
+        "Hace preguntas cerradas, acusatorias o poco útiles.",
+        "Interrumpe, dirige demasiado o convierte la conversación en interrogatorio.",
+        "Va a la solución antes de entender qué sostiene la resistencia.",
+        "No llega a descubrir la pérdida, el miedo o la creencia que hay detrás."
       ],
       "common_mistakes": [
         "Creer que cualquier pregunta ya es buen discovery.",
@@ -74,24 +76,24 @@
         "Confundir que la otra parte se queje con haber descubierto el problema de fondo.",
         "Preguntar mucho pero sin foco real."
       ],
-      "evaluator_focus": "Medir si el usuario consigue pasar de la superficie al núcleo del malestar y si entiende qué pensamiento, pérdida o lectura está empujando la resistencia."
+      "evaluator_focus": "Medir si el usuario consigue pasar de la superficie al núcleo del malestar y si entiende qué pensamiento, emoción o pérdida está empujando la resistencia."
     },
     {
       "block_id": "relacion",
       "title": "Reformular ideas",
-      "evaluates": "Si el usuario cuestiona y reformula con tacto: introduce dudas razonables, ofrece una perspectiva más equilibrada y abre posibilidad de cambio sin invalidar la pérdida ni sonar doctrinal.",
+      "evaluates": "Si el usuario ayuda a la otra parte a mirar su pensamiento desde otro ángulo sin imponerle una visión: cuestiona con tacto, amplía la perspectiva y convierte el obstáculo en posibilidad de forma creíble.",
       "positive_signals": [
-        "Cuestiona creencias rígidas sin aplastar a la otra parte.",
-        "Introduce matices o comparaciones que abren reflexión.",
-        "Ofrece otra mirada sin negar lo que la otra parte siente.",
-        "Conecta el cambio con posibilidad real, no con optimismo vacío.",
-        "Consigue que la otra parte vea una nueva perspectiva como viable aunque todavía le cueste."
+        "Cuestiona la validez de pensamientos rígidos con dudas razonables, no con corrección brusca.",
+        "Ayuda a distinguir entre hechos e interpretaciones.",
+        "Ofrece una perspectiva más equilibrada sin negar lo que la otra parte siente.",
+        "Reencuadra la dificultad como una posibilidad de aprendizaje, desarrollo o nueva aportación.",
+        "Consigue que la otra parte vea una nueva lectura como plausible aunque todavía le cueste."
       ],
       "negative_signals": [
         "Corrige de frente o suena superior.",
         "Reformula demasiado pronto, sin suficiente comprensión previa.",
-        "Usa discurso motivacional o frases hechas.",
         "Minimiza lo que la otra parte siente que ha perdido.",
+        "Usa discurso motivacional, frases hechas o positividad vacía.",
         "Fuerza una lectura positiva que la otra parte no puede sostener todavía."
       ],
       "common_mistakes": [
@@ -100,33 +102,33 @@
         "Premiar cualquier reencuadre aunque suene artificial.",
         "No distinguir perspectiva viable de aceptación real."
       ],
-      "evaluator_focus": "Detectar si el usuario ayuda a mover el pensamiento sin romper el vínculo, o si empuja tanto que provoca resistencia, invalidez o pseudoaceptación."
+      "evaluator_focus": "Detectar si el usuario mueve el pensamiento sin romper el vínculo y sin invalidar la pérdida, o si empuja tanto que provoca resistencia, pseudoaceptación o cierre."
     },
     {
       "block_id": "proceso",
-      "title": "Llegar a un acuerdo conjunto",
-      "evaluates": "Si el usuario conduce la conversación con buen orden: entra bien, descubre antes de empujar, reformula cuando toca y aterriza un siguiente paso concreto, pequeño y creíble.",
+      "title": "Llegar a acuerdos y acompañar después",
+      "evaluates": "Si el usuario convierte la apertura conseguida en un acuerdo claro, realista y compartido, y deja bien planteado el siguiente paso o el seguimiento, en vez de quedarse solo en catarsis.",
       "positive_signals": [
-        "La conversación avanza con una secuencia reconocible y lógica.",
-        "No salta demasiado pronto a convencer o cerrar.",
-        "Aterriza un siguiente paso concreto, pequeño y revisable.",
-        "Comprueba de forma suficiente que el cierre es creíble.",
-        "Formaliza bien el siguiente movimiento cuando ya toca."
+        "Aterriza un siguiente paso concreto, pequeño y creíble.",
+        "Co-construye el acuerdo en vez de imponerlo.",
+        "Comprueba que el compromiso es asumible para la otra parte.",
+        "Formaliza de forma clara qué se hará distinto o cómo se revisará.",
+        "Introduce apoyo, seguimiento o revisión posterior cuando conviene."
       ],
       "negative_signals": [
-        "Improvisa sin estructura visible.",
-        "Salta de apertura a solución sin discovery suficiente.",
-        "Mezcla exploración, persuasión y cierre sin orden.",
         "Cierra en abstracto sin paso siguiente claro.",
-        "Da por logrado el objetivo solo porque la otra parte se abrió más."
+        "Confunde apertura emocional con cambio ya logrado.",
+        "Impone un acuerdo o empuja a una aceptación poco creíble.",
+        "Pide un cambio demasiado grande o poco realista.",
+        "No deja ninguna base de seguimiento ni acompañamiento."
       ],
       "common_mistakes": [
         "Confundir mejora de clima con cierre real.",
-        "Premiar cualquier acuerdo aunque sea poco creíble.",
-        "No distinguir apertura parcial de aceptación de cambio.",
+        "Premiar cualquier acuerdo aunque sea poco creíble o impuesto.",
+        "No distinguir catarsis de compromiso.",
         "No concretar seguimiento o siguiente paso."
       ],
-      "evaluator_focus": "Evaluar si el usuario conduce la conversación con arquitectura y timing, y si consigue o no traducir la apertura en un cierre útil y realista."
+      "evaluator_focus": "Evaluar si el usuario traduce la apertura en un cierre útil y realista, con compromiso claro y base de acompañamiento, o si deja la conversación en alivio momentáneo pero sin dirección."
     }
   ]
 }
