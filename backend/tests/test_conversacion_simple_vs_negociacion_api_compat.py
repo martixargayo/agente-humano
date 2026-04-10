@@ -38,7 +38,7 @@ def _mock_neg_turn(*, state, user_message, config, contract, turn_context):
     }
 
 
-def _mock_cs_turn(*, state, user_message, config, turn_context):
+def _mock_cs_turn(*, state, user_message, config, turn_context, **kwargs):
     state.world_state.setdefault(config.memory_key, {"ui_state": {"finish_button_armed": True}})
     state.world_state[config.memory_key].setdefault("ui_state", {})["finish_button_armed"] = True
     state.world_state.setdefault(config.traces_key, []).append(

@@ -59,7 +59,7 @@ def _with_redis_timeout_retries(operation: str, fn):
 class RedisClientProtocol(Protocol):
     def get(self, key: str) -> bytes | str | None: ...
 
-    def set(self, key: str, value: str) -> Any: ...
+    def set(self, key: str, value: str, ex: int | None = None) -> Any: ...
 
     def delete(self, key: str) -> Any: ...
 
@@ -109,6 +109,25 @@ class RedisSessionStore:
             lambda: self._client.set(
                 self._session_key(user_id=state.user_id, session_id=state.session_id),
                 envelope.model_dump_json(),
+            ),
+        )
+
+    def save_with_ttl(self, state: SessionState, *, ttl_seconds: int) -> None:
+        """Atomic SET+EXPIRE in a single Redis round trip via SET ... EX.
+
+        Functionally equivalent to save() followed by touch(), but halves the
+        number of network round trips in the session-persistence hot path.
+        """
+        if ttl_seconds <= 0:
+            self.save(state)
+            return
+        envelope = export_session_envelope(state)
+        _with_redis_timeout_retries(
+            "set_ex",
+            lambda: self._client.set(
+                self._session_key(user_id=state.user_id, session_id=state.session_id),
+                envelope.model_dump_json(),
+                ex=int(ttl_seconds),
             ),
         )
 

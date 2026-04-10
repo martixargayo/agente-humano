@@ -43,6 +43,7 @@ from ..state import (
 )
 from ..traces import ConversationSimpleTurnTrace, build_brain_node_trace
 from .flow_config import ConversationSimpleTurnConfig
+from negociacion.orchestration.flow_config import safe_invoke_tts_prefetch_hook
 from negociacion.orchestration.turn_execution_context import TurnExecutionContext
 
 logger = logging.getLogger(__name__)
@@ -867,7 +868,21 @@ def run_conversacion_simple_turn(
     user_message: str,
     config: ConversationSimpleTurnConfig,
     turn_context: TurnExecutionContext | None,
+    persist_state: bool = True,
 ) -> tuple[str, SessionState, dict[str, object]]:
+    """Execute a single conversacion_simple turn.
+
+    Parameters
+    ----------
+    persist_state:
+        When ``True`` (default, preserves legacy behavior), the pipeline
+        performs a final ``save_session_state(state)`` after all mutations.
+        When ``False``, the caller is expected to persist the state itself
+        (typically by calling ``persist_session_with_ttl`` which atomically
+        saves + sets TTL in a single Redis round trip). The ``save_session_state``
+        stage timing is still recorded so downstream instrumentation and
+        tests keep observing a stable set of stage keys.
+    """
     turn_started = time.perf_counter()
     stage_timings_ms: dict[str, int] = {}
     stage_timings_precise_ms: dict[str, float] = {}
@@ -1059,6 +1074,13 @@ def run_conversacion_simple_turn(
 
     assistant_state_started = time.perf_counter()
     reply = _normalize_reply_text(brain_output.assistant_response.text)
+    # Kick TTS synthesis in parallel with the remaining persistence work.
+    # The prefetch hook is non-blocking and must never raise: it schedules
+    # an async job on the main event loop so that by the time the frontend
+    # actually requests /tts for this reply the audio is already cached.
+    # Total parallelism window: ~save_session_state + ~persist_session_with_ttl
+    # + HTTP return + frontend /tts round-trip (~1-1.5s typical).
+    safe_invoke_tts_prefetch_hook(reply)
     add_message(state, role="assistant", content=reply)
     recent_dialogue.append(DialogueMessage(role="assistant", text=reply))
     _record_stage("normalize_and_add_assistant_message", assistant_state_started)
@@ -1151,7 +1173,11 @@ def run_conversacion_simple_turn(
     repo.append_trace(state, turn_trace)
     _record_stage("append_turn_trace", append_trace_started)
     persist_started = time.perf_counter()
-    save_session_state(state)
+    if persist_state:
+        save_session_state(state)
+    # Always record the save_session_state stage key so downstream
+    # instrumentation and tests observe a stable set of timings, even when
+    # the caller opts to persist the state itself via persist_session_with_ttl.
     _record_stage("save_session_state", persist_started)
     _record_stage("turn_total", turn_started)
 

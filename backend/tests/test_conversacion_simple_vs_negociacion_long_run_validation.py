@@ -38,7 +38,7 @@ def _fake_neg(*, state, user_message, config, contract, turn_context):
     }
 
 
-def _fake_cs(*, state, user_message, config, turn_context):
+def _fake_cs(*, state, user_message, config, turn_context, **kwargs):
     return "cs", state, {"turn_id": "cs-turn", "pipeline_topology": "single_llm", "node_names": ["brain"]}
 
 

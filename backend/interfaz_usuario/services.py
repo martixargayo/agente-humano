@@ -10,7 +10,12 @@ import time
 
 from fastapi import HTTPException
 
-from sessions.lifecycle import apply_session_ttl, mark_session_finalized, touch_existing_session_if_present
+from sessions.lifecycle import (
+    apply_session_ttl,
+    mark_session_finalized,
+    persist_session_with_ttl,
+    touch_existing_session_if_present,
+)
 from sessions.session_lock import SessionBusyError, acquire_session_execution_lock
 from sessions.state import SessionState, get_session_state, get_session_store
 from sessions.surface_scope import ensure_session_surface
@@ -369,6 +374,13 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
             )
             resolved_session_id = session_id
             auto_reset_applied = False
+            # PERF: track whether we already hold a freshly-loaded state object
+            # for the resolved session. This lets us skip a redundant Redis GET
+            # in the hot path (previously ``load_base_state`` and
+            # ``load_active_state`` both hit the same key when new_conversation
+            # is False and no auto-reset happened, costing ~1 extra Redis RTT).
+            base_state: SessionState | None = None
+            base_state_session_id: str | None = None
             if new_conversation:
                 new_conv_started = time.perf_counter()
                 payload = create_new_conversation(user_id=user_id, base_session_id=session_id)
@@ -377,6 +389,7 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
             else:
                 load_base_started = time.perf_counter()
                 base_state = get_session_state(user_id=user_id, session_id=session_id)
+                base_state_session_id = session_id
                 _mark("load_base_state", load_base_started)
                 surface_guard_started = time.perf_counter()
                 ensure_session_surface(state=base_state, surface='interfaz_usuario')
@@ -400,7 +413,15 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
                     _mark("auto_reset_create_new_conversation", auto_new_conv_started)
 
             load_active_started = time.perf_counter()
-            state = get_session_state(user_id=user_id, session_id=resolved_session_id)
+            if base_state is not None and base_state_session_id == resolved_session_id:
+                # PERF: reuse the state already loaded above. ``base_state`` is
+                # the same logical object Redis would return, so issuing a
+                # second GET is pure overhead (~1 extra Redis RTT). Still
+                # record the stage timing for observability continuity: it
+                # will be near-zero, clearly signalling the optimization.
+                state = base_state
+            else:
+                state = get_session_state(user_id=user_id, session_id=resolved_session_id)
             _mark("load_active_state", load_active_started)
             ensure_surface_active_started = time.perf_counter()
             ensure_session_surface(state=state, surface='interfaz_usuario')
@@ -426,11 +447,19 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
                 )
                 _mark("build_conversacion_simple_turn_context", turn_context_started)
                 pipeline_started = time.perf_counter()
+                # PERF: skip the pipeline's internal save_session_state. The
+                # atomic ``persist_session_with_ttl`` below handles both the
+                # final save AND the TTL refresh in a single Redis round trip
+                # (SET ... EX), replacing the previous pattern of
+                # save_session_state (1 RTT) + apply_session_ttl -> save + touch
+                # (2 more RTTs) with 1 RTT total. Lifecycle metadata is applied
+                # in-memory before the save so it is included in the payload.
                 reply, _, cs_meta = run_conversacion_simple_turn(
                     state=state,
                     user_message=message,
                     config=config,
                     turn_context=turn_context,
+                    persist_state=False,
                 )
                 _mark("run_conversacion_simple_turn", pipeline_started)
                 meta = {
@@ -492,7 +521,17 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
                 )
             try:
                 ttl_started = time.perf_counter()
-                apply_session_ttl(state, scope="active", reason="interfaz_usuario_turn_completed")
+                if flow_id == "conversacion_simple":
+                    # PERF: single Redis round trip via SET ... EX. Combines
+                    # what used to be pipeline-save (1 RTT) + save (1 RTT) +
+                    # expire (1 RTT) = 3 RTTs into exactly 1.
+                    persist_session_with_ttl(
+                        state,
+                        scope="active",
+                        reason="interfaz_usuario_turn_completed",
+                    )
+                else:
+                    apply_session_ttl(state, scope="active", reason="interfaz_usuario_turn_completed")
                 _mark("apply_session_ttl_completed", ttl_started)
             except Exception as post_commit_exc:
                 post_commit_housekeeping_error = _diagnostic_from_exception(post_commit_exc)
@@ -502,6 +541,30 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
                     new_conversation,
                     post_commit_housekeeping_error,
                 )
+                # CRITICAL: if the atomic persist path failed for
+                # conversacion_simple, the state was never saved (because we
+                # told the pipeline to skip its own save). Fall back to the
+                # legacy apply_session_ttl path which performs a plain SAVE +
+                # EXPIRE on independent round trips. This guarantees the turn
+                # state is durably persisted even if the initial SETEX was
+                # rejected for a reason unrelated to plain SET (e.g. a
+                # transient Redis quirk with the EX argument path).
+                if flow_id == "conversacion_simple":
+                    try:
+                        apply_session_ttl(state, scope="active", reason="interfaz_usuario_turn_completed_fallback")
+                        post_commit_housekeeping_error = None
+                        logger.warning(
+                            "interfaz_usuario_turn_post_commit_housekeeping_recovered session=%s new_conversation=%s",
+                            f"{user_id}:{resolved_session_id}",
+                            new_conversation,
+                        )
+                    except Exception as fallback_exc:
+                        post_commit_housekeeping_error = _diagnostic_from_exception(fallback_exc)
+                        logger.warning(
+                            "interfaz_usuario_turn_post_commit_housekeeping_fallback_failed session=%s error=%s",
+                            f"{user_id}:{resolved_session_id}",
+                            post_commit_housekeeping_error,
+                        )
     except SessionBusyError as exc:
         touch_existing_session_if_present(
             user_id=exc.user_id,

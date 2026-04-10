@@ -44,7 +44,7 @@ def test_interfaz_usuario_cs_ignores_negotiation_residue_for_auto_reset(monkeypa
 
     monkeypatch.setattr(
         "interfaz_usuario.services.run_conversacion_simple_turn",
-        lambda *, state, user_message, config, turn_context: ("ok", state, {"turn_id": "turn-cs"}),
+        lambda *, state, user_message, config, turn_context, **kwargs: ("ok", state, {"turn_id": "turn-cs"}),
     )
 
     out = iu_services.run_turn(user_id="u_cs", session_id="s_cs", message="hola", new_conversation=False)
@@ -61,7 +61,7 @@ def test_interfaz_usuario_cs_does_not_read_finish_button_from_negotiation_ui_sta
 
     monkeypatch.setattr(
         "interfaz_usuario.services.run_conversacion_simple_turn",
-        lambda *, state, user_message, config, turn_context: ("ok", state, {"turn_id": "turn-finish"}),
+        lambda *, state, user_message, config, turn_context, **kwargs: ("ok", state, {"turn_id": "turn-finish"}),
     )
 
     out = iu_services.run_turn(user_id="u_finish", session_id="s_finish", message="hola", new_conversation=False)
@@ -77,7 +77,7 @@ def test_interfaz_usuario_cs_reads_finish_button_from_cs_canonical_even_with_neg
 
     monkeypatch.setattr(
         "interfaz_usuario.services.run_conversacion_simple_turn",
-        lambda *, state, user_message, config, turn_context: ("ok", state, {"turn_id": "turn-finish-cs"}),
+        lambda *, state, user_message, config, turn_context, **kwargs: ("ok", state, {"turn_id": "turn-finish-cs"}),
     )
 
     out = iu_services.run_turn(user_id="u_finish_cs", session_id="s_finish_cs", message="hola", new_conversation=False)
@@ -198,7 +198,7 @@ def test_optimizer_cs_latch_trace_fields_do_not_break_strict_comparability(monke
 
     call_count = {"n": 0}
 
-    def _fake_cs_turn(*, state, user_message, config, turn_context):
+    def _fake_cs_turn(*, state, user_message, config, turn_context, **kwargs):
         call_count["n"] += 1
         canonical = state.world_state.setdefault(config.memory_key, {"ui_state": {"finish_button_armed": False}})
         if call_count["n"] == 1:

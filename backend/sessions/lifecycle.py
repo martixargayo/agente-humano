@@ -54,12 +54,11 @@ def _ensure_lifecycle_block(state: SessionState) -> dict[str, Any]:
     return raw
 
 
-def apply_session_ttl(
+def _apply_lifecycle_metadata_in_memory(
     state: SessionState,
     *,
     scope: SessionTtlScope,
     reason: str,
-    persist: bool = True,
 ) -> int:
     ttl_seconds = resolve_session_ttl(scope)
     now_iso = _now_iso()
@@ -74,6 +73,17 @@ def apply_session_ttl(
         lifecycle["finalized_at"] = now_iso
     elif "finalized_at" in lifecycle:
         lifecycle.pop("finalized_at", None)
+    return ttl_seconds
+
+
+def apply_session_ttl(
+    state: SessionState,
+    *,
+    scope: SessionTtlScope,
+    reason: str,
+    persist: bool = True,
+) -> int:
+    ttl_seconds = _apply_lifecycle_metadata_in_memory(state, scope=scope, reason=reason)
 
     if persist:
         save_session_state(state)
@@ -85,6 +95,37 @@ def apply_session_ttl(
         ttl_seconds,
         reason,
         persist,
+    )
+    return ttl_seconds
+
+
+def persist_session_with_ttl(
+    state: SessionState,
+    *,
+    scope: SessionTtlScope,
+    reason: str,
+) -> int:
+    """Atomic SAVE+EXPIRE path for the turn-completion hot path.
+
+    Equivalent end-state to ``apply_session_ttl(persist=True)`` but collapses
+    the two separate Redis round trips (SET + EXPIRE) into a single one via
+    ``save_with_ttl`` (Redis ``SET ... EX``). Lifecycle metadata is mutated
+    in-memory before the save so it is persisted together with the turn state.
+
+    This helper MUST be used only when the caller is confident a single save
+    is sufficient for durability (the canonical use case is the very end of a
+    successful conversational turn, where the state has just been fully
+    mutated and no further writes are expected).
+    """
+    ttl_seconds = _apply_lifecycle_metadata_in_memory(state, scope=scope, reason=reason)
+    state.last_updated = datetime.now(timezone.utc)
+    get_session_store().save_with_ttl(state, ttl_seconds=ttl_seconds)
+    logger.info(
+        "session_ttl_applied_atomic session=%s scope=%s ttl_seconds=%s reason=%s",
+        f"{state.user_id}:{state.session_id}",
+        scope,
+        ttl_seconds,
+        reason,
     )
     return ttl_seconds
 
