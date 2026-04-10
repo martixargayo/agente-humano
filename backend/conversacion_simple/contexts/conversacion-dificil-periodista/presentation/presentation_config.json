@@ -1,0 +1,16 @@
+{
+  "theme": {
+    "shell_theme": "realistic"
+  },
+  "background": {
+    "type": "image",
+    "url": "fondo_sala_reuniones.png",
+    "size": "cover",
+    "position": "center center"
+  },
+  "avatar": {
+    "model": {
+      "url": "/interfaz_usuario/avatar_runtime/assets/FaceVolumen.glb"
+    }
+  }
+}
