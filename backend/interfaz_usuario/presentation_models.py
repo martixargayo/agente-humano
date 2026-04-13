@@ -221,6 +221,13 @@ class PresentationVoiceConfig(BaseModel):
     speaking_rate: float
 
 
+class PresentationCaseInfoConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = "Información del caso"
+    description: str = ""
+
+
 class PresentationConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -229,3 +236,4 @@ class PresentationConfig(BaseModel):
     background: PresentationBackgroundConfig
     avatar: PresentationAvatarConfig
     voice: PresentationVoiceConfig
+    case_info: PresentationCaseInfoConfig | None = None
