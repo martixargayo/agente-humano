@@ -6,5 +6,9 @@
     "model": {
       "url": "/interfaz_usuario/avatar_runtime/assets/FaceVolumen.glb"
     }
+  },
+  "case_info": {
+    "title": "Información del caso",
+    "description": "Estás en una conversación cotidiana para practicar escucha activa y claridad al responder. Mantén un tono natural, formula preguntas abiertas y busca que la charla avance con empatía."
   }
 }
