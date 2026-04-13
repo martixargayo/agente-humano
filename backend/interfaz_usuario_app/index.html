@@ -93,8 +93,8 @@
         top: 18px;
         left: 18px;
         z-index: 18;
-        width: 42px;
-        height: 42px;
+        min-height: 42px;
+        padding: 0 14px 0 12px;
         border: 1px solid rgba(148, 163, 184, 0.42);
         border-radius: 999px;
         background: rgba(255, 255, 255, 0.92);
@@ -102,8 +102,11 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
+        gap: 8px;
         cursor: pointer;
         backdrop-filter: blur(6px);
+        font-size: 14px;
+        font-weight: 500;
       }
 
       .case-info-button:hover {
@@ -127,47 +130,56 @@
 
       .case-info-dialog {
         position: relative;
-        width: min(680px, calc(100vw - 28px));
-        height: min(70vh, 480px);
+        width: min(840px, calc(100vw - 28px));
+        height: min(82vh, 640px);
         background: #fff;
         color: #0f172a;
         border-radius: 18px;
         box-shadow: 0 22px 56px rgba(15, 23, 42, 0.26);
-        padding: 20px 20px 16px;
+        padding: 22px 26px 20px;
       }
 
       .case-info-close {
         position: absolute;
-        top: 10px;
-        right: 10px;
-        width: 34px;
-        height: 34px;
-        border: 1px solid rgba(148, 163, 184, 0.4);
-        border-radius: 999px;
-        background: #fff;
-        color: #334155;
-        font-size: 20px;
+        top: 12px;
+        right: 12px;
+        border: 0;
+        background: transparent;
+        color: #475569;
+        font-size: 19px;
         line-height: 1;
         cursor: pointer;
+        padding: 2px 4px;
       }
 
       .case-info-title {
-        margin: 0 44px 14px 0;
-        font-size: 20px;
+        margin: 0 36px 14px 0;
+        font-size: 23px;
         font-weight: 600;
       }
 
       .case-info-body {
         height: calc(100% - 46px);
         overflow-y: auto;
-        border: 1px solid #e2e8f0;
-        border-radius: 12px;
-        padding: 14px 16px;
+        padding: 2px 8px 8px 0;
         font-size: 15px;
         line-height: 1.6;
         color: #1e293b;
-        background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
-        scrollbar-gutter: stable both-edges;
+        scrollbar-width: thin;
+        scrollbar-color: #cbd5e1 transparent;
+      }
+
+      .case-info-body::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      .case-info-body::-webkit-scrollbar-track {
+        background: transparent;
+      }
+
+      .case-info-body::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 999px;
       }
 
       .case-info-body h3 {
@@ -193,18 +205,6 @@
 
       .case-info-body strong {
         font-weight: 700;
-      }
-
-      .case-info-body::after {
-        content: "↕ Desplaza para ver más";
-        position: sticky;
-        bottom: 0;
-        display: block;
-        text-align: center;
-        padding-top: 12px;
-        font-size: 12px;
-        color: #64748b;
-        background: linear-gradient(to top, #fff 40%, rgba(255, 255, 255, 0));
       }
 
       #bg {
@@ -2101,6 +2101,7 @@
           <path d="M12 10V16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
           <circle cx="12" cy="7.2" r="1" fill="currentColor"></circle>
         </svg>
+        <span>Información del caso</span>
       </button>
       <div id="caseInfoOverlay" class="case-info-overlay" role="dialog" aria-modal="true" aria-labelledby="caseInfoTitle" aria-hidden="true">
         <div id="caseInfoDialog" class="case-info-dialog">
