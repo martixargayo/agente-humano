@@ -252,6 +252,7 @@ let embedHeightRaf = null;
 let lastEmbeddedHeight = 0;
 let finalSaveToastTimer = null;
 let pendingEmbeddedFinalResultAck = null;
+let caseInfoModalOpen = false;
 const LAST_DEVICE_STORAGE_KEY = 'interfaz_usuario:last_audio_input_device';
 
 const ui = {
@@ -295,6 +296,12 @@ const ui = {
   audioDeviceSelectedList: $('audioDeviceSelectedList'),
   audioDeviceOtherList: $('audioDeviceOtherList'),
   audioDevicePopoverDivider: $('audioDevicePopoverDivider'),
+  caseInfoButton: $('caseInfoButton'),
+  caseInfoOverlay: $('caseInfoOverlay'),
+  caseInfoDialog: $('caseInfoDialog'),
+  caseInfoTitle: $('caseInfoTitle'),
+  caseInfoBody: $('caseInfoBody'),
+  caseInfoClose: $('caseInfoClose'),
   feedbackFloatingLayer: $('feedbackFloatingLayer'),
   finalSaveToast: $('finalSaveToast'),
 };
@@ -370,6 +377,84 @@ function applyPresentationConfigToDom(presentationConfig) {
     bgEl.style.backgroundSize = typeof background.size === 'string' && background.size.trim() ? background.size : 'contain';
     bgEl.style.backgroundPosition = typeof background.position === 'string' && background.position.trim() ? background.position : 'center center';
   }
+  renderCaseInfo();
+}
+
+function resolveCaseInfoFromPresentation() {
+  const info = currentPresentationConfig?.case_info;
+  const title = typeof info?.title === 'string' && info.title.trim() ? info.title.trim() : 'Información del caso';
+  const description = typeof info?.description === 'string' && info.description.trim()
+    ? info.description.trim()
+    : 'No hay información del caso disponible para este contexto.';
+  return { title, description };
+}
+
+function escapeHtml(text) {
+  return String(text)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function formatInlineCaseInfo(text) {
+  return escapeHtml(text).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+}
+
+function renderCaseInfoRichText(raw) {
+  const normalized = String(raw || '').replace(/\r\n?/g, '\n').trim();
+  if (!normalized) return '<p>No hay información del caso disponible para este contexto.</p>';
+
+  const lines = normalized.split('\n');
+  const blocks = [];
+  let listItems = [];
+
+  function flushList() {
+    if (!listItems.length) return;
+    blocks.push(`<ul>${listItems.map((item) => `<li>${formatInlineCaseInfo(item)}</li>`).join('')}</ul>`);
+    listItems = [];
+  }
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) {
+      flushList();
+      continue;
+    }
+    if (line.startsWith('- ')) {
+      listItems.push(line.slice(2).trim());
+      continue;
+    }
+    flushList();
+    if (/^#{1,6}\s+/.test(line)) {
+      const heading = line.replace(/^#{1,6}\s+/, '');
+      blocks.push(`<h3>${formatInlineCaseInfo(heading)}</h3>`);
+      continue;
+    }
+    if (/^\*\*.+\*\*$/.test(line)) {
+      blocks.push(`<h3>${formatInlineCaseInfo(line.slice(2, -2))}</h3>`);
+      continue;
+    }
+    blocks.push(`<p>${formatInlineCaseInfo(line)}</p>`);
+  }
+  flushList();
+
+  return blocks.join('');
+}
+
+function renderCaseInfo() {
+  if (!ui.caseInfoTitle || !ui.caseInfoBody) return;
+  const content = resolveCaseInfoFromPresentation();
+  ui.caseInfoTitle.textContent = content.title;
+  ui.caseInfoBody.innerHTML = renderCaseInfoRichText(content.description);
+}
+
+function setCaseInfoModalOpen(open) {
+  caseInfoModalOpen = Boolean(open);
+  if (!ui.caseInfoOverlay) return;
+  ui.caseInfoOverlay.classList.toggle('visible', caseInfoModalOpen);
+  ui.caseInfoOverlay.setAttribute('aria-hidden', caseInfoModalOpen ? 'false' : 'true');
 }
 
 function initAvatarRuntimeOnce(presentationConfig) {
@@ -2550,7 +2635,7 @@ $('bootstrap').onclick = async () => {
   const out = await api('/sessions/bootstrap', { method: 'POST', body: JSON.stringify(bootstrapPayload()) });
   clearSessionBusyState();
   applyBootstrapIdentity(out);
-  currentPresentationConfig = out.presentation_config || null;
+  applyPresentationConfigToDom(out.presentation_config || null);
   updateBootstrapMeta(out);
   notifyBootstrapSessionReady();
   maybeEmitEmbedReady('manual-bootstrap');
@@ -2563,7 +2648,7 @@ $('newConv').onclick = async () => {
   const out = await api('/negociacion/new_conversation', { method: 'POST', body: JSON.stringify(payload) });
   clearSessionBusyState();
   applyBootstrapIdentity(out);
-  currentPresentationConfig = out.presentation_config || currentPresentationConfig;
+  applyPresentationConfigToDom(out.presentation_config || currentPresentationConfig);
   resetFinishButtonArmed();
   setLatestTraceCount(0);
   updateBootstrapMeta(out);
@@ -2587,6 +2672,12 @@ ui.entryModeWrite?.addEventListener('click', () => {
 
 ui.audioDeviceTrigger?.addEventListener('click', () => {
   toggleAudioDevicePopover();
+});
+ui.caseInfoButton?.addEventListener('click', () => {
+  setCaseInfoModalOpen(!caseInfoModalOpen);
+});
+ui.caseInfoClose?.addEventListener('click', () => {
+  setCaseInfoModalOpen(false);
 });
 
 ui.modeTalk.addEventListener('click', async () => {
@@ -2732,6 +2823,7 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     closeConversationModeMenu();
     closeAudioDevicePopover();
+    setCaseInfoModalOpen(false);
     return;
   }
 
@@ -2757,6 +2849,12 @@ window.addEventListener('click', (ev) => {
   const btn = $('finishNegotiationBtn');
   const target = ev.target;
   if (popover && btn && target instanceof Node && !popover.contains(target) && !btn.contains(target)) closeFinalizePopover();
+});
+
+window.addEventListener('click', (ev) => {
+  if (!caseInfoModalOpen) return;
+  const target = ev.target;
+  if (ui.caseInfoOverlay && target === ui.caseInfoOverlay) setCaseInfoModalOpen(false);
 });
 
 window.addEventListener('avatar-runtime-ready', () => {

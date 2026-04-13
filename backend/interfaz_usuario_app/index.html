@@ -88,6 +88,125 @@
         display: none !important;
       }
 
+      .case-info-button {
+        position: fixed;
+        top: 18px;
+        left: 18px;
+        z-index: 18;
+        min-height: 42px;
+        padding: 0 14px 0 12px;
+        border: 1px solid rgba(148, 163, 184, 0.42);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.92);
+        color: rgba(15, 23, 42, 0.86);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        cursor: pointer;
+        backdrop-filter: blur(6px);
+        font-size: 14px;
+        font-weight: 500;
+      }
+
+      .case-info-button:hover {
+        background: #fff;
+      }
+
+      .case-info-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 34;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        background: rgba(15, 23, 42, 0.42);
+      }
+
+      .case-info-overlay.visible {
+        display: flex;
+      }
+
+      .case-info-dialog {
+        position: relative;
+        width: min(840px, calc(100vw - 28px));
+        height: min(82vh, 640px);
+        background: #fff;
+        color: #0f172a;
+        border-radius: 18px;
+        box-shadow: 0 22px 56px rgba(15, 23, 42, 0.26);
+        padding: 22px 26px 20px;
+      }
+
+      .case-info-close {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        border: 0;
+        background: transparent;
+        color: #475569;
+        font-size: 19px;
+        line-height: 1;
+        cursor: pointer;
+        padding: 2px 4px;
+      }
+
+      .case-info-title {
+        margin: 0 36px 14px 0;
+        font-size: 23px;
+        font-weight: 600;
+      }
+
+      .case-info-body {
+        height: calc(100% - 46px);
+        overflow-y: auto;
+        padding: 2px 8px 8px 0;
+        font-size: 15px;
+        line-height: 1.6;
+        color: #1e293b;
+        scrollbar-width: thin;
+        scrollbar-color: #cbd5e1 transparent;
+      }
+
+      .case-info-body::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      .case-info-body::-webkit-scrollbar-track {
+        background: transparent;
+      }
+
+      .case-info-body::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 999px;
+      }
+
+      .case-info-body h3 {
+        margin: 16px 0 8px;
+        font-size: 15px;
+        line-height: 1.4;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+      }
+
+      .case-info-body p {
+        margin: 0 0 12px;
+      }
+
+      .case-info-body ul {
+        margin: 0 0 14px;
+        padding-left: 20px;
+      }
+
+      .case-info-body li {
+        margin: 0 0 6px;
+      }
+
+      .case-info-body strong {
+        font-weight: 700;
+      }
+
       #bg {
         position: absolute;
         inset: 0;
@@ -1975,6 +2094,21 @@
     <div id="mainApp">
       <div id="stage">
         <div id="bg" aria-hidden="true"></div>
+      </div>
+      <button id="caseInfoButton" class="case-info-button" type="button" aria-label="Mostrar información del caso" title="Información del caso">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"></circle>
+          <path d="M12 10V16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+          <circle cx="12" cy="7.2" r="1" fill="currentColor"></circle>
+        </svg>
+        <span>Información del caso</span>
+      </button>
+      <div id="caseInfoOverlay" class="case-info-overlay" role="dialog" aria-modal="true" aria-labelledby="caseInfoTitle" aria-hidden="true">
+        <div id="caseInfoDialog" class="case-info-dialog">
+          <button id="caseInfoClose" class="case-info-close" type="button" aria-label="Cerrar">×</button>
+          <h2 id="caseInfoTitle" class="case-info-title">Información del caso</h2>
+          <div id="caseInfoBody" class="case-info-body">No hay información del caso disponible para este contexto.</div>
+        </div>
       </div>
 
       <div class="legacy-controls">
