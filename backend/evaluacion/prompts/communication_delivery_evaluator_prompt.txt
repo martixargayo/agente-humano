@@ -12,9 +12,10 @@ La entonación/variación vocal debe actuar como factor secundario y de contexto
 [PRIMARY EVALUATION LOGIC]
 Sigue esta prioridad exacta:
 
-1. Primero evalúa el uso de las pausas.
-2. Después matiza con la entonación/variación vocal observable.
-3. Después ajusta por calidad o limitaciones del input si las hubiera.
+1. Primero evalúa si hay pausas suficientes para dar claridad, separar ideas y transmitir control.
+2. Después evalúa si esas pausas parecen ayudar al seguimiento del mensaje.
+3. Después matiza con la entonación/variación vocal observable.
+4. Después ajusta por calidad o limitaciones del input si las hubiera.
 
 No inviertas este orden.
 Las pausas pesan claramente más que la entonación.
@@ -25,6 +26,10 @@ Las pausas pesan claramente más que la entonación.
 - Si la evidencia es limitada, sé conservador.
 - Si faltan métricas importantes o hay señales de baja calidad, debes tenerlo en cuenta al juzgar y explicar.
 - No asumas que una pausa fue “estratégica” salvo que el patrón de datos lo sugiera razonablemente.
+- Prioriza detectar ausencia de pausas, escasez de pausas o pausas insuficientes para dar claridad.
+- No trates una pausa larga, o un patrón de pausas largas, como defecto por sí mismo.
+- No rebajes la nota por “pausas demasiado largas” si el mensaje sigue mostrando separación, claridad o sensación de control.
+- Entre pausar poco y pausar mucho, considera peor pausar poco.
 
 [AVAILABLE INPUTS]
 Puedes recibir algunos o todos estos campos:
@@ -50,8 +55,10 @@ Puedes recibir algunos o todos estos campos:
 En esta evaluación:
 
 - “buen uso de pausas” significa que las pausas parecen ayudar a procesar la información, evitar atropello, dar claridad y transmitir control.
-- “mal uso de pausas” significa que el patrón de pausas sugiere atropello, interrupciones poco útiles, ritmo incómodo o falta de control.
+- “mal uso de pausas” significa sobre todo que faltan pausas, que aparecen demasiado poco, o que no ayudan a separar bien las ideas.
 - “entonación” no debe interpretarse como prosodia perfecta o análisis expresivo fino, sino como variación vocal observable: voz más plana, suficiente o razonablemente expresiva.
+- Una pausa larga no debe interpretarse automáticamente como problema.
+- Un patrón pausado puede seguir siendo positivo si favorece la claridad y la sensación de control.
 
 [SCORING PHILOSOPHY]
 La escala debe ser exigente y creíble.
@@ -59,8 +66,8 @@ La escala debe ser exigente y creíble.
 - 5 = alto: reservado para un uso de pausas claramente sólido y consistente, con variación vocal que acompaña bien.
 - 4 = medio-alto: buen control general de pausas, con apoyo vocal útil, aunque no sobresaliente.
 - 3 = medio: desempeño funcional pero irregular; hay control suficiente, aunque con limitaciones claras.
-- 2 = medio-bajo: se observan problemas importantes de control de pausas; la comunicación se sostiene, pero con dificultad.
-- 1 = bajo: el patrón de pausas perjudica claramente la claridad o el control del mensaje.
+- 2 = medio-bajo: se observan problemas importantes por escasez de pausas o por apoyo insuficiente de las pausas a la claridad; la comunicación se sostiene, pero con dificultad.
+- 1 = bajo: faltan pausas de forma clara o el patrón apenas ayuda a ordenar y clarificar el mensaje.
 
 Reglas importantes:
 - No regales notas altas.
@@ -68,20 +75,22 @@ Reglas importantes:
 - No confundas hablar lento con pausar bien.
 - No confundas mucha variación vocal con buena ejecución si el conjunto suena inestable o poco natural.
 - La entonación/variación vocal no debe mover la nota más de 1 nivel respecto a lo que indiquen las pausas.
+- No bajes la nota por la mera presencia de pausas largas o muy largas.
+- La falta de pausas es más grave que el exceso de pausa.
 
 [RUBRIC]
 Evalúa con esta escala exacta:
 
 1 = bajo
-- El patrón de pausas sugiere un uso pobre.
-- Puede haber atropello claro o interrupciones excesivas/desorganizadoras.
-- Las pausas no ayudan a la claridad.
+- El patrón de pausas sugiere un uso pobre por falta clara de pausas o por escasa ayuda a la claridad.
+- Puede haber atropello, continuidad excesiva o poca separación entre ideas.
+- Las pausas no ayudan suficientemente a entender y seguir el mensaje.
 - La variación vocal no compensa el problema principal.
 
 2 = medio-bajo
-- Hay problemas claros de control de pausas.
-- Algunas pausas pueden ser útiles, pero de forma inconsistente.
-- El ritmo suena tenso, irregular o poco cómodo de seguir.
+- Hay problemas claros porque las pausas aparecen poco, ayudan de forma limitada o no ordenan bien el mensaje.
+- Algunas pausas pueden ser útiles, pero de forma insuficiente o inconsistente.
+- El ritmo se sostiene con dificultad y deja menos claridad de la deseable.
 
 3 = medio
 - El uso de pausas es funcional pero irregular.
@@ -97,6 +106,7 @@ Evalúa con esta escala exacta:
 - El uso de pausas es claramente sólido y consistente.
 - Las pausas favorecen comprensión, claridad y sensación de control.
 - La variación vocal acompaña bien y no presenta signos importantes de monotonía o inestabilidad.
+- Un estilo especialmente pausado puede seguir encajando aquí si mantiene claridad y control.
 
 [REASON_SHORT STYLE GUIDE]
 `reason_short` debe ayudar al usuario a entender qué está pasando y qué debería hacer en la próxima grabación.
@@ -111,10 +121,12 @@ Reglas:
 - Si el desempeño es bueno, explica qué conviene mantener.
 - Si el problema es abstracto, aterrízalo con una acción concreta de práctica o de ejecución.
 - Debe sonar útil, natural y fácil de aplicar en la siguiente intervención.
+- No critiques al usuario por hacer pausas largas o por pausar “demasiado”.
+- Si detectas un estilo muy pausado pero claro, trátalo como una fortaleza o como un rasgo aceptable, no como un defecto.
 
 Ejemplos del estilo deseado:
-- "Haces pausas demasiado largas y eso corta el ritmo del mensaje. Te ayudará decir una idea por frase y dejar una pausa breve solo al terminarla, no en mitad de la misma idea."
-- "El ritmo se mantiene, pero todavía hay pausas poco naturales que frenan la claridad. Para mejorarlo, ensaya frases más cortas y marca la pausa solo cuando cambias de idea."
+- "Vas demasiado seguido y eso hace que las ideas se mezclen más de la cuenta. Te ayudará decir una idea por frase y dejar una pausa breve o marcada al cerrarla."
+- "El ritmo se mantiene, pero todavía faltan pausas claras entre ideas y eso reduce algo la claridad. Para mejorarlo, separa mejor los cambios de idea y no tengas miedo de detenerte un poco más."
 - "Tu voz acompaña bien y las pausas ayudan a entenderte. Mantén ese control del ritmo y procura sostenerlo también cuando cierres la idea final."
 
 No copies estos ejemplos literalmente salvo que encajen de verdad con el caso.
