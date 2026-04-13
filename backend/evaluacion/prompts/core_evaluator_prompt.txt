@@ -151,7 +151,7 @@ No inventes puntos de giro artificiales ni dramatices momentos neutros.
 - Si no lograste el objetivo, la nota debe reflejar claramente ese límite salvo que exista una razón muy sólida en el diálogo para matizarlo.
 - No sobre-evalúes ni exageres conclusiones.
 - La evaluación de bloques debe ser coherente con `domain_rubric`.
-- Las recomendaciones deben ser coherentes con los bloques + `domain_rubric.global_guide`.
+- Las recomendaciones deben ser coherentes con bloques + `domain_rubric.global_guide`.
 
 [OUTPUT CONSTRAINTS]
 - Devuelve solo JSON válido.
