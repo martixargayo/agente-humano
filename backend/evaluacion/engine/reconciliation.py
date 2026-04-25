@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import logging
+
 from evaluacion.contracts.models import FeedbackReportCoreV1, TurnTrajectoryV1
 from evaluacion.engine.flow_config import RECONCILE_SCORE_TOLERANCE
+
+logger = logging.getLogger(__name__)
 
 
 def reconcile_outputs(
@@ -18,9 +22,19 @@ def reconcile_outputs(
     if expected > 0 and abs(expected - actual) > max(1, int(expected * 0.1)):
         raise ValueError("reconciliation_invalid_trajectory_cardinality")
 
-    mean_block_score = sum(block.score_0_100 for block in core.evaluation_blocks) / len(core.evaluation_blocks)
-    if abs(core.score_global_100 - mean_block_score) > RECONCILE_SCORE_TOLERANCE:
-        raise ValueError("reconciliation_global_vs_blocks_mismatch")
+    block_scores = [block.score_0_100 for block in core.evaluation_blocks]
+    computed_global = round(sum(block_scores) / len(block_scores))
+    original_global = core.score_global_100
+    diff = abs(original_global - computed_global)
+    if diff > RECONCILE_SCORE_TOLERANCE:
+        logger.warning(
+            "reconciliation_global_adjusted original_global=%s computed_global=%s diff=%.1f tolerance=%s",
+            original_global,
+            computed_global,
+            diff,
+            RECONCILE_SCORE_TOLERANCE,
+        )
+    core.score_global_100 = computed_global
 
     if not trajectory.trajectory:
         return trajectory
