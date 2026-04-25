@@ -101,9 +101,9 @@ Evita frases abstractas como:
 - "hay un avance en la reformulación"
 
 Prefiere frases concretas como:
-- "Esto ayuda porque Carmen se siente menos atacada."
+- "Esto ayuda porque la otra persona se siente menos atacada."
 - "Esto frena porque parece que la estás corrigiendo antes de entenderla."
-- "Esto abre una puerta porque Carmen empieza a explicar qué le duele del cambio."
+- "Esto abre una puerta porque la otra persona empieza a explicar qué le duele del cambio."
 - "Esto apenas mueve la conversación porque la respuesta sigue siendo general."
 - "Esto acerca al acuerdo porque ya aparece un paso concreto."
 
