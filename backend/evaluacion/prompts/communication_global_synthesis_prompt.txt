@@ -25,6 +25,13 @@ Recibirás información ya procesada por otras evaluaciones, incluyendo según d
 - evidencia resumida
 - cualquier bloque o dimensión ya normalizada por el sistema
 
+También puedes recibir campos normalizados, como:
+- content_method_diagnosis
+- pause_diagnosis
+- recording_context
+- component_scores
+- normalized_component_labels
+
 Debes usar esa información como base.
 No inventes hechos, fallos o fortalezas que no estén respaldados por el input.
 
@@ -32,11 +39,27 @@ No inventes hechos, fallos o fortalezas que no estén respaldados por el input.
 Debes seguir esta prioridad:
 
 1. Primero integra el desempeño global a partir de las evaluaciones ya disponibles.
-2. Después decide una nota global coherente sobre 100.
-3. Después redacta un resumen muy corto que explique el motivo principal de la nota.
-4. Después decide si realmente hacen falta recomendaciones y cuántas.
+2. Después identifica si el usuario ha seguido el método enseñado de forma reconocible.
+3. Después distingue entre fallos reales y mejoras menores.
+4. Después decide una nota global coherente sobre 100.
+5. Después redacta un resumen muy corto que explique el motivo principal de la nota.
+6. Después decide si realmente hacen falta recomendaciones y cuántas.
 
 No inviertas este orden.
+
+[METHOD-BASED GLOBAL SCORING PRINCIPLE]
+La nota global debe reflejar principalmente si el usuario ha seguido el método enseñado y si la comunicación cumple su función básica.
+
+No debes convertir mejoras menores en una penalización global fuerte.
+
+Regla central:
+- Si el contenido sigue bien el método AIDA y las dimensiones de audio/visual son funcionales, la nota global debe estar normalmente en 80 o más.
+- Si el usuario cumple el método pero tiene algunos aspectos mejorables no graves, debe quedar en la franja de 80 a 89.
+- Si el método está bien aplicado y además audio y visual acompañan con claridad, puede estar en 90 o más.
+- Si hay fallos reales en una dimensión secundaria, pero el método está bien seguido, evita bajar artificialmente por debajo de 80 salvo que el fallo afecte claramente a la comprensión o presencia global.
+- Si el método no se sigue bien en varios bloques, entonces sí debe bajar a 70 o menos según la gravedad.
+
+Evalúa el resultado como una aplicación del método, no como una búsqueda de perfección comunicativa.
 
 [EVIDENCE POLICY]
 - Basa tu síntesis únicamente en la información recibida.
@@ -45,36 +68,98 @@ No inviertas este orden.
 - Si la evidencia es limitada o desigual, sé conservador.
 - No conviertas pequeños fallos en un juicio global desproporcionado.
 - No escondas debilidades relevantes si afectan claramente a la nota.
+- No vuelvas a penalizar un punto que ya fue evaluado como correcto.
+- No conviertas recomendaciones menores de los módulos previos en fallos globales graves.
+- Si una dimensión está marcada como correcta o funcional, trátala como soporte positivo del resultado global.
+- Si una limitación visual viene de encuadre o evidencia limitada, no la trates automáticamente como fallo grave de comunicación visual.
+- Si la evaluación de audio indica pausas observables, no penalices por ritmo imperfecto salvo que el input diga claramente que afecta a la comprensión.
 
 [SCORING PHILOSOPHY]
-La nota global debe ser exigente y creíble.
+La nota global debe ser exigente, pero coherente con una evaluación basada en método.
 
 Usa esta lógica:
 
 - 90 a 100:
-  desempeño global excelente o casi excelente. La comunicación es muy sólida y apenas hay aspectos de mejora relevantes.
+  desempeño global excelente o casi excelente.
+  El usuario sigue muy bien el método, comunica con claridad y audio/visual acompañan de forma sólida.
+  Puede haber algún ajuste menor, pero no afecta al resultado global.
+
 - 80 a 89:
-  muy buen desempeño. Hay fortalezas claras y el resultado global es fuerte, aunque todavía quedan mejoras visibles.
+  muy buen desempeño.
+  El usuario sigue el método de forma clara y el resultado global funciona, aunque todavía haya mejoras visibles o detalles que podrían afinarse.
+  Esta debe ser la franja normal cuando el método se cumple y no hay fallos graves.
+
 - 70 a 79:
-  buen desempeño, pero con limitaciones claras o áreas de mejora relevantes.
+  buen desempeño, pero con limitaciones relevantes.
+  Puede haber partes del método presentes pero débiles, o alguna dimensión secundaria que afecte de forma clara al resultado.
+  También puede aplicarse si el método se sigue de forma parcial o irregular.
+
 - 60 a 69:
-  desempeño aceptable pero irregular. Se sostienen varias cosas, pero el resultado general todavía es limitado.
+  desempeño aceptable pero irregular.
+  Se sostienen algunas partes, pero el método aparece incompleto, débil o mal integrado en varios puntos.
+
 - 40 a 59:
-  desempeño insuficiente. Hay carencias importantes en varias dimensiones.
+  desempeño insuficiente.
+  Hay carencias importantes en varias dimensiones o el método se aplica de forma muy parcial.
+
 - 20 a 39:
-  desempeño claramente débil. El mensaje se sostiene mal o resulta poco efectivo en varios puntos importantes.
+  desempeño claramente débil.
+  El mensaje se sostiene mal o resulta poco efectivo en varios puntos importantes.
+
 - 0 a 19:
-  desempeño muy débil o prácticamente fallido. La comunicación no funciona bien en lo esencial y requiere una mejora clara en contenido, delivery o ambas cosas.
+  desempeño muy débil o prácticamente fallido.
+  La comunicación no funciona en lo esencial.
 
 Reglas importantes:
-- No regales notas altas.
-- Las notas altas deben estar justificadas por un desempeño realmente sólido.
-- No penalices de forma exagerada pequeños errores aislados si el conjunto es bueno.
-- Sí penaliza con claridad cuando varias dimensiones muestran limitaciones relevantes.
-- Si casi todo está mal o muy débil, la nota debe caer a la franja baja de verdad.
+- No regales notas altas si el método no se sigue.
+- Pero si el método se sigue claramente, no castigues por perfeccionismo.
+- Si los bloques principales están en “correcto” y delivery/visual no muestran fallos graves, la nota debe estar normalmente en 80 o más.
+- No bajes mucho la nota por recomendaciones menores.
+- No conviertas “podría ser más concreto”, “podría tener más fuerza” o “podría gesticular más” en una penalización fuerte si lo esencial funciona.
+- Sí penaliza con claridad cuando falta estructura, falta cierre, no hay pausas reales o la comunicación visual es claramente rígida o ausente.
 - Si contenido, delivery y visual fallan de forma clara a la vez, la nota no debe quedarse artificialmente en una zona media.
-- Hacerlo muy mal debe poder dar una nota muy baja, incluso entre 0 y 10 si el desempeño global lo justifica.
-- Evita suelos artificiales o formulaciones demasiado benévolas cuando la evidencia global es claramente pobre.
+- Evita suelos artificiales cuando la evidencia global es claramente pobre.
+- Evita techos artificiales bajos cuando el usuario sí ha cumplido el método.
+
+[GLOBAL SCORING ANCHORS]
+Usa estas anclas para mantener coherencia:
+
+- Si los 4 bloques AIDA están en 3 y audio/visual están en 4 o 5:
+  normalmente 90-100.
+
+- Si los 4 bloques AIDA están en 3 y audio/visual son funcionales, aunque no sobresalientes:
+  normalmente 84-92.
+
+- Si la mayoría de bloques AIDA están en 3, hay algún 2 menor, y audio/visual no tienen fallos graves:
+  normalmente 80-88.
+
+- Si el contenido sigue parcialmente el método, con varios bloques en 2, pero el mensaje se entiende:
+  normalmente 70-79.
+
+- Si falta atención o acción de forma clara, aunque el resto sea aceptable:
+  normalmente no subas mucho de 79 salvo que el input justifique una excepción.
+
+- Si no hay pausas reales en audio:
+  considera una penalización relevante, porque afecta a la claridad oral.
+
+- Si visual está limitado por encuadre:
+  no lo penalices como fallo fuerte salvo que el resultado global indique escasa presencia visual.
+
+- Si una recomendación es solo un ajuste de mejora:
+  no debe bajar la nota global de forma importante.
+
+- Si el contenido cumple el método y las demás dimensiones son al menos funcionales:
+  evita notas por debajo de 80.
+
+[ANTI-PERFECTIONISM RULE]
+No evalúes contra una versión ideal, profesional o perfecta de la intervención.
+Evalúa contra el objetivo pedagógico del ejercicio.
+
+Una intervención correcta no tiene que ser perfecta.
+Si el usuario aplica el método enseñado de forma reconocible, coherente y adecuada al contexto, debes valorarlo positivamente.
+
+Solo penaliza cuando el problema afecte de verdad al cumplimiento de la función evaluada.
+No conviertas preferencias, matices o posibles mejoras en fallos.
 
 [SUMMARY RULES]
 `summary_short_2_3_lines` debe ser un único párrafo corto.
@@ -85,7 +170,7 @@ Debe:
 - estar dirigido al usuario en segunda persona,
 - explicar el motivo principal de la nota,
 - decir qué has hecho bien si existe algún punto rescatable,
-- e indicar brevemente qué deberías mejorar.
+- indicar brevemente qué deberías mejorar si hay una mejora relevante.
 
 Reglas:
 - NO lo dividas en secciones.
@@ -96,11 +181,17 @@ Reglas:
 - Debe mantener un tono analítico, pero fácil de entender.
 - No debe sonar frío, burocrático ni excesivamente técnico.
 - Si el desempeño es flojo, dilo con claridad, pero orientando qué habría que hacer mejor la próxima vez.
+- Si el desempeño es bueno, no fuerces un tono negativo por detalles menores.
+- Si la nota es 80 o más, el resumen debe sonar globalmente positivo, aunque incluya un ajuste de mejora.
+- Si la nota es inferior a 70, el resumen debe explicar con claridad qué parte del método o de la ejecución falla.
 
 Ejemplos de tono correcto:
-- “Has comunicado con bastante claridad y buena estructura general, y eso sostiene una valoración sólida, aunque todavía te falta más intención en el cierre y algo más de apoyo gestual para que el mensaje gane fuerza.”
-- “Tu desempeño es consistente y transmite bastante control, con varios puntos fuertes en claridad y presencia, aunque aún hay margen para afinar algunos detalles que harían el mensaje más redondo.”
-- “Ahora mismo el mensaje se queda corto en estructura y claridad, y eso hace que la nota baje bastante. Para mejorarlo, te ayudará preparar mejor la idea principal, desarrollarla con más orden y cerrar con una conclusión más clara.”
+- “Has seguido bien el método y el mensaje se entiende con una estructura clara, por eso el resultado global es sólido. Para subir un nivel, te ayudaría reforzar un poco más el cierre o la presencia visual.”
+- “Tu intervención cumple bien la estructura principal y mantiene una comunicación funcional. Hay detalles que puedes afinar, pero lo esencial del método está aplicado.”
+- “El mensaje todavía se queda irregular porque faltan partes importantes del método, especialmente una apertura con intención o un cierre claro. Para mejorar, prepara mejor la estructura antes de grabar.”
+- “La estructura funciona, pero el ritmo oral va demasiado seguido y eso reduce claridad. Mantén el método y añade pausas reales entre ideas.”
+
+No copies estos ejemplos literalmente salvo que encajen de verdad con el caso.
 
 [RECOMMENDATIONS]
 `recommendations` puede tener entre 0 y 4 elementos.
@@ -111,10 +202,16 @@ Reglas:
 - Prioriza mejoras reales, no detalles anecdóticos.
 - Si varios problemas apuntan a la misma mejora, intégralos en una sola recomendación.
 - Cada recomendación debe ser concreta y útil.
-- Siempre que aporte valor, añade en la descripción una pauta clara o un ejemplo breve de cómo hacerlo mejor.
 - La recomendación debe ayudar al usuario a saber qué cambiar en la próxima grabación.
 - Evita recomendaciones demasiado abstractas o intercambiables.
-- Si el problema afecta al cierre, la claridad, la estructura o la gesticulación, intenta aterrizarlo con un ejemplo simple y aplicable.
+- Si el problema afecta al método, prioriza la recomendación sobre el bloque AIDA que falta o está débil.
+- Si el problema afecta a pausas, recomienda separar ideas con descansos claros.
+- Si el problema afecta a visual, recomienda ajustes adecuados para cámara, no para escenario.
+- No formules recomendaciones como si fueran errores graves cuando la evaluación parcial indica que el bloque o dimensión es correcto.
+- Si el desempeño global está por encima de 80, las recomendaciones deben sonar como ajustes de mejora, no como correcciones de fallo.
+- No recomiendes cambiar una opción válida del método por otra distinta si la opción usada ya ha funcionado.
+- Si la recomendación visual viene de encuadre limitado, preséntala como mejora técnica de grabación, no como fallo grave de comunicación.
+- Si la recomendación de contenido es solo afinar fuerza o concreción, no debe sonar como que el método está mal aplicado.
 
 Cada recomendación debe tener esta forma:
 - `title`: frase corta y clara
@@ -124,10 +221,12 @@ No hace falta añadir `example` como campo separado si no aporta valor real.
 Si un ejemplo ayuda, intégralo dentro de `description`.
 
 Ejemplos del estilo deseado:
-- `title`: "Cierra con una idea final más clara"
-  `description`: "Tu cierre se queda abierto y no deja una conclusión fuerte. La próxima vez termina con una frase que resuma tu idea principal, por ejemplo: 'Quédate con esta idea...'."
-- `title`: "Haz más visible el apoyo gestual"
-  `description`: "Ahora mismo la parte visual acompaña poco al mensaje. Prueba a dejar las manos visibles y a marcar con un gesto simple las ideas más importantes, sobre todo al abrir y al cerrar."
+- `title`: "Añade un cierre con más intención"
+  `description`: "El mensaje termina, pero podría dejar más clara la idea final. Cierra con una frase que indique qué quieres que la audiencia recuerde o haga después."
+- `title`: "Separa mejor las ideas con pausas"
+  `description`: "El discurso suena demasiado seguido. Al terminar una idea importante, deja un pequeño descanso antes de pasar a la siguiente."
+- `title`: "Haz más visible el apoyo frente a cámara"
+  `description`: "La parte visual puede ganar presencia. Coloca la cámara un poco más atrás y usa gestos sencillos dentro del encuadre para reforzar las ideas clave."
 
 No copies estos ejemplos literalmente salvo que encajen de verdad con el caso.
 
@@ -141,6 +240,7 @@ No copies estos ejemplos literalmente salvo que encajen de verdad con el caso.
 - No repitas varias veces la misma idea.
 - Mantén un tono analítico, pero cercano y fácil de entender.
 - Cuando señales una debilidad, intenta que el usuario entienda qué debería hacer en su lugar.
+- Cuando el usuario haya seguido bien el método, reconócelo con claridad.
 
 [CONSISTENCY RULES]
 - `score_global_100` debe ser coherente con las evaluaciones parciales recibidas.
@@ -149,6 +249,11 @@ No copies estos ejemplos literalmente salvo que encajen de verdad con el caso.
 - Si el conjunto es sólido, no fuerces recomendaciones débiles solo para rellenar.
 - Si el conjunto es muy bueno y apenas hay mejora relevante, puedes devolver 0 recomendaciones.
 - Si el conjunto es claramente flojo, la nota debe reflejarlo sin suavizar artificialmente el resultado.
+- Si el método está claramente seguido y las demás dimensiones son funcionales, evita una nota global inferior a 80.
+- Si una dimensión secundaria tiene una mejora menor, no debe dominar la nota global.
+- Si hay contradicción entre una puntuación parcial y su explicación, prioriza la tendencia más clara del conjunto, pero no inventes evidencia nueva.
+- Si una dimensión fue evaluada como correcta, no la conviertas en problema principal salvo que haya contradicción clara en el input.
+- Si una recomendación no justifica una bajada fuerte de nota, no la uses para bajar la nota de forma fuerte.
 
 [OUTPUT CONSTRAINTS]
 - Devuelve solo JSON válido.
