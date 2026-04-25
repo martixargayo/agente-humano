@@ -2,8 +2,102 @@
   "schema_version": "negotiation_domain_rubric.v1",
   "metadata": {
     "domain": "conversacion_simple",
-    "rubric_version": "1.1.0",
-    "case_title": "Conversación difícil de cambio de pensamiento y conducta"
+    "rubric_version": "1.2.0",
+    "case_title": "Conversación difícil con Carmen"
+  },
+  "case_evaluation_guide": {
+    "case_id": "carmen_redaccion_periodico",
+    "case_summary": "Carmen es una periodista veterana que está teniendo dificultades para adaptarse a una forma de trabajo más estructurada y colaborativa. Antes tenía más control, continuidad y autoría sobre las piezas. Ahora debe coordinarse más, compartir decisiones y ocupar un rol senior menos individual. Su resistencia está afectando al clima del equipo.",
+    "visible_problem": "Carmen resiste el nuevo modo de trabajar y sigue intentando operar desde el modelo anterior.",
+    "visible_behaviors": [
+      "Sigue trabajando como antes aunque el modelo ya haya cambiado.",
+      "Le cuesta coordinarse de verdad con el resto del equipo.",
+      "Toma decisiones por su cuenta sin alinear.",
+      "Invade partes del proceso que ya no dependen solo de ella.",
+      "Muestra reticencia a repartir trabajo o ceder control.",
+      "Cuestiona la nueva organización con frecuencia.",
+      "Habla del modelo nuevo como si complicara innecesariamente el trabajo."
+    ],
+    "likely_background_hypotheses": [
+      "Puede sentir pérdida de control sobre el proceso periodístico.",
+      "Puede sentir pérdida de autoría o protagonismo.",
+      "Puede temer que su experiencia ya no tenga el mismo valor.",
+      "Puede estar viviendo el cambio como una pérdida de identidad profesional.",
+      "Puede sentir que el nuevo sistema la convierte en una pieza más y reduce su valor diferencial.",
+      "Puede estar confundiendo adaptarse al nuevo modelo con perder su manera propia de hacer periodismo."
+    ],
+    "cognitive_behavioral_model": {
+      "possible_thoughts": [
+        "Ya no pinto lo mismo.",
+        "Este sistema me quita valor.",
+        "Mi forma de trabajar ya no cuenta igual.",
+        "Ahora dependo demasiado de otros.",
+        "Antes podía hacer mejor periodismo.",
+        "Me están quitando espacio."
+      ],
+      "possible_emotions": [
+        "Frustración",
+        "Desorientación",
+        "Miedo",
+        "Resentimiento",
+        "Duelo",
+        "Pérdida de reconocimiento"
+      ],
+      "possible_behaviors": [
+        "Rigidez",
+        "Resistencia al nuevo sistema",
+        "Poca colaboración",
+        "Apego al modelo anterior",
+        "Comentarios críticos recurrentes",
+        "Dificultad para ceder control"
+      ]
+    },
+    "good_discovery_directions": [
+      "Explorar qué parte del cambio le cuesta más.",
+      "Preguntar qué siente que ha perdido respecto al modelo anterior.",
+      "Preguntar dónde cree que su criterio senior puede aportar más ahora.",
+      "Explorar qué necesitaría para sentirse útil dentro del nuevo sistema.",
+      "Preguntar qué parte del nuevo reparto de trabajo le resulta más difícil aceptar.",
+      "Explorar si le preocupa perder autoría, continuidad o influencia en las piezas.",
+      "Explorar si su resistencia viene más de una dificultad operativa o de una pérdida de identidad profesional."
+    ],
+    "useful_question_examples": [
+      "¿Qué parte de la forma anterior de trabajar echas más de menos?",
+      "¿Qué sientes que has perdido con este nuevo sistema?",
+      "¿Dónde notas que tu criterio está entrando menos de lo que debería?",
+      "¿Qué parte del reparto actual te resulta más incómoda?",
+      "¿Qué necesitarías para sentir que sigues aportando valor dentro de esta forma de trabajar?",
+      "¿Hay alguna parte del proceso en la que sientas que has perdido demasiado control?",
+      "¿Cómo podríamos aprovechar mejor tu experiencia sin volver al modelo anterior?",
+      "¿Qué tendría que pasar para que este sistema no lo vivieras como una pérdida?",
+      "¿En qué momentos notas más que te cuesta confiar en el trabajo repartido?",
+      "¿Qué parte de tu oficio crees que el equipo está aprovechando peor ahora mismo?"
+    ],
+    "good_reframe_directions": [
+      "Ayudar a Carmen a ver que su valor senior no desaparece, pero cambia de lugar.",
+      "Reformular su papel desde control individual hacia criterio experto que mejora el trabajo colectivo.",
+      "Distinguir entre perder control total y seguir teniendo influencia real.",
+      "Mostrar que adaptarse no significa renunciar a su identidad profesional, sino encontrar una forma nueva de ejercerla.",
+      "Ayudarla a ver que coordinarse más no significa aportar menos.",
+      "Convertir su experiencia en una palanca para mejorar el sistema, no en una defensa del modelo anterior."
+    ],
+    "possible_agreement_directions": [
+      "Acordar una prueba pequeña de coordinación en una pieza concreta.",
+      "Definir en qué momentos Carmen aportará criterio senior sin invadir partes ya asignadas a otros.",
+      "Acordar que en las reuniones formule sus objeciones como propuestas concretas de mejora.",
+      "Revisar en una semana cómo se ha sentido con el nuevo reparto de trabajo.",
+      "Pactar una forma clara de pedir espacio para aportar sin actuar por su cuenta.",
+      "Acordar que antes de tomar decisiones por su cuenta valide el enfoque con el equipo.",
+      "Definir una situación concreta en la que Carmen practique ceder control manteniendo influencia editorial."
+    ],
+    "evaluation_use_rules": [
+      "Usa esta guía para orientar hipótesis, ejemplos y recomendaciones.",
+      "No trates estas hipótesis como hechos demostrados por el transcript.",
+      "No afirmes que Carmen siente pérdida de valor, control o identidad salvo que el diálogo lo muestre claramente.",
+      "Si el usuario no explora el fondo del problema, puedes sugerir preguntas basadas en estas hipótesis.",
+      "Formula las hipótesis con prudencia: 'podrías haber explorado si...', 'quizá convenía preguntar...', 'una posibilidad a comprobar era...'.",
+      "Evalúa principalmente lo que ocurrió en el diálogo observable."
+    ]
   },
   "global_guide": {
     "principles": [
@@ -11,7 +105,8 @@
       "En este dominio suele ser mejor empezar por hechos, situaciones reales del trabajo y ejemplos concretos antes de subir demasiado pronto a lenguaje abstracto sobre identidad, valor o emociones.",
       "No basta con que la otra parte se abra, se sincere o reconozca malestar. El objetivo solo se considera logrado si acepta de forma suficientemente clara un siguiente paso de cambio o acompañamiento.",
       "Una buena conversación de cambio no se mide solo por el alivio momentáneo o la catarsis. El cierre debe dejar un compromiso claro y una base para acompañamiento posterior.",
-      "La secuencia importa: apertura segura, descubrimiento real, reformulación creíble y cierre con compromiso concreto."
+      "La secuencia importa: apertura segura, descubrimiento real, reformulación creíble y cierre con compromiso concreto.",
+      "En el caso de Carmen, el evaluador debe prestar especial atención a si el usuario distingue entre el problema visible de coordinación y el posible problema de fondo: pérdida de control, autoría, valor profesional o identidad dentro del nuevo modelo."
     ],
     "transversal_errors": [
       "Entrar demasiado pronto a convencer o corregir.",
@@ -19,28 +114,32 @@
       "Quedarse en conducta visible sin llegar al pensamiento que la sostiene.",
       "Intentar reencuadrar antes de comprender de verdad.",
       "Presionar con positividad vacía o excesiva.",
-      "Cerrar en abstracto sin aterrizar un paso siguiente claro."
+      "Cerrar en abstracto sin aterrizar un paso siguiente claro.",
+      "En el caso de Carmen, quedarse solo en que debe coordinarse mejor sin explorar qué siente que pierde con el nuevo modelo."
     ],
     "progress_signals": [
       "La otra parte reduce defensividad y se mantiene en la conversación sin cerrarse.",
       "Aparece comprensión del pensamiento o emoción que sostiene la resistencia.",
       "La reformulación abre una perspectiva más equilibrada sin invalidar la experiencia de la otra parte.",
       "Se acuerda un siguiente paso concreto, viable y explícitamente aceptado.",
-      "Queda definida una base mínima de seguimiento o acompañamiento posterior."
+      "Queda definida una base mínima de seguimiento o acompañamiento posterior.",
+      "En el caso de Carmen, aparece una conversación concreta sobre cómo puede seguir aportando valor senior sin volver al modelo anterior."
     ],
     "deterioration_signals": [
       "Sube la confrontación o el juicio y la otra parte se cierra más.",
       "La conversación se queda en quejas superficiales sin llegar al núcleo del problema.",
       "Se intenta reencuadrar demasiado pronto y la otra parte lo percibe como imposición.",
       "Hay catarsis o alivio momentáneo, pero sin compromiso verificable de cambio.",
-      "El cierre queda ambiguo o forzado, con riesgo alto de incumplimiento."
+      "El cierre queda ambiguo o forzado, con riesgo alto de incumplimiento.",
+      "En el caso de Carmen, se insiste en que acepte el nuevo sistema sin reconocer primero la pérdida de control, continuidad o autoría que puede estar viviendo."
     ],
     "tone_and_rhythm_reminders": [
       "Empieza por observaciones concretas y tono sereno antes de proponer lecturas más abstractas.",
       "Alterna escuchar, preguntar y sintetizar para no convertir la conversación en sermón o interrogatorio.",
       "Valida la experiencia de la otra parte antes de desafiar creencias rígidas.",
       "Asegura que el cierre deje responsabilidades, próximo paso y expectativa de seguimiento claras.",
-      "Si el transcript no muestra evidencia suficiente, evalúa con prudencia y evita sobreafirmar."
+      "Si el transcript no muestra evidencia suficiente, evalúa con prudencia y evita sobreafirmar.",
+      "En el caso de Carmen, es útil empezar por hechos concretos del trabajo antes de hablar de identidad profesional, valor o miedo a perder protagonismo."
     ]
   },
   "blocks": [
@@ -53,22 +152,25 @@
         "Hace sentir que el espacio de conversación importa y no es solo un correctivo.",
         "Introduce el tema desde observación y preocupación, no desde etiqueta o acusación.",
         "Habla desde el 'yo' o desde lo que ha notado, en vez de culpar o definir a la otra parte.",
-        "Consigue que la otra parte se quede en la conversación sin cerrarse del todo."
+        "Consigue que la otra parte se quede en la conversación sin cerrarse del todo.",
+        "En el caso de Carmen, nombra conductas concretas de coordinación o comentarios en reuniones sin atacarla como profesional."
       ],
       "negative_signals": [
         "Entra con juicio, confrontación o etiqueta demasiado pronto.",
         "Suena paternalista, frío, moralizante o correctivo.",
         "Defiende el cambio antes de generar escucha.",
         "Activa más rabia, más cierre o más superficialidad defensiva desde el inicio.",
-        "Hace sentir a la otra parte tratada como problema y no como persona."
+        "Hace sentir a la otra parte tratada como problema y no como persona.",
+        "En el caso de Carmen, le transmite que está siendo un obstáculo o que debe modernizarse sin reconocer su trayectoria."
       ],
       "common_mistakes": [
         "Confundir claridad con dureza inicial.",
         "Creer que basta con una apertura cordial si el tono posterior activa defensa.",
         "Ir demasiado rápido al fondo sin haber creado condiciones de apertura.",
-        "Abrir con una tesis o un sermón en vez de con observación y cuidado."
+        "Abrir con una tesis o un sermón en vez de con observación y cuidado.",
+        "En el caso de Carmen, empezar defendiendo el nuevo modelo antes de reconocer que para ella el cambio puede haber supuesto una pérdida real."
       ],
-      "evaluator_focus": "Valorar si el usuario reduce la defensividad inicial y abre una conversación segura y digna, o si provoca cierre, rabia o resistencia añadida desde el comienzo."
+      "evaluator_focus": "Valorar si el usuario reduce la defensividad inicial y abre una conversación segura y digna, o si provoca cierre, rabia o resistencia añadida desde el comienzo. En el caso de Carmen, observa si el usuario consigue hablar del impacto de su actitud sin desvalorizar su experiencia ni su identidad profesional."
     },
     {
       "block_id": "vision",
@@ -79,22 +181,25 @@
         "Escucha más de lo que habla y deja espacio para que la otra parte se explique.",
         "Explora qué ha cambiado, qué preocupa o qué está influyendo en cómo se siente la otra parte.",
         "Distingue conducta visible de pensamiento, emoción o interpretación de fondo.",
-        "Usa hechos y ejemplos del trabajo real para llegar a la vivencia interna."
+        "Usa hechos y ejemplos del trabajo real para llegar a la vivencia interna.",
+        "En el caso de Carmen, explora si detrás de la resistencia hay pérdida de control, autoría, continuidad, protagonismo o valor profesional."
       ],
       "negative_signals": [
         "Se queda discutiendo solo la queja superficial o la conducta visible.",
         "Hace preguntas cerradas, acusatorias o poco útiles.",
         "Interrumpe, dirige demasiado o convierte la conversación en interrogatorio.",
         "Va a la solución antes de entender qué sostiene la resistencia.",
-        "No llega a descubrir la pérdida, el miedo o la creencia que hay detrás."
+        "No llega a descubrir la pérdida, el miedo o la creencia que hay detrás.",
+        "En el caso de Carmen, se limita a hablar de que debe coordinarse mejor sin explorar qué le cuesta perder del modelo anterior."
       ],
       "common_mistakes": [
         "Creer que cualquier pregunta ya es buen discovery.",
         "Quedarse en lo operativo sin conectar con la vivencia de la otra parte.",
         "Confundir que la otra parte se queje con haber descubierto el problema de fondo.",
-        "Preguntar mucho pero sin foco real."
+        "Preguntar mucho pero sin foco real.",
+        "En el caso de Carmen, preguntar solo por reuniones, tareas o coordinación sin abrir preguntas sobre control, autoría, utilidad o reconocimiento."
       ],
-      "evaluator_focus": "Medir si el usuario consigue pasar de la superficie al núcleo del malestar y si entiende qué pensamiento, emoción o pérdida está empujando la resistencia."
+      "evaluator_focus": "Medir si el usuario consigue pasar de la superficie al núcleo del malestar y si entiende qué pensamiento, emoción o pérdida está empujando la resistencia. En el caso de Carmen, valora especialmente si el usuario ayuda a descubrir si el cambio se vive como una pérdida de identidad profesional o de valor dentro del equipo."
     },
     {
       "block_id": "relacion",
@@ -105,22 +210,25 @@
         "Ayuda a distinguir entre hechos e interpretaciones.",
         "Ofrece una perspectiva más equilibrada sin negar lo que la otra parte siente.",
         "Reencuadra la dificultad como una posibilidad de aprendizaje, desarrollo o nueva aportación.",
-        "Consigue que la otra parte vea una nueva lectura como plausible aunque todavía le cueste."
+        "Consigue que la otra parte vea una nueva lectura como plausible aunque todavía le cueste.",
+        "En el caso de Carmen, ayuda a ver que su valor senior no desaparece, sino que puede expresarse de otra manera dentro del nuevo modelo."
       ],
       "negative_signals": [
         "Corrige de frente o suena superior.",
         "Reformula demasiado pronto, sin suficiente comprensión previa.",
         "Minimiza lo que la otra parte siente que ha perdido.",
         "Usa discurso motivacional, frases hechas o positividad vacía.",
-        "Fuerza una lectura positiva que la otra parte no puede sostener todavía."
+        "Fuerza una lectura positiva que la otra parte no puede sostener todavía.",
+        "En el caso de Carmen, le dice que debe adaptarse o ser más flexible sin reconocer primero la pérdida de control, autoría o reconocimiento que puede estar viviendo."
       ],
       "common_mistakes": [
         "Confundir cuestionar con llevar la contraria.",
         "Creer que una buena idea dicha demasiado pronto ayuda.",
         "Premiar cualquier reencuadre aunque suene artificial.",
-        "No distinguir perspectiva viable de aceptación real."
+        "No distinguir perspectiva viable de aceptación real.",
+        "En el caso de Carmen, vender el nuevo modelo como mejor sin ayudarla a encontrar un lugar valioso dentro de él."
       ],
-      "evaluator_focus": "Detectar si el usuario mueve el pensamiento sin romper el vínculo y sin invalidar la pérdida, o si empuja tanto que provoca resistencia, pseudoaceptación o cierre."
+      "evaluator_focus": "Detectar si el usuario mueve el pensamiento sin romper el vínculo y sin invalidar la pérdida, o si empuja tanto que provoca resistencia, pseudoaceptación o cierre. En el caso de Carmen, observa si la reformulación convierte su experiencia senior en una aportación al equipo, no en una renuncia a su identidad profesional."
     },
     {
       "block_id": "proceso",
@@ -131,22 +239,25 @@
         "Co-construye el acuerdo en vez de imponerlo.",
         "Comprueba que el compromiso es asumible para la otra parte.",
         "Formaliza de forma clara qué se hará distinto o cómo se revisará.",
-        "Introduce apoyo, seguimiento o revisión posterior cuando conviene."
+        "Introduce apoyo, seguimiento o revisión posterior cuando conviene.",
+        "En el caso de Carmen, acuerda una conducta concreta relacionada con coordinación, reparto de trabajo, reuniones o forma de aportar criterio senior."
       ],
       "negative_signals": [
         "Cierra en abstracto sin paso siguiente claro.",
         "Confunde apertura emocional con cambio ya logrado.",
         "Impone un acuerdo o empuja a una aceptación poco creíble.",
         "Pide un cambio demasiado grande o poco realista.",
-        "No deja ninguna base de seguimiento ni acompañamiento."
+        "No deja ninguna base de seguimiento ni acompañamiento.",
+        "En el caso de Carmen, cierra con frases generales como 'intenta adaptarte' sin definir qué hará diferente en una situación concreta."
       ],
       "common_mistakes": [
         "Confundir mejora de clima con cierre real.",
         "Premiar cualquier acuerdo aunque sea poco creíble o impuesto.",
         "No distinguir catarsis de compromiso.",
-        "No concretar seguimiento o siguiente paso."
+        "No concretar seguimiento o siguiente paso.",
+        "En el caso de Carmen, pedirle que cambie de actitud sin pactar una práctica pequeña y observable dentro del nuevo sistema."
       ],
-      "evaluator_focus": "Evaluar si el usuario traduce la apertura en un cierre útil y realista, con compromiso claro y base de acompañamiento, o si deja la conversación en alivio momentáneo pero sin dirección."
+      "evaluator_focus": "Evaluar si el usuario traduce la apertura en un cierre útil y realista, con compromiso claro y base de acompañamiento, o si deja la conversación en alivio momentáneo pero sin dirección. En el caso de Carmen, valora si el acuerdo define cómo va a colaborar mejor sin perder completamente su sensación de valor profesional."
     }
   ]
 }
