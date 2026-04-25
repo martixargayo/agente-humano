@@ -1055,6 +1055,14 @@ def run_conversacion_simple_turn(
     memory_obs["brain_model_succeeded"] = model_succeeded
     if fallback_reason_code:
         memory_obs["brain_fallback_reason_code"] = fallback_reason_code
+        logger.warning(
+            "conversacion_simple_brain_fallback_activated session=%s turn_id=%s fallback_reason_code=%s model_attempted=%s model_succeeded=%s",
+            state.session_id,
+            turn_id,
+            fallback_reason_code,
+            model_attempted,
+            model_succeeded,
+        )
     if call.provider_exception is not None:
         memory_obs["brain_provider_exception"] = dict(call.provider_exception)
     latency_ms = int((time.perf_counter() - started) * 1000)
