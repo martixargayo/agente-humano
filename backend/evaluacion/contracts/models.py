@@ -113,12 +113,35 @@ class DomainRubricGlobalGuide(BaseModel):
     tone_and_rhythm_reminders: list[str]
 
 
+class CognitiveBehavioralModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    possible_thoughts: list[str]
+    possible_emotions: list[str]
+    possible_behaviors: list[str]
+
+
+class CaseEvaluationGuide(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    case_id: str
+    case_summary: str
+    visible_problem: str
+    visible_behaviors: list[str]
+    likely_background_hypotheses: list[str]
+    cognitive_behavioral_model: CognitiveBehavioralModel
+    good_discovery_directions: list[str]
+    useful_question_examples: list[str]
+    good_reframe_directions: list[str]
+    possible_agreement_directions: list[str]
+    evaluation_use_rules: list[str]
+
+
 class NegotiationDomainRubricV1(BaseModel):
     model_config = ConfigDict(extra="forbid")
     schema_version: Literal["negotiation_domain_rubric.v1"]
     metadata: DomainRubricMetadata
     blocks: list[DomainRubricBlock]
     global_guide: DomainRubricGlobalGuide
+    case_evaluation_guide: CaseEvaluationGuide | None = None
 
 
 class CoreRunnerInputV1(BaseModel):
