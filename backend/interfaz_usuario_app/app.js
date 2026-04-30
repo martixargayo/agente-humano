@@ -6,7 +6,13 @@ const SessionBootstrapState = {
   UNKNOWN: 'unknown',
 };
 
-const PARENT_EMBED_ORIGIN = 'https://academia.gestionce.com';
+const DEFAULT_PARENT_EMBED_ORIGIN = 'https://academia.gestionce.com';
+const ALLOWED_PARENT_EMBED_ORIGINS = new Set([
+  DEFAULT_PARENT_EMBED_ORIGIN,
+  'https://staging.academia.gestionce.com',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+]);
 const EMBED_NAMESPACE = 'gestionce.simulator';
 const EMBED_MESSAGE_VERSION = 1;
 
@@ -110,6 +116,26 @@ function readEmbedModeFromUrl() {
   if (['0', 'false', 'no', 'off'].includes(raw)) return false;
   return null;
 }
+
+function normalizeOriginCandidate(raw) {
+  if (typeof raw !== 'string' || !raw.trim()) return null;
+  try {
+    const url = new URL(raw.trim());
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+    return url.origin;
+  } catch (_) {
+    return null;
+  }
+}
+
+function resolveParentEmbedOrigin() {
+  const currentUrl = new URL(window.location.href);
+  const paramOrigin = normalizeOriginCandidate(currentUrl.searchParams.get('parent_origin'));
+  if (paramOrigin && ALLOWED_PARENT_EMBED_ORIGINS.has(paramOrigin)) return paramOrigin;
+  return DEFAULT_PARENT_EMBED_ORIGIN;
+}
+
+const PARENT_EMBED_ORIGIN = resolveParentEmbedOrigin();
 
 function bootstrapPayload() {
   const payload = ids();
@@ -252,6 +278,9 @@ let embedHeightRaf = null;
 let lastEmbeddedHeight = 0;
 let finalSaveToastTimer = null;
 let pendingEmbeddedFinalResultAck = null;
+const EMBED_KEYBOARD_PROXY_TTL_MS = 10_000;
+const EMBED_KEYBOARD_PROXY_MAX_SEEN = 100;
+const seenKeyboardProxyCorrelation = new Map();
 let caseInfoModalOpen = false;
 const LAST_DEVICE_STORAGE_KEY = 'interfaz_usuario:last_audio_input_device';
 
@@ -770,12 +799,72 @@ function installEmbedMessageListener() {
   window.addEventListener('message', (event) => {
     if (!embedModeActive || !isEmbeddedRuntime()) return;
     try {
+      if (handleEmbeddedKeyboardProxy(event)) return;
       const accepted = handleEmbeddedSaveAck(event.data, { origin: event.origin });
       if (accepted) console.info('[embed] Confirmación de guardado final correlacionada con el último final_result', event.data?.payload || null);
     } catch (err) {
       console.warn('[embed] Error procesando ACK del guardado final', err);
     }
   });
+}
+
+function pruneSeenKeyboardProxyCorrelation() {
+  while (seenKeyboardProxyCorrelation.size > EMBED_KEYBOARD_PROXY_MAX_SEEN) {
+    const oldestKey = seenKeyboardProxyCorrelation.keys().next().value;
+    if (!oldestKey) break;
+    seenKeyboardProxyCorrelation.delete(oldestKey);
+  }
+}
+
+function isKeyboardProxyEnterCode(code) {
+  return code === 'Enter' || code === 'NumpadEnter';
+}
+
+function runEnterShortcutAction({ shiftKey = false } = {}) {
+  if (turnInFlight || voiceTurnInFlight || getActiveSessionBusyState()) return false;
+  if (shiftKey) return false;
+
+  if (currentInputMode === InputMode.WRITE) {
+    const message = ui.textInput.value.trim();
+    if (!message || ui.textInput.disabled) return false;
+    void handleSend();
+    return true;
+  }
+
+  if (currentInputMode === InputMode.TALK && !ui.finishTurnBtn.disabled) {
+    void handleFinishTurn();
+    return true;
+  }
+
+  return false;
+}
+
+function handleEmbeddedKeyboardProxy(event) {
+  if (!isAllowedParentOrigin(event.origin)) return false;
+  const data = event.data;
+  if (!data || typeof data !== 'object') return false;
+  if (data.namespace !== EMBED_NAMESPACE) return false;
+  if (Number(data.version) !== EMBED_MESSAGE_VERSION) return false;
+  if (data.type !== 'keyboard_proxy') return false;
+
+  const payload = data.payload;
+  if (!payload || typeof payload !== 'object') return true;
+  if (payload.key !== 'Enter') return true;
+  if (!isKeyboardProxyEnterCode(payload.code)) return true;
+  if (payload.repeat === true) return true;
+  if (payload.ctrlKey === true || payload.metaKey === true || payload.altKey === true) return true;
+  if (typeof payload.correlation_id !== 'string' || !payload.correlation_id.trim()) return true;
+
+  const sentAtMs = Number(payload.sent_at);
+  if (!Number.isFinite(sentAtMs)) return true;
+  if (Math.abs(Date.now() - sentAtMs) > EMBED_KEYBOARD_PROXY_TTL_MS) return true;
+
+  const correlationId = payload.correlation_id.trim();
+  if (seenKeyboardProxyCorrelation.has(correlationId)) return true;
+  seenKeyboardProxyCorrelation.set(correlationId, Date.now());
+  pruneSeenKeyboardProxyCorrelation();
+
+  return runEnterShortcutAction({ shiftKey: Boolean(payload.shiftKey) });
 }
 
 function emitParentEmbedError(code, message, extra = {}) {
@@ -2830,17 +2919,8 @@ window.addEventListener('keydown', (e) => {
   if (e.key !== 'Enter' || e.repeat || e.shiftKey || turnInFlight || voiceTurnInFlight || getActiveSessionBusyState()) return;
   const target = e.target;
   if (target instanceof HTMLTextAreaElement && currentInputMode !== InputMode.WRITE) return;
-
-  if (currentInputMode === InputMode.WRITE) {
-    e.preventDefault();
-    void handleSend();
-    return;
-  }
-
-  if (currentInputMode === InputMode.TALK && !ui.finishTurnBtn.disabled) {
-    e.preventDefault();
-    void handleFinishTurn();
-  }
+  const sent = runEnterShortcutAction({ shiftKey: Boolean(e.shiftKey) });
+  if (sent) e.preventDefault();
 });
 
 window.addEventListener('click', (ev) => {
