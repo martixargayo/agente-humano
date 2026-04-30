@@ -331,37 +331,6 @@
       svg.appendChild(circle);
     });
 
-    if (Number.isFinite(options.convictionLevel) && values.length > 0) {
-      const lastIdx = values.length - 1;
-      const boxW = 220;
-      const boxH = 34;
-      const anchorX = xFor(lastIdx) + 10;
-      const anchorY = yFor(values[lastIdx]) - boxH - 8;
-      const clampedX = Math.max(pad.left + 2, Math.min(anchorX, width - pad.right - boxW - 2));
-      const clampedY = Math.max(pad.top + 2, Math.min(anchorY, height - pad.bottom - boxH - 4));
-
-      const scoreBadge = document.createElementNS(NS, 'rect');
-      scoreBadge.setAttribute('x', String(clampedX));
-      scoreBadge.setAttribute('y', String(clampedY));
-      scoreBadge.setAttribute('rx', '8');
-      scoreBadge.setAttribute('ry', '8');
-      scoreBadge.setAttribute('width', String(boxW));
-      scoreBadge.setAttribute('height', String(boxH));
-      scoreBadge.setAttribute('fill', '#FFFFFF');
-      scoreBadge.setAttribute('stroke', '#D0D5DD');
-      scoreBadge.setAttribute('stroke-width', '1.2');
-      svg.appendChild(scoreBadge);
-
-      const scoreText = document.createElementNS(NS, 'text');
-      scoreText.setAttribute('x', String(clampedX + 10));
-      scoreText.setAttribute('y', String(clampedY + 22));
-      scoreText.setAttribute('fill', '#101828');
-      scoreText.setAttribute('font-size', '13');
-      scoreText.setAttribute('font-weight', '600');
-      scoreText.textContent = `Nivel de convencimiento: ${Math.round(options.convictionLevel)}/100`;
-      svg.appendChild(scoreText);
-    }
-
     const xStart = document.createElementNS(NS, 'text');
     xStart.setAttribute('x', String(pad.left));
     xStart.setAttribute('y', String(height - 12));
