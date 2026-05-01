@@ -56,6 +56,19 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("tts_audio")
+VOICE_DEBUG_BACKEND = os.getenv("GCE_VOICE_DEBUG", "0").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _voice_debug_log(event: str, **payload: Any) -> None:
+    if not VOICE_DEBUG_BACKEND:
+        return
+    safe_payload = {}
+    for key, value in payload.items():
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            safe_payload[key] = value
+        else:
+            safe_payload[key] = str(value)
+    logger.info("voice_debug_backend event=%s payload=%s", event, safe_payload)
 
 app = FastAPI(title="Agente Humano - MVP")
 
@@ -273,43 +286,70 @@ DEFAULT_GOOGLE_CREDENTIALS_PATH = "/workspaces/agente-humano/backend/keys/google
 
 
 def _get_google_credentials_path() -> str:
+    explicit = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
+    if explicit:
+        return explicit
     return os.getenv(
         "GOOGLE_CREDENTIALS_PATH",
         DEFAULT_GOOGLE_CREDENTIALS_PATH,  # fallback seguro local
     ).strip()
 
 
+def _emit_google_client_debug(*, source: str, initialized: bool, client_email: str | None, project_id: str | None) -> None:
+    _voice_debug_log(
+        "google_client_init",
+        google_credentials_source=source,
+        google_client_initialized=initialized,
+        google_client_email=client_email or None,
+        google_project_id=project_id or None,
+    )
+
+
 def _build_speech_client() -> speech.SpeechClient | None:
     service_account_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
     credentials_path = _get_google_credentials_path()
+
+    if credentials_path and os.path.exists(credentials_path):
+        try:
+            credentials = service_account.Credentials.from_service_account_file(
+                credentials_path
+            )
+            logger.info("google_stt_credentials_source=file")
+            _emit_google_client_debug(
+                source="file",
+                initialized=True,
+                client_email=getattr(credentials, "service_account_email", None),
+                project_id=getattr(credentials, "project_id", None),
+            )
+            return speech.SpeechClient(credentials=credentials)
+        except Exception as exc:
+            logger.warning(
+                "google_stt_client_init_error source=file path=%s error=%s",
+                credentials_path,
+                exc,
+            )
+            _emit_google_client_debug(source="file", initialized=False, client_email=None, project_id=None)
 
     if service_account_json:
         try:
             info = json.loads(service_account_json)
             credentials = service_account.Credentials.from_service_account_info(info)
-            logger.info("google_stt_credentials_source=env_json")
+            logger.info("google_stt_credentials_source=json_env")
+            _emit_google_client_debug(
+                source="json_env",
+                initialized=True,
+                client_email=getattr(credentials, "service_account_email", None),
+                project_id=getattr(credentials, "project_id", None),
+            )
             return speech.SpeechClient(credentials=credentials)
         except Exception as exc:
             logger.warning("google_stt_credentials_env_json_invalid error=%s", exc)
-
-    if credentials_path:
-        if not os.path.exists(credentials_path):
-            logger.warning("google_stt_credentials_path_missing path=%s", credentials_path)
-        else:
-            try:
-                credentials = service_account.Credentials.from_service_account_file(
-                    credentials_path
-                )
-                logger.info("google_stt_credentials_source=path path=%s", credentials_path)
-                return speech.SpeechClient(credentials=credentials)
-            except Exception as exc:
-                logger.warning(
-                    "google_stt_client_init_error source=path path=%s error=%s",
-                    credentials_path,
-                    exc,
-                )
+            _emit_google_client_debug(source="json_env", initialized=False, client_email=None, project_id=None)
+    elif credentials_path:
+        logger.warning("google_stt_credentials_path_missing path=%s", credentials_path)
 
     logger.warning("google_stt_credentials_unavailable fallback=openai")
+    _emit_google_client_debug(source="missing", initialized=False, client_email=None, project_id=None)
     return None
 
 
@@ -838,10 +878,19 @@ def demo_page():
 @app.post("/stt_google")
 async def stt_google(file: UploadFile = File(...)):
     audio_bytes = await file.read()
+    _voice_debug_log(
+        "stt_backend_request",
+        audio_bytes=len(audio_bytes or b""),
+        content_type=getattr(file, "content_type", None),
+        google_available=bool(speech_client is not None),
+        openai_available=bool(openai_client is not None),
+    )
     if not audio_bytes:
+        _voice_debug_log("stt_backend_response", status=400, detail="Archivo de audio vacío.")
         raise HTTPException(status_code=400, detail="Archivo de audio vacío.")
 
     if speech_client is not None:
+        _voice_debug_log("provider_attempt", provider="google")
         try:
             audio = speech.RecognitionAudio(content=audio_bytes)
             response = speech_client.recognize(
@@ -853,11 +902,16 @@ async def stt_google(file: UploadFile = File(...)):
             for result in response.results:
                 text += result.alternatives[0].transcript + " "
 
-            return {"text": text.strip()}
+            normalized = text.strip()
+            _voice_debug_log("provider_result", provider="google", ok=True, transcript_len=len(normalized))
+            _voice_debug_log("stt_backend_response", status=200, provider="google", transcript_len=len(normalized))
+            return {"text": normalized}
         except Exception as exc:
+            _voice_debug_log("provider_result", provider="google", ok=False, error_type=type(exc).__name__, error_message=str(exc)[:160])
             logger.warning("google_stt_runtime_error=%s", exc)
 
     if openai_client is not None:
+        _voice_debug_log("provider_attempt", provider="openai")
         try:
             transcription_payload = {
                 "model": OPENAI_STT_MODEL,
@@ -880,10 +934,14 @@ async def stt_google(file: UploadFile = File(...)):
             text = (getattr(transcription, "text", "") or "").strip()
             if not text:
                 raise ValueError("Transcripción vacía")
+            _voice_debug_log("provider_result", provider="openai", ok=True, transcript_len=len(text))
+            _voice_debug_log("stt_backend_response", status=200, provider="openai", transcript_len=len(text))
             return {"text": text}
         except Exception as exc:
+            _voice_debug_log("provider_result", provider="openai", ok=False, error_type=type(exc).__name__, error_message=str(exc)[:160])
             logger.warning("openai_stt_runtime_error=%s", exc)
 
+    _voice_debug_log("stt_backend_response", status=503, detail="No hay proveedor STT disponible (Google/OpenAI).")
     raise HTTPException(
         status_code=503,
         detail="No hay proveedor STT disponible (Google/OpenAI).",
