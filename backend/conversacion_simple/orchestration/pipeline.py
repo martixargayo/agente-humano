@@ -779,6 +779,11 @@ def _resolve_summarizer_prompt(prompts_dir: Path) -> str:
 
 def _brain_fallback(*, user_message: str, fallback_reason_code: str | None) -> BrainOutput:
     _ = user_message
+    logger.info(
+        "conversacion_simple_brain_fallback_emitted reason=%s user_message_len=%s",
+        fallback_reason_code or "unknown_fallback",
+        len(user_message or ""),
+    )
     fallback_text = "No pude completar la generación del turno en este intento. ¿Puedes repetir tu último mensaje?"
     return BrainOutput(
         schema_version="brain.v1",
