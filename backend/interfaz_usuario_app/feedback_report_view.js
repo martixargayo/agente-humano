@@ -121,9 +121,23 @@
         background: #fff;
         box-shadow: 0 16px 28px rgba(16,24,40,0.14);
         padding: 12px;
-        pointer-events: none;
+        pointer-events: auto;
       }
       .fb-turn-tooltip.hidden { display: none; }
+      .fb-tooltip-close {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        border: 0;
+        background: transparent;
+        color: #667085;
+        font-size: 18px;
+        line-height: 1;
+        padding: 0;
+        margin: 0;
+        cursor: pointer;
+      }
+      .fb-tooltip-close:hover { color: #101828; }
       .fb-turn-tooltip h4 { margin: 0 0 8px; font-size: 15px; font-weight: 600; }
       .fb-turn-tooltip p { margin: 6px 0 0; font-size: 14px; line-height: 1.45; color: #475467; }
       .fb-turn-tooltip p strong { color: #101828; font-weight: 600; }
@@ -241,6 +255,7 @@
 
   function tooltipMarkup(turn, previousTurn, options = {}) {
     return `
+      <button class="fb-tooltip-close" type="button" aria-label="Cerrar">×</button>
       <h4>Turno ${Number(turn?.turn_index || 0)}</h4>
       <p><strong>Tú:</strong> ${escapeHtml(turn?.user_excerpt || '')}</p>
       <p><strong>Él:</strong> ${escapeHtml(turn?.counterpart_excerpt || '')}</p>
@@ -315,37 +330,6 @@
       circle.addEventListener('click', (ev) => handlers.onClick(idx, ev));
       svg.appendChild(circle);
     });
-
-    if (Number.isFinite(options.convictionLevel) && values.length > 0) {
-      const lastIdx = values.length - 1;
-      const boxW = 220;
-      const boxH = 34;
-      const anchorX = xFor(lastIdx) + 10;
-      const anchorY = yFor(values[lastIdx]) - boxH - 8;
-      const clampedX = Math.max(pad.left + 2, Math.min(anchorX, width - pad.right - boxW - 2));
-      const clampedY = Math.max(pad.top + 2, Math.min(anchorY, height - pad.bottom - boxH - 4));
-
-      const scoreBadge = document.createElementNS(NS, 'rect');
-      scoreBadge.setAttribute('x', String(clampedX));
-      scoreBadge.setAttribute('y', String(clampedY));
-      scoreBadge.setAttribute('rx', '8');
-      scoreBadge.setAttribute('ry', '8');
-      scoreBadge.setAttribute('width', String(boxW));
-      scoreBadge.setAttribute('height', String(boxH));
-      scoreBadge.setAttribute('fill', '#FFFFFF');
-      scoreBadge.setAttribute('stroke', '#D0D5DD');
-      scoreBadge.setAttribute('stroke-width', '1.2');
-      svg.appendChild(scoreBadge);
-
-      const scoreText = document.createElementNS(NS, 'text');
-      scoreText.setAttribute('x', String(clampedX + 10));
-      scoreText.setAttribute('y', String(clampedY + 22));
-      scoreText.setAttribute('fill', '#101828');
-      scoreText.setAttribute('font-size', '13');
-      scoreText.setAttribute('font-weight', '600');
-      scoreText.textContent = `Nivel de convencimiento: ${Math.round(options.convictionLevel)}/100`;
-      svg.appendChild(scoreText);
-    }
 
     const xStart = document.createElementNS(NS, 'text');
     xStart.setAttribute('x', String(pad.left));
@@ -1132,6 +1116,14 @@
       tooltip.classList.remove('hidden');
       placeTooltip(tooltip, chartShell, event);
     };
+
+    tooltip.addEventListener('click', (ev) => {
+      const closeButton = ev.target instanceof Element ? ev.target.closest('.fb-tooltip-close') : null;
+      if (!closeButton) return;
+      ev.preventDefault();
+      stickyIndex = null;
+      tooltip.classList.add('hidden');
+    });
 
     if (trajectory.length > 0) {
       renderChart(chart, trajectory, {
