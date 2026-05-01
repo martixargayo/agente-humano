@@ -29,6 +29,47 @@ class ApiError extends Error {
 }
 
 const turnPerfEvents = [];
+const VOICE_DEBUG_STORAGE_KEY = 'gce_voice_debug';
+let latestVoiceActionMeta = { source: 'unknown', correlation_id: null };
+let currentVoiceDebugContext = null;
+
+function isVoiceDebugEnabled() {
+  try {
+    const qp = new URLSearchParams(window.location.search || '');
+    if (qp.get('voice_debug') === '1') return true;
+  } catch (_) {}
+  try {
+    return localStorage.getItem(VOICE_DEBUG_STORAGE_KEY) === '1';
+  } catch (_) {
+    return false;
+  }
+}
+
+function sanitizeVoiceDebugPayload(payload) {
+  if (!payload || typeof payload !== 'object') return {};
+  const out = {};
+  for (const [key, value] of Object.entries(payload)) {
+    if (value === null || value === undefined) {
+      out[key] = value;
+    } else if (typeof value === 'number' || typeof value === 'boolean') {
+      out[key] = value;
+    } else if (typeof value === 'string') {
+      out[key] = value.length > 140 ? `${value.slice(0, 140)}…` : value;
+    } else if (Array.isArray(value)) {
+      out[key] = `[array:${value.length}]`;
+    } else {
+      out[key] = '[object]';
+    }
+  }
+  return out;
+}
+
+function voiceDebug(eventName, payload = {}) {
+  if (!isVoiceDebugEnabled()) return;
+  const ts = new Date().toISOString();
+  const voiceTurnId = currentVoiceDebugContext?.voice_turn_id || null;
+  console.info('[voice_debug]', { event: eventName, ts, voice_turn_id: voiceTurnId, ...sanitizeVoiceDebugPayload(payload) });
+}
 
 function recordTurnPerf(event, extra = {}) {
   const ts = performance?.now ? performance.now() : Date.now();
@@ -242,6 +283,7 @@ let audioChunks = [];
 let isRecording = false;
 let recorderMimeType = 'audio/webm;codecs=opus';
 let discardRecording = false;
+let recordingStartedAtMs = null;
 let hasMicPermission = false;
 let waveAudioCtx = null;
 let waveAnalyser = null;
@@ -832,6 +874,7 @@ function runEnterShortcutAction({ shiftKey = false } = {}) {
   }
 
   if (currentInputMode === InputMode.TALK && !ui.finishTurnBtn.disabled) {
+    latestVoiceActionMeta = latestVoiceActionMeta || { source: 'unknown', correlation_id: null };
     void handleFinishTurn();
     return true;
   }
@@ -863,6 +906,7 @@ function handleEmbeddedKeyboardProxy(event) {
   if (seenKeyboardProxyCorrelation.has(correlationId)) return true;
   seenKeyboardProxyCorrelation.set(correlationId, Date.now());
   pruneSeenKeyboardProxyCorrelation();
+  latestVoiceActionMeta = { source: 'keyboard_proxy', correlation_id: correlationId };
 
   return runEnterShortcutAction({ shiftKey: Boolean(payload.shiftKey) });
 }
@@ -1196,6 +1240,7 @@ async function startVoiceCapture() {
 
   mediaRecorder = new MediaRecorder(micStream, { mimeType: recorderMimeType });
   audioChunks = [];
+  recordingStartedAtMs = Date.now();
 
   mediaRecorder.ondataavailable = (event) => {
     if (event?.data && event.data.size > 0) audioChunks.push(event.data);
@@ -1232,6 +1277,7 @@ function stopVoiceCapture() {
       audioChunks = [];
       isRecording = false;
       mediaRecorder = null;
+      recordingStartedAtMs = null;
 
       if (discardRecording) {
         discardRecording = false;
@@ -1257,14 +1303,24 @@ function stopVoiceCapture() {
   });
 }
 
-async function transcribeAudio(blob) {
+async function transcribeAudio(blob, metadata = {}) {
+  voiceDebug('stt_request', { phase: 'stt', blob_size: blob?.size || 0, blob_type: blob?.type || recorderMimeType, recording_duration_ms: metadata?.recording_duration_ms ?? null });
   recordTurnPerf('stt_request_started', { blob_bytes: blob?.size || 0 });
   const audioFile = new File([blob], 'grabacion.webm', { type: recorderMimeType });
   const formData = new FormData();
   formData.append('file', audioFile);
+  if (Number.isFinite(Number(metadata?.recording_duration_ms))) formData.append('recording_duration_ms', String(Math.max(0, Math.trunc(Number(metadata.recording_duration_ms)))));
+  if (typeof metadata?.voice_turn_id === 'string' && metadata.voice_turn_id) formData.append('voice_turn_id', metadata.voice_turn_id);
+  if (typeof metadata?.source === 'string' && metadata.source) formData.append('source', metadata.source);
+  if (typeof metadata?.correlation_id === 'string' && metadata.correlation_id) formData.append('correlation_id', metadata.correlation_id);
   const response = await fetch('/stt_google', { method: 'POST', body: formData });
-  if (!response.ok) throw new Error(await response.text());
+  if (!response.ok) {
+    const body = await response.text();
+    voiceDebug('stt_response', { phase: 'stt', ok: false, status: response.status, response_len: body.length });
+    throw new Error(body);
+  }
   const data = await response.json();
+  voiceDebug('stt_response', { phase: 'stt', ok: true, status: response.status, transcript_len: (data?.text || '').trim().length });
   recordTurnPerf('stt_response_received', { text_len: (data?.text || '').length });
   return (data?.text || '').trim();
 }
@@ -2802,6 +2858,21 @@ async function handleFinishTurn() {
   if (turnInFlight || voiceTurnInFlight || ui.finishTurnBtn.disabled || getActiveSessionBusyState()) return;
   recordTurnPerf('send_clicked', { mode: 'voice' });
   voiceTurnInFlight = true;
+  const actionMeta = latestVoiceActionMeta || { source: 'unknown', correlation_id: null };
+  currentVoiceDebugContext = {
+    voice_turn_id: `voice-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    source: actionMeta.source || 'unknown',
+    correlation_id: actionMeta.correlation_id || null,
+    capture_started_at_ms: Date.now(),
+  };
+  voiceDebug('voice_turn_start', {
+    source: currentVoiceDebugContext.source,
+    correlation_id: currentVoiceDebugContext.correlation_id,
+    currentInputMode,
+    voiceTurnInFlight,
+    turnInFlight,
+    finish_disabled: Boolean(ui.finishTurnBtn.disabled),
+  });
   updateUi();
   setStatusText('Procesando…');
   ui.finishTurnBtn.classList.remove('highlight');
@@ -2810,21 +2881,45 @@ async function handleFinishTurn() {
 
   try {
     recordTurnPerf('voice_capture_stop_requested', {});
+    const captureStartedAtForTurn = recordingStartedAtMs;
     const blob = await stopVoiceCapture();
+    const recordingStoppedAtMs = Date.now();
+    const captureDurationMs = Number.isFinite(Number(captureStartedAtForTurn))
+      ? recordingStoppedAtMs - Number(captureStartedAtForTurn)
+      : recordingStoppedAtMs - (currentVoiceDebugContext?.capture_started_at_ms || recordingStoppedAtMs);
+    voiceDebug('voice_capture_stop_result', {
+      duration_ms: captureDurationMs,
+      blob_exists: Boolean(blob),
+      blob_size: blob?.size || 0,
+      blob_type: blob?.type || recorderMimeType,
+      chunks_count: Array.isArray(audioChunks) ? audioChunks.length : null,
+    });
     recordTurnPerf('voice_capture_blob_ready', { blob_bytes: blob?.size || 0 });
     teardownMic();
-    if (!blob || !blob.size) throw new Error('No se capturó audio.');
-    const text = await transcribeAudio(blob);
+    if (!blob || !blob.size) {
+      voiceDebug('voice_blob_empty', { phase: 'capture', blob_exists: Boolean(blob), blob_size: blob?.size || 0 });
+      throw new Error('No se capturó audio.');
+    }
+    const text = await transcribeAudio(blob, {
+      recording_duration_ms: captureDurationMs,
+      voice_turn_id: currentVoiceDebugContext?.voice_turn_id || null,
+      source: currentVoiceDebugContext?.source || 'unknown',
+      correlation_id: currentVoiceDebugContext?.correlation_id || null,
+    });
     if (!text) throw new Error('Transcripción vacía.');
+    voiceDebug('pipeline_call', { transcript_len: text.length, source: currentVoiceDebugContext?.source || 'unknown' });
     const turnCompleted = await runNegotiationTurnFromText(text, { allowWhileVoiceTurn: true });
+    voiceDebug('pipeline_result', { ok: turnCompleted !== false });
     if (turnCompleted !== false && currentInputMode === InputMode.TALK) {
       setStatusText('Escuchando…');
+      voiceDebug('voice_capture_restart_after_turn', { tts_playing_at_mic_open: false });
       await startVoiceCapture();
       updateUi();
       syncAvatarMode();
     }
   } catch (err) {
     console.error('[voice] Error procesando turno hablado', err);
+    voiceDebug('voice_turn_error', { phase: 'voice_turn', error_class: err?.name || 'Error', error_message: String(err?.message || err || '').slice(0, 160) });
     if (isSessionBusyError(err)) {
       setSessionBusyState(err, { source: 'turn' });
       setStatusText('Sesión ocupada');
@@ -2845,11 +2940,15 @@ async function handleFinishTurn() {
     }
   } finally {
     voiceTurnInFlight = false;
+    voiceDebug('voice_turn_end', { voiceTurnInFlight, turnInFlight });
+    currentVoiceDebugContext = null;
+    latestVoiceActionMeta = { source: 'unknown', correlation_id: null };
     updateUi();
   }
 }
 
 ui.finishTurnBtn.addEventListener('click', () => {
+  latestVoiceActionMeta = { source: 'button', correlation_id: null };
   void handleFinishTurn();
 });
 
@@ -2919,6 +3018,7 @@ window.addEventListener('keydown', (e) => {
   if (e.key !== 'Enter' || e.repeat || e.shiftKey || turnInFlight || voiceTurnInFlight || getActiveSessionBusyState()) return;
   const target = e.target;
   if (target instanceof HTMLTextAreaElement && currentInputMode !== InputMode.WRITE) return;
+  latestVoiceActionMeta = { source: 'local_enter', correlation_id: null };
   const sent = runEnterShortcutAction({ shiftKey: Boolean(e.shiftKey) });
   if (sent) e.preventDefault();
 });

@@ -189,6 +189,10 @@ class StructuredBrainCall:
     provider_request: dict[str, object] | None = None
     provider_response_text: str | None = None
     timings_ms: dict[str, float] | None = None
+    retry_attempted: bool = False
+    retry_succeeded: bool = False
+    retry_reason: str | None = None
+    parse_error_meta: dict[str, object] | None = None
 
 
 _DEFAULT_SUMMARIZER_PROMPT = """Eres un summarizer táctico de contexto conversacional para negociación.
@@ -315,6 +319,29 @@ def _extract_output_text(response: object) -> str | None:
     if isinstance(output, str) and output.strip():
         return output
     return None
+
+
+def _build_json_parse_meta(text: str | None, exc: Exception | None = None) -> dict[str, object]:
+    raw = text or ""
+    stripped = raw.lstrip()
+    first_non_ws_char = stripped[:1] if stripped else ""
+    starts_with_code_fence = stripped.startswith("```")
+    looks_like_json_object = first_non_ws_char == "{"
+    parse_error_pos = None
+    parse_error_msg = None
+    if isinstance(exc, json.JSONDecodeError):
+        parse_error_pos = exc.pos
+        parse_error_msg = f"{exc.msg[:120]}"
+    elif exc is not None:
+        parse_error_msg = type(exc).__name__
+    return {
+        "output_len": len(raw),
+        "first_non_ws_char": first_non_ws_char or None,
+        "starts_with_code_fence": starts_with_code_fence,
+        "looks_like_json_object": looks_like_json_object,
+        "parse_error_pos": parse_error_pos,
+        "parse_error_msg": parse_error_msg,
+    }
 
 
 def _extract_response_id(response: object) -> str | None:
@@ -574,7 +601,80 @@ def _call_brain_structured(
         json_load_started = time.perf_counter()
         payload = json.loads(text)
         timings_ms["json_loads"] = round((time.perf_counter() - json_load_started) * 1000, 3)
-    except Exception:
+    except Exception as parse_exc:
+        parse_meta = _build_json_parse_meta(text, parse_exc)
+        logger.warning(
+            "conversacion_simple_brain_json_parse_error response_id=%s output_len=%s first_non_ws_char=%s starts_with_code_fence=%s looks_like_json_object=%s parse_error_pos=%s",
+            response_id,
+            parse_meta.get("output_len"),
+            parse_meta.get("first_non_ws_char"),
+            parse_meta.get("starts_with_code_fence"),
+            parse_meta.get("looks_like_json_object"),
+            parse_meta.get("parse_error_pos"),
+        )
+        retry_payload = dict(request_payload)
+        retry_input = list(messages)
+        retry_input.append(
+            {
+                "role": "developer",
+                "content": (
+                    "Tu salida previa no fue JSON parseable. "
+                    "Devuelve EXCLUSIVAMENTE un único objeto JSON válido para BrainOutput, "
+                    "sin markdown, sin fences, sin texto adicional."
+                ),
+            }
+        )
+        retry_payload["input"] = retry_input
+        try:
+            retry_started = time.perf_counter()
+            retry_response = client.responses.create(**retry_payload)
+            timings_ms["provider_responses_retry_after_json_parse_error"] = round((time.perf_counter() - retry_started) * 1000, 3)
+            retry_text = _extract_output_text(retry_response)
+            retry_response_id = _extract_response_id(retry_response)
+            if retry_text:
+                retry_json_started = time.perf_counter()
+                retry_payload_json = json.loads(retry_text)
+                timings_ms["json_loads_retry_after_json_parse_error"] = round((time.perf_counter() - retry_json_started) * 1000, 3)
+                logger.info(
+                    "conversacion_simple_brain_retry_succeeded reason=json_parse_error response_id=%s",
+                    retry_response_id,
+                )
+                timings_ms["total"] = round((time.perf_counter() - total_started) * 1000, 3)
+                return StructuredBrainCall(
+                    source="model",
+                    parsed_json=retry_payload_json if isinstance(retry_payload_json, dict) else None,
+                    response=retry_response,
+                    response_id=retry_response_id,
+                    schema_observability=schema_observability,
+                    model_attempted=True,
+                    model_succeeded=isinstance(retry_payload_json, dict),
+                    provider_exception=None,
+                    provider_request=retry_payload,
+                    provider_response_text=None,
+                    timings_ms=timings_ms,
+                    retry_attempted=True,
+                    retry_succeeded=isinstance(retry_payload_json, dict),
+                    retry_reason="json_parse_error",
+                )
+            retry_meta = _build_json_parse_meta(retry_text, None)
+            logger.warning(
+                "conversacion_simple_brain_retry_failed reason=json_parse_error response_id=%s output_len=%s starts_with_code_fence=%s looks_like_json_object=%s",
+                retry_response_id,
+                retry_meta.get("output_len"),
+                retry_meta.get("starts_with_code_fence"),
+                retry_meta.get("looks_like_json_object"),
+            )
+        except Exception as retry_exc:
+            retry_meta = _build_json_parse_meta(locals().get("retry_text"), retry_exc)
+            logger.warning(
+                "conversacion_simple_brain_retry_failed reason=json_parse_error response_id=%s output_len=%s first_non_ws_char=%s starts_with_code_fence=%s looks_like_json_object=%s parse_error_pos=%s",
+                locals().get("retry_response_id"),
+                retry_meta.get("output_len"),
+                retry_meta.get("first_non_ws_char"),
+                retry_meta.get("starts_with_code_fence"),
+                retry_meta.get("looks_like_json_object"),
+                retry_meta.get("parse_error_pos"),
+            )
         return StructuredBrainCall(
             source="fallback",
             parsed_json=None,
@@ -586,8 +686,12 @@ def _call_brain_structured(
             model_succeeded=False,
             provider_exception=None,
             provider_request=request_payload,
-            provider_response_text=text,
+            provider_response_text=None,
             timings_ms=timings_ms,
+            retry_attempted=True,
+            retry_succeeded=False,
+            retry_reason="json_parse_error",
+            parse_error_meta=parse_meta,
         )
     timings_ms["total"] = round((time.perf_counter() - total_started) * 1000, 3)
     return StructuredBrainCall(
@@ -600,7 +704,7 @@ def _call_brain_structured(
         model_succeeded=isinstance(payload, dict),
         provider_exception=None,
         provider_request=request_payload,
-        provider_response_text=text,
+        provider_response_text=None,
         timings_ms=timings_ms,
     )
 
@@ -779,6 +883,11 @@ def _resolve_summarizer_prompt(prompts_dir: Path) -> str:
 
 def _brain_fallback(*, user_message: str, fallback_reason_code: str | None) -> BrainOutput:
     _ = user_message
+    logger.info(
+        "conversacion_simple_brain_fallback_emitted reason=%s user_message_len=%s",
+        fallback_reason_code or "unknown_fallback",
+        len(user_message or ""),
+    )
     fallback_text = "No pude completar la generación del turno en este intento. ¿Puedes repetir tu último mensaje?"
     return BrainOutput(
         schema_version="brain.v1",
@@ -1056,12 +1165,17 @@ def run_conversacion_simple_turn(
     if fallback_reason_code:
         memory_obs["brain_fallback_reason_code"] = fallback_reason_code
         logger.warning(
-            "conversacion_simple_brain_fallback_activated session=%s turn_id=%s fallback_reason_code=%s model_attempted=%s model_succeeded=%s",
+            "conversacion_simple_brain_fallback_activated session=%s turn_id=%s fallback_reason_code=%s model_attempted=%s model_succeeded=%s retry_attempted=%s retry_succeeded=%s retry_reason=%s user_message_len=%s parse_meta=%s",
             state.session_id,
             turn_id,
             fallback_reason_code,
             model_attempted,
             model_succeeded,
+            call.retry_attempted,
+            call.retry_succeeded,
+            call.retry_reason,
+            len(user_message or ""),
+            call.parse_error_meta,
         )
     if call.provider_exception is not None:
         memory_obs["brain_provider_exception"] = dict(call.provider_exception)
