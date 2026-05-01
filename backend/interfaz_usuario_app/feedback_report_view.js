@@ -687,6 +687,19 @@
     clonedRoot.style.width = `${effectiveWidth}px`;
     clonedRoot.style.minHeight = `${effectiveHeight}px`;
     clonedRoot.querySelectorAll('.fb-turn-tooltip').forEach((tooltip) => tooltip.remove());
+    // HTML5 outerHTML omits xmlns on SVG elements; without it the SVG/XML parser inside
+    // foreignObject treats them as XHTML unknowns and renders nothing (blank white area).
+    clonedRoot.querySelectorAll('svg').forEach((svgEl) => {
+      svgEl.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    });
+    // Remove interactive-only cursor from chart circles (static capture only).
+    clonedRoot.querySelectorAll('.fb-chart circle').forEach((el) => {
+      el.style.removeProperty('cursor');
+    });
+    // Strip sandbox-root layout styles (opacity:0, position:fixed, z-index:-1) from the clone.
+    ['opacity', 'position', 'left', 'top', 'z-index', 'pointer-events'].forEach((prop) => {
+      clonedRoot.style.removeProperty(prop);
+    });
 
     const svgMarkup = buildDomCaptureSvgMarkup(clonedRoot, effectiveWidth, effectiveHeight);
     const validation = validateSvgMarkup(svgMarkup);
