@@ -160,3 +160,18 @@ Backend STT (apagado por defecto):
 - Pipeline fallback: STT 200 + log `conversacion_simple_brain_fallback_emitted`.
 - Posible TTS echo: transcript_len alto/inesperado en turnos sin habla real y patrón dependiente de altavoz.
 - Doble envío: más de un `stt_request` para mismo `voice_turn_id` (o dos `voice_turn_start` casi simultáneos por una única interacción).
+
+## 11) Configuración STT recomendada (Railway/local)
+
+- Variable recomendada explícita: `GOOGLE_STT_SAMPLE_RATE_HERTZ=48000`.
+- Para audio de navegador `audio/webm;codecs=opus` (WEBM_OPUS), el backend debe resolver sample rate válido y **nunca** enviar `sample_rate_hertz=0`.
+- Compatibilidad mantenida para nombres heredados:
+  - `GOOGLE_STT_SAMPLE_RATE_HERTZ`
+  - `GOOGLE_STT_SAMPLE_RATE`
+  - `SAMPLE_RATE`
+- Si no hay sample rate válido y encoding es Opus (`WEBM_OPUS` / `OGG_OPUS`), se usa fallback seguro `48000`.
+- Si el encoding no es Opus y no hay sample rate válido, el campo se omite.
+
+### Bug histórico resuelto
+- Causa raíz observada: Google STT runtime error por `sample_rate_hertz=0` con Opus.
+- Mitigación: parseo seguro + fallback Opus 48000 + omisión en no-Opus cuando aplica.

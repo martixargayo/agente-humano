@@ -362,12 +362,62 @@ GOOGLE_STT_PUNCT = os.getenv("GOOGLE_STT_PUNCTUATION", "true").lower() == "true"
 GOOGLE_STT_ENCODING = os.getenv("GOOGLE_STT_ENCODING", "WEBM_OPUS")
 OPENAI_STT_MODEL = os.getenv("OPENAI_STT_MODEL", "gpt-4o-mini-transcribe")
 
-stt_config = speech.RecognitionConfig(
-    language_code=GOOGLE_STT_LANGUAGE,
-    enable_automatic_punctuation=GOOGLE_STT_PUNCT,
-    model=GOOGLE_STT_MODEL,
-    encoding=getattr(speech.RecognitionConfig.AudioEncoding, GOOGLE_STT_ENCODING),
-)
+def _parse_positive_int_env(*names: str) -> int | None:
+    for name in names:
+        raw = os.getenv(name, "").strip()
+        if not raw:
+            continue
+        try:
+            value = int(raw)
+        except ValueError:
+            logger.warning("google_stt_sample_rate_invalid name=%s", name)
+            continue
+        if value <= 0:
+            logger.warning("google_stt_sample_rate_non_positive name=%s", name)
+            continue
+        return value
+    return None
+
+
+def _resolve_stt_sample_rate_hertz(encoding_name: str) -> tuple[int | None, str]:
+    resolved_env = _parse_positive_int_env(
+        "GOOGLE_STT_SAMPLE_RATE_HERTZ",
+        "GOOGLE_STT_SAMPLE_RATE",
+        "SAMPLE_RATE",
+    )
+    if resolved_env is not None:
+        return resolved_env, "env"
+    normalized = (encoding_name or "").upper()
+    if normalized in {"WEBM_OPUS", "OGG_OPUS"}:
+        return 48000, "default_opus_48000"
+    return None, "omitted"
+
+
+def _build_stt_config() -> speech.RecognitionConfig:
+    encoding_name = (GOOGLE_STT_ENCODING or "WEBM_OPUS").upper()
+    encoding_value = getattr(speech.RecognitionConfig.AudioEncoding, encoding_name)
+    sample_rate_hz, sample_rate_source = _resolve_stt_sample_rate_hertz(encoding_name)
+    _voice_debug_log(
+        "google_stt_runtime_config",
+        google_stt_encoding=encoding_name,
+        google_stt_sample_rate_hertz=sample_rate_hz,
+        google_stt_sample_rate_source=sample_rate_source,
+        language_code=GOOGLE_STT_LANGUAGE,
+        model=GOOGLE_STT_MODEL,
+        punctuation=GOOGLE_STT_PUNCT,
+    )
+    kwargs: dict[str, Any] = {
+        "language_code": GOOGLE_STT_LANGUAGE,
+        "enable_automatic_punctuation": GOOGLE_STT_PUNCT,
+        "model": GOOGLE_STT_MODEL,
+        "encoding": encoding_value,
+    }
+    if sample_rate_hz is not None:
+        kwargs["sample_rate_hertz"] = sample_rate_hz
+    return speech.RecognitionConfig(**kwargs)
+
+
+stt_config = _build_stt_config()
 
 
 def _guess_transcription_filename(upload: UploadFile) -> str:

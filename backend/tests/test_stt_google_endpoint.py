@@ -168,3 +168,68 @@ def test_voice_debug_backend_on_stt_empty_audio_logs_status_400(monkeypatch, cap
     joined = " ".join(record.getMessage() for record in caplog.records)
     assert "stt_backend_request" in joined
     assert "status': 400" in joined or "status=400" in joined
+
+
+def test_stt_config_webm_opus_without_env_uses_48000(monkeypatch) -> None:
+    monkeypatch.delenv("GOOGLE_STT_SAMPLE_RATE_HERTZ", raising=False)
+    monkeypatch.delenv("GOOGLE_STT_SAMPLE_RATE", raising=False)
+    monkeypatch.delenv("SAMPLE_RATE", raising=False)
+    sample, source = api_app_module._resolve_stt_sample_rate_hertz("WEBM_OPUS")
+    assert sample == 48000
+    assert source == "default_opus_48000"
+
+
+def test_stt_config_webm_opus_with_env_uses_env_value(monkeypatch) -> None:
+    monkeypatch.setenv("GOOGLE_STT_SAMPLE_RATE_HERTZ", "16000")
+    sample, source = api_app_module._resolve_stt_sample_rate_hertz("WEBM_OPUS")
+    assert sample == 16000
+    assert source == "env"
+
+
+def test_stt_config_webm_opus_zero_falls_back_to_48000(monkeypatch) -> None:
+    monkeypatch.setenv("GOOGLE_STT_SAMPLE_RATE_HERTZ", "0")
+    sample, source = api_app_module._resolve_stt_sample_rate_hertz("WEBM_OPUS")
+    assert sample == 48000
+    assert source == "default_opus_48000"
+
+
+def test_stt_config_webm_opus_invalid_falls_back_to_48000(monkeypatch) -> None:
+    monkeypatch.setenv("GOOGLE_STT_SAMPLE_RATE_HERTZ", "abc")
+    sample, source = api_app_module._resolve_stt_sample_rate_hertz("WEBM_OPUS")
+    assert sample == 48000
+    assert source == "default_opus_48000"
+
+
+def test_stt_config_non_opus_omits_sample_rate_when_absent(monkeypatch) -> None:
+    monkeypatch.delenv("GOOGLE_STT_SAMPLE_RATE_HERTZ", raising=False)
+    monkeypatch.delenv("GOOGLE_STT_SAMPLE_RATE", raising=False)
+    monkeypatch.delenv("SAMPLE_RATE", raising=False)
+    sample, source = api_app_module._resolve_stt_sample_rate_hertz("LINEAR16")
+    assert sample is None
+    assert source == "omitted"
+
+
+def test_stt_google_google_call_never_receives_sample_rate_zero(monkeypatch) -> None:
+    class FakeGoogleResponse:
+        results = []
+
+    captured = {}
+
+    class FakeGoogleClient:
+        def recognize(self, **kwargs):
+            captured["config"] = kwargs.get("config")
+            return FakeGoogleResponse()
+
+    monkeypatch.setattr(api_app_module, "speech_client", FakeGoogleClient())
+    monkeypatch.setattr(api_app_module, "openai_client", None)
+    monkeypatch.setattr(api_app_module, "stt_config", api_app_module.speech.RecognitionConfig(
+        language_code="es-ES",
+        enable_automatic_punctuation=True,
+        model="latest_short",
+        encoding=getattr(api_app_module.speech.RecognitionConfig.AudioEncoding, "WEBM_OPUS"),
+        sample_rate_hertz=48000,
+    ))
+
+    response = _post_audio(payload=b"audio")
+    assert response.status_code == 200
+    assert captured["config"].sample_rate_hertz != 0
