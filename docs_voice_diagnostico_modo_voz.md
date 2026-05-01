@@ -126,3 +126,37 @@ Backend STT (apagado por defecto):
 - No se loguea texto completo transcrito.
 - No se loguean mensajes completos de usuario/agente.
 - Se registran únicamente metadatos (sizes, status, longitudes y estados).
+
+## 10) Cómo validar que la observabilidad funciona
+
+### Frontend
+1. Abrir consola del iframe.
+2. Ejecutar: `localStorage.setItem('gce_voice_debug', '1')`.
+3. Recargar iframe.
+4. Realizar un turno de voz.
+5. Verificar secuencia mínima:
+   - `voice_turn_start`
+   - `voice_capture_stop_result`
+   - `stt_request`
+   - `stt_response`
+   - `pipeline_call`
+   - `pipeline_result`
+   - `voice_turn_end`
+
+### Backend (Railway)
+1. Definir variable: `GCE_VOICE_DEBUG=1`.
+2. Reiniciar/redeploy.
+3. Realizar un turno de voz.
+4. Verificar eventos:
+   - `google_client_init`
+   - `stt_backend_request`
+   - `provider_attempt`
+   - `provider_result`
+   - `stt_backend_response`
+
+### Ejemplos interpretables
+- Turno normal: `stt_response ok=true` + `pipeline_result ok=true`.
+- STT 503: `stt_backend_response status=503` y `provider_result ... ok=false` para ambos.
+- Pipeline fallback: STT 200 + log `conversacion_simple_brain_fallback_emitted`.
+- Posible TTS echo: transcript_len alto/inesperado en turnos sin habla real y patrón dependiente de altavoz.
+- Doble envío: más de un `stt_request` para mismo `voice_turn_id` (o dos `voice_turn_start` casi simultáneos por una única interacción).

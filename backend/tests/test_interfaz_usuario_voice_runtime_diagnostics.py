@@ -211,3 +211,54 @@ def test_handle_finish_turn_double_call_results_in_single_stt_attempt() -> None:
     out = _run_node(script).strip().splitlines()[-1]
     data = json.loads(out)
     assert data["transcribeCalls"] == 1
+
+
+def test_voice_turn_reconstruction_sequence_with_single_voice_turn_id() -> None:
+    src = APP_JS.read_text(encoding="utf-8")
+    fn_block = _extract_handle_finish_block(src)
+    script = textwrap.dedent(
+        f"""
+        const src = {json.dumps(fn_block)};
+        globalThis.InputMode = {{ TALK: 'talk', WRITE: 'write' }};
+        globalThis.currentInputMode = InputMode.TALK;
+        globalThis.turnInFlight = false;
+        globalThis.voiceTurnInFlight = false;
+        globalThis.ui = {{
+          finishTurnBtn: {{ disabled: false, classList: {{ remove(){{}}, add(){{}} }}, offsetWidth: 0 }},
+          statusText: {{ textContent: '' }},
+        }};
+        globalThis.recordTurnPerf = () => {{}};
+        globalThis.updateUi = () => {{}};
+        globalThis.setStatusText = () => {{}};
+        globalThis.getActiveSessionBusyState = () => null;
+        globalThis.isSessionBusyError = () => false;
+        globalThis.teardownMic = () => {{}};
+        globalThis.syncAvatarMode = () => {{}};
+        globalThis.startVoiceCapture = async () => {{}};
+        globalThis.stopVoiceCapture = async () => new Blob(['audio'], {{ type: 'audio/webm' }});
+        globalThis.runNegotiationTurnFromText = async () => true;
+        globalThis.transcribeAudio = async () => 'texto transcrito';
+        globalThis.latestVoiceActionMeta = {{ source: 'button', correlation_id: null }};
+        globalThis.currentVoiceDebugContext = null;
+        globalThis.audioChunks = [];
+        globalThis.recorderMimeType = 'audio/webm';
+        const events = [];
+        globalThis.voiceDebug = (event, payload) => {{
+          events.push({{ event, voice_turn_id: currentVoiceDebugContext?.voice_turn_id || null, payload }});
+        }};
+        eval(src);
+        handleFinishTurn().then(() => {{
+          const seq = events.map((e) => e.event);
+          const ids = [...new Set(events.map((e) => e.voice_turn_id).filter(Boolean))];
+          console.log(JSON.stringify({{ seq, ids_len: ids.length }}));
+        }});
+        """
+    )
+    out = _run_node(script).strip().splitlines()[-1]
+    data = json.loads(out)
+    assert "voice_turn_start" in data["seq"]
+    assert "voice_capture_stop_result" in data["seq"]
+    assert "pipeline_call" in data["seq"]
+    assert "pipeline_result" in data["seq"]
+    assert "voice_turn_end" in data["seq"]
+    assert data["ids_len"] == 1

@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+import logging
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -147,3 +148,23 @@ def test_build_speech_client_invalid_json_does_not_crash_and_does_not_log_privat
     joined = " ".join(record.getMessage() for record in caplog.records)
     assert "private_key" not in joined
     assert "SUPER_SECRET" not in joined
+
+
+def test_voice_debug_backend_off_emits_no_debug_logs(monkeypatch, caplog) -> None:
+    monkeypatch.setattr(api_app_module, "VOICE_DEBUG_BACKEND", False)
+    caplog.set_level(logging.INFO)
+    api_app_module._voice_debug_log("test_event", sample=1)
+    joined = " ".join(record.getMessage() for record in caplog.records)
+    assert "voice_debug_backend" not in joined
+
+
+def test_voice_debug_backend_on_stt_empty_audio_logs_status_400(monkeypatch, caplog) -> None:
+    monkeypatch.setattr(api_app_module, "VOICE_DEBUG_BACKEND", True)
+    monkeypatch.setattr(api_app_module, "speech_client", None)
+    monkeypatch.setattr(api_app_module, "openai_client", None)
+    caplog.set_level(logging.INFO)
+    response = _post_audio(payload=b"")
+    assert response.status_code == 400
+    joined = " ".join(record.getMessage() for record in caplog.records)
+    assert "stt_backend_request" in joined
+    assert "status': 400" in joined or "status=400" in joined
