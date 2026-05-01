@@ -13,7 +13,7 @@ from pathlib import Path
 # cargar variables del .env (en backend/.env)
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Response
+from fastapi import FastAPI, HTTPException, UploadFile, File, Response, Form
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
@@ -926,7 +926,28 @@ def demo_page():
     """
 
 @app.post("/stt_google")
-async def stt_google(file: UploadFile = File(...)):
+async def stt_google(
+    file: UploadFile = File(...),
+    recording_duration_ms: str | None = Form(default=None),
+    voice_turn_id: str | None = Form(default=None),
+    source: str | None = Form(default=None),
+    correlation_id: str | None = Form(default=None),
+):
+    def _parse_positive_int(raw: str | None) -> int | None:
+        if raw is None:
+            return None
+        value = str(raw).strip()
+        if not value:
+            return None
+        try:
+            parsed = int(value)
+        except ValueError:
+            return None
+        return parsed if parsed > 0 else None
+
+    google_sync_max_duration_ms = _parse_positive_int(os.getenv("GOOGLE_STT_SYNC_MAX_DURATION_MS", "55000")) or 55_000
+    voice_max_duration_ms = _parse_positive_int(os.getenv("VOICE_MAX_DURATION_MS", "120000")) or 120_000
+    duration_ms = _parse_positive_int(recording_duration_ms)
     audio_bytes = await file.read()
     _voice_debug_log(
         "stt_backend_request",
@@ -934,13 +955,30 @@ async def stt_google(file: UploadFile = File(...)):
         content_type=getattr(file, "content_type", None),
         google_available=bool(speech_client is not None),
         openai_available=bool(openai_client is not None),
+        recording_duration_ms=duration_ms,
+        voice_turn_id=voice_turn_id,
+        source=source,
+        correlation_id=correlation_id,
+        google_sync_max_duration_ms=google_sync_max_duration_ms,
+        voice_max_duration_ms=voice_max_duration_ms,
     )
     if not audio_bytes:
         _voice_debug_log("stt_backend_response", status=400, detail="Archivo de audio vacío.")
         raise HTTPException(status_code=400, detail="Archivo de audio vacío.")
 
-    if speech_client is not None:
-        _voice_debug_log("provider_attempt", provider="google")
+    if duration_ms is not None and duration_ms > voice_max_duration_ms:
+        _voice_debug_log("stt_backend_response", status=400, stt_mode="rejected_too_long", recording_duration_ms=duration_ms)
+        raise HTTPException(status_code=400, detail="Audio demasiado largo. Divide tu intervención en turnos más cortos.")
+
+    use_openai_direct_for_long_audio = (
+        duration_ms is not None
+        and duration_ms > google_sync_max_duration_ms
+        and duration_ms <= voice_max_duration_ms
+    )
+    stt_mode = "legacy_no_duration" if duration_ms is None else "google_sync"
+
+    if speech_client is not None and not use_openai_direct_for_long_audio:
+        _voice_debug_log("provider_attempt", provider="google", stt_mode=stt_mode)
         try:
             audio = speech.RecognitionAudio(content=audio_bytes)
             response = speech_client.recognize(
@@ -953,15 +991,18 @@ async def stt_google(file: UploadFile = File(...)):
                 text += result.alternatives[0].transcript + " "
 
             normalized = text.strip()
-            _voice_debug_log("provider_result", provider="google", ok=True, transcript_len=len(normalized))
-            _voice_debug_log("stt_backend_response", status=200, provider="google", transcript_len=len(normalized))
+            _voice_debug_log("provider_result", provider="google", ok=True, transcript_len=len(normalized), stt_mode=stt_mode)
+            _voice_debug_log("stt_backend_response", status=200, provider="google", transcript_len=len(normalized), stt_mode="google_sync")
             return {"text": normalized}
         except Exception as exc:
-            _voice_debug_log("provider_result", provider="google", ok=False, error_type=type(exc).__name__, error_message=str(exc)[:160])
+            _voice_debug_log("provider_result", provider="google", ok=False, error_type=type(exc).__name__, error_message=str(exc)[:160], stt_mode=stt_mode)
             logger.warning("google_stt_runtime_error=%s", exc)
+            stt_mode = "google_sync_then_openai_fallback"
+    elif use_openai_direct_for_long_audio:
+        stt_mode = "openai_direct_long_audio"
 
     if openai_client is not None:
-        _voice_debug_log("provider_attempt", provider="openai")
+        _voice_debug_log("provider_attempt", provider="openai", stt_mode=stt_mode)
         try:
             transcription_payload = {
                 "model": OPENAI_STT_MODEL,
@@ -984,14 +1025,14 @@ async def stt_google(file: UploadFile = File(...)):
             text = (getattr(transcription, "text", "") or "").strip()
             if not text:
                 raise ValueError("Transcripción vacía")
-            _voice_debug_log("provider_result", provider="openai", ok=True, transcript_len=len(text))
-            _voice_debug_log("stt_backend_response", status=200, provider="openai", transcript_len=len(text))
+            _voice_debug_log("provider_result", provider="openai", ok=True, transcript_len=len(text), stt_mode=stt_mode)
+            _voice_debug_log("stt_backend_response", status=200, provider="openai", transcript_len=len(text), stt_mode=stt_mode)
             return {"text": text}
         except Exception as exc:
-            _voice_debug_log("provider_result", provider="openai", ok=False, error_type=type(exc).__name__, error_message=str(exc)[:160])
+            _voice_debug_log("provider_result", provider="openai", ok=False, error_type=type(exc).__name__, error_message=str(exc)[:160], stt_mode=stt_mode)
             logger.warning("openai_stt_runtime_error=%s", exc)
 
-    _voice_debug_log("stt_backend_response", status=503, detail="No hay proveedor STT disponible (Google/OpenAI).")
+    _voice_debug_log("stt_backend_response", status=503, detail="No hay proveedor STT disponible (Google/OpenAI).", stt_mode=stt_mode)
     raise HTTPException(
         status_code=503,
         detail="No hay proveedor STT disponible (Google/OpenAI).",

@@ -17,9 +17,10 @@ from api import app as api_app_module
 client = TestClient(api_app_module.app)
 
 
-def _post_audio(payload: bytes = b"audio"):
+def _post_audio(payload: bytes = b"audio", data: dict[str, str] | None = None):
     return client.post(
         "/stt_google",
+        data=data or {},
         files={"file": ("audio.webm", io.BytesIO(payload), "audio/webm")},
     )
 
@@ -233,3 +234,92 @@ def test_stt_google_google_call_never_receives_sample_rate_zero(monkeypatch) -> 
     response = _post_audio(payload=b"audio")
     assert response.status_code == 200
     assert captured["config"].sample_rate_hertz != 0
+
+
+def test_stt_google_duration_absent_keeps_google_first(monkeypatch) -> None:
+    calls: list[str] = []
+
+    class FakeGoogle:
+        def recognize(self, **kwargs):
+            calls.append("google")
+            class R:
+                results = []
+            return R()
+
+    monkeypatch.setattr(api_app_module, "speech_client", FakeGoogle())
+    monkeypatch.setattr(api_app_module, "openai_client", None)
+    response = _post_audio(payload=b"audio")
+    assert response.status_code == 200
+    assert calls == ["google"]
+
+
+def test_stt_google_duration_short_keeps_google_first(monkeypatch) -> None:
+    calls: list[str] = []
+
+    class FakeGoogle:
+        def recognize(self, **kwargs):
+            calls.append("google")
+            class R:
+                results = []
+            return R()
+
+    monkeypatch.setattr(api_app_module, "speech_client", FakeGoogle())
+    monkeypatch.setattr(api_app_module, "openai_client", None)
+    response = _post_audio(payload=b"audio", data={"recording_duration_ms": "5000"})
+    assert response.status_code == 200
+    assert calls == ["google"]
+
+
+def test_stt_google_duration_long_routes_openai_direct(monkeypatch) -> None:
+    calls: list[str] = []
+
+    class FakeGoogle:
+        def recognize(self, **kwargs):
+            calls.append("google")
+            raise RuntimeError("should not be called")
+
+    class T:
+        text = "ok from openai"
+
+    class AudioTrans:
+        @staticmethod
+        def create(**kwargs):
+            calls.append("openai")
+            return T()
+
+    class Audio:
+        transcriptions = AudioTrans()
+
+    class OpenAIClient:
+        audio = Audio()
+
+    monkeypatch.setattr(api_app_module, "speech_client", FakeGoogle())
+    monkeypatch.setattr(api_app_module, "openai_client", OpenAIClient())
+    response = _post_audio(payload=b"audio", data={"recording_duration_ms": "70000"})
+    assert response.status_code == 200
+    assert calls == ["openai"]
+
+
+def test_stt_google_duration_too_long_rejected(monkeypatch) -> None:
+    monkeypatch.setattr(api_app_module, "speech_client", None)
+    monkeypatch.setattr(api_app_module, "openai_client", None)
+    response = _post_audio(payload=b"audio", data={"recording_duration_ms": "130000"})
+    assert response.status_code == 400
+    assert "Audio demasiado largo" in response.json()["detail"]
+
+
+def test_stt_google_duration_invalid_is_compatible(monkeypatch) -> None:
+    calls: list[str] = []
+
+    class FakeGoogle:
+        def recognize(self, **kwargs):
+            calls.append("google")
+            class R:
+                results = []
+            return R()
+
+    monkeypatch.setattr(api_app_module, "speech_client", FakeGoogle())
+    monkeypatch.setattr(api_app_module, "openai_client", None)
+    response = _post_audio(payload=b"audio", data={"recording_duration_ms": "bad"})
+    assert response.status_code == 200
+    assert calls == ["google"]

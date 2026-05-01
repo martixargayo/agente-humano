@@ -175,3 +175,30 @@ Backend STT (apagado por defecto):
 ### Bug histórico resuelto
 - Causa raíz observada: Google STT runtime error por `sample_rate_hertz=0` con Opus.
 - Mitigación: parseo seguro + fallback Opus 48000 + omisión en no-Opus cuando aplica.
+
+## 12) Mitigación inicial de json_parse_error (brain)
+
+- Se plantea (y valida por tests) un retry único cuando el primer intento de brain falla en `json_parse_error`.
+- El retry mantiene `text.format=json_schema` `strict=true` y añade instrucción de reparación: devolver solo objeto JSON sin markdown/fences/texto extra.
+- Si el retry funciona: no hay fallback.
+- Si el retry falla: se mantiene fallback actual (`_brain_fallback`) con `fallback_reason_code=json_parse_error`.
+- Observabilidad segura: se registran solo metadatos (`output_len`, `first_non_ws_char`, `starts_with_code_fence`, `looks_like_json_object`, `parse_error_pos`, `retry_attempted`, `retry_succeeded`) sin contenido completo.
+
+## 13) Primer PR para audio largo (sin split)
+
+Routing por duración (`recording_duration_ms`):
+- `recording_duration_ms` ausente o <= `GOOGLE_STT_SYNC_MAX_DURATION_MS`: Google sync primero, fallback OpenAI.
+- `GOOGLE_STT_SYNC_MAX_DURATION_MS < recording_duration_ms <= VOICE_MAX_DURATION_MS`: OpenAI STT directo (se salta Google sync).
+- `recording_duration_ms > VOICE_MAX_DURATION_MS`: rechazo controlado (`Audio demasiado largo...`).
+
+Variables recomendadas en Railway:
+- `GOOGLE_STT_SYNC_MAX_DURATION_MS=55000`
+- `VOICE_MAX_DURATION_MS=120000`
+
+`stt_mode` esperado en logs debug:
+- `google_sync`
+- `google_sync_then_openai_fallback`
+- `openai_direct_long_audio`
+- `rejected_too_long`
+
+Nota: split 60+60 queda como hardening posterior.

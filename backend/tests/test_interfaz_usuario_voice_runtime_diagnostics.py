@@ -10,7 +10,7 @@ APP_JS = Path("backend/interfaz_usuario_app/app.js")
 
 
 def _extract_transcribe_block(src: str) -> str:
-    start = src.index("async function transcribeAudio(blob)")
+    start = src.index("async function transcribeAudio(blob, metadata = {})")
     end = src.index("async function playTtsWithAvatar(replyText)", start)
     return src[start:end]
 
@@ -35,6 +35,7 @@ def test_transcribe_audio_error_and_success_matrix() -> None:
         f"""
         const src = {json.dumps(fn_block)};
         globalThis.recorderMimeType = 'audio/webm';
+        globalThis.recordingStartedAtMs = Date.now();
         globalThis.recordTurnPerf = () => {{}};
         globalThis.voiceDebug = () => {{}};
         eval(src);
@@ -82,6 +83,42 @@ def test_transcribe_audio_error_and_success_matrix() -> None:
     assert data["okText"] == "hola mundo"
 
 
+def test_transcribe_audio_sends_recording_duration_and_metadata() -> None:
+    src = APP_JS.read_text(encoding="utf-8")
+    fn_block = _extract_transcribe_block(src)
+    script = textwrap.dedent(
+        f"""
+        const src = {json.dumps(fn_block)};
+        globalThis.recorderMimeType = 'audio/webm';
+        globalThis.recordingStartedAtMs = Date.now();
+        globalThis.recordTurnPerf = () => {{}};
+        globalThis.voiceDebug = () => {{}};
+        eval(src);
+        async function run() {{
+          const blob = new Blob(['abc'], {{ type: 'audio/webm' }});
+          let captured = {{}};
+          globalThis.fetch = async (_url, options) => {{
+            const fd = options.body;
+            captured.recording_duration_ms = fd.get('recording_duration_ms');
+            captured.voice_turn_id = fd.get('voice_turn_id');
+            captured.source = fd.get('source');
+            captured.correlation_id = fd.get('correlation_id');
+            return {{ ok: true, status: 200, json: async () => ({{ text: 'ok' }}) }};
+          }};
+          await transcribeAudio(blob, {{ recording_duration_ms: 1234, voice_turn_id: 'voice-1', source: 'button', correlation_id: 'abc' }});
+          console.log(JSON.stringify(captured));
+        }}
+        run();
+        """
+    )
+    out = _run_node(script).strip().splitlines()[-1]
+    data = json.loads(out)
+    assert data["recording_duration_ms"] == "1234"
+    assert data["voice_turn_id"] == "voice-1"
+    assert data["source"] == "button"
+    assert data["correlation_id"] == "abc"
+
+
 def test_handle_finish_turn_releases_inflight_and_retries_after_error() -> None:
     src = APP_JS.read_text(encoding="utf-8")
     fn_block = _extract_handle_finish_block(src)
@@ -108,6 +145,7 @@ def test_handle_finish_turn_releases_inflight_and_retries_after_error() -> None:
         globalThis.runNegotiationTurnFromText = async () => true;
         globalThis.audioChunks = [];
         globalThis.recorderMimeType = 'audio/webm';
+        globalThis.recordingStartedAtMs = Date.now();
         globalThis.latestVoiceActionMeta = {{ source: 'unknown', correlation_id: null }};
         globalThis.currentVoiceDebugContext = null;
         globalThis.voiceDebug = () => {{}};
@@ -186,6 +224,7 @@ def test_handle_finish_turn_double_call_results_in_single_stt_attempt() -> None:
         globalThis.runNegotiationTurnFromText = async () => true;
         globalThis.audioChunks = [];
         globalThis.recorderMimeType = 'audio/webm';
+        globalThis.recordingStartedAtMs = Date.now();
         globalThis.latestVoiceActionMeta = {{ source: 'unknown', correlation_id: null }};
         globalThis.currentVoiceDebugContext = null;
         globalThis.voiceDebug = () => {{}};
@@ -242,6 +281,7 @@ def test_voice_turn_reconstruction_sequence_with_single_voice_turn_id() -> None:
         globalThis.currentVoiceDebugContext = null;
         globalThis.audioChunks = [];
         globalThis.recorderMimeType = 'audio/webm';
+        globalThis.recordingStartedAtMs = Date.now();
         const events = [];
         globalThis.voiceDebug = (event, payload) => {{
           events.push({{ event, voice_turn_id: currentVoiceDebugContext?.voice_turn_id || null, payload }});

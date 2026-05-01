@@ -283,6 +283,7 @@ let audioChunks = [];
 let isRecording = false;
 let recorderMimeType = 'audio/webm;codecs=opus';
 let discardRecording = false;
+let recordingStartedAtMs = null;
 let hasMicPermission = false;
 let waveAudioCtx = null;
 let waveAnalyser = null;
@@ -1239,6 +1240,7 @@ async function startVoiceCapture() {
 
   mediaRecorder = new MediaRecorder(micStream, { mimeType: recorderMimeType });
   audioChunks = [];
+  recordingStartedAtMs = Date.now();
 
   mediaRecorder.ondataavailable = (event) => {
     if (event?.data && event.data.size > 0) audioChunks.push(event.data);
@@ -1275,6 +1277,7 @@ function stopVoiceCapture() {
       audioChunks = [];
       isRecording = false;
       mediaRecorder = null;
+      recordingStartedAtMs = null;
 
       if (discardRecording) {
         discardRecording = false;
@@ -1300,12 +1303,16 @@ function stopVoiceCapture() {
   });
 }
 
-async function transcribeAudio(blob) {
-  voiceDebug('stt_request', { phase: 'stt', blob_size: blob?.size || 0, blob_type: blob?.type || recorderMimeType });
+async function transcribeAudio(blob, metadata = {}) {
+  voiceDebug('stt_request', { phase: 'stt', blob_size: blob?.size || 0, blob_type: blob?.type || recorderMimeType, recording_duration_ms: metadata?.recording_duration_ms ?? null });
   recordTurnPerf('stt_request_started', { blob_bytes: blob?.size || 0 });
   const audioFile = new File([blob], 'grabacion.webm', { type: recorderMimeType });
   const formData = new FormData();
   formData.append('file', audioFile);
+  if (Number.isFinite(Number(metadata?.recording_duration_ms))) formData.append('recording_duration_ms', String(Math.max(0, Math.trunc(Number(metadata.recording_duration_ms)))));
+  if (typeof metadata?.voice_turn_id === 'string' && metadata.voice_turn_id) formData.append('voice_turn_id', metadata.voice_turn_id);
+  if (typeof metadata?.source === 'string' && metadata.source) formData.append('source', metadata.source);
+  if (typeof metadata?.correlation_id === 'string' && metadata.correlation_id) formData.append('correlation_id', metadata.correlation_id);
   const response = await fetch('/stt_google', { method: 'POST', body: formData });
   if (!response.ok) {
     const body = await response.text();
@@ -2874,8 +2881,12 @@ async function handleFinishTurn() {
 
   try {
     recordTurnPerf('voice_capture_stop_requested', {});
+    const captureStartedAtForTurn = recordingStartedAtMs;
     const blob = await stopVoiceCapture();
-    const captureDurationMs = Date.now() - (currentVoiceDebugContext?.capture_started_at_ms || Date.now());
+    const recordingStoppedAtMs = Date.now();
+    const captureDurationMs = Number.isFinite(Number(captureStartedAtForTurn))
+      ? recordingStoppedAtMs - Number(captureStartedAtForTurn)
+      : recordingStoppedAtMs - (currentVoiceDebugContext?.capture_started_at_ms || recordingStoppedAtMs);
     voiceDebug('voice_capture_stop_result', {
       duration_ms: captureDurationMs,
       blob_exists: Boolean(blob),
@@ -2889,7 +2900,12 @@ async function handleFinishTurn() {
       voiceDebug('voice_blob_empty', { phase: 'capture', blob_exists: Boolean(blob), blob_size: blob?.size || 0 });
       throw new Error('No se capturó audio.');
     }
-    const text = await transcribeAudio(blob);
+    const text = await transcribeAudio(blob, {
+      recording_duration_ms: captureDurationMs,
+      voice_turn_id: currentVoiceDebugContext?.voice_turn_id || null,
+      source: currentVoiceDebugContext?.source || 'unknown',
+      correlation_id: currentVoiceDebugContext?.correlation_id || null,
+    });
     if (!text) throw new Error('Transcripción vacía.');
     voiceDebug('pipeline_call', { transcript_len: text.length, source: currentVoiceDebugContext?.source || 'unknown' });
     const turnCompleted = await runNegotiationTurnFromText(text, { allowWhileVoiceTurn: true });
