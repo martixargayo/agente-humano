@@ -1317,7 +1317,14 @@ async function transcribeAudio(blob, metadata = {}) {
   if (!response.ok) {
     const body = await response.text();
     voiceDebug('stt_response', { phase: 'stt', ok: false, status: response.status, response_len: body.length });
-    throw new Error(body);
+    let message = body;
+    try {
+      const parsed = JSON.parse(body);
+      if (typeof parsed?.detail === 'string' && parsed.detail.trim()) message = parsed.detail.trim();
+    } catch (_) {
+      // Keep the raw body when the server did not return JSON.
+    }
+    throw new Error(message);
   }
   const data = await response.json();
   voiceDebug('stt_response', { phase: 'stt', ok: true, status: response.status, transcript_len: (data?.text || '').trim().length });
@@ -1359,8 +1366,19 @@ async function playTtsWithAvatar(replyText) {
 }
 
 function setStatusText(text) {
+  ui.statusText.classList.remove('warning');
   ui.statusText.textContent = text;
   scheduleEmbedHeightEmission('status');
+}
+
+function setStatusWarning(text) {
+  ui.statusText.classList.add('warning');
+  ui.statusText.textContent = `⚠️ ${text}`;
+  scheduleEmbedHeightEmission('status-warning');
+}
+
+function isVoiceStatusWarningMessage(message) {
+  return message === 'Transcripción vacía.' || message === 'Audio demasiado largo. Repítelo de forma más breve.';
 }
 
 function setListeningGlowEnabled(enabled) {
@@ -2698,6 +2716,15 @@ async function runNegotiationTurnFromText(message, { allowWhileVoiceTurn = false
     const out = await api('/negociacion/turn', { method: 'POST', body: JSON.stringify(payload) });
     recordTurnPerf('turn_response_received', { mode: 'text' });
     clearSessionBusyState();
+    if (out.turn_warning_code === 'response_too_long') {
+      recordTurnPerf('turn_warning_received', { mode: 'text', warning_code: out.turn_warning_code });
+      updateReplyText('');
+      armFinishButton(out.finish_button_armed);
+      setLatestTraceCount(out.trace_count);
+      setStatusWarning(out.turn_warning_message || 'Tu mensaje ha llevado a una respuesta demasiado larga, repítelo de forma más breve.');
+      syncAvatarMode();
+      return false;
+    }
     recordTurnPerf('reply_render_started', { mode: 'text' });
     updateReplyText(out.reply || '');
     recordTurnPerf('reply_render_finished', { mode: 'text', elapsed_since_handler_ms: performance.now() - handlerStartedAt });
@@ -2926,7 +2953,12 @@ async function handleFinishTurn() {
       updateUi();
       return;
     }
-    setStatusText(err?.message || 'No se pudo procesar el audio.');
+    const voiceErrorMessage = err?.message || 'No se pudo procesar el audio.';
+    if (isVoiceStatusWarningMessage(voiceErrorMessage)) {
+      setStatusWarning(voiceErrorMessage);
+    } else {
+      setStatusText(voiceErrorMessage);
+    }
     if (currentInputMode === InputMode.TALK) {
       try {
         await startVoiceCapture();

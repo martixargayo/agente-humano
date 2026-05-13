@@ -53,6 +53,10 @@ def test_transcribe_audio_error_and_success_matrix() -> None:
           let err400 = '';
           try {{ await transcribeAudio(blob); }} catch (e) {{ err400 = String(e.message || e); }}
 
+          globalThis.fetch = async () => ({{ ok:false, text: async () => '{{"detail":"Audio demasiado largo. Repítelo de forma más breve."}}' }});
+          let errTooLong = '';
+          try {{ await transcribeAudio(blob); }} catch (e) {{ errTooLong = String(e.message || e); }}
+
           globalThis.fetch = async () => {{ throw new TypeError('Failed to fetch'); }};
           let errNetwork = '';
           try {{ await transcribeAudio(blob); }} catch (e) {{ errNetwork = String(e.message || e); }}
@@ -67,7 +71,7 @@ def test_transcribe_audio_error_and_success_matrix() -> None:
           globalThis.fetch = async () => ({{ ok:true, json: async () => ({{ text: ' hola mundo ' }}) }});
           const okText = await transcribeAudio(blob);
 
-          console.log(JSON.stringify({{ err503, err400, errNetwork, errJson, emptyText, okText }}));
+          console.log(JSON.stringify({{ err503, err400, errTooLong, errNetwork, errJson, emptyText, okText }}));
         }}
 
         run().finally(() => {{ globalThis.fetch = originalFetch; }});
@@ -76,7 +80,8 @@ def test_transcribe_audio_error_and_success_matrix() -> None:
     out = _run_node(script).strip().splitlines()[-1]
     data = json.loads(out)
     assert "No hay proveedor STT disponible" in data["err503"]
-    assert "Archivo de audio vacío" in data["err400"]
+    assert data["err400"] == "Archivo de audio vacío."
+    assert data["errTooLong"] == "Audio demasiado largo. Repítelo de forma más breve."
     assert "Failed to fetch" in data["errNetwork"]
     assert "Unexpected token" in data["errJson"]
     assert data["emptyText"] == ""
@@ -136,6 +141,8 @@ def test_handle_finish_turn_releases_inflight_and_retries_after_error() -> None:
         globalThis.recordTurnPerf = () => {{}};
         globalThis.updateUi = () => {{ globalThis.uiUpdates = (globalThis.uiUpdates || 0) + 1; }};
         globalThis.setStatusText = (t) => {{ ui.statusText.textContent = t; }};
+        globalThis.setStatusWarning = (t) => {{ ui.statusText.textContent = `⚠️ ${{t}}`; }};
+        globalThis.isVoiceStatusWarningMessage = (m) => m === 'Transcripción vacía.' || m === 'Audio demasiado largo. Repítelo de forma más breve.';
         globalThis.getActiveSessionBusyState = () => null;
         globalThis.isSessionBusyError = () => false;
         globalThis.teardownMic = () => {{}};
@@ -161,7 +168,11 @@ def test_handle_finish_turn_releases_inflight_and_retries_after_error() -> None:
 
           transcribeAudio = async () => {{ transcribeCalls += 1; return ''; }};
           await handleFinishTurn();
-          const afterEmptyText = {{ inflight: voiceTurnInFlight, restarts, transcribeCalls }};
+          const afterEmptyText = {{ inflight: voiceTurnInFlight, restarts, transcribeCalls, status: ui.statusText.textContent }};
+
+          transcribeAudio = async () => {{ transcribeCalls += 1; throw new Error('Audio demasiado largo. Repítelo de forma más breve.'); }};
+          await handleFinishTurn();
+          const afterTooLong = {{ inflight: voiceTurnInFlight, restarts, transcribeCalls, status: ui.statusText.textContent }};
 
           transcribeAudio = async () => {{ transcribeCalls += 1; return 'ok'; }};
           runNegotiationTurnFromText = async () => {{ throw new Error('pipeline fail'); }};
@@ -173,7 +184,7 @@ def test_handle_finish_turn_releases_inflight_and_retries_after_error() -> None:
           await handleFinishTurn();
           const afterBlobZero = {{ inflight: voiceTurnInFlight, transcribeCallsDelta: transcribeCalls - beforeBlobZero, status: ui.statusText.textContent }};
 
-          console.log(JSON.stringify({{ after503, afterEmptyText, afterPipelineError, afterBlobZero }}));
+          console.log(JSON.stringify({{ after503, afterEmptyText, afterTooLong, afterPipelineError, afterBlobZero }}));
         }}
 
         run().catch((err) => {{ console.error(err); process.exit(1); }});
@@ -183,6 +194,9 @@ def test_handle_finish_turn_releases_inflight_and_retries_after_error() -> None:
     data = json.loads(out)
     assert data["after503"]["inflight"] is False
     assert data["afterEmptyText"]["inflight"] is False
+    assert data["afterEmptyText"]["status"] == "⚠️ Transcripción vacía."
+    assert data["afterTooLong"]["inflight"] is False
+    assert data["afterTooLong"]["status"] == "⚠️ Audio demasiado largo. Repítelo de forma más breve."
     assert data["afterPipelineError"]["inflight"] is False
     assert data["afterBlobZero"]["transcribeCallsDelta"] == 0
 
