@@ -100,3 +100,88 @@ def test_retry_logs_do_not_include_raw_output(caplog) -> None:
     joined = " ".join(r.getMessage() for r in caplog.records)
     assert "SENSITIVE_TRANSCRIPT_TEST_ABC" not in joined
     assert "output_len" in joined
+
+
+def test_empty_output_records_privacy_safe_response_diagnostics(caplog) -> None:
+    caplog.set_level(logging.WARNING)
+
+    class _IncompleteResponse(_FakeResponse):
+        def __init__(self) -> None:
+            super().__init__(None, response_id="resp_empty")
+            self.status = "incomplete"
+            self.incomplete_details = {"reason": "max_output_tokens"}
+            self.output = [{"type": "reasoning", "status": "incomplete"}]
+
+    class _IncompleteResponses:
+        def create(self, **kwargs):
+            return _IncompleteResponse()
+
+    class _IncompleteClient:
+        def __init__(self) -> None:
+            self.responses = _IncompleteResponses()
+
+    out = pipeline._call_brain_structured(client=_IncompleteClient(), model="x", messages=_messages())
+
+    assert out.source == "fallback"
+    assert out.fallback_reason_code == "empty_output_text"
+    assert out.provider_response_diagnostics == {
+        "response_status": "incomplete",
+        "response_incomplete_reason": "max_output_tokens",
+        "response_output_count": 1,
+        "response_output_item_types": ["reasoning"],
+        "response_first_output_status": "incomplete",
+        "response_error_code": None,
+        "response_error_message": None,
+    }
+    joined = " ".join(r.getMessage() for r in caplog.records)
+    assert "conversacion_simple_brain_empty_output_text" in joined
+    assert "max_output_tokens" in joined
+
+
+def test_turn_trace_persists_brain_response_diagnostics(monkeypatch) -> None:
+    diagnostics = {
+        "response_status": "incomplete",
+        "response_incomplete_reason": "max_output_tokens",
+        "response_output_count": 1,
+        "response_output_item_types": ["reasoning"],
+        "response_first_output_status": "incomplete",
+        "response_error_code": None,
+        "response_error_message": None,
+    }
+
+    def _fake_call(**kwargs):
+        return pipeline.StructuredBrainCall(
+            source="fallback",
+            parsed_json=None,
+            response=None,
+            fallback_reason_code="empty_output_text",
+            model_attempted=True,
+            model_succeeded=False,
+            provider_response_diagnostics=diagnostics,
+        )
+
+    monkeypatch.setattr("conversacion_simple.orchestration.pipeline._call_brain_structured", _fake_call)
+
+    from conversacion_simple.orchestration.flow_config import build_conversacion_simple_pipeline_config
+    from conversacion_simple.services import build_conversacion_simple_turn_context
+    from sessions.state import SessionState
+
+    state = SessionState(user_id="u", session_id="s")
+    state.world_state["conversacion_simple_context"] = {
+        "flow_id": "conversacion_simple",
+        "context_id": "baseline",
+        "context_version": "1.0.0",
+    }
+    config = build_conversacion_simple_pipeline_config(context_id="baseline", stateful=True)
+    turn_context = build_conversacion_simple_turn_context(state=state, entrypoint="/tests", requested_context_id="baseline")
+
+    _, updated, _ = pipeline.run_conversacion_simple_turn(
+        state=state,
+        user_message="hola",
+        config=config,
+        turn_context=turn_context,
+    )
+
+    trace = updated.world_state[config.traces_key][-1]
+    assert trace["brain_fallback_reason_code"] == "empty_output_text"
+    assert trace["memory_observability"]["brain_provider_response_diagnostics"] == diagnostics

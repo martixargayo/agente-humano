@@ -193,6 +193,7 @@ class StructuredBrainCall:
     retry_succeeded: bool = False
     retry_reason: str | None = None
     parse_error_meta: dict[str, object] | None = None
+    provider_response_diagnostics: dict[str, object | None] | None = None
 
 
 _DEFAULT_SUMMARIZER_PROMPT = """Eres un summarizer táctico de contexto conversacional para negociación.
@@ -311,6 +312,63 @@ def _extract_provider_exception_details(
         "provider_exception_code": provider_code if isinstance(provider_code, str) else None,
         "provider_exception_stage": stage,
         "provider_model_target": model,
+    }
+
+
+
+def _safe_get_attr_or_key(obj: object, name: str) -> object | None:
+    if obj is None:
+        return None
+    if isinstance(obj, dict):
+        return obj.get(name)
+    return getattr(obj, name, None)
+
+
+def _extract_response_diagnostics(response: object) -> dict[str, object | None]:
+    """Return privacy-safe provider response metadata for Railway log triage.
+
+    The fallback phrase is emitted after the Responses API call returns something
+    the pipeline cannot turn into a BrainOutput.  These diagnostics deliberately
+    avoid raw model text/user content and keep only structural metadata that helps
+    tell apart incomplete/filtered/empty responses from local JSON parsing issues.
+    """
+    output = _safe_get_attr_or_key(response, "output")
+    output_count = len(output) if isinstance(output, list) else None
+    output_item_types: list[str] = []
+    first_output_status = None
+    if isinstance(output, list):
+        for item in output[:5]:
+            item_type = _safe_get_attr_or_key(item, "type")
+            if isinstance(item_type, str):
+                output_item_types.append(item_type)
+        if output:
+            first_output_status_raw = _safe_get_attr_or_key(output[0], "status")
+            first_output_status = first_output_status_raw if isinstance(first_output_status_raw, str) else None
+
+    incomplete_details = _safe_get_attr_or_key(response, "incomplete_details")
+    incomplete_reason = None
+    if incomplete_details is not None:
+        reason_raw = _safe_get_attr_or_key(incomplete_details, "reason")
+        incomplete_reason = reason_raw if isinstance(reason_raw, str) else None
+
+    error_obj = _safe_get_attr_or_key(response, "error")
+    error_code = None
+    error_message = None
+    if error_obj is not None:
+        code_raw = _safe_get_attr_or_key(error_obj, "code")
+        message_raw = _safe_get_attr_or_key(error_obj, "message")
+        error_code = code_raw if isinstance(code_raw, str) else None
+        error_message = _sanitize_exception_message(message_raw if isinstance(message_raw, str) else None)
+
+    status_raw = _safe_get_attr_or_key(response, "status")
+    return {
+        "response_status": status_raw if isinstance(status_raw, str) else None,
+        "response_incomplete_reason": incomplete_reason,
+        "response_output_count": output_count,
+        "response_output_item_types": output_item_types,
+        "response_first_output_status": first_output_status,
+        "response_error_code": error_code,
+        "response_error_message": error_message,
     }
 
 
@@ -582,8 +640,19 @@ def _call_brain_structured(
     output_extract_started = time.perf_counter()
     text = _extract_output_text(response)
     response_id = _extract_response_id(response)
+    response_diagnostics = _extract_response_diagnostics(response)
     timings_ms["extract_output_text"] = round((time.perf_counter() - output_extract_started) * 1000, 3)
     if not text:
+        logger.warning(
+            "conversacion_simple_brain_empty_output_text response_id=%s response_status=%s incomplete_reason=%s output_count=%s output_item_types=%s first_output_status=%s error_code=%s",
+            response_id,
+            response_diagnostics.get("response_status"),
+            response_diagnostics.get("response_incomplete_reason"),
+            response_diagnostics.get("response_output_count"),
+            response_diagnostics.get("response_output_item_types"),
+            response_diagnostics.get("response_first_output_status"),
+            response_diagnostics.get("response_error_code"),
+        )
         return StructuredBrainCall(
             source="fallback",
             parsed_json=None,
@@ -596,6 +665,7 @@ def _call_brain_structured(
             provider_exception=None,
             provider_request=request_payload,
             timings_ms=timings_ms,
+            provider_response_diagnostics=response_diagnostics,
         )
     try:
         json_load_started = time.perf_counter()
@@ -652,6 +722,7 @@ def _call_brain_structured(
                     provider_request=retry_payload,
                     provider_response_text=None,
                     timings_ms=timings_ms,
+                    provider_response_diagnostics=_extract_response_diagnostics(retry_response),
                     retry_attempted=True,
                     retry_succeeded=isinstance(retry_payload_json, dict),
                     retry_reason="json_parse_error",
@@ -688,6 +759,7 @@ def _call_brain_structured(
             provider_request=request_payload,
             provider_response_text=None,
             timings_ms=timings_ms,
+            provider_response_diagnostics=response_diagnostics,
             retry_attempted=True,
             retry_succeeded=False,
             retry_reason="json_parse_error",
@@ -706,6 +778,7 @@ def _call_brain_structured(
         provider_request=request_payload,
         provider_response_text=None,
         timings_ms=timings_ms,
+        provider_response_diagnostics=response_diagnostics,
     )
 
 
@@ -1145,6 +1218,8 @@ def run_conversacion_simple_turn(
         memory_obs["brain_provider_request"] = call.provider_request
     if forensic_enabled and isinstance(call.provider_response_text, str):
         memory_obs["brain_provider_response_text"] = call.provider_response_text
+    if call.provider_response_diagnostics is not None:
+        memory_obs["brain_provider_response_diagnostics"] = call.provider_response_diagnostics
     compact_brain_schema_obs = _compact_schema_observability(call.schema_observability, forensic_enabled=forensic_enabled)
     if compact_brain_schema_obs is not None:
         memory_obs["brain_schema_observability"] = compact_brain_schema_obs
