@@ -1445,7 +1445,7 @@ function startFinishButtonAttentionPulse() {
   finishButtonHighlightTimer = window.setTimeout(() => {
     finishButtonHighlightTimer = null;
     setFinishButtonAttentionActive(false);
-  }, 5000);
+  }, 11000);
 }
 
 function updateFinishNegotiationButton() {
