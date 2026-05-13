@@ -1252,15 +1252,35 @@
       @keyframes finishNegotiationPulse {
         0%, 100% {
           transform: scale(1);
+          filter: saturate(1) brightness(1);
+          box-shadow:
+            0 0 0 1px rgba(191, 219, 254, 0.62),
+            0 12px 30px rgba(37, 99, 235, 0.32),
+            0 0 26px rgba(59, 130, 246, 0.34);
         }
-        25% {
-          transform: scale(1.028);
+        22% {
+          transform: scale(1.07);
+          filter: saturate(1.18) brightness(1.12);
+          box-shadow:
+            0 0 0 3px rgba(191, 219, 254, 0.78),
+            0 18px 42px rgba(37, 99, 235, 0.48),
+            0 0 44px rgba(59, 130, 246, 0.72);
         }
-        55% {
-          transform: scale(0.992);
+        48% {
+          transform: scale(0.985);
+          filter: saturate(0.98) brightness(0.96);
+          box-shadow:
+            0 0 0 1px rgba(147, 197, 253, 0.5),
+            0 10px 24px rgba(37, 99, 235, 0.26),
+            0 0 18px rgba(59, 130, 246, 0.28);
         }
-        78% {
-          transform: scale(1.02);
+        72% {
+          transform: scale(1.045);
+          filter: saturate(1.12) brightness(1.08);
+          box-shadow:
+            0 0 0 2px rgba(219, 234, 254, 0.72),
+            0 16px 38px rgba(37, 99, 235, 0.42),
+            0 0 36px rgba(96, 165, 250, 0.62);
         }
       }
 
@@ -1642,16 +1662,20 @@
       }
 
       .finish-negotiation-button.is-highlighted {
-        background: #f9fafb;
-        border-color: rgba(96, 165, 250, 0.72);
-        color: #111827;
-        box-shadow: 0 0 0 1px rgba(147, 197, 253, 0.32), 0 12px 28px rgba(59, 130, 246, 0.22);
+        background: linear-gradient(135deg, #2563eb 0%, #3b82f6 52%, #60a5fa 100%);
+        border-color: rgba(191, 219, 254, 0.82);
+        color: #ffffff;
+        text-shadow: 0 1px 1px rgba(15, 23, 42, 0.22);
+        box-shadow:
+          0 0 0 1px rgba(191, 219, 254, 0.62),
+          0 12px 30px rgba(37, 99, 235, 0.32),
+          0 0 26px rgba(59, 130, 246, 0.34);
         --finish-glow-opacity: 1;
-        --finish-glow-scale: 1;
+        --finish-glow-scale: 1.08;
       }
 
       .finish-negotiation-button.is-attention-active {
-        animation: finishNegotiationPulse 1s ease-in-out 5;
+        animation: finishNegotiationPulse 1.56s ease-in-out 7;
       }
 
       .finish-negotiation-button:focus-visible {
