@@ -1206,6 +1206,11 @@
         color: var(--text-muted);
       }
 
+      .status-text.warning {
+        color: #dc2626;
+        font-weight: 700;
+      }
+
       .finish-button {
         display: inline-flex;
         align-items: center;
@@ -1551,6 +1556,10 @@
 
       html[data-newbox="1"] .status-text {
         color: rgba(15, 23, 42, 0.74);
+      }
+
+      html[data-newbox="1"] .status-text.warning {
+        color: #dc2626;
       }
 
       html[data-newbox="1"] .finish-button {

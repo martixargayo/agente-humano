@@ -102,5 +102,7 @@ class NegotiationTurnResponse(BaseModel):
     entry_contract: EntryContractPayload
     auto_reset_applied: bool = False
     finish_button_armed: bool = False
+    turn_warning_code: str | None = None
+    turn_warning_message: str | None = None
     post_commit_housekeeping_error: str | None = None
     latency_breakdown_ms: dict[str, object] = Field(default_factory=dict)

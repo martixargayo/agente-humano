@@ -239,7 +239,7 @@ def test_audit_provider_stateless_in_both_brain_and_summarizer(monkeypatch) -> N
     # Check brain call
     brain_kw = captured_kwargs.get("brain_kwargs", {})
     assert brain_kw.get("model") == "gpt-5.4"
-    assert brain_kw.get("max_output_tokens") == 512
+    assert brain_kw.get("max_output_tokens") == 1024
 
     # Check summarizer call (only triggered if >20 turns, so trigger it)
     if "summarizer_kwargs" not in captured_kwargs:

@@ -111,6 +111,19 @@ def _diagnostic_from_exception(exc: Exception) -> str:
     return joined[:600] if joined else type(exc).__name__
 
 
+CONVERSACION_SIMPLE_RESPONSE_TOO_LONG_MESSAGE = "Tu mensaje ha llevado a una respuesta demasiado larga, repítelo de forma más breve."
+
+
+def _warning_from_conversacion_simple_meta(meta: dict[str, Any]) -> dict[str, str | None]:
+    fallback_reason = meta.get("brain_fallback_reason_code")
+    if fallback_reason == "json_parse_error":
+        return {
+            "turn_warning_code": "response_too_long",
+            "turn_warning_message": CONVERSACION_SIMPLE_RESPONSE_TOO_LONG_MESSAGE,
+        }
+    return {"turn_warning_code": None, "turn_warning_message": None}
+
+
 def _classify_exception(exc: Exception) -> dict[str, Any]:
     diagnostic = _diagnostic_from_exception(exc)
     normalized = diagnostic.lower()
@@ -465,6 +478,7 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
                 meta = {
                     "trace_count": len(resolve_traces(state)),
                     "latest_turn_id": cs_meta.get("turn_id"),
+                    "brain_fallback_reason_code": cs_meta.get("brain_fallback_reason_code"),
                     "entry_contract": {
                         "entry_surface": "interfaz_usuario",
                         "entrypoint": "/api/interfaz_usuario/negociacion/turn",
@@ -497,6 +511,7 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
                     "latency_pipeline_stage_timings_ms": cs_meta.get("stage_timings_ms"),
                     "latency_pipeline_stage_timings_precise_ms": cs_meta.get("stage_timings_precise_ms"),
                 }
+                meta.update(_warning_from_conversacion_simple_meta(cs_meta))
             else:
                 bound_context = ensure_session_context(state=state, requested_context_id=effective_context_id)
                 config = build_negotiation_pipeline_config(context_id=bound_context.context_id, stateful=True)
@@ -643,6 +658,8 @@ def run_turn(*, user_id: str, session_id: str, message: str, new_conversation: b
         "entry_contract": meta.get("entry_contract") or {},
         "auto_reset_applied": auto_reset_applied,
         "finish_button_armed": finish_button_armed,
+        "turn_warning_code": meta.get("turn_warning_code"),
+        "turn_warning_message": meta.get("turn_warning_message"),
         "post_commit_housekeeping_error": post_commit_housekeeping_error,
         "latency_breakdown_ms": {
             "surface_stage_timings_ms": timing_ms,
