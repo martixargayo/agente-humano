@@ -1388,5 +1388,6 @@ def run_conversacion_simple_turn(
         "finish_button_armed": canonical_state.ui_state.finish_button_armed,
         "stage_timings_ms": stage_timings_ms,
         "stage_timings_precise_ms": stage_timings_precise_ms,
+        "brain_fallback_reason_code": fallback_reason_code,
     }
     return reply, state, meta

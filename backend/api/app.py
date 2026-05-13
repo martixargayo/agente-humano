@@ -968,7 +968,7 @@ async def stt_google(
 
     if duration_ms is not None and duration_ms > voice_max_duration_ms:
         _voice_debug_log("stt_backend_response", status=400, stt_mode="rejected_too_long", recording_duration_ms=duration_ms)
-        raise HTTPException(status_code=400, detail="Audio demasiado largo. Divide tu intervención en turnos más cortos.")
+        raise HTTPException(status_code=400, detail="Audio demasiado largo. Repítelo de forma más breve.")
 
     use_openai_direct_for_long_audio = (
         duration_ms is not None

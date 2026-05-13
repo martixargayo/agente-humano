@@ -58,6 +58,27 @@ def test_interfaz_usuario_turn_routes_to_conversacion_simple(monkeypatch) -> Non
     assert called == {"cs": 1, "neg": 0}
 
 
+def test_interfaz_usuario_conversacion_simple_json_parse_fallback_returns_warning(monkeypatch) -> None:
+    iu_services.ensure_session(user_id="u_cs_warn", session_id="s_cs_warn", context_id="baseline")
+
+    def _fake_cs_turn(*, state, user_message, config, turn_context, **kwargs):
+        canonical = state.world_state.setdefault(config.memory_key, {"ui_state": {"finish_button_armed": False}})
+        canonical.setdefault("ui_state", {})["finish_button_armed"] = False
+        return (
+            "No pude completar la generación del turno en este intento. ¿Puedes repetir tu último mensaje?",
+            state,
+            {"turn_id": "turn-warn", "brain_fallback_reason_code": "json_parse_error"},
+        )
+
+    monkeypatch.setattr("interfaz_usuario.services.run_conversacion_simple_turn", _fake_cs_turn)
+
+    out = iu_services.run_turn(user_id="u_cs_warn", session_id="s_cs_warn", message="haz una respuesta larguísima")
+
+    assert out["reply"].startswith("No pude completar")
+    assert out["turn_warning_code"] == "response_too_long"
+    assert out["turn_warning_message"] == "Tu mensaje ha llevado a una respuesta demasiado larga, repítelo de forma más breve."
+
+
 def test_interfaz_usuario_finalize_conversacion_simple() -> None:
     iu_services.ensure_session(user_id="u_cs", session_id="s_cs", context_id="baseline")
     out = iu_services.finalize_session(user_id="u_cs", session_id="s_cs")
