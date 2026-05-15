@@ -49,7 +49,7 @@ def test_transcribe_audio_error_and_success_matrix() -> None:
           let err503 = '';
           try {{ await transcribeAudio(blob); }} catch (e) {{ err503 = String(e.message || e); }}
 
-          globalThis.fetch = async () => ({{ ok:false, text: async () => '{{"detail":"Archivo de audio vacío."}}' }});
+          globalThis.fetch = async () => ({{ ok:false, text: async () => '{{"detail":"Archivo de audio vacío. Repítelo de nuevo asegurándote de que el micrófono está activo."}}' }});
           let err400 = '';
           try {{ await transcribeAudio(blob); }} catch (e) {{ err400 = String(e.message || e); }}
 
@@ -80,7 +80,7 @@ def test_transcribe_audio_error_and_success_matrix() -> None:
     out = _run_node(script).strip().splitlines()[-1]
     data = json.loads(out)
     assert "No hay proveedor STT disponible" in data["err503"]
-    assert data["err400"] == "Archivo de audio vacío."
+    assert data["err400"] == "Archivo de audio vacío. Repítelo de nuevo asegurándote de que el micrófono está activo."
     assert data["errTooLong"] == "Audio demasiado largo. Repítelo de forma más breve."
     assert "Failed to fetch" in data["errNetwork"]
     assert "Unexpected token" in data["errJson"]
@@ -142,7 +142,12 @@ def test_handle_finish_turn_releases_inflight_and_retries_after_error() -> None:
         globalThis.updateUi = () => {{ globalThis.uiUpdates = (globalThis.uiUpdates || 0) + 1; }};
         globalThis.setStatusText = (t) => {{ ui.statusText.textContent = t; }};
         globalThis.setStatusWarning = (t) => {{ ui.statusText.textContent = `⚠️ ${{t}}`; }};
-        globalThis.isVoiceStatusWarningMessage = (m) => m === 'Transcripción vacía.' || m === 'Audio demasiado largo. Repítelo de forma más breve.';
+        globalThis.isVoiceStatusWarningMessage = (m) => [
+          'Transcripción vacía. Repítelo de nuevo asegurándote de que el micrófono está activo.',
+          'No se capturó audio. Repítelo de nuevo asegurándote de que el micrófono está activo.',
+          'Archivo de audio vacío. Repítelo de nuevo asegurándote de que el micrófono está activo.',
+          'Audio demasiado largo. Repítelo de forma más breve.',
+        ].includes(m);
         globalThis.getActiveSessionBusyState = () => null;
         globalThis.isSessionBusyError = () => false;
         globalThis.teardownMic = () => {{}};
@@ -194,11 +199,12 @@ def test_handle_finish_turn_releases_inflight_and_retries_after_error() -> None:
     data = json.loads(out)
     assert data["after503"]["inflight"] is False
     assert data["afterEmptyText"]["inflight"] is False
-    assert data["afterEmptyText"]["status"] == "⚠️ Transcripción vacía."
+    assert data["afterEmptyText"]["status"] == "⚠️ Transcripción vacía. Repítelo de nuevo asegurándote de que el micrófono está activo."
     assert data["afterTooLong"]["inflight"] is False
     assert data["afterTooLong"]["status"] == "⚠️ Audio demasiado largo. Repítelo de forma más breve."
     assert data["afterPipelineError"]["inflight"] is False
     assert data["afterBlobZero"]["transcribeCallsDelta"] == 0
+    assert data["afterBlobZero"]["status"] == "⚠️ No se capturó audio. Repítelo de nuevo asegurándote de que el micrófono está activo."
 
 
 def test_generic_fallback_phrase_originates_in_pipeline_not_voice_frontend() -> None:
