@@ -28,7 +28,7 @@ def _post_audio(payload: bytes = b"audio", data: dict[str, str] | None = None):
 def test_stt_google_returns_400_for_empty_audio_file() -> None:
     response = _post_audio(payload=b"")
     assert response.status_code == 400
-    assert response.json()["detail"] == "Archivo de audio vacío."
+    assert response.json()["detail"] == "Archivo de audio vacío. Repítelo de nuevo asegurándote de que el micrófono está activo."
 
 
 def test_stt_google_returns_503_when_no_google_and_no_openai(monkeypatch) -> None:

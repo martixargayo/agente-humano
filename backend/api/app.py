@@ -963,8 +963,8 @@ async def stt_google(
         voice_max_duration_ms=voice_max_duration_ms,
     )
     if not audio_bytes:
-        _voice_debug_log("stt_backend_response", status=400, detail="Archivo de audio vacío.")
-        raise HTTPException(status_code=400, detail="Archivo de audio vacío.")
+        _voice_debug_log("stt_backend_response", status=400, detail="Archivo de audio vacío. Repítelo de nuevo asegurándote de que el micrófono está activo.")
+        raise HTTPException(status_code=400, detail="Archivo de audio vacío. Repítelo de nuevo asegurándote de que el micrófono está activo.")
 
     if duration_ms is not None and duration_ms > voice_max_duration_ms:
         _voice_debug_log("stt_backend_response", status=400, stt_mode="rejected_too_long", recording_duration_ms=duration_ms)

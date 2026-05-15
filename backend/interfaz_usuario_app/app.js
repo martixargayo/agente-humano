@@ -1378,7 +1378,12 @@ function setStatusWarning(text) {
 }
 
 function isVoiceStatusWarningMessage(message) {
-  return message === 'Transcripción vacía.' || message === 'Audio demasiado largo. Repítelo de forma más breve.';
+  return [
+    'Transcripción vacía. Repítelo de nuevo asegurándote de que el micrófono está activo.',
+    'No se capturó audio. Repítelo de nuevo asegurándote de que el micrófono está activo.',
+    'Archivo de audio vacío. Repítelo de nuevo asegurándote de que el micrófono está activo.',
+    'Audio demasiado largo. Repítelo de forma más breve.',
+  ].includes(message);
 }
 
 function setListeningGlowEnabled(enabled) {
@@ -2925,7 +2930,7 @@ async function handleFinishTurn() {
     teardownMic();
     if (!blob || !blob.size) {
       voiceDebug('voice_blob_empty', { phase: 'capture', blob_exists: Boolean(blob), blob_size: blob?.size || 0 });
-      throw new Error('No se capturó audio.');
+      throw new Error('No se capturó audio. Repítelo de nuevo asegurándote de que el micrófono está activo.');
     }
     const text = await transcribeAudio(blob, {
       recording_duration_ms: captureDurationMs,
@@ -2933,7 +2938,7 @@ async function handleFinishTurn() {
       source: currentVoiceDebugContext?.source || 'unknown',
       correlation_id: currentVoiceDebugContext?.correlation_id || null,
     });
-    if (!text) throw new Error('Transcripción vacía.');
+    if (!text) throw new Error('Transcripción vacía. Repítelo de nuevo asegurándote de que el micrófono está activo.');
     voiceDebug('pipeline_call', { transcript_len: text.length, source: currentVoiceDebugContext?.source || 'unknown' });
     const turnCompleted = await runNegotiationTurnFromText(text, { allowWhileVoiceTurn: true });
     voiceDebug('pipeline_result', { ok: turnCompleted !== false });
