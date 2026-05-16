@@ -187,7 +187,7 @@ class EmbedFinalResultContractTests(unittest.TestCase):
               evaluation_id: 'eval-123',
               header: {{
                 report_title: 'Evaluación de tu desempeño',
-                activity_name: 'Compra de un Mustang clásico',
+                activity_name: 'Negociación en sala de reuniones',
                 score_global_100: 87,
                 stars_0_5: 4.4,
                 interaction_outcome: 'agreement_reached',
@@ -381,7 +381,7 @@ class EmbedFinalResultContractTests(unittest.TestCase):
         self.assertEqual(payload['trace_count'], 14)
         self.assertEqual(payload['summary_html'], '<html><body><h1>Evaluación de tu desempeño</h1></body></html>')
         self.assertEqual(payload['payloadjson']['schema_version'], 'ui_feedback_report.v1')
-        self.assertEqual(payload['report_json']['header']['activity_name'], 'Compra de un Mustang clásico')
+        self.assertEqual(payload['report_json']['header']['activity_name'], 'Negociación en sala de reuniones')
         self.assertEqual(payload['report_html'], payload['summary_html'])
         self.assertEqual(payload['snapshot_png_dataurl'], 'data:image/png;base64,ZmFrZS1wbmc=')
         self.assertEqual(payload['reason'], 'report-fetched')

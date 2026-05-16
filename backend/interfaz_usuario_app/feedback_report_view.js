@@ -1028,7 +1028,7 @@
     const blocks = orderBlocks(report.block_cards || []);
     const trajectory = report.trajectory_chart || [];
     const recs = report.recommendations || { items: [] };
-    const activityName = header.activity_name || 'Compra de un Mustang clásico';
+    const activityName = header.activity_name || 'Negociación en sala de reuniones';
     const durationLabel = durationFromReport(report, trajectory.length);
     const outcome = header.interaction_outcome;
     const difficultConversation = isDifficultConversationContext(report);
@@ -1062,7 +1062,7 @@
         <section class="fb-grid-cards" aria-label="Resumen por dimensión"></section>
 
         <section class="fb-card fb-chart-card">
-          <div class="fb-chart-top"><h2>${difficultConversation ? 'Evolución del convencimiento al cambio' : 'Cercanía al entendimiento'}</h2></div>
+          <div class="fb-chart-top"><h2>${difficultConversation ? 'Evaluación conversación difícil' : 'Cercanía al entendimiento'}</h2></div>
           <p class="fb-chart-hint">${difficultConversation ? 'La curva refleja cómo evolucionó la apertura al cambio y termina en el nivel final de convencimiento.' : 'Pasa el ratón por encima de cada momento de la conversación para conocer más.'}</p>
           <div class="fb-chart-shell">
             <svg class="fb-chart" role="img" aria-label="${difficultConversation ? 'Serie de convencimiento al cambio por turno' : 'Serie de cercanía al entendimiento por turno'}"></svg>

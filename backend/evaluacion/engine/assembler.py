@@ -22,7 +22,7 @@ def assemble_ui_report(*, core: FeedbackReportCoreV1, trajectory: TurnTrajectory
         evaluation_id=provenance.evaluation_id,
         header=UiHeader(
             report_title="Evaluación de tu desempeño",
-            activity_name="Compra de un Mustang clásico",
+            activity_name="Negociación en sala de reuniones",
             score_global_100=core.score_global_100,
             stars_0_5=_stars_from_score(core.score_global_100),
             interaction_outcome=core.interaction_outcome,
